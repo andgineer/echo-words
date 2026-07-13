@@ -31,13 +31,14 @@ Rules:
 |---|---|
 | Telegram framework | `python-telegram-bot` v21+ (async, long polling) |
 | HTTP client (AnkiConnect, dictionary) | `httpx` (async) |
-| TTS (primary) | Kokoro-82M via `kokoro-onnx` — local, Apache 2.0, near-natural English, faster than real time on CPU; nothing external to break. Model (~300 MB) downloaded by a background task at startup into `WORDGRAM_DATA_DIR/models/` (see M6). Verify at M6 whether `kokoro-onnx` needs the `espeak-ng` system library for phonemization — if it does, it is a documented system requirement, not a hidden crash |
-| TTS (last resort) | `edge-tts` (MS Edge voices, free online, outputs mp3) — only when Kokoro fails; its known flakiness (unofficial API, recurring 403 breakage) is acceptable in this role |
-| mp3 encoding | `lameenc` (pure-wheel LAME bindings) to convert Kokoro's WAV output to mp3 — no ffmpeg system dependency |
-| Dictionary pronunciation | `https://api.dictionaryapi.dev/api/v2/entries/en/{word}` — take the first `phonetics[].audio` non-empty URL (they are Wiktionary recordings); prefer entries whose URL contains the configured accent (`-us` / `-uk`), else any |
+| TTS (English, local) | Kokoro-82M via `kokoro-onnx` — local, Apache 2.0, near-natural English, faster than real time on CPU; nothing external to break. English only. Model (~300 MB) downloaded by a background task at startup into `WORDGRAM_DATA_DIR/models/` (see M6). Verify at M6 whether `kokoro-onnx` needs the `espeak-ng` system library for phonemization — if it does, it is a documented system requirement, not a hidden crash |
+| TTS (non-English, local) | Piper (`piper-tts`, ONNX voices, MIT) — local neural TTS with per-language voices (German confirmed; verify a Serbian voice exists at M6, else that language falls through to edge-tts). Keeps the local-first resilience of the English path for de/sr. Voices downloaded at startup alongside the Kokoro model, same pinned-URL + checksum mechanism (M6). Piper also phonemizes via `espeak-ng` — the same optional system dependency as Kokoro |
+| TTS (last resort) | `edge-tts` (MS Edge voices, free online, outputs mp3, per-language voices e.g. `de-DE-*`, `sr-RS-*`) — only when the local engine (Kokoro/Piper) fails or has no voice for the language; its known flakiness (unofficial API, recurring 403 breakage) is acceptable in this role |
+| mp3 encoding | `lameenc` (pure-wheel LAME bindings) to convert Kokoro's / Piper's WAV output to mp3 — no ffmpeg system dependency |
+| Dictionary pronunciation | `https://api.dictionaryapi.dev/api/v2/entries/{lang}/{word}` where `{lang}` is the source language's `dict_api` code (`en`, `de`, …; Serbian is unsupported → skip this step) — take the first `phonetics[].audio` non-empty URL (they are Wiktionary recordings); for English prefer entries whose URL contains the configured accent (`-us` / `-uk`), else any |
 | Settings | `pydantic-settings`, env prefix `WORDGRAM_`, `.env` support |
 | Persistent queue | stdlib `sqlite3`, single DB file |
-| LLM | Pluggable backend behind one `stream_completion` seam (M2), **both kinds shipped in v0.1**, selected by config and (once multi-source-language lands) by source language: (a) **`llmbroker`** — the author's free-tier model-pool broker (`github.com/andgineer/llmbroker`): `AsyncBroker` over a pool of free, rate-limited models with automatic failover and quality-based routing, **no metered key** — a plain text→text call, so no subprocess, no agent sandbox, and much lower per-request latency than a coding agent; non-streaming (returns the full answer). (b) **CLI coding agent** — the same three as news-recap, `claude` / `codex` / `antigravity`, for what the pooled models can't handle. The **M0 spike (precedes M1)** benchmarks which backend is sufficient per language and how much faster llmbroker is, and sets the v0.1 default |
+| LLM | Pluggable backend behind one `stream_completion` seam (M2), **both kinds shipped in v0.1**, selected by config and by source language (from the languages table, M1): (a) **`llmbroker`** — the author's free-tier model-pool broker (`github.com/andgineer/llmbroker`): `AsyncBroker` over a pool of free, rate-limited models with automatic failover and quality-based routing, **no metered key** — a plain text→text call, so no subprocess, no agent sandbox, and much lower per-request latency than a coding agent; non-streaming (returns the full answer). (b) **CLI coding agent** — the same three as news-recap, `claude` / `codex` / `antigravity`, for what the pooled models can't handle. The **M0 spike (precedes M1)** benchmarks which backend is sufficient per language and how much faster llmbroker is, and sets the v0.1 default |
 | Lint | `ruff` (line-length 99), run in CI after tests |
 
 ## Configuration (env vars)
@@ -46,8 +47,10 @@ Rules:
 |---|---|---|
 | `WORDGRAM_BOT_TOKEN` | Telegram bot token | required |
 | `WORDGRAM_ALLOWED_USER_IDS` | comma-separated Telegram user IDs | required |
-| `WORDGRAM_LLM_BACKEND` | `llmbroker` or `agent` — which backend kind serves a request (default set by the M0 spike) | `llmbroker` |
-| `WORDGRAM_BACKEND_BY_LANG` | optional per-source-language override map, e.g. `en=llmbroker,de=llmbroker,sr=agent` — empty until multi-source-language ships; a source language absent from the map uses `WORDGRAM_LLM_BACKEND` | empty |
+| `WORDGRAM_TARGET_LANG` | language of all explanations and translations, app-wide | `ru` |
+| `WORDGRAM_LANGUAGES_CONFIG` | path to the TOML table defining each source language (see "Languages configuration" below): topic id, deck, backend, dictionary code, TTS engine + voice, accent, allowed script | `~/.wordgram/languages.toml` |
+| `WORDGRAM_GROUP_ID` | Telegram supergroup id the bot serves; messages from other chats are ignored | required |
+| `WORDGRAM_LLM_BACKEND` | `llmbroker` or `agent` — fallback backend kind for a language whose table entry omits `backend` (default set by the M0 spike) | `llmbroker` |
 | `WORDGRAM_AGENT` | when backend = `agent`: `claude`, `codex`, or `antigravity` | `claude` |
 | `WORDGRAM_CLAUDE_CMD` | claude argv template | `claude -p {prompt} --model {model} --output-format stream-json --include-partial-messages --verbose --allowed-tools ""` (empty allow-list = nothing allowed; see "Agent hardening") |
 | `WORDGRAM_CODEX_CMD` | codex argv template | `codex exec --model {model} --sandbox read-only -c model_reasoning_effort=low --output-last-message {out_file} {prompt}` |
@@ -59,12 +62,70 @@ Rules:
 | `WORDGRAM_LLMBROKER_OPERATION` | operation label passed to `ask`/`chat` so llmbroker tracks per-task quality and routes accordingly | `vocab` |
 | `WORDGRAM_LLMBROKER_WEB` | allow the llmbroker backend a web-search tool for grounding (hard languages — see M0); off by default | `false` |
 | `WORDGRAM_ANKI_URL` | AnkiConnect endpoint | `http://127.0.0.1:8765` |
-| `WORDGRAM_DECK` | target deck | `English::Vocabulary` |
 | `WORDGRAM_ANKI_SYNC` | trigger AnkiConnect `sync` after additions (see M5) | `true` |
-| `WORDGRAM_ACCENT` | `us` or `uk`, used for dictionary audio choice and TTS voices | `us` |
-| `WORDGRAM_TTS_VOICE` | Kokoro voice | `af_heart` (us) / `bf_emma` (uk) |
-| `WORDGRAM_EDGE_TTS_VOICE` | last-resort edge-tts voice | `en-US-AriaNeural` (us) / `en-GB-SoniaNeural` (uk) |
+| `WORDGRAM_ACCENT` | `us` or `uk`, English dictionary-audio and voice choice; per-language override in the languages table | `us` |
+| `WORDGRAM_TTS_VOICE` | default Kokoro (English) voice; per-language `tts_voice` in the table overrides | `af_heart` (us) / `bf_emma` (uk) |
+| `WORDGRAM_EDGE_TTS_VOICE` | default last-resort edge-tts voice; per-language `edge_tts_voice` in the table overrides | `en-US-AriaNeural` (us) / `en-GB-SoniaNeural` (uk) |
 | `WORDGRAM_DATA_DIR` | queue DB + downloaded audio | `~/.wordgram` |
+
+## Languages configuration
+
+`WORDGRAM_LANGUAGES_CONFIG` points at a TOML file with one entry per
+source language, keyed by language code. It is the single source of truth
+for everything that varies by language — deck, backend, audio, validation:
+
+```toml
+[languages.en]
+topic_id   = 2                 # Telegram message_thread_id of the "English" topic
+name       = "English"
+deck       = "English::Vocabulary"
+backend    = "llmbroker"       # llmbroker | agent; omit -> WORDGRAM_LLM_BACKEND
+dict_api   = "en"              # dictionaryapi.dev code; omit if unsupported
+tts        = "kokoro"          # kokoro | piper | edge (local engine; edge is also the fallback)
+tts_voice  = "af_heart"
+accent     = "us"              # meaningful for English
+script     = "latin"           # latin | cyrillic | latin+cyrillic (input validation)
+
+[languages.de]
+topic_id  = 3
+name      = "Deutsch"
+deck      = "German::Vocabulary"
+backend   = "llmbroker"
+dict_api  = "de"
+tts       = "piper"
+tts_voice = "de_DE-thorsten-medium"
+script    = "latin"
+
+[languages.sr]
+topic_id  = 4
+name      = "Српски"
+deck      = "Serbian::Vocabulary"
+backend   = "agent"            # per the M0 spike, if the pool is insufficient for Serbian
+# dict_api omitted — dictionaryapi.dev has no Serbian
+tts       = "piper"            # verify a Serbian Piper voice exists at M6; else "edge"
+tts_voice = "sr_RS-serbian-medium"
+script    = "latin+cyrillic"
+```
+
+Semantics:
+
+- **Routing.** An incoming message's `message_thread_id` is matched
+  against `topic_id`. No match (General topic, or an unmapped topic) →
+  short hint, no LLM call. The whitelist (`WORDGRAM_ALLOWED_USER_IDS`)
+  still gates the sender independently.
+- **Backend.** `backend` per language; absent → `WORDGRAM_LLM_BACKEND`.
+  This replaces the old `WORDGRAM_BACKEND_BY_LANG` map — one place per
+  language, not a separate parallel setting.
+- **Audio.** `dict_api` (omit = skip the dictionary step), `tts` (which
+  local engine — `kokoro` for English, `piper` elsewhere), `tts_voice`,
+  and for the edge-tts fallback an optional `edge_tts_voice`; `accent`
+  where it applies. See M6.
+- **Validation.** `script` selects the allowed character set for the
+  language (M1). Because the topic fixes the language before validation,
+  the check is exact, not a guess.
+- Config loads into a `Language` dataclass (new `languages.py`), looked up
+  by `topic_id` (routing) and by code (backend/prompt). A missing file or
+  a `topic_id` collision is a startup config error.
 
 ## Agent hardening
 
@@ -150,16 +211,17 @@ src/wordgram/
   __about__.py      # version (exists)
   __init__.py       # exists
   config.py         # Settings
+  languages.py      # Language dataclass + languages.toml loader; lookup by topic_id / code
   main.py           # entry point: build app, run polling; console_script `wordgram`
-  bot.py            # handlers: whitelist filter, commands, word messages
+  bot.py            # handlers: whitelist filter, topic->language routing, commands, word messages
   streaming.py      # placeholder-edit loop bridging the backend stream -> Telegram edits
-  backend.py        # stream_completion dispatcher: pick backend by lang / config, delegate
+  backend.py        # stream_completion dispatcher: pick backend by lang (languages table), delegate
   agent.py          # CLI-agent backend: subprocess runner yielding text deltas
   llm_backend.py    # llmbroker backend: AsyncBroker ask/chat -> single-chunk yield
-  prompt.py         # prompt template + card-payload extraction
+  prompt.py         # prompt template (source/target lang slots) + card-payload extraction
   card.py           # note dataclass (word, ipa, 1-3 meanings), validation of the LLM payload
-  anki.py           # AnkiConnect client (add note, dedup, model/deck bootstrap, delete, sync)
-  audio.py          # dictionary lookup + TTS fallbacks -> local mp3 path
+  anki.py           # AnkiConnect client (add note, dedup, model/per-language deck bootstrap, delete, sync)
+  audio.py          # per-language chain: dictionary + local TTS (kokoro/piper) + edge-tts -> mp3
   pending.py        # sqlite queue of notes not yet delivered to Anki + retry task
 ```
 
@@ -167,13 +229,18 @@ Add `wordgram = "wordgram.main:cli"` to `[project.scripts]`.
 
 ## The LLM contract (core of the system)
 
-`prompt.py` builds one prompt per request:
+`prompt.py` builds one prompt per request from a template with two
+language slots — the source language (from the topic, M1) and the target
+language (`WORDGRAM_TARGET_LANG`). The `===CARD===` JSON contract below is
+identical across languages; only the two slots and an optional
+per-language morphology hint change:
 
 ```text
-Ты помощник по изучению английской лексики. Тебе дано английское слово
-или короткая фраза: {word}
+Ты помощник по изучению лексики. Язык слова — {source_lang}. Тебе дано
+слово или короткая фраза на этом языке: {word}
 
-Ответь по-русски, компактно, без вступлений и без завершающих фраз.
+Ответь на языке {target_lang}, компактно, без вступлений и без
+завершающих фраз. {source_hints}
 Структура ответа:
 
 1. Первая строка: слово, транскрипция IPA, часть(и) речи.
@@ -207,6 +274,14 @@ Add `wordgram = "wordgram.main:cli"` to `[project.scripts]`.
 этого значения.
 ```
 
+`{source_lang}` / `{target_lang}` are the language display names, and
+`{source_hints}` is an optional per-language line (e.g. for Serbian:
+«для существительных указывай род и множественное число, для глаголов —
+вид»); it is empty for languages that need no extra guidance. The prompt
+prose stays in the operator's language; only the *answer* language is
+`{target_lang}`, and `translations` in the card JSON are in that target
+language.
+
 Parsing rules (`prompt.py` / `card.py`):
 
 - Everything before `===CARD===` is the Telegram text. During streaming,
@@ -219,9 +294,10 @@ Parsing rules (`prompt.py` / `card.py`):
   than three meanings. On any parse/validation failure: the Telegram
   answer still goes out, no note is created, status line says the card
   failed — never crash the handler.
-- The payload's `word` field is the **canonical word**: the key for the
-  duplicate check (case-insensitive), the pending queue, `word_log`,
-  undo/redo state, and the Anki `Word` field. The raw input is used
+- The payload's `word` field is the **canonical word**: together with the
+  source language it is the key for the duplicate check (case-insensitive,
+  scoped to the language's deck), the pending queue, `word_log`, undo/redo
+  state, and the Anki `Word` field. The raw input is used
   only for the placeholder message and the speculative audio fetch
   (see M6) — when the LLM corrects a misspelling, everything downstream
   runs on the corrected word.
@@ -251,7 +327,7 @@ for what the pool can't do). M0 does not choose one *instead of* building the
 other — the backend seam is built regardless (M2) — it measures **which
 backend to default to, per source language, and whether llmbroker needs web
 grounding for hard languages**, so M2 ships with the right `WORDGRAM_LLM_BACKEND`
-/ `WORDGRAM_BACKEND_BY_LANG` defaults instead of a guess.
+and per-language `backend` defaults instead of a guess.
 
 Why it must come first: the whole point of llmbroker here is that a plain
 text→text call has *none* of the coding-agent overhead — no process spawn, no
@@ -291,8 +367,8 @@ everywhere.
   (English, German, Serbian) covering the shapes the prompt must handle:
   common and rare words, idioms/phrasal verbs, borrowed-etymology words,
   misspellings, and homonyms with genuinely unrelated meanings.
-- Reuse the **exact** `prompt.py` template so we compare backends, not
-  prompts. For each (backend × model × language) record: total latency,
+- Reuse the **exact** `prompt.py` template (with its source/target
+  language slots filled per item) so we compare backends, not prompts. For each (backend × model × language) record: total latency,
   which model llmbroker's pool actually answered with (`reply.llm_name`),
   rate-limit/failover behaviour, and the raw analysis + `===CARD===` payload.
 - Score against a rubric — a human pass by a Russian + source-language
@@ -304,9 +380,10 @@ everywhere.
 
 **Deliverable: `spec/plan-llm-backend.md`** — the latency and quality numbers
 per language/model, grounding on/off, and the resulting v0.1 defaults:
-`WORDGRAM_LLM_BACKEND` (expected `llmbroker` for English), any
-`WORDGRAM_BACKEND_BY_LANG` overrides for languages where the pool is not
-sufficient, and whether `WORDGRAM_LLMBROKER_WEB` defaults on for those. If the
+`WORDGRAM_LLM_BACKEND` (expected `llmbroker` for English), the per-language
+`backend` values in the languages table for languages where the pool is not
+sufficient (Serbian is the likely `agent` case), and whether
+`WORDGRAM_LLMBROKER_WEB` defaults on for those. If the
 spike finds the free-tier pool insufficient even for English, the v0.1 default
 flips to `agent` and llmbroker stays a config-selectable option — but the
 backend seam and both implementations still ship. This doc is an input to M2,
@@ -315,24 +392,32 @@ also un-metered, so the cost NFR holds either way).
 
 ### M1 — config + bot skeleton
 
-`config.py`, `main.py`, `bot.py`: application starts, long polling,
-whitelist filter (non-whitelisted updates are ignored, only debug-logged),
-`/start` and `/help` reply with static text (help mentions the `?`
-prefix). Input validation for word messages per the functional
-description (Latin letters including accented ones — café, naïve —
-plus spaces, hyphens, apostrophes; max ~50 chars; otherwise a short
-hint). A leading `?` (with optional space)
-marks the request lookup-only and is stripped before validation.
-Handler for a valid word replies with a stub. Tests: validation
-function including the `?` prefix, whitelist filter (use PTB objects
-directly, no live bot).
+`config.py`, `languages.py`, `main.py`, `bot.py`: application starts, long
+polling in the configured supergroup (`WORDGRAM_GROUP_ID`), whitelist
+filter on the sender (non-whitelisted updates are ignored, only
+debug-logged), `/start` and `/help` reply with static text (help mentions
+the `?` prefix and the one-topic-per-language layout). `languages.py`
+loads `WORDGRAM_LANGUAGES_CONFIG` into `Language` objects indexed by
+`topic_id` and code. Routing: a word message's `message_thread_id`
+selects the language; the General topic or any unmapped topic gets a short
+hint and no processing. Input validation is per the resolved language's
+`script` (Latin incl. accented — café, naïve, Straße — for en/de; Latin or
+Cyrillic for sr; plus spaces, hyphens, apostrophes; max ~50 chars;
+otherwise a short hint). A leading `?` (with optional space) marks the
+request lookup-only and is stripped before validation. Handler for a valid
+word replies with a stub that names the resolved language. Tests: the
+languages loader (topic/code lookup, missing file, duplicate topic id),
+per-language validation incl. the `?` prefix and Cyrillic-vs-Latin per
+language, topic routing (mapped / General / unmapped), whitelist filter
+(use PTB objects directly, no live bot).
 
 ### M2 — LLM backend runner (llmbroker + CLI agent)
 
 One seam, two backend kinds — both shipped here, defaults set by M0. The
 handler calls `async def stream_completion(prompt, lang) -> AsyncIterator[str]`
-(in a small `backend.py` dispatcher) which resolves the backend from
-`WORDGRAM_BACKEND_BY_LANG[lang]` or `WORDGRAM_LLM_BACKEND` and delegates:
+(in a small `backend.py` dispatcher) which resolves the backend from the
+language's `backend` field (`languages.py`) or, if absent,
+`WORDGRAM_LLM_BACKEND`, and delegates:
 
 - **`llmbroker` backend** (`llm_backend.py`): hold one module-level
   `llmbroker.AsyncBroker(WORDGRAM_LLMBROKER_CONFIG)`; per request
@@ -395,8 +480,8 @@ has no `network_access`, and no template carries
 `AsyncBroker` (monkeypatched — no real pool) asserting the happy path yields
 `reply.text` as one chunk, that `operation` is passed through, that
 `NoLLMAvailableError` and a timeout both surface as `AgentError`, and that
-the `backend.py` dispatcher picks the backend from `WORDGRAM_BACKEND_BY_LANG`
-before falling back to `WORDGRAM_LLM_BACKEND`.
+the `backend.py` dispatcher picks the backend from the language's `backend`
+field before falling back to `WORDGRAM_LLM_BACKEND`.
 
 Closing this milestone requires the manual check from "Agent hardening" —
 which applies **only to the CLI `agent` backend**; the llmbroker backend is a
@@ -425,8 +510,9 @@ supported list.
 
 ### M3 — streaming bridge
 
-`streaming.py`: post placeholder "⏳ {word} …", accumulate deltas, edit
-the message at most every 1.5 s and only when visible text changed
+`streaming.py`: post placeholder "⏳ {word} …" in the word's topic
+(`message_thread_id`), accumulate deltas, edit the message at most every
+1.5 s and only when visible text changed
 (remember: cut at delimiter, see LLM contract), passing every edit
 through the HTML sanitizer (see LLM contract) with `parse_mode=HTML`.
 Final edit with the complete text; append the status line placeholder
@@ -437,7 +523,8 @@ gracefully; entity-parse `BadRequest` → retry the edit without
 `parse_mode`.
 
 Word messages are processed strictly one at a time — a single global
-`asyncio.Lock` around the whole word pipeline. After downtime Telegram
+`asyncio.Lock` around the whole word pipeline, spanning all topics (no
+parallel LLM runs even across languages). After downtime Telegram
 delivers up to 24 h of backlog in one burst; without the lock that
 means parallel agent subprocesses and interleaved edit loops flooding
 Telegram's rate limits. Each queued word still gets its own
@@ -467,8 +554,9 @@ four meanings (rejected).
 
 `anki.py`, httpx-based AnkiConnect client (`version`, `createDeck`,
 `modelNames`, `createModel`, `findNotes`, `addNote`, `deleteNotes`,
-`storeMediaFile`, `sync`). On startup (lazily, first use): ensure deck
-and note type `Wordgram` exist. Note type fields: `Word`, `IPA`,
+`storeMediaFile`, `sync`). On startup (lazily, first use): ensure the note type `Wordgram` exists
+and, on first use of a language, that language's deck (from the languages
+config) exists. Note type fields: `Word`, `IPA`,
 `Translations`, `Meanings`, `Audio`; two card templates:
 
 - **Recognition** — Front: `{{Word}} {{Audio}}<br>{{IPA}}` (the
@@ -492,13 +580,16 @@ break the card.
 One word = one note, so the first field (`Word`) is naturally unique
 and Anki's own `addNote` duplicate rejection never fires against our
 own notes. Duplicate check before adding: `findNotes` with query
-`note:Wordgram "Word:{word}"` — `{word}` is the canonical word from
-the payload; case-insensitive match is Anki's default. If a note
+`deck:"{deck}" note:Wordgram "Word:{word}"` — `{deck}` is the language's
+deck and `{word}` the canonical word from the payload; case-insensitive
+match is Anki's default. Scoping by deck is what lets the same spelling
+exist in two languages without a false duplicate. If a note
 exists, nothing is added and the send reports duplicate. Belt and
 braces: an `addNote` "duplicate" error (a note added by hand between
 check and add) is treated as the duplicate status, not as a failure.
 
-`add_note(note, audio_path)` returns `added(note_id) | duplicate`;
+`add_note(note, deck, audio_path)` (deck from the word's language) returns
+`added(note_id) | duplicate`;
 audio is sent once with `storeMediaFile` (filename
 `wordgram-{slug}-{hash}.mp3`, where `slug` is the lowercased canonical
 word with non-alphanumeric runs collapsed to `-` and `hash` is the
@@ -519,7 +610,8 @@ account, network) is logged at warning level and never affects the
 status line.
 
 Tests: mock httpx transport; assert exact AnkiConnect payloads for
-bootstrap (both card templates in `createModel`), dedup, single- and
+bootstrap (both card templates in `createModel`), per-language deck
+creation and deck-scoped dedup, single- and
 multi-meaning rendering of `Translations` and `Meanings`, HTML
 escaping of payload values, audio reference and filename hashing,
 lookup-only skip, addNote-duplicate-error → duplicate status, sync
@@ -528,51 +620,59 @@ error propagation.
 
 ### M6 — pronunciation audio
 
-`audio.py`: `async def fetch_pronunciation(word: str) -> Path | None`,
-a three-step chain where each step falls through to the next on ANY
-exception (log at warning level, never raise):
+`audio.py`: `async def fetch_pronunciation(word: str, lang: Language) -> Path | None`,
+a three-step chain driven by the language config, where each step falls
+through to the next on ANY exception (log at warning level, never raise):
 
-1. **Dictionary recording** — dictionaryapi.dev (accent preference,
-   first non-empty audio URL, download mp3 to
-   `WORDGRAM_DATA_DIR/audio/`). Skipped for multi-word input.
-2. **Kokoro (local TTS)** — `kokoro-onnx` with the configured voice.
-   `kokoro-v1.0.onnx` + `voices-v1.0.bin` are downloaded into
-   `WORDGRAM_DATA_DIR/models/` by a background task started at bot
-   startup — NOT on first request, where the ~300 MB download would
-   delay the first voice message by minutes. The download URLs are the
-   exact `kokoro-onnx` GitHub release-asset URLs, pinned in code as
-   constants together with their SHA-256 checksums; verify the
-   checksum before installing (log progress; a failed download or
-   checksum mismatch must not corrupt the cache — download to a temp
-   name, rename only after verification; retry on next startup).
-   Until the files are in
-   place this step reports "not ready" and the chain falls through to
-   step 3. Run inference in `asyncio.to_thread` (it is CPU-bound).
-   Encode the returned samples to mp3 with `lameenc`. Import
-   `kokoro_onnx` lazily at call time so a broken install degrades to
-   step 3 instead of killing the bot at startup — this is the one
-   sanctioned exception to the top-level-imports rule; mark it with a
-   comment. First task of this milestone: check on a clean machine
-   whether `kokoro-onnx` phonemization needs the `espeak-ng` system
-   library; if yes, document it in the README (M8) as an optional
-   system requirement — without it Kokoro falls through to edge-tts.
-3. **edge-tts (online, last resort)** — `WORDGRAM_EDGE_TTS_VOICE`,
-   native mp3 output. On failure return `None`.
+1. **Dictionary recording** — dictionaryapi.dev at the language's
+   `dict_api` code (English accent preference; skipped entirely for
+   languages with no `dict_api`, e.g. Serbian), first non-empty audio URL,
+   download mp3 to `WORDGRAM_DATA_DIR/audio/`. Skipped for multi-word
+   input.
+2. **Local TTS** — the language's `tts` engine: **Kokoro** (`kokoro-onnx`)
+   for English, **Piper** (`piper-tts`) for the other languages, each with
+   the language's `tts_voice`. All model files — Kokoro's
+   `kokoro-v1.0.onnx` + `voices-v1.0.bin` and each configured Piper voice
+   (`.onnx` + `.onnx.json`) — are downloaded into
+   `WORDGRAM_DATA_DIR/models/` by a background task started at bot startup,
+   NOT on first request, where the download would delay the first voice
+   message. The download URLs (Kokoro GitHub release assets; Piper voices
+   from the `rhasspy/piper` voices repo) are pinned in code as constants
+   with their SHA-256 checksums; verify the checksum before installing
+   (log progress; a failed download or checksum mismatch must not corrupt
+   the cache — download to a temp name, rename only after verification;
+   retry on next startup). Until a language's files are in place this step
+   reports "not ready" and the chain falls through to step 3. Run inference
+   in `asyncio.to_thread` (CPU-bound). Encode Kokoro's samples to mp3 with
+   `lameenc`; Piper likewise outputs WAV → mp3. Import `kokoro_onnx` /
+   `piper` lazily at call time so a broken install degrades to step 3
+   instead of killing the bot at startup — the one sanctioned exception to
+   the top-level-imports rule; mark it with a comment. First task of this
+   milestone: on a clean machine check whether Kokoro **and** Piper
+   phonemization need the `espeak-ng` system library (both can), and
+   confirm a usable Serbian Piper voice exists — if none does, set
+   Serbian's `tts` to `edge` and document it; if espeak-ng is needed,
+   document it in the README (M8) as an optional system requirement —
+   without it the local engine falls through to edge-tts.
+3. **edge-tts (online, last resort)** — the language's `edge_tts_voice`
+   (or `WORDGRAM_EDGE_TTS_VOICE` default), native mp3 output. On failure
+   return `None`.
 
 Runs via `asyncio.create_task` in parallel with the agent stream,
 speculatively for the raw input; awaited only after the final edit.
 If the canonical word from the card payload differs from the input
 (case-insensitive compare) — the LLM corrected a misspelling — the
 speculative result is discarded and `fetch_pronunciation` runs again
-for the canonical word: neither the voice message nor the card may
-ever carry audio of a typo. This is the one case where audio arrives
+for the canonical word (same language — the topic fixes it): neither the
+voice message nor the card may ever carry audio of a typo. This is the one case where audio arrives
 noticeably after the text. Send to chat with `send_voice` (mp3
 is accepted); if Telegram rejects it, fall back to `send_audio`; if no
 audio, add "🔇 no audio" to the status line. Tests: mocked httpx for
-the dictionary path (hit, miss, HTTP error); fake kokoro module
-(success, import failure, inference failure) asserting fall-through
-order; monkeypatched edge-tts (success, failure → `None`); phrase input
-skips the dictionary step; a corrected word triggers a re-fetch and
+the dictionary path (hit, miss, HTTP error); fake kokoro/piper modules
+(success, import failure, inference failure) asserting per-language engine
+choice and fall-through order; monkeypatched edge-tts (success, failure →
+`None`); phrase input skips the dictionary step; a Serbian word skips the
+dictionary step (no `dict_api`); a corrected word triggers a re-fetch and
 the speculative result is ignored.
 
 ### M7 — pending queue, stats, and remaining commands
@@ -582,7 +682,7 @@ with two tables. The `word` column always holds the canonical word;
 queries are a handful of tiny statements, so calling the stdlib driver
 directly from async code is accepted — no thread offloading.
 
-- `pending_notes(id, word, note_json, audio_path, created_at)` — when
+- `pending_notes(id, lang, word, note_json, audio_path, created_at)` — when
   `add_note` fails with a connection error, enqueue the note and set
   status "🕓 card queued". Background task retries the queue every
   60 s; before each delivery it re-runs the duplicate check
@@ -591,52 +691,60 @@ directly from async code is accepted — no thread offloading.
   On success, edit nothing (the card just appears in Anki) but log;
   a drain that delivered at least one note triggers the debounced
   sync from M5.
-- `word_log(id, word, meanings_count, action, created_at)` where action
+- `word_log(id, lang, word, meanings_count, action, created_at)` where action
   is `added | duplicate | lookup`, written on every processed word —
   the source for `/stats`.
 
 The handler's duplicate check (M5) is extended here: a word counts as
-duplicate if a note exists in Anki OR a `pending_notes` entry for the
-same word is waiting — otherwise re-sending a word while Anki is down
-would enqueue it twice and both copies would land after the drain.
-Both paths compare the canonical word case-insensitively (Anki's
-search already does; the sqlite lookup must too), and they report
+duplicate if a note exists in the language's deck OR a `pending_notes`
+entry for the same (lang, word) is waiting — otherwise re-sending a word
+while Anki is down would enqueue it twice and both copies would land after
+the drain. Both paths compare (lang, canonical word) case-insensitively
+(Anki's deck-scoped search already does; the sqlite lookup must too), and
+they report
 differently: a hit in Anki → "📌 already in Anki", a hit in the
 queue → "🕓 already queued" — the status never claims a card is in
 Anki when it is not.
 
 Commands:
 
-- `/status` — selected agent and model, Anki reachable yes/no, queue
-  size.
-- `/stats` — words added today / last 7 days / all time, plus
-  duplicates and lookups counts.
-- `/undo` — remove whatever the last sent word produced: delete its
-  note via `deleteNotes` if it reached Anki, or delete its
+- `/status` — per configured language: its backend, model and deck; plus
+  Anki reachable yes/no and the pending-queue size.
+- `/stats` — words added today / last 7 days / all time, plus duplicates
+  and lookups counts, broken down by source language (one global report,
+  same in every topic).
+- `/undo` — remove whatever the last sent word **in this topic** produced:
+  delete its note via `deleteNotes` if it reached Anki, or delete its
   `pending_notes` row (together with its audio file in
   `WORDGRAM_DATA_DIR/audio/`) if it is still queued; confirm with the
   word name.
-- `/redo` — re-run the last word for this chat, preserving its
-  lookup-only flag. Before adding the new note, remove the previous
+- `/redo` — re-run the last word **in this topic**, preserving its
+  lookup-only flag and language. Before adding the new note, remove the previous
   run's result exactly like `/undo` does — `/redo` exists to fix a
   poor generation, and without the removal the duplicate check would
   block the replacement ("already in Anki") and the bad card would
   survive.
 
-Undo/redo state (last word, its note id or pending row id, lookup
-flag) is per chat, in memory, lost on restart — documented behavior.
+Undo/redo state (last word, its note id or pending row id, lookup flag) is
+per topic (per source language), in memory, lost on restart — documented
+behavior.
 Tests: enqueue on connection error, retry drains queue and triggers
 sync, retry re-checks duplicates and drops the entry, handler dedup
-consults the queue case-insensitively and reports the queued status,
-stats aggregation windows, undo removes an added note, undo removes a
+consults the queue case-insensitively and is scoped to (lang, word) so the
+same spelling in two languages is not a duplicate and reports the queued
+status, stats aggregation windows with per-language breakdown, undo removes
+an added note, undo removes a
 queued row together with its audio file, redo replaces the previous
 note, undo/redo state machine.
 
 ### M8 — polish and release
 
 README: install (`uv tool install wordgram` / `uvx wordgram`), required
-env vars, AnkiConnect setup pointer, systemd/launchd hint (one paragraph,
-no unit files). Bump version to `0.1.0`. Ensure `ruff check` is clean and
+env vars, the supergroup + forum-topics setup (one topic per source
+language, disable the bot's privacy mode in BotFather so it sees plain
+messages), the `languages.toml` format and per-language decks, AnkiConnect
+setup pointer, the optional `espeak-ng` system dependency for
+Kokoro/Piper, systemd/launchd hint (one paragraph, no unit files). Bump version to `0.1.0`. Ensure `ruff check` is clean and
 wired into CI. Do NOT push the `v0.1.0` tag — publishing is deferred
 until PyPI credentials are configured; note this in the README.
 
@@ -650,12 +758,13 @@ until PyPI credentials are configured; note this in the README.
 - Duplicate send → report only, existing note untouched: "📌 already
   in Anki" for a note in Anki, "🕓 already queued" for one still in
   the pending queue — the two are never conflated.
-- The canonical word is the `word` field of the card payload — the
-  single key for dedup, the queue, stats, undo/redo, and the Anki
-  `Word` field, compared case-insensitively. When it differs from the
-  raw input (the LLM corrected a misspelling), pronunciation audio is
-  re-fetched for the canonical word and the speculative fetch is
-  discarded.
+- The canonical word is the `word` field of the card payload — together
+  with the source language, the key for dedup (deck-scoped), the queue,
+  stats, undo/redo, and the Anki `Word` field, compared case-insensitively.
+  The same spelling in two languages is two notes in two decks. When it
+  differs from the raw input (the LLM corrected a misspelling),
+  pronunciation audio is re-fetched for the canonical word and the
+  speculative fetch is discarded.
 - Every note produces two cards: recognition (EN→RU) and recall
   (RU→EN) — see M5. Still one note per word.
 - Anki sync to AnkiWeb runs automatically after additions and queue
@@ -663,9 +772,16 @@ until PyPI credentials are configured; note this in the README.
 - `?` prefix = lookup-only: analysis and audio, no Anki card.
 - `/undo` covers queued notes; `/redo` replaces the previous run's
   note instead of being blocked by the duplicate check.
-- Single fixed deck from config, no switching.
-- Accent: config-level only (`WORDGRAM_ACCENT`), US default, one
-  recording per card, no per-message choice.
+- Multiple source languages via **forum topics** (one topic per
+  language), routed by `message_thread_id`; the topic determines the deck.
+  One deck per source language from the languages config, no per-message
+  switching and no guessing the deck from the word. A single target
+  language for explanations (`WORDGRAM_TARGET_LANG`, Russian default).
+  Language is never auto-detected — the topic is authoritative; the
+  General/unmapped topic gets a hint, not a guess.
+- Accent: config-level (`WORDGRAM_ACCENT` default, per-language override),
+  applies to English audio, US default, one recording per card, no
+  per-message choice.
 - Telegram formatting IS in v0.1: HTML `<b>`/`<i>` only, enforced by
   the sanitizer, plain-text fallback on parse errors.
 - Word/phrase audio only — example sentences are never voiced (final).
@@ -676,8 +792,9 @@ until PyPI credentials are configured; note this in the README.
   Which one is the default, and which languages route to which, is fixed
   by the **M0 spike** (precedes M1) — not a guess and not deferred to a
   later version. This is *backend* selection, optionally per source
-  language (`WORDGRAM_BACKEND_BY_LANG`); it is NOT news-recap-style
-  per-task routing tables, which a single-user bot still doesn't need.
+  language (the `backend` field in the languages table); it is NOT
+  news-recap-style per-task routing tables, which a single-user bot still
+  doesn't need.
 - Agents run with tool execution denied via each vendor's **own**
   protection — claude allow-list (empty; `Read` fallback), codex
   `--sandbox read-only`, agy's own Terminal Sandbox settings — never
@@ -691,5 +808,6 @@ until PyPI credentials are configured; note this in the README.
 
 ## Out of scope — final, not deferred
 
-Webhooks, Docker, multiple users with separate decks, example-sentence
-audio, any web UI.
+Webhooks, Docker, multiple **users** with separate decks (multiple
+**source languages** with separate decks for the single user ARE in
+scope), example-sentence audio, any web UI.

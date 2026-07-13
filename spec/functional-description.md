@@ -15,8 +15,17 @@ with zero extra effort.
 
 ## System context
 
-- **Telegram bot** — the only user interface. Personal use: a whitelist of
-  Telegram user IDs; messages from anyone else are ignored silently.
+- **Telegram bot** — the only user interface. Personal use, but organised
+  as a **supergroup with forum topics**, one topic per source language
+  (e.g. English, Deutsch, Српски). A whitelist of Telegram user IDs gates
+  *who* may use the bot (messages from anyone else are ignored silently);
+  the topic a message lands in gates *which source language* it is — and
+  therefore which Anki deck. A message in the group's General topic, or in
+  any topic not mapped to a language, gets a short hint and no LLM call, so
+  routing to a deck is always explicit and deterministic (auto-detecting the
+  language of a single word is not reliable enough to trust with deck
+  placement). Running as a group requires the bot's privacy mode to be
+  disabled so it sees plain word messages (setup note in the README).
 - **Backend** — a single service running on the user's laptop, the same
   machine that runs Anki. It connects to Telegram via long polling, so no
   public IP, domain, or webhook is needed.
@@ -36,13 +45,18 @@ with zero extra effort.
 
 ## Core flow
 
-1. The user sends an English word or short phrase (idiom, phrasal verb,
-   collocation — anything that makes a valid flashcard). Prefixing the
-   message with `?` ("? word") requests a lookup-only analysis: the
-   answer and audio arrive as usual but no Anki card is created.
-2. The bot validates the input: Latin script (accented letters as in
-   café or naïve are fine), length within a small limit, not a command.
-   Anything else gets a short hint instead of an LLM call.
+1. The user sends a word or short phrase (idiom, phrasal verb,
+   collocation — anything that makes a valid flashcard) by posting it in
+   the topic of its language. The topic determines the source language,
+   and thus the deck. Prefixing the message with `?` ("? word") requests
+   a lookup-only analysis: the answer and audio arrive as usual but no
+   Anki card is created.
+2. The bot validates the input against the topic language's allowed
+   script (Latin with accented letters — café, naïve, Straße — for
+   English and German; Latin or Cyrillic for Serbian), length within a
+   small limit, not a command. Anything else — including a word posted in
+   the General topic or a topic not mapped to a language — gets a short
+   hint instead of an LLM call.
 3. The bot immediately posts a placeholder message ("⏳ *word* …") so the
    user sees the request was accepted.
 4. The LLM agent runs in streaming mode when it supports it (the
@@ -77,9 +91,10 @@ with zero extra effort.
 
 The answer contains, in this order:
 
-- **Translations to Russian**, ordered by likelihood in everyday speech,
-  each marked with part of speech and register (neutral / colloquial /
-  formal / slang) where it matters.
+- **Translations into the target language** (Russian by default; the
+  target language is an app-wide configuration setting), ordered by
+  likelihood in everyday speech, each marked with part of speech and
+  register (neutral / colloquial / formal / slang) where it matters.
 - **IPA transcription.**
 - **Usage notes**: typical collocations and prepositions, common
   confusions with similar words, countability/irregular forms when
@@ -108,11 +123,13 @@ both in the chat and on the flashcard.
   are never voiced — a final decision, not a deferral: cards must stay
   light and generation fast.
 - **Source priority**: a real native-speaker recording from free
-  dictionary sources when one exists. When no recording exists (phrases,
-  rare words), generate audio with a local free TTS engine — local so
-  that audio keeps working with no external service to break. If the
-  local engine fails for any reason, a free online TTS is tried as a
-  last resort.
+  dictionary sources when one exists (for the languages those sources
+  cover — English, German; Serbian has none). When no recording exists
+  (phrases, rare words, unsupported languages), generate audio with a
+  **local** free TTS engine — local so that audio keeps working with no
+  external service to break: Kokoro for English, Piper for the other
+  languages. If the local engine fails for any reason, a free online TTS
+  is tried as a last resort.
 - **Delivery**:
   - Telegram: a short voice message right after the analysis, so the user
     hears the word immediately.
@@ -146,13 +163,19 @@ both in the chat and on the flashcard.
   several blocks), back — the word/phrase with IPA and pronunciation
   audio. Each word is therefore reviewed in both directions, EN→RU and
   RU→EN, from the same single note.
-- **Single deck, set in configuration** (e.g. `English::Vocabulary`).
-  No per-message or per-chat deck switching.
-- **Duplicates**: keyed by the canonical word, case-insensitively. If a
-  note already exists in Anki, nothing is added or modified and the bot
-  reports "already in Anki"; if it is still waiting in the delivery
-  queue (see below), the bot reports "already queued" instead — the
-  status never claims a card is in Anki when it is not.
+- **One deck per source language**, set in the languages configuration
+  (e.g. `English::Vocabulary`, `German::Vocabulary`,
+  `Serbian::Vocabulary`). The topic the word was posted in determines the
+  deck — there is no per-message deck switching, and the deck is never
+  guessed from the word itself.
+- **Duplicates**: keyed by the pair (source language, canonical word),
+  case-insensitively — the same spelling in two languages (English *Hand*
+  and German *Hand*) is two separate notes in two decks, never a
+  duplicate. The check is scoped to the language's deck. If a note already
+  exists in Anki, nothing is added or modified and the bot reports
+  "already in Anki"; if it is still waiting in the delivery queue (see
+  below), the bot reports "already queued" instead — the status never
+  claims a card is in Anki when it is not.
 - **Anki unavailable** (application closed, laptop just woke up): the
   note goes into a persistent local queue and is retried until Anki
   responds; before each delivery the duplicate check runs again. The
@@ -173,7 +196,9 @@ Kept minimal:
   `?` lookup-only prefix).
 - `/status` — agent health, Anki reachability, pending card queue size.
 - `/stats` — how many words were added today, over the last 7 days, and
-  in total, plus how many sends were duplicates or lookup-only.
+  in total, plus how many sends were duplicates or lookup-only, broken
+  down by source language (the same global report whichever topic it is
+  called in).
 - `/undo` — remove the note created by the last sent word: delete it
   from Anki, or drop it from the delivery queue if it never reached
   Anki (mistaken sends).
@@ -182,9 +207,10 @@ Kept minimal:
   is replaced by the new one, so a bad card does not survive a redo.
   A lookup-only (`?`) request stays lookup-only on redo.
 
-Everything else is plain text input. `/undo` and `/redo` remember only
-the most recent word and only since the backend started — acceptable
-for a personal tool.
+Everything else is plain text input. `/undo` and `/redo` act on the most
+recent word **of the topic they are issued in** (i.e. per source
+language) and only since the backend started — acceptable for a personal
+tool.
 
 ## Non-functional requirements
 
@@ -227,11 +253,17 @@ for a personal tool.
   survives restarts.
 - **Single instance, single user** (whitelist may hold a few family IDs).
   No horizontal scaling concerns.
-- **Accent**: one accent for all audio (dictionary recording choice and
-  TTS voices), set in configuration; American by default. Never two
-  recordings per card.
+- **Languages**: multiple **source** languages (each its own topic and
+  deck), a single **target** language for all explanations and
+  translations (Russian by default), both set in configuration. Adding a
+  language is a config change (a new topic + a languages-table entry), not
+  a code change.
+- **Accent**: applies to English audio (dictionary recording choice and
+  TTS voice), set per language in configuration; American by default.
+  Never two recordings per card.
 
 ## Out of scope — final
 
-These are decisions, not deferrals: webhooks, Docker, multiple users
-with separate decks, example-sentence audio, any web UI.
+These are decisions, not deferrals: webhooks, Docker, multiple **users**
+with separate decks (multiple **source languages** with separate decks
+for the single user ARE supported), example-sentence audio, any web UI.
