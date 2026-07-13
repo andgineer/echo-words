@@ -37,7 +37,7 @@ Rules:
 | Dictionary pronunciation | `https://api.dictionaryapi.dev/api/v2/entries/en/{word}` — take the first `phonetics[].audio` non-empty URL (they are Wiktionary recordings); prefer entries whose URL contains the configured accent (`-us` / `-uk`), else any |
 | Settings | `pydantic-settings`, env prefix `WORDGRAM_`, `.env` support |
 | Persistent queue | stdlib `sqlite3`, single DB file |
-| LLM | CLI agent subprocess; the same three agents as news-recap — `claude` (default), `codex`, `antigravity` (the `agy` CLI running Gemini models); see Milestone 2 |
+| LLM | Pluggable backend behind one `stream_completion` seam (M2), **both kinds shipped in v0.1**, selected by config and (once multi-source-language lands) by source language: (a) **`llmbroker`** — the author's free-tier model-pool broker (`github.com/andgineer/llmbroker`): `AsyncBroker` over a pool of free, rate-limited models with automatic failover and quality-based routing, **no metered key** — a plain text→text call, so no subprocess, no agent sandbox, and much lower per-request latency than a coding agent; non-streaming (returns the full answer). (b) **CLI coding agent** — the same three as news-recap, `claude` / `codex` / `antigravity`, for what the pooled models can't handle. The **M0 spike (precedes M1)** benchmarks which backend is sufficient per language and how much faster llmbroker is, and sets the v0.1 default |
 | Lint | `ruff` (line-length 99), run in CI after tests |
 
 ## Configuration (env vars)
@@ -46,13 +46,18 @@ Rules:
 |---|---|---|
 | `WORDGRAM_BOT_TOKEN` | Telegram bot token | required |
 | `WORDGRAM_ALLOWED_USER_IDS` | comma-separated Telegram user IDs | required |
-| `WORDGRAM_AGENT` | `claude`, `codex`, or `antigravity` | `claude` |
+| `WORDGRAM_LLM_BACKEND` | `llmbroker` or `agent` — which backend kind serves a request (default set by the M0 spike) | `llmbroker` |
+| `WORDGRAM_BACKEND_BY_LANG` | optional per-source-language override map, e.g. `en=llmbroker,de=llmbroker,sr=agent` — empty until multi-source-language ships; a source language absent from the map uses `WORDGRAM_LLM_BACKEND` | empty |
+| `WORDGRAM_AGENT` | when backend = `agent`: `claude`, `codex`, or `antigravity` | `claude` |
 | `WORDGRAM_CLAUDE_CMD` | claude argv template | `claude -p {prompt} --model {model} --output-format stream-json --include-partial-messages --verbose --allowed-tools ""` (empty allow-list = nothing allowed; see "Agent hardening") |
 | `WORDGRAM_CODEX_CMD` | codex argv template | `codex exec --model {model} --sandbox read-only -c model_reasoning_effort=low --output-last-message {out_file} {prompt}` |
 | `WORDGRAM_ANTIGRAVITY_CMD` | antigravity argv template | `agy --model {model} -p {prompt}` — never with `--dangerously-skip-permissions`; see "Agent hardening" |
 | `WORDGRAM_MODEL` | model substituted into the template | per agent: `sonnet` (claude — nuanced Russian linguistic analysis is worth more than haiku's latency on a flat-rate plan), `gpt-5.2` (codex), `gemini-3.5-flash` (antigravity) |
 | `WORDGRAM_AGENT_TIMEOUT` | seconds | `120` |
 | `WORDGRAM_AGENT_ENV_PASSTHROUGH` | CSV escape hatch: extra env var names allowed into the agent subprocess (see "Agent hardening") | empty |
+| `WORDGRAM_LLMBROKER_CONFIG` | path to llmbroker's `llms.toml` (model pool); generate with `llmbroker preset freetier > llms.toml` | `~/.wordgram/llms.toml` |
+| `WORDGRAM_LLMBROKER_OPERATION` | operation label passed to `ask`/`chat` so llmbroker tracks per-task quality and routes accordingly | `vocab` |
+| `WORDGRAM_LLMBROKER_WEB` | allow the llmbroker backend a web-search tool for grounding (hard languages — see M0); off by default | `false` |
 | `WORDGRAM_ANKI_URL` | AnkiConnect endpoint | `http://127.0.0.1:8765` |
 | `WORDGRAM_DECK` | target deck | `English::Vocabulary` |
 | `WORDGRAM_ANKI_SYNC` | trigger AnkiConnect `sync` after additions (see M5) | `true` |
@@ -147,8 +152,10 @@ src/wordgram/
   config.py         # Settings
   main.py           # entry point: build app, run polling; console_script `wordgram`
   bot.py            # handlers: whitelist filter, commands, word messages
-  streaming.py      # placeholder-edit loop bridging agent stream -> Telegram edits
-  agent.py          # subprocess runner yielding text deltas
+  streaming.py      # placeholder-edit loop bridging the backend stream -> Telegram edits
+  backend.py        # stream_completion dispatcher: pick backend by lang / config, delegate
+  agent.py          # CLI-agent backend: subprocess runner yielding text deltas
+  llm_backend.py    # llmbroker backend: AsyncBroker ask/chat -> single-chunk yield
   prompt.py         # prompt template + card-payload extraction
   card.py           # note dataclass (word, ipa, 1-3 meanings), validation of the LLM payload
   anki.py           # AnkiConnect client (add note, dedup, model/deck bootstrap, delete, sync)
@@ -229,7 +236,82 @@ retry that edit without `parse_mode` — degraded but delivered.
 
 ## Milestones
 
-Each milestone = one or more commits, tests included, CI green.
+Each milestone = one or more commits, tests included, CI green. **M0 is the
+exception**: it is a research spike whose harness lives in `experiments/`,
+calls real models, and never enters CI — but it still lands as a commit (the
+harness plus the decision doc) and it **precedes M1**, because its outcome
+sets the v0.1 backend defaults the rest of the plan builds on.
+
+### M0 — LLM backend spike (precedes M1–M8; decides the v0.1 backend defaults)
+
+Runs **before** any product code. wordgram ships **both** backend kinds in
+v0.1 (see the LLM technology row): `llmbroker` (free-tier model pool, fast,
+no subprocess/sandbox) and the CLI coding agent (heavier, but frontier-tier
+for what the pool can't do). M0 does not choose one *instead of* building the
+other — the backend seam is built regardless (M2) — it measures **which
+backend to default to, per source language, and whether llmbroker needs web
+grounding for hard languages**, so M2 ships with the right `WORDGRAM_LLM_BACKEND`
+/ `WORDGRAM_BACKEND_BY_LANG` defaults instead of a guess.
+
+Why it must come first: the whole point of llmbroker here is that a plain
+text→text call has *none* of the coding-agent overhead — no process spawn, no
+agent bootstrap, no tool-permission machinery — and needs *none* of "Agent
+hardening" (a chat completion can't read a file or run a command, so the
+lethal-trifecta exfiltration leg is gone by construction). If llmbroker's
+free-tier pool is good enough, it is both faster and simpler, and that should
+shape the design from M1 — not be discovered after the CLI path is wired
+everywhere.
+
+**Hypotheses.**
+
+1. **Sufficiency varies by source language.** The pooled free models may match
+   the CLI agent's usefulness for *high-resource* source languages (English —
+   the v0.1 target — and German) yet degrade for *lower-resource, morphology-heavy*
+   ones (Serbian and similar: Cyrillic/Latin duality, case system): wrong
+   lemmatization, invented etymology, weak register labels, unidiomatic
+   examples, and — most consequential for us — malformed card JSON that
+   `card.py` rejects.
+2. **Speed.** Dropping the agent loop makes llmbroker materially faster.
+   Quantify total latency (llmbroker is non-streaming, so measure to full
+   answer, not first token) against the functional description's ~20–30 s
+   budget and against each CLI agent — the expected win is llmbroker
+   answering in a few seconds where the agent takes tens.
+3. **Web grounding for hard languages.** The gap for hard languages may close
+   only when the model is given internet access. llmbroker supports tool
+   calling (`chat(tools=...)` / `run_tool_loop`), so grounding is a
+   web-search tool wired into the llmbroker backend (`WORDGRAM_LLMBROKER_WEB`),
+   not a jump to the CLI agent. Determine whether grounding is necessary,
+   sufficient, or neither, per language.
+
+**Method.**
+
+- `experiments/backend_bench.py` (outside the package and CI — this harness
+  deliberately hits real models; the "no real network in tests" rule stands
+  for the shipped code). A fixed set of ~30–50 items per source language
+  (English, German, Serbian) covering the shapes the prompt must handle:
+  common and rare words, idioms/phrasal verbs, borrowed-etymology words,
+  misspellings, and homonyms with genuinely unrelated meanings.
+- Reuse the **exact** `prompt.py` template so we compare backends, not
+  prompts. For each (backend × model × language) record: total latency,
+  which model llmbroker's pool actually answered with (`reply.llm_name`),
+  rate-limit/failover behaviour, and the raw analysis + `===CARD===` payload.
+- Score against a rubric — a human pass by a Russian + source-language
+  speaker, optionally with an LLM-judge as a pre-filter, never the final
+  word: translation & register correctness, IPA plausibility, fact-checkable
+  etymology, example naturalness, and card-JSON parse rate. Report per
+  language, per model. Run the hard-language set twice — grounding off, then
+  on — to isolate hypothesis 3.
+
+**Deliverable: `spec/plan-llm-backend.md`** — the latency and quality numbers
+per language/model, grounding on/off, and the resulting v0.1 defaults:
+`WORDGRAM_LLM_BACKEND` (expected `llmbroker` for English), any
+`WORDGRAM_BACKEND_BY_LANG` overrides for languages where the pool is not
+sufficient, and whether `WORDGRAM_LLMBROKER_WEB` defaults on for those. If the
+spike finds the free-tier pool insufficient even for English, the v0.1 default
+flips to `agent` and llmbroker stays a config-selectable option — but the
+backend seam and both implementations still ship. This doc is an input to M2,
+and it may amend the functional description's LLM/cost wording (llmbroker is
+also un-metered, so the cost NFR holds either way).
 
 ### M1 — config + bot skeleton
 
@@ -245,11 +327,31 @@ Handler for a valid word replies with a stub. Tests: validation
 function including the `?` prefix, whitelist filter (use PTB objects
 directly, no live bot).
 
-### M2 — agent runner
+### M2 — LLM backend runner (llmbroker + CLI agent)
 
-`agent.py`: `async def stream_completion(prompt: str) -> AsyncIterator[str]`
-— spawns the agent selected by `WORDGRAM_AGENT` from its command
-template. Template handling: `shlex.split` the template FIRST, then
+One seam, two backend kinds — both shipped here, defaults set by M0. The
+handler calls `async def stream_completion(prompt, lang) -> AsyncIterator[str]`
+(in a small `backend.py` dispatcher) which resolves the backend from
+`WORDGRAM_BACKEND_BY_LANG[lang]` or `WORDGRAM_LLM_BACKEND` and delegates:
+
+- **`llmbroker` backend** (`llm_backend.py`): hold one module-level
+  `llmbroker.AsyncBroker(WORDGRAM_LLMBROKER_CONFIG)`; per request
+  `await broker.ask(prompt, operation=WORDGRAM_LLMBROKER_OPERATION)` (or
+  `chat`/`run_tool_loop` with a web-search tool when `WORDGRAM_LLMBROKER_WEB`),
+  and yield `reply.text` once — llmbroker is non-streaming, so this is a
+  single-chunk yield, which the M3 bridge already handles (like the codex /
+  antigravity plain path). No subprocess, no sandbox, no default-deny env:
+  it is an HTTPS API call the operator already trusts, so "Agent hardening"
+  does not apply to this backend. Map llmbroker's `NoLLMAvailableError`
+  (whole pool rate-limited) and timeouts onto the same `AgentError` the
+  bridge already knows, so the error path is uniform. Import `llmbroker`
+  lazily so a missing/broken install degrades to a clear config error, not
+  a startup crash. Optionally feed the parse outcome back via
+  `reply.record_quality(...)` (a clean card JSON = good) so the pool
+  self-tunes — noted, not required for v0.1.
+- **CLI `agent` backend** (`agent.py`): unchanged from the original plan —
+  spawns the agent selected by `WORDGRAM_AGENT` from its command
+  template. Template handling: `shlex.split` the template FIRST, then
 substitute `{model}`, `{prompt}`, and `{out_file}` inside individual
 argv tokens with `str.replace` — substitution after splitting means
 prompt content can never break quoting; no shell is involved.
@@ -289,9 +391,17 @@ test the env builder — seed a `FAKE_SECRET` and assert it is absent from
 the built env, and assert the claude template's `--allowed-tools` is empty
 (or exactly `Read`) and carries no `curl`/`WebFetch`, the codex template
 has no `network_access`, and no template carries
-`--dangerously-skip-permissions`.
+`--dangerously-skip-permissions`. For the **llmbroker backend**: a fake
+`AsyncBroker` (monkeypatched — no real pool) asserting the happy path yields
+`reply.text` as one chunk, that `operation` is passed through, that
+`NoLLMAvailableError` and a timeout both surface as `AgentError`, and that
+the `backend.py` dispatcher picks the backend from `WORDGRAM_BACKEND_BY_LANG`
+before falling back to `WORDGRAM_LLM_BACKEND`.
 
 Closing this milestone requires the manual check from "Agent hardening" —
+which applies **only to the CLI `agent` backend**; the llmbroker backend is a
+plain text→text API call with no shell, file, or arbitrary-network reach, so
+the containment canaries below are moot for it (there is nothing to contain) —
 the only sanctioned manual step in the plan; real CLIs stay out of the
 test suite. For each supported agent, run its default template once and
 confirm two things: (1) a plain word generation completes with tools
@@ -560,8 +670,14 @@ until PyPI credentials are configured; note this in the README.
   the sanitizer, plain-text fallback on parse errors.
 - Word/phrase audio only — example sentences are never voiced (final).
 - `/stats` IS in v0.1 (see M7).
-- One globally selected agent (`WORDGRAM_AGENT`) — no per-task routing
-  tables like news-recap has; a single-user bot doesn't need them.
+- v0.1 ships **two LLM backend kinds** behind one seam: `llmbroker` (the
+  free-tier model pool — fast, no subprocess, no sandbox) and the CLI
+  coding agent (`WORDGRAM_AGENT`: `claude` / `codex` / `antigravity`).
+  Which one is the default, and which languages route to which, is fixed
+  by the **M0 spike** (precedes M1) — not a guess and not deferred to a
+  later version. This is *backend* selection, optionally per source
+  language (`WORDGRAM_BACKEND_BY_LANG`); it is NOT news-recap-style
+  per-task routing tables, which a single-user bot still doesn't need.
 - Agents run with tool execution denied via each vendor's **own**
   protection — claude allow-list (empty; `Read` fallback), codex
   `--sandbox read-only`, agy's own Terminal Sandbox settings — never

@@ -20,10 +20,17 @@ with zero extra effort.
 - **Backend** — a single service running on the user's laptop, the same
   machine that runs Anki. It connects to Telegram via long polling, so no
   public IP, domain, or webhook is needed.
-- **LLM** — a pluggable CLI coding agent under a flat-rate subscription,
-  with the same three working agents as `news-recap`: Claude, Codex, and
-  Antigravity (Gemini models); the agent is selected via configuration.
-  No per-token API cost.
+- **LLM** — a pluggable backend, selected via configuration (and, once
+  more source languages are added, per language). Two kinds, both present
+  from v0.1: a **direct free-tier model pool** via the author's
+  `llmbroker` (many free, rate-limited models with automatic failover —
+  a plain text→text call, no subprocess, faster) and a **CLI coding
+  agent** under a flat-rate subscription (the same three as `news-recap`:
+  Claude, Codex, Antigravity/Gemini) for analysis the pooled models
+  can't do well. Neither is metered — no per-token API cost. Which
+  backend is the default, and whether harder source languages (e.g.
+  Serbian) need the coding agent or web-grounded lookups, is settled by a
+  benchmark that runs *before* the build (implementation plan, M0).
 - **Anki** — Anki desktop with the AnkiConnect add-on, reachable from the
   backend on localhost.
 
@@ -181,26 +188,39 @@ for a personal tool.
 
 ## Non-functional requirements
 
-- **Latency**: first visible content within ~3–5 s (applies to
-  streaming-capable agents — the default one streams; non-streaming
-  agents show only the placeholder until the answer is ready); complete
-  answer within ~20–30 s; card added within ~5 s after generation ends.
-  Audio is fetched concurrently and must not extend these budgets.
-- **Cost**: LLM usage rides the existing coding-agent subscription; the
-  design must not require a metered API key.
-- **Safety**: user text is forwarded to a coding agent running under the
-  user's own account on the user's own laptop. The text is untrusted — a
-  malicious or mistyped phrase that passes validation is **indirect prompt
-  injection** (OWASP LLM01), and input validation is not a security
-  boundary. The invariant: no input may ever cause the agent to read
-  files, run commands, reach the network, or see the operator's
-  environment secrets on the host. Prompt-level wording is a request, not
-  a control; the boundary is what the agent process *can do* if the text
-  hijacks it. This is enforced by each agent's **own** sandbox/permission
-  controls — never by disabling them — breaking the exfiltration leg of
-  the attack; an agent that cannot be restricted this way is dropped, not
-  run unrestricted. See the implementation plan's "Agent hardening",
-  grounded in `news-recap`'s agent-sandboxing research.
+- **Latency**: complete answer within ~20–30 s; card added within ~5 s
+  after generation ends. Audio is fetched concurrently and must not
+  extend these budgets. Incremental "first visible content within
+  ~3–5 s" applies only to **streaming-capable backends** (the Claude CLI
+  agent streams); **non-streaming backends** — `llmbroker` and the
+  codex/antigravity agents — show only the placeholder until the full
+  answer is ready. This is acceptable when the total is low: llmbroker's
+  expected win is a *fast complete answer* (a few seconds, no agent-loop
+  overhead) rather than early tokens, so the placeholder-then-answer feel
+  stays within budget.
+- **Cost**: no metered per-token API. LLM usage rides either the free-tier
+  `llmbroker` model pool or the existing flat-rate coding-agent
+  subscription; the design must not require a metered API key on any
+  backend.
+- **Safety**: this concern applies to the **CLI coding-agent backend
+  only**. The `llmbroker` backend is a plain text→text API call — it has
+  no shell, no filesystem, and no arbitrary network reach, so a hijacked
+  prompt has nothing to exfiltrate with; the injection risk below is
+  structurally absent for it (one more reason to prefer it where quality
+  allows). For the coding-agent backend: user text is forwarded to a
+  coding agent running under the user's own account on the user's own
+  laptop. The text is untrusted — a malicious or mistyped phrase that
+  passes validation is **indirect prompt injection** (OWASP LLM01), and
+  input validation is not a security boundary. The invariant: no input
+  may ever cause the agent to read files, run commands, reach the
+  network, or see the operator's environment secrets on the host.
+  Prompt-level wording is a request, not a control; the boundary is what
+  the agent process *can do* if the text hijacks it. This is enforced by
+  each agent's **own** sandbox/permission controls — never by disabling
+  them — breaking the exfiltration leg of the attack; an agent that
+  cannot be restricted this way is dropped, not run unrestricted. See the
+  implementation plan's "Agent hardening", grounded in `news-recap`'s
+  agent-sandboxing research.
 - **Resilience**: the laptop is not always on. Telegram keeps undelivered
   updates for 24 h, so words sent while the backend is down are processed
   when it starts — sequentially, one word at a time. The Anki queue
