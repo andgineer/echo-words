@@ -76,10 +76,13 @@ with zero extra effort.
    generation starts), the backend obtains pronunciation audio for the
    word/phrase (see "Pronunciation audio"). The **canonical word** — the
    key for the card, deduplication, statistics, and undo/redo — is
-   always the word from the card payload, not the raw input. When the
-   LLM corrects a misspelling the two differ: the speculative audio is
-   discarded and fetched again for the corrected word, so neither the
-   chat nor the card ever carries a recording of a typo.
+   always the **raw input**, never silently replaced. If the input looks
+   misspelled the LLM does not swap it: it analyzes the word as typed and
+   only *suggests* a correction (see "Autocorrection: advisory only"), so
+   the speculative audio for the input is always the right one and is
+   never re-fetched in the normal flow. A card therefore always carries
+   the word the user actually sent — a correction is applied only when the
+   user asks for it, one tap away.
 8. When generation completes, the backend sends the pronunciation as a
    voice message in the chat, adds the note (with the audio attached) to
    Anki, and appends a status line to the analysis message:
@@ -107,12 +110,48 @@ The answer contains, in this order:
 
 Additional behavior:
 
-- If the input looks misspelled, the answer starts with the suggested
-  correction and analyzes the corrected word, clearly marked.
+- If the input looks misspelled, the answer analyzes the word **as
+  typed** and adds a one-line suggestion ("✏️ Возможно: receive"). The
+  correction is never applied automatically — the card is built for the
+  word as typed, and an inline button lets the user switch to the
+  suggested word (and back). See "Autocorrection: advisory only".
 - For idioms and phrasal verbs: the meaning, literal vs figurative sense,
   and typical situations where it is used.
 - The whole answer must fit in one Telegram message (4096 chars), so the
   style is compact.
+
+## Autocorrection: advisory only
+
+The bot never silently rewrites a word. Auto-applying a correction is
+attractive for genuine typos but has an insidious failure mode: when the
+LLM "corrects" a word the user actually meant (a rare word, a proper noun,
+a dialectal or deliberately unusual form), the card looks correct yet is
+wrong, and — because every card enters a spaced-repetition deck — the user
+would drill the wrong word without noticing. Analyzing the word **as
+typed** keeps the card's front equal to what the user sent, so a mistake is
+visible on the very first review, not hidden.
+
+Behavior — fixed, not configurable (there is no on/off setting):
+
+- The LLM analyzes exactly the word the user typed. The **canonical word**
+  is always the raw input.
+- When the input looks like a typo, the LLM does **not** change it. It adds
+  a short suggestion line to the answer ("✏️ Возможно: receive") and
+  returns the suggested spelling as a separate field in the card payload
+  (`suggestion`); when nothing looks wrong, the suggestion is empty and no
+  button appears.
+- The card (and its audio) is built for the word as typed and added to
+  Anki immediately, exactly as for any other word.
+- When a suggestion exists, an **inline button** is attached under the
+  message — **[✏️ Исправить на «receive»]**. Tapping it re-runs the whole
+  analysis for the suggested word, replaces the note (delete + add, the
+  same way `/redo` replaces a note), re-fetches audio for the corrected
+  word, and flips the button to **[↩︎ Вернуть «recieve»]** — so switching
+  is reversible in both directions. A lookup-only (`?`) request keeps its
+  lookup-only flag when switched (still no card, just a re-analysis).
+- The button acts on its own message and is remembered in memory only
+  (like undo/redo state), so it stops working after a restart — acceptable
+  for a personal tool.
 
 ## Pronunciation audio
 
@@ -136,11 +175,14 @@ both in the chat and on the flashcard.
   - Anki: the audio is attached to the card front, so it plays during
     review.
 - **Resilience**: audio lookup runs in parallel with the LLM call and
-  must never delay or fail the text answer. When the LLM corrects a
-  misspelling, audio is re-fetched for the corrected (canonical) word —
-  the only case where the voice message may arrive noticeably after the
-  text. If neither a recording nor TTS is available, the card and
-  answer go out without audio and the status line says so.
+  must never delay or fail the text answer. Because the canonical word is
+  always the raw input, the speculative audio is always the right one — no
+  re-fetch in the normal flow. Audio is fetched again only if the user
+  taps the correction button, which re-processes the word for the
+  suggested spelling (see "Autocorrection: advisory only"); that is the
+  one case where a voice message arrives noticeably later. If neither a
+  recording nor TTS is available, the card and answer go out without audio
+  and the status line says so.
 
 ## Anki cards
 
@@ -193,7 +235,8 @@ both in the chat and on the flashcard.
 Kept minimal:
 
 - `/start`, `/help` — what the bot does, how to use it (including the
-  `?` lookup-only prefix).
+  `?` lookup-only prefix and the ✏️ correction button for a suggested
+  spelling).
 - `/status` — agent health, Anki reachability, pending card queue size.
 - `/stats` — how many words were added today, over the last 7 days, and
   in total, plus how many sends were duplicates or lookup-only, broken

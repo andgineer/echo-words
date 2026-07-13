@@ -213,13 +213,13 @@ src/wordgram/
   config.py         # Settings
   languages.py      # Language dataclass + languages.toml loader; lookup by topic_id / code
   main.py           # entry point: build app, run polling; console_script `wordgram`
-  bot.py            # handlers: whitelist filter, topic->language routing, commands, word messages
+  bot.py            # handlers: whitelist filter, topic->language routing, commands, word messages, correction-button callback
   streaming.py      # placeholder-edit loop bridging the backend stream -> Telegram edits
   backend.py        # stream_completion dispatcher: pick backend by lang (languages table), delegate
   agent.py          # CLI-agent backend: subprocess runner yielding text deltas
   llm_backend.py    # llmbroker backend: AsyncBroker ask/chat -> single-chunk yield
   prompt.py         # prompt template (source/target lang slots) + card-payload extraction
-  card.py           # note dataclass (word, ipa, 1-3 meanings), validation of the LLM payload
+  card.py           # note dataclass (word, ipa, 1-3 meanings) + optional suggestion, validation of the LLM payload
   anki.py           # AnkiConnect client (add note, dedup, model/per-language deck bootstrap, delete, sync)
   audio.py          # per-language chain: dictionary + local TTS (kokoro/piper) + edge-tts -> mp3
   pending.py        # sqlite queue of notes not yet delivered to Anki + retry task
@@ -252,8 +252,10 @@ per-language morphology hint change:
 5. Примеры: 2-4 коротких предложения из повседневной жизни, каждое с
    переводом.
 
-Если во входе похоже на опечатку — начни с «Возможно, вы имели в виду:
-…» и разбирай исправленный вариант.
+Разбирай РОВНО введённое слово и НЕ подменяй его. Если оно похоже на
+опечатку, не исправляй разбор: добавь короткую строку «✏️ Возможно: X»
+и укажи X в поле suggestion карточного JSON. Если опечатки нет —
+suggestion пустая строка.
 Если это идиома или фразовый глагол — объясни буквальный и переносный
 смысл и типичные ситуации употребления.
 Для выделения используй ТОЛЬКО HTML-теги <b> и <i>: разбираемое слово —
@@ -263,9 +265,11 @@ per-language morphology hint change:
 
 После разбора выведи строку ровно ===CARD=== и сразу за ней JSON в одну
 строку без пояснений и без HTML-тегов внутри значений:
-{"word": "...", "ipa": "...",
+{"word": "...", "ipa": "...", "suggestion": "...",
  "meanings": [{"label": "...", "translations": ["...", "..."],
  "examples": [{"en": "...", "ru": "..."}]}]}
+word — введённое слово как есть (не исправляй); suggestion —
+предполагаемое исправление опечатки или пустая строка.
 Обычно meanings содержит один элемент с пустым label. Раздели на
 несколько (не более трёх) только если значения слова не связаны между
 собой (как bank «банк» и bank «берег»); тогда label — помета в 1-3
@@ -291,16 +295,26 @@ Parsing rules (`prompt.py` / `card.py`):
   `Note` (`word`, `ipa`, `meanings: list[Meaning]` where each meaning
   has `label` possibly empty, `translations: list[str]` non-empty,
   `examples: list[Example]`); reject an empty meanings list or more
-  than three meanings. On any parse/validation failure: the Telegram
-  answer still goes out, no note is created, status line says the card
-  failed — never crash the handler.
-- The payload's `word` field is the **canonical word**: together with the
-  source language it is the key for the duplicate check (case-insensitive,
-  scoped to the language's deck), the pending queue, `word_log`, undo/redo
-  state, and the Anki `Word` field. The raw input is used
-  only for the placeholder message and the speculative audio fetch
-  (see M6) — when the LLM corrects a misspelling, everything downstream
-  runs on the corrected word.
+  than three meanings. Also read the optional `suggestion` string (a
+  typo hint — see "Autocorrection: advisory only" in the functional
+  description); it is transient UI state, not part of the stored note, so
+  it is returned alongside the `Note`, not on it. A missing or empty
+  `suggestion` means "no correction offered". On any parse/validation
+  failure: the Telegram answer still goes out, no note is created, status
+  line says the card failed — never crash the handler.
+- The **canonical word is always the raw input**, never the LLM's output:
+  autocorrection is advisory, so the payload's `word` merely echoes the
+  input and is not trusted for identity. Together with the source language
+  the raw input is the key for the duplicate check (case-insensitive,
+  scoped to the language's deck), the pending queue, `word_log`,
+  undo/redo state, the Anki `Word` field, and the speculative audio fetch
+  (M6) — which is therefore always the right audio, with no re-fetch in
+  the normal flow. `suggestion`, when non-empty and different from the
+  input (case-insensitive), is the only thing that triggers UI: the
+  streaming bridge attaches the inline correction button (M7). The
+  corrected word runs downstream only if the user taps that button, which
+  re-processes the word exactly as a fresh send for the suggested
+  spelling.
 
 HTML safety (`streaming.py`): Telegram gets `parse_mode=HTML`, and the
 LLM is only *asked* to emit `<b>`/`<i>` — the code must enforce it.
@@ -516,8 +530,11 @@ supported list.
 (remember: cut at delimiter, see LLM contract), passing every edit
 through the HTML sanitizer (see LLM contract) with `parse_mode=HTML`.
 Final edit with the complete text; append the status line placeholder
-later (M5). On `AgentError`: edit the message to a short apology +
-`/redo` hint. Truncate visible text at 4000 chars with an ellipsis.
+later (M5). When the parsed payload carries a non-empty `suggestion`
+that differs from the input (case-insensitive), the final edit also
+attaches the inline correction keyboard (one button — the callback
+handling and note replacement live in M7). On `AgentError`: edit the
+message to a short apology + `/redo` hint. Truncate visible text at 4000 chars with an ellipsis.
 Handle Telegram `RetryAfter`/`BadRequest("message is not modified")`
 gracefully; entity-parse `BadRequest` → retry the edit without
 `parse_mode`.
@@ -544,11 +561,14 @@ finishes.
 
 ### M4 — card extraction
 
-`card.py` + prompt module: parse the payload per the LLM contract.
-Tests: valid single-meaning payload, valid multi-meaning payload (2-3
-meanings with labels), payload with trailing garbage, missing
-delimiter, malformed JSON, empty translations, empty meanings list,
-four meanings (rejected).
+`card.py` + prompt module: parse the payload per the LLM contract,
+including the optional `suggestion` string returned alongside the `Note`
+(absent, empty, and present-and-different cases). Tests: valid
+single-meaning payload, valid multi-meaning payload (2-3 meanings with
+labels), payload with trailing garbage, missing delimiter, malformed
+JSON, empty translations, empty meanings list, four meanings (rejected),
+payload with a `suggestion` and payload without one (both parse; the
+suggestion never affects note validity).
 
 ### M5 — Anki integration
 
@@ -660,20 +680,23 @@ through to the next on ANY exception (log at warning level, never raise):
 
 Runs via `asyncio.create_task` in parallel with the agent stream,
 speculatively for the raw input; awaited only after the final edit.
-If the canonical word from the card payload differs from the input
-(case-insensitive compare) — the LLM corrected a misspelling — the
-speculative result is discarded and `fetch_pronunciation` runs again
-for the canonical word (same language — the topic fixes it): neither the
-voice message nor the card may ever carry audio of a typo. This is the one case where audio arrives
-noticeably after the text. Send to chat with `send_voice` (mp3
-is accepted); if Telegram rejects it, fall back to `send_audio`; if no
-audio, add "🔇 no audio" to the status line. Tests: mocked httpx for
+Because autocorrection is advisory, the canonical word always equals the
+input, so the speculative fetch is always the right one — it is used as
+is, with no re-fetch in the normal flow. A re-fetch happens only when the
+user taps the inline correction button (M7): that path re-processes the
+word for the suggested spelling (same language — the topic fixes it), so
+neither the voice message nor the card ever carries audio of a typo the
+user did not accept. That is the one case where audio arrives noticeably
+after the text. Send to chat with `send_voice` (mp3 is accepted); if
+Telegram rejects it, fall back to `send_audio`; if no audio, add
+"🔇 no audio" to the status line. Tests: mocked httpx for
 the dictionary path (hit, miss, HTTP error); fake kokoro/piper modules
 (success, import failure, inference failure) asserting per-language engine
 choice and fall-through order; monkeypatched edge-tts (success, failure →
 `None`); phrase input skips the dictionary step; a Serbian word skips the
-dictionary step (no `dict_api`); a corrected word triggers a re-fetch and
-the speculative result is ignored.
+dictionary step (no `dict_api`); the normal flow uses the speculative
+result with no re-fetch (canonical == input), and the correction-button
+re-process (M7) fetches audio for the suggested word instead.
 
 ### M7 — pending queue, stats, and remaining commands
 
@@ -725,9 +748,29 @@ Commands:
   block the replacement ("already in Anki") and the bad card would
   survive.
 
+**Inline correction button (advisory autocorrection).** When a processed
+word came back with a non-empty `suggestion` different from the input
+(M4), the final edit (M3) carried a one-button inline keyboard. A
+`CallbackQueryHandler` handles the tap: it re-processes the word for the
+*other* spelling (input ↔ suggestion) and replaces the note exactly the
+way `/redo` does — remove the previous run's result (Anki note via
+`deleteNotes`, or the `pending_notes` row + its audio file), then run the
+full pipeline (LLM analysis, audio fetch, add) for the chosen word, under
+the same global word-lock so it never races an in-flight send. Audio is
+fetched for the chosen word (this is the only re-fetch case, M6). The
+lookup-only flag is preserved (a `?` request stays card-less on switch —
+only the analysis and voice message change). After the switch the button
+flips to offer the reverse ("↩︎ Вернуть «recieve»"), so it is reversible
+both ways. `callback_data` is bounded to 64 bytes, so it carries only a
+short token that keys into an in-memory map; the map holds the decision
+state per correction message — input, suggestion, language, lookup flag,
+which spelling is currently shown, and the current note/pending id.
+
 Undo/redo state (last word, its note id or pending row id, lookup flag) is
-per topic (per source language), in memory, lost on restart — documented
-behavior.
+per topic (per source language); the correction-button decision state is
+per message (keyed by the button's `callback_data` token). Both live in
+memory and are lost on restart — documented behavior; after a restart the
+button reports that the request expired instead of acting on stale state.
 Tests: enqueue on connection error, retry drains queue and triggers
 sync, retry re-checks duplicates and drops the entry, handler dedup
 consults the queue case-insensitively and is scoped to (lang, word) so the
@@ -735,7 +778,10 @@ same spelling in two languages is not a duplicate and reports the queued
 status, stats aggregation windows with per-language breakdown, undo removes
 an added note, undo removes a
 queued row together with its audio file, redo replaces the previous
-note, undo/redo state machine.
+note, undo/redo state machine, the correction button toggles
+input↔suggestion and replaces the note (preserving the lookup-only flag
+and flipping the label), and a stale/unknown callback token reports the
+request as expired instead of acting.
 
 ### M8 — polish and release
 
@@ -758,13 +804,21 @@ until PyPI credentials are configured; note this in the README.
 - Duplicate send → report only, existing note untouched: "📌 already
   in Anki" for a note in Anki, "🕓 already queued" for one still in
   the pending queue — the two are never conflated.
-- The canonical word is the `word` field of the card payload — together
-  with the source language, the key for dedup (deck-scoped), the queue,
-  stats, undo/redo, and the Anki `Word` field, compared case-insensitively.
-  The same spelling in two languages is two notes in two decks. When it
-  differs from the raw input (the LLM corrected a misspelling),
-  pronunciation audio is re-fetched for the canonical word and the
-  speculative fetch is discarded.
+- **Autocorrection is advisory only — hardcoded, no config flag.** The
+  canonical word is always the **raw input** — together with the source
+  language, the key for dedup (deck-scoped), the queue, stats, undo/redo,
+  and the Anki `Word` field, compared case-insensitively. The same
+  spelling in two languages is two notes in two decks. The LLM never
+  silently swaps a misspelling: it analyzes the word as typed and returns
+  an optional `suggestion`. When the suggestion differs from the input, an
+  inline button under the message switches to the suggested word (and
+  back), re-running the analysis and replacing the note like `/redo`; only
+  that path re-fetches audio. Rationale: a silently swapped card looks
+  correct but is wrong and would poison the spaced-repetition deck without
+  the user noticing — analyzing as-typed keeps the card's front equal to
+  what the user sent, so a mistake is visible on the first review. There
+  is deliberately no on/off setting; this behavior is the design, not an
+  option.
 - Every note produces two cards: recognition (EN→RU) and recall
   (RU→EN) — see M5. Still one note per word.
 - Anki sync to AnkiWeb runs automatically after additions and queue
