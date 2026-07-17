@@ -30,14 +30,15 @@ Rules:
 | Concern | Choice |
 |---|---|
 | Telegram framework | `python-telegram-bot` v21+ (async, long polling) |
-| HTTP client (AnkiConnect, dictionary) | `httpx` (async) |
+| HTTP client (dictionary pronunciation) | `httpx` (async) |
+| Anki integration | **`anki` pylib, headless** (the non-GUI core of Anki as a PyPI package; manylinux x86_64 + aarch64 wheels, so it runs on Oracle Free Tier ARM). The backend maintains its own collection in `WORDGRAM_DATA_DIR/anki/` and syncs to AnkiWeb via pylib's `sync_login` / `sync_collection` / `sync_media`. Pin the version (`anki==26.5` at the time of writing) — pylib's API drifts between releases; upgrades are deliberate. No AnkiConnect, no Anki desktop, no GUI anywhere. Decision record: `spec/decision-spaced-repetition.md` |
 | TTS (English, local) | Kokoro-82M via `kokoro-onnx` — local, Apache 2.0, near-natural English, faster than real time on CPU; nothing external to break. English only. Model (~300 MB) downloaded by a background task at startup into `WORDGRAM_DATA_DIR/models/` (see M6). Verify at M6 whether `kokoro-onnx` needs the `espeak-ng` system library for phonemization — if it does, it is a documented system requirement, not a hidden crash |
 | TTS (non-English, local) | Piper (`piper-tts`, ONNX voices, MIT) — local neural TTS with per-language voices (German confirmed; verify a Serbian voice exists at M6, else that language falls through to edge-tts). Keeps the local-first resilience of the English path for de/sr. Voices downloaded at startup alongside the Kokoro model, same pinned-URL + checksum mechanism (M6). Piper also phonemizes via `espeak-ng` — the same optional system dependency as Kokoro |
 | TTS (last resort) | `edge-tts` (MS Edge voices, free online, outputs mp3, per-language voices e.g. `de-DE-*`, `sr-RS-*`) — only when the local engine (Kokoro/Piper) fails or has no voice for the language; its known flakiness (unofficial API, recurring 403 breakage) is acceptable in this role |
 | mp3 encoding | `lameenc` (pure-wheel LAME bindings) to convert Kokoro's / Piper's WAV output to mp3 — no ffmpeg system dependency |
 | Dictionary pronunciation | `https://api.dictionaryapi.dev/api/v2/entries/{lang}/{word}` where `{lang}` is the source language's `dict_api` code (`en`, `de`, …; Serbian is unsupported → skip this step) — take the first `phonetics[].audio` non-empty URL (they are Wiktionary recordings); for English prefer entries whose URL contains the configured accent (`-us` / `-uk`), else any |
 | Settings | `pydantic-settings`, env prefix `WORDGRAM_`, `.env` support |
-| Persistent queue | stdlib `sqlite3`, single DB file |
+| Word log (stats) | stdlib `sqlite3`, single DB file |
 | LLM | Pluggable backend behind one `stream_completion` seam (M2), **both kinds shipped in v0.1**, selected by config and by source language (from the languages table, M1): (a) **`llmbroker`** — the author's free-tier model-pool broker (`github.com/andgineer/llmbroker`): `AsyncBroker` over a pool of free, rate-limited models with automatic failover and quality-based routing, **no metered key** — a plain text→text call, so no subprocess, no agent sandbox, and much lower per-request latency than a coding agent; non-streaming (returns the full answer). (b) **CLI coding agent** — the same three as news-recap, `claude` / `codex` / `antigravity`, for what the pooled models can't handle. The **M0 spike (precedes M1)** benchmarks which backend is sufficient per language and how much faster llmbroker is, and sets the v0.1 default |
 | Lint | `ruff` (line-length 99), run in CI after tests |
 
@@ -61,12 +62,14 @@ Rules:
 | `WORDGRAM_LLMBROKER_CONFIG` | path to llmbroker's `llms.toml` (model pool); generate with `llmbroker preset freetier > llms.toml` | `~/.wordgram/llms.toml` |
 | `WORDGRAM_LLMBROKER_OPERATION` | operation label passed to `ask`/`chat` so llmbroker tracks per-task quality and routes accordingly | `vocab` |
 | `WORDGRAM_LLMBROKER_WEB` | allow the llmbroker backend a web-search tool for grounding (hard languages — see M0); off by default | `false` |
-| `WORDGRAM_ANKI_URL` | AnkiConnect endpoint | `http://127.0.0.1:8765` |
-| `WORDGRAM_ANKI_SYNC` | trigger AnkiConnect `sync` after additions (see M5) | `true` |
+| `WORDGRAM_ANKIWEB_USER` | AnkiWeb account (email) for sync; required when `WORDGRAM_ANKI_SYNC` is on | required if sync on |
+| `WORDGRAM_ANKIWEB_PASSWORD` | AnkiWeb password — used once to obtain the sync key (hkey), which is then stored in `WORDGRAM_DATA_DIR` and reused | required if sync on |
+| `WORDGRAM_SYNC_ENDPOINT` | custom sync server URL (the self-hosted fallback from the decision doc); empty = AnkiWeb | empty |
+| `WORDGRAM_ANKI_SYNC` | sync the collection to AnkiWeb after additions (see M5) | `true` |
 | `WORDGRAM_ACCENT` | `us` or `uk`, English dictionary-audio and voice choice; per-language override in the languages table | `us` |
 | `WORDGRAM_TTS_VOICE` | default Kokoro (English) voice; per-language `tts_voice` in the table overrides | `af_heart` (us) / `bf_emma` (uk) |
 | `WORDGRAM_EDGE_TTS_VOICE` | default last-resort edge-tts voice; per-language `edge_tts_voice` in the table overrides | `en-US-AriaNeural` (us) / `en-GB-SoniaNeural` (uk) |
-| `WORDGRAM_DATA_DIR` | queue DB + downloaded audio | `~/.wordgram` |
+| `WORDGRAM_DATA_DIR` | Anki collection (`anki/`), word-log DB, TTS models, downloaded audio, stored sync key | `~/.wordgram` |
 
 ## Languages configuration
 
@@ -220,9 +223,9 @@ src/wordgram/
   llm_backend.py    # llmbroker backend: AsyncBroker ask/chat -> single-chunk yield
   prompt.py         # prompt template (source/target lang slots) + card-payload extraction
   card.py           # note dataclass (word, ipa, 1-3 meanings) + optional suggestion, validation of the LLM payload
-  anki.py           # AnkiConnect client (add note, dedup, model/per-language deck bootstrap, delete, sync)
+  anki.py           # headless collection wrapper (pylib): open/bootstrap, add/find/delete notes, media, debounced AnkiWeb sync
   audio.py          # per-language chain: dictionary + local TTS (kokoro/piper) + edge-tts -> mp3
-  pending.py        # sqlite queue of notes not yet delivered to Anki + retry task
+  word_log.py       # sqlite word_log (source for /stats)
 ```
 
 Add `wordgram = "wordgram.main:cli"` to `[project.scripts]`.
@@ -306,7 +309,7 @@ Parsing rules (`prompt.py` / `card.py`):
   autocorrection is advisory, so the payload's `word` merely echoes the
   input and is not trusted for identity. Together with the source language
   the raw input is the key for the duplicate check (case-insensitive,
-  scoped to the language's deck), the pending queue, `word_log`,
+  scoped to the language's deck), `word_log`,
   undo/redo state, the Anki `Word` field, and the speculative audio fetch
   (M6) — which is therefore always the right audio, with no re-fetch in
   the normal flow. `suggestion`, when non-empty and different from the
@@ -570,13 +573,29 @@ JSON, empty translations, empty meanings list, four meanings (rejected),
 payload with a `suggestion` and payload without one (both parse; the
 suggestion never affects note validity).
 
-### M5 — Anki integration
+### M5 — Anki integration (headless pylib)
 
-`anki.py`, httpx-based AnkiConnect client (`version`, `createDeck`,
-`modelNames`, `createModel`, `findNotes`, `addNote`, `deleteNotes`,
-`storeMediaFile`, `sync`). On startup (lazily, first use): ensure the note type `Wordgram` exists
-and, on first use of a language, that language's deck (from the languages
-config) exists. Note type fields: `Word`, `IPA`,
+**First task of this milestone — the sync spike** from
+`decision-spaced-repetition.md` (a sanctioned manual step, like M2's
+canaries; real AnkiWeb stays out of the test suite): with the pinned
+`anki` version, live-verify the headless path end to end —
+`sync_login(user, password, endpoint=None)` returns a usable
+`SyncAuth`/hkey; a **fresh server collection bootstraps by downloading
+the user's existing AnkiWeb collection** (never upload-over it — the
+account already holds other decks); an added note with audio arrives on
+AnkiDroid after `sync_collection(auth, sync_media=True)`. If the
+AnkiWeb auth path fails on the current version, fall back per the
+decision doc to the official self-hosted sync server
+(`WORDGRAM_SYNC_ENDPOINT`) before touching the design.
+
+`anki.py` wraps a headless `anki.collection.Collection` at
+`WORDGRAM_DATA_DIR/anki/collection.anki2` (directory created on first
+run; the bootstrap full-download above applies when sync is on). pylib
+is blocking — run every collection call in `asyncio.to_thread`; the
+global word-lock (M3) already serializes writers, and the process is
+the collection's only writer by design. On first use: ensure the note
+type `Wordgram` exists and, on first use of a language, that language's
+deck (from the languages config) exists. Note type fields: `Word`, `IPA`,
 `Translations`, `Meanings`, `Audio`; two card templates:
 
 - **Recognition** — Front: `{{Word}} {{Audio}}<br>{{IPA}}` (the
@@ -597,46 +616,57 @@ wrapped in tags: Anki fields are HTML, and the prompt only *asks* the
 LLM to keep tags out of JSON values — a stray `<` or `&` must not
 break the card.
 
-One word = one note, so the first field (`Word`) is naturally unique
-and Anki's own `addNote` duplicate rejection never fires against our
-own notes. Duplicate check before adding: `findNotes` with query
+One word = one note, so the first field (`Word`) is naturally unique.
+Duplicate check before adding: `col.find_notes()` with query
 `deck:"{deck}" note:Wordgram "Word:{word}"` — `{deck}` is the language's
 deck and `{word}` the canonical word from the payload; case-insensitive
 match is Anki's default. Scoping by deck is what lets the same spelling
-exist in two languages without a false duplicate. If a note
-exists, nothing is added and the send reports duplicate. Belt and
-braces: an `addNote` "duplicate" error (a note added by hand between
-check and add) is treated as the duplicate status, not as a failure.
+exist in two languages without a false duplicate. If a note exists,
+nothing is added and the send reports duplicate.
 
 `add_note(note, deck, audio_path)` (deck from the word's language) returns
 `added(note_id) | duplicate`;
-audio is sent once with `storeMediaFile` (filename
-`wordgram-{slug}-{hash}.mp3`, where `slug` is the lowercased canonical
-word with non-alphanumeric runs collapsed to `-` and `hash` is the
-first 8 hex chars of the canonical word's SHA-1 — distinct phrases
-that slugify identically, like "go over" vs "go-over", must not
-overwrite each other's media) and referenced as `[sound:...]` in the
-`Audio` field. Skipped entirely for lookup-only (`?`) requests —
+audio is copied into the collection's media with `col.media.add_file`
+under the name `wordgram-{slug}-{hash}.mp3` (where `slug` is the
+lowercased canonical word with non-alphanumeric runs collapsed to `-`
+and `hash` is the first 8 hex chars of the canonical word's SHA-1 —
+distinct phrases that slugify identically, like "go over" vs "go-over",
+must not overwrite each other's media; `add_file` may return an
+adjusted name — use the returned name) and referenced as `[sound:...]`
+in the `Audio` field. Skipped entirely for lookup-only (`?`) requests —
 status line "👁 lookup only". Wire into the handler after the final
-edit: status line appended to the message. Track the last added note
-id in memory for `/undo` and `/redo` (M7).
+edit: status line appended to the message. Because the collection is
+in-process, `add_note` cannot fail with "Anki is not running" — there
+is no pending-card queue anywhere in the design. Track the last added
+note id in memory for `/undo` and `/redo` (M7).
 
-After every successful `addNote` (and after a queue drain, M7) the
-client triggers AnkiConnect `sync` so new cards reach AnkiWeb and the
-user's other devices. Debounced: at most one sync per 5 minutes,
-scheduled trailing so the last add in a burst still gets synced.
-Disabled with `WORDGRAM_ANKI_SYNC=false`; a sync failure (no AnkiWeb
-account, network) is logged at warning level and never affects the
-status line.
+After every successful add the client schedules the **AnkiWeb sync**
+(pylib: `sync_collection(auth, sync_media=True)`): on first need,
+`sync_login(WORDGRAM_ANKIWEB_USER, WORDGRAM_ANKIWEB_PASSWORD,
+endpoint=WORDGRAM_SYNC_ENDPOINT or None)`, then persist the returned
+hkey in `WORDGRAM_DATA_DIR` and reuse it (re-login only on auth
+errors). Debounced: at most one sync per 5 minutes, scheduled trailing
+so the last add in a burst still gets synced. Disabled with
+`WORDGRAM_ANKI_SYNC=false`; a sync failure (network, AnkiWeb down) is
+logged at warning level, retried on the next debounce tick, and never
+affects the status line. **Safety rule:** if `sync_collection` reports
+that a one-way full sync is required (diverged collections), never
+resolve it automatically — log an error and surface it in `/status`
+(M7); a full upload could clobber the user's other decks. The only
+automatic full transfer is the first-run full **download** (bootstrap,
+spike above).
 
-Tests: mock httpx transport; assert exact AnkiConnect payloads for
-bootstrap (both card templates in `createModel`), per-language deck
-creation and deck-scoped dedup, single- and
-multi-meaning rendering of `Translations` and `Meanings`, HTML
-escaping of payload values, audio reference and filename hashing,
-lookup-only skip, addNote-duplicate-error → duplicate status, sync
-trigger with debounce (and the `WORDGRAM_ANKI_SYNC=false` no-op), and
-error propagation.
+Tests: use a **real temporary `Collection`** (pylib is a local library —
+no network, no GUI; the "no real network in tests" rule is satisfied)
+and mock only the sync calls. Assert: note-type bootstrap creates both
+card templates; per-language deck creation and deck-scoped dedup
+(same word in two decks is not a duplicate); single- and multi-meaning
+rendering of `Translations` and `Meanings`; HTML escaping of payload
+values; media naming/hashing and the `[sound:...]` reference using the
+name returned by `add_file`; lookup-only skip; sync debounce (fake
+clock), hkey persistence/reuse, the `WORDGRAM_ANKI_SYNC=false` no-op,
+and the full-sync-required → error-not-auto-resolve path; error
+propagation.
 
 ### M6 — pronunciation audio
 
@@ -698,49 +728,34 @@ dictionary step (no `dict_api`); the normal flow uses the speculative
 result with no re-fetch (canonical == input), and the correction-button
 re-process (M7) fetches audio for the suggested word instead.
 
-### M7 — pending queue, stats, and remaining commands
+### M7 — stats and remaining commands
 
-`pending.py`: sqlite (DB in `WORDGRAM_DATA_DIR`, survives restarts)
-with two tables. The `word` column always holds the canonical word;
-queries are a handful of tiny statements, so calling the stdlib driver
-directly from async code is accepted — no thread offloading.
+There is **no pending-card queue** in this design: the collection is
+in-process (M5), so a card add cannot fail on connectivity; only the
+AnkiWeb sync is asynchronous, and it retries by itself. What M7 adds is
+the word log, the remaining commands, and the correction button.
 
-- `pending_notes(id, lang, word, note_json, audio_path, created_at)` — when
-  `add_note` fails with a connection error, enqueue the note and set
-  status "🕓 card queued". Background task retries the queue every
-  60 s; before each delivery it re-runs the duplicate check
-  (`findNotes`) and silently drops the entry on a hit — the note may
-  have been added by hand or by an earlier entry while Anki was down.
-  On success, edit nothing (the card just appears in Anki) but log;
-  a drain that delivered at least one note triggers the debounced
-  sync from M5.
-- `word_log(id, lang, word, meanings_count, action, created_at)` where action
-  is `added | duplicate | lookup`, written on every processed word —
-  the source for `/stats`.
-
-The handler's duplicate check (M5) is extended here: a word counts as
-duplicate if a note exists in the language's deck OR a `pending_notes`
-entry for the same (lang, word) is waiting — otherwise re-sending a word
-while Anki is down would enqueue it twice and both copies would land after
-the drain. Both paths compare (lang, canonical word) case-insensitively
-(Anki's deck-scoped search already does; the sqlite lookup must too), and
-they report
-differently: a hit in Anki → "📌 already in Anki", a hit in the
-queue → "🕓 already queued" — the status never claims a card is in
-Anki when it is not.
+`word_log.py`: sqlite (DB in `WORDGRAM_DATA_DIR`, survives restarts),
+one table — `word_log(id, lang, word, meanings_count, action,
+created_at)` where action is `added | duplicate | lookup`, written on
+every processed word; the `word` column always holds the canonical
+word. The source for `/stats`. Queries are a handful of tiny
+statements, so calling the stdlib driver directly from async code is
+accepted — no thread offloading.
 
 Commands:
 
 - `/status` — per configured language: its backend, model and deck; plus
-  Anki reachable yes/no and the pending-queue size.
+  AnkiWeb sync state: last sync result and time, whether unsynced local
+  changes are waiting (`col.sync_status`), and a prominent error when a
+  required one-way full sync is pending manual resolution (M5's safety
+  rule).
 - `/stats` — words added today / last 7 days / all time, plus duplicates
   and lookups counts, broken down by source language (one global report,
   same in every topic).
-- `/undo` — remove whatever the last sent word **in this topic** produced:
-  delete its note via `deleteNotes` if it reached Anki, or delete its
-  `pending_notes` row (together with its audio file in
-  `WORDGRAM_DATA_DIR/audio/`) if it is still queued; confirm with the
-  word name.
+- `/undo` — remove the note the last sent word **in this topic** produced
+  (`col.remove_notes`), together with its cached audio file in
+  `WORDGRAM_DATA_DIR/audio/`; confirm with the word name.
 - `/redo` — re-run the last word **in this topic**, preserving its
   lookup-only flag and language. Before adding the new note, remove the previous
   run's result exactly like `/undo` does — `/redo` exists to fix a
@@ -753,8 +768,8 @@ word came back with a non-empty `suggestion` different from the input
 (M4), the final edit (M3) carried a one-button inline keyboard. A
 `CallbackQueryHandler` handles the tap: it re-processes the word for the
 *other* spelling (input ↔ suggestion) and replaces the note exactly the
-way `/redo` does — remove the previous run's result (Anki note via
-`deleteNotes`, or the `pending_notes` row + its audio file), then run the
+way `/redo` does — remove the previous run's result (`col.remove_notes`
+plus the cached audio file), then run the
 full pipeline (LLM analysis, audio fetch, add) for the chosen word, under
 the same global word-lock so it never races an in-flight send. Audio is
 fetched for the chosen word (this is the only re-fetch case, M6). The
@@ -764,33 +779,34 @@ flips to offer the reverse ("↩︎ Вернуть «recieve»"), so it is rever
 both ways. `callback_data` is bounded to 64 bytes, so it carries only a
 short token that keys into an in-memory map; the map holds the decision
 state per correction message — input, suggestion, language, lookup flag,
-which spelling is currently shown, and the current note/pending id.
+which spelling is currently shown, and the current note id.
 
-Undo/redo state (last word, its note id or pending row id, lookup flag) is
+Undo/redo state (last word, its note id, lookup flag) is
 per topic (per source language); the correction-button decision state is
 per message (keyed by the button's `callback_data` token). Both live in
 memory and are lost on restart — documented behavior; after a restart the
 button reports that the request expired instead of acting on stale state.
-Tests: enqueue on connection error, retry drains queue and triggers
-sync, retry re-checks duplicates and drops the entry, handler dedup
-consults the queue case-insensitively and is scoped to (lang, word) so the
-same spelling in two languages is not a duplicate and reports the queued
-status, stats aggregation windows with per-language breakdown, undo removes
-an added note, undo removes a
-queued row together with its audio file, redo replaces the previous
-note, undo/redo state machine, the correction button toggles
-input↔suggestion and replaces the note (preserving the lookup-only flag
-and flipping the label), and a stale/unknown callback token reports the
-request as expired instead of acting.
+Tests: stats aggregation windows with per-language breakdown, undo
+removes the note and its audio file, redo replaces the previous
+note, undo/redo state machine, `/status` sync-state rendering (ok /
+unsynced-changes / full-sync-required error), the correction button
+toggles input↔suggestion and replaces the note (preserving the
+lookup-only flag and flipping the label), and a stale/unknown callback
+token reports the request as expired instead of acting.
 
 ### M8 — polish and release
 
 README: install (`uv tool install wordgram` / `uvx wordgram`), required
 env vars, the supergroup + forum-topics setup (one topic per source
 language, disable the bot's privacy mode in BotFather so it sees plain
-messages), the `languages.toml` format and per-language decks, AnkiConnect
-setup pointer, the optional `espeak-ng` system dependency for
-Kokoro/Piper, systemd/launchd hint (one paragraph, no unit files). Bump version to `0.1.0`. Ensure `ruff check` is clean and
+messages), the `languages.toml` format and per-language decks, the
+AnkiWeb credentials setup (`WORDGRAM_ANKIWEB_USER` / `_PASSWORD`; note
+the first-run full download of the existing collection and the
+self-hosted `WORDGRAM_SYNC_ENDPOINT` fallback), the optional `espeak-ng`
+system dependency for
+Kokoro/Piper, systemd/launchd hint (one paragraph, no unit files; note
+the backend is fully headless and fits a small cloud instance, e.g.
+Oracle Cloud Free Tier ARM). Bump version to `0.1.0`. Ensure `ruff check` is clean and
 wired into CI. Do NOT push the `v0.1.0` tag — publishing is deferred
 until PyPI credentials are configured; note this in the README.
 
@@ -800,13 +816,12 @@ until PyPI credentials are configured; note this in the README.
   «берег») become numbered blocks on the back — at most three, split
   by the LLM; usually one. Never separate cards: identical fronts
   would be indistinguishable during review, and one note per word
-  keeps dedup, undo, and the queue trivially correct.
+  keeps dedup and undo trivially correct.
 - Duplicate send → report only, existing note untouched: "📌 already
-  in Anki" for a note in Anki, "🕓 already queued" for one still in
-  the pending queue — the two are never conflated.
+  in Anki".
 - **Autocorrection is advisory only — hardcoded, no config flag.** The
   canonical word is always the **raw input** — together with the source
-  language, the key for dedup (deck-scoped), the queue, stats, undo/redo,
+  language, the key for dedup (deck-scoped), stats, undo/redo,
   and the Anki `Word` field, compared case-insensitively. The same
   spelling in two languages is two notes in two decks. The LLM never
   silently swaps a misspelling: it analyzes the word as typed and returns
@@ -821,10 +836,18 @@ until PyPI credentials are configured; note this in the README.
   option.
 - Every note produces two cards: recognition (EN→RU) and recall
   (RU→EN) — see M5. Still one note per word.
-- Anki sync to AnkiWeb runs automatically after additions and queue
-  drains, debounced; `WORDGRAM_ANKI_SYNC=false` turns it off.
+- **Anki without a GUI — final.** The backend maintains its own
+  collection via the headless `anki` pylib and syncs it to AnkiWeb;
+  AnkiConnect and Anki desktop are not part of the architecture. There
+  is no pending-card queue — adds are in-process and cannot fail on
+  connectivity; only the sync retries. A required one-way full sync is
+  never resolved automatically (protects the user's other decks).
+  Evaluated alternatives (GetSpace, Mochi, own FSRS in chat, genanki):
+  `spec/decision-spaced-repetition.md`.
+- Anki sync to AnkiWeb runs automatically after additions,
+  debounced and retried; `WORDGRAM_ANKI_SYNC=false` turns it off.
 - `?` prefix = lookup-only: analysis and audio, no Anki card.
-- `/undo` covers queued notes; `/redo` replaces the previous run's
+- `/redo` replaces the previous run's
   note instead of being blocked by the duplicate check.
 - Multiple source languages via **forum topics** (one topic per
   language), routed by `message_thread_id`; the topic determines the deck.

@@ -9,9 +9,9 @@ project.
 A personal vocabulary assistant. The user sends an English word or short
 phrase to a Telegram bot and gets back, within seconds, a rich explanation
 in Russian: translations, usage, origin, examples. At the same time a
-compact flashcard is added automatically to the user's local Anki
-collection, so every word looked up during the day becomes review material
-with zero extra effort.
+compact flashcard is added automatically to the user's Anki collection
+(synced to their devices via AnkiWeb), so every word looked up during the
+day becomes review material with zero extra effort.
 
 ## System context
 
@@ -28,9 +28,11 @@ with zero extra effort.
   language of a single word is not reliable enough to trust with deck
   placement). Running as a group requires the bot's privacy mode to be
   disabled so it sees plain word messages (setup note in the README).
-- **Backend** — a single service running on the user's laptop, the same
-  machine that runs Anki. It connects to Telegram via long polling, so no
-  public IP, domain, or webhook is needed.
+- **Backend** — a single headless service; it can run on the user's
+  laptop or on a small always-on instance (e.g. Oracle Cloud Free Tier) —
+  nothing in it requires a GUI or a desktop application. It connects to
+  Telegram via long polling, so no public IP, domain, or webhook is
+  needed.
 - **LLM** — a pluggable backend, selected via configuration (and, once
   more source languages are added, per language). Two kinds, both present
   from v0.1: a **direct free-tier model pool** via the author's
@@ -42,8 +44,13 @@ with zero extra effort.
   backend is the default, and whether harder source languages (e.g.
   Serbian) need the coding agent or web-grounded lookups, is settled by a
   benchmark that runs *before* the build (implementation plan, M0).
-- **Anki** — Anki desktop with the AnkiConnect add-on, reachable from the
-  backend on localhost.
+- **Anki** — a server-side Anki collection maintained by the backend
+  itself through the headless Anki Python library (pylib) — no Anki
+  application and no AnkiConnect run next to the backend. The backend
+  adds notes to its own collection in-process and synchronizes it with
+  **AnkiWeb**; the user reviews in AnkiDroid / AnkiMobile / Anki desktop
+  exactly as before, syncing from AnkiWeb. (Decision record:
+  `decision-spaced-repetition.md`.)
 
 ## Core flow
 
@@ -87,10 +94,11 @@ with zero extra effort.
    user asks for it, one tap away.
 8. When generation completes, the backend sends the pronunciation as a
    voice message in the chat, adds the note (with the audio attached) to
-   Anki, and appends a status line to the analysis message:
-   "✅ added to Anki" / "📌 already in Anki" / "🕓 already queued" (a
-   duplicate of a card still waiting for Anki) / "🕓 Anki is not
-   running — card queued".
+   the collection, and appends a status line to the analysis message:
+   "✅ added to Anki" / "📌 already in Anki". The collection lives
+   in-process, so adding a card cannot fail because "Anki is not
+   running"; delivery to the user's devices happens via the debounced
+   AnkiWeb sync (see "Anki cards").
 
 ## Analysis content (the Telegram answer)
 
@@ -216,21 +224,16 @@ both in the chat and on the flashcard.
   case-insensitively — the same spelling in two languages (English *Hand*
   and German *Hand*) is two separate notes in two decks, never a
   duplicate. The check is scoped to the language's deck. If a note already
-  exists in Anki, nothing is added or modified and the bot reports
-  "already in Anki"; if it is still waiting in the delivery queue (see
-  below), the bot reports "already queued" instead — the status never
-  claims a card is in Anki when it is not.
-- **Anki unavailable** (application closed, laptop just woke up): the
-  note goes into a persistent local queue and is retried until Anki
-  responds; before each delivery the duplicate check runs again. The
-  user is told the card is queued. The Telegram answer is never delayed
-  by Anki problems.
-- **Sync**: after cards are added — directly or by a queue drain — the
-  backend asks Anki to synchronize with AnkiWeb, so new cards reach the
-  user's other devices (e.g. the phone) without manual action. Sync is
-  debounced; its failures are only logged and never affect the answer
-  or the card status. Can be turned off in configuration for setups
-  without an AnkiWeb account.
+  exists in the collection, nothing is added or modified and the bot
+  reports "already in Anki".
+- **Sync**: after cards are added the backend synchronizes its collection
+  (including media) with AnkiWeb, so new cards reach the user's devices
+  (e.g. the phone) without manual action. Sync is debounced and retried;
+  its failures are only logged and never affect the answer or the card
+  status — the collection is a local file, so an added card is never
+  lost: unsynced changes survive restarts and are delivered by the next
+  successful sync. Can be turned off in configuration for setups without
+  an AnkiWeb account.
 
 ## Bot commands
 
@@ -239,18 +242,18 @@ Kept minimal:
 - `/start`, `/help` — what the bot does, how to use it (including the
   `?` lookup-only prefix and the ✏️ correction button for a suggested
   spelling).
-- `/status` — agent health, Anki reachability, pending card queue size.
+- `/status` — agent health, AnkiWeb sync state (last result, whether
+  unsynced changes are waiting).
 - `/stats` — how many words were added today, over the last 7 days, and
   in total, plus how many sends were duplicates or lookup-only, broken
   down by source language (the same global report whichever topic it is
   called in).
-- `/undo` — remove the note created by the last sent word: delete it
-  from Anki, or drop it from the delivery queue if it never reached
-  Anki (mistaken sends).
+- `/undo` — remove the note created by the last sent word from the
+  collection (mistaken sends).
 - `/redo` — re-run the analysis for the last word (e.g. after a poor
-  generation). The note from the previous run (added or still queued)
-  is replaced by the new one, so a bad card does not survive a redo.
-  A lookup-only (`?`) request stays lookup-only on redo.
+  generation). The note from the previous run is replaced by the new
+  one, so a bad card does not survive a redo. A lookup-only (`?`)
+  request stays lookup-only on redo.
 
 Everything else is plain text input. `/undo` and `/redo` act on the most
 recent word **of the topic they are issued in** (i.e. per source
@@ -279,8 +282,9 @@ tool.
   prompt has nothing to exfiltrate with; the injection risk below is
   structurally absent for it (one more reason to prefer it where quality
   allows). For the coding-agent backend: user text is forwarded to a
-  coding agent running under the user's own account on the user's own
-  laptop. The text is untrusted — a malicious or mistyped phrase that
+  coding agent running under the user's own account on the backend host
+  (the laptop or the user's cloud instance — the same invariant either
+  way). The text is untrusted — a malicious or mistyped phrase that
   passes validation is **indirect prompt injection** (OWASP LLM01), and
   input validation is not a security boundary. The invariant: no input
   may ever cause the agent to read files, run commands, reach the
@@ -292,10 +296,12 @@ tool.
   cannot be restricted this way is dropped, not run unrestricted. See the
   implementation plan's "Agent hardening", grounded in `news-recap`'s
   agent-sandboxing research.
-- **Resilience**: the laptop is not always on. Telegram keeps undelivered
+- **Resilience**: the backend host is not always on (a laptop, or a
+  free-tier instance that may be reclaimed). Telegram keeps undelivered
   updates for 24 h, so words sent while the backend is down are processed
-  when it starts — sequentially, one word at a time. The Anki queue
-  survives restarts.
+  when it starts — sequentially, one word at a time. The collection is a
+  local file: cards added while AnkiWeb sync was failing survive
+  restarts and reach the devices on the next successful sync.
 - **Single instance, single user** (whitelist may hold a few family IDs).
   No horizontal scaling concerns.
 - **Languages**: multiple **source** languages (each its own topic and

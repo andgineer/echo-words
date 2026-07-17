@@ -14,7 +14,16 @@ and why the hypothesis was rejected.
 
 ## Why the premise fails: there is nothing to co-locate with
 
-The current architecture has **no cloud instance at all**. The backend is
+> **Note (2026-07-17, later the same day):** the AnkiConnect anchor
+> described below was subsequently removed —
+> `decision-spaced-repetition.md` replaced AnkiConnect with the
+> headless Anki pylib, making the backend location-independent. The
+> Telegram decision stands on its own merits (feature mapping and
+> operational cost below are unaffected); only this section's
+> "pinned to the laptop" premise is historical.
+
+At the time of this evaluation the architecture had **no cloud instance
+at all**. The backend is
 a single process on the user's laptop, pinned there by three anchors:
 
 - **Anki desktop + AnkiConnect** at `127.0.0.1:8765` — cards can only be

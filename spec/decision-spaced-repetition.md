@@ -1,11 +1,11 @@
 # Spaced repetition without a running Anki GUI — research & decision
 
-Status: **researched 2026-07-17 — recommendation: replace AnkiConnect
-with the headless Anki Python library (pylib) syncing to AnkiWeb; the
-user keeps reviewing in AnkiDroid/AnkiMobile/desktop unchanged.**
-Adopting the recommendation amends the functional description and the
-implementation plan (M5, M7) — see "Impact on the plan" at the end;
-those edits are deliberately NOT applied by this document.
+Status: **decided 2026-07-17 — adopted. AnkiConnect is replaced with
+the headless Anki Python library (pylib) syncing to AnkiWeb; the user
+keeps reviewing in AnkiDroid/AnkiMobile/desktop unchanged.** The
+functional description and the implementation plan (M5, M7) have been
+amended accordingly — see "Impact on the plan" at the end for the
+summary of what changed.
 
 ## The problem with the current plan
 
@@ -242,7 +242,7 @@ the deliberate product pivot to revisit only if chat-native review
 becomes a goal in itself — not as a way to avoid this integration,
 which is now cheap.
 
-## Impact on the plan (when adopted)
+## Impact on the plan (applied 2026-07-17)
 
 - **Functional description:** "Backend — a single service on the
   user's laptop, the same machine that runs Anki" becomes "a single
