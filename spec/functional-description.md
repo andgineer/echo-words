@@ -15,7 +15,9 @@ with zero extra effort.
 
 ## System context
 
-- **Telegram bot** — the only user interface. Personal use, but organised
+- **Telegram bot** — the only user interface (a self-hosted Mattermost
+  server was evaluated and rejected — see `plan-chat-interface.md`).
+  Personal use, but organised
   as a **supergroup with forum topics**, one topic per source language
   (e.g. English, Deutsch, Српски). A whitelist of Telegram user IDs gates
   *who* may use the bot (messages from anyone else are ignored silently);

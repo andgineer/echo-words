@@ -859,6 +859,13 @@ until PyPI credentials are configured; note this in the README.
   hardening").
 - Words are processed sequentially (global lock), so a 24 h Telegram
   backlog drains one word at a time.
+- **Telegram is the chat interface — final.** Replacing it with a
+  self-hosted Mattermost server was evaluated and rejected (extra
+  always-on node instead of consolidation; inline buttons, voice
+  messages, and mobile push degraded or paywalled in the free edition;
+  a full ops stack for zero removed integration code). If chat is ever
+  outgrown, the growth path is a Telegram Mini App, not a platform
+  switch. Full analysis: `spec/plan-chat-interface.md`.
 
 ## Out of scope — final, not deferred
 
