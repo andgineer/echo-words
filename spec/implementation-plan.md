@@ -24,6 +24,10 @@ Rules:
   every boundary.
 - Update `uv.lock` when adding dependencies (`uv lock`); CI uses
   `--frozen`.
+- Execute milestones strictly in order (M0 → M8); do not start a
+  milestone until the previous one's tests are green. Each milestone
+  ends with an explicit test list — implement those tests, plus whatever
+  the code itself obviously requires.
 
 ## Technology choices (fixed)
 
@@ -94,6 +98,7 @@ comparison table: `spec/decision-tts.md`.
 | `WORDGRAM_ACCENT` | `us` or `uk`, English dictionary-audio and voice choice; per-language override in the languages table | `us` |
 | `WORDGRAM_TTS_VOICE` | default Kokoro (English) voice; per-language `tts_voice` in the table overrides | `af_heart` (us) / `bf_emma` (uk) |
 | `WORDGRAM_EDGE_TTS_VOICE` | default last-resort edge-tts voice; per-language `edge_tts_voice` in the table overrides | `en-US-AriaNeural` (us) / `en-GB-SoniaNeural` (uk) |
+| `WORDGRAM_AUDIO_TIMEOUT` | seconds to wait for the speculative pronunciation task after the final edit; on timeout the task is cancelled and the send proceeds with "🔇 no audio" (see M6) | `20` |
 | `WORDGRAM_DATA_DIR` | Anki collection (`anki/`), word-log DB, TTS models, downloaded audio, stored sync key | `~/.wordgram` |
 
 ## Languages configuration
@@ -136,6 +141,7 @@ tts       = "edge"             # no usable local voice: Piper's lone sr_RS model
                                # never use it (spec/decision-tts.md)
 edge_tts_voice = "sr-RS-SophieNeural"
 script    = "latin+cyrillic"
+prompt_hints = "для существительных указывай род и множественное число, для глаголов — вид"
 ```
 
 Semantics:
@@ -156,6 +162,11 @@ Semantics:
 - **Validation.** `script` selects the allowed character set for the
   language (M1). Because the topic fixes the language before validation,
   the check is exact, not a guess.
+- **Prompt hints.** Optional `prompt_hints` — a per-language line
+  substituted into the prompt's `{source_hints}` slot (see "The LLM
+  contract"); absent → the slot is empty. Keeping hints in the config
+  preserves the functional description's rule that adding a language is
+  a config change, not a code change.
 - Config loads into a `Language` dataclass (new `languages.py`), looked up
   by `topic_id` (routing) and by code (backend/prompt). A missing file or
   a `topic_id` collision is a startup config error.
@@ -246,7 +257,7 @@ src/wordgram/
   config.py         # Settings
   languages.py      # Language dataclass + languages.toml loader; lookup by topic_id / code
   main.py           # entry point: build app, run polling; console_script `wordgram`
-  bot.py            # handlers: whitelist filter, topic->language routing, commands, word messages, correction-button callback
+  bot.py            # handlers (whitelist filter, topic->language routing, commands, correction-button callback) + the shared word pipeline `process_word` (see "Word pipeline")
   streaming.py      # placeholder-edit loop bridging the backend stream -> Telegram edits
   backend.py        # stream_completion dispatcher: pick backend by lang (languages table), delegate
   agent.py          # CLI-agent backend: subprocess runner yielding text deltas
@@ -259,6 +270,42 @@ src/wordgram/
 ```
 
 Add `wordgram = "wordgram.main:cli"` to `[project.scripts]`.
+
+## Word pipeline (orchestration)
+
+`bot.py` owns one coroutine shared by every entry point — the word
+handler (M3), `/redo`, and the correction button (both M7):
+
+```python
+async def process_word(chat_ctx, lang: Language, word: str,
+                       lookup_only: bool,
+                       reuse_message: Message | None = None) -> None
+```
+
+1. Post the placeholder "⏳ {word} …" in the word's topic — or, when
+   `reuse_message` is given (correction button), edit that existing
+   message back to the placeholder instead of posting a new one. Done
+   BEFORE taking the lock, so backlog words are visibly accepted (M3).
+2. Acquire the global word-lock (M3).
+3. Start the speculative audio task for the raw input — parallel with
+   the LLM call (M6).
+4. Run `stream_completion(prompt, lang)` through the streaming bridge;
+   the bridge edits the message in place and returns it plus the full
+   accumulated raw text (M3).
+5. Parse the card payload out of the raw text (M4). On parse failure the
+   analysis text still stands; the status line will report that the card
+   failed.
+6. `await asyncio.wait_for(audio_task, WORDGRAM_AUDIO_TIMEOUT)` and send
+   the voice message; on timeout or `None`, note "🔇 no audio" for the
+   status line (M6).
+7. Add the note unless lookup-only, duplicate, or parse failure (M5);
+   append the status line to the analysis message.
+8. If the payload carried a usable `suggestion`, attach the correction
+   keyboard (M7).
+9. Write the `word_log` row and update the topic's undo/redo state (M7).
+
+The function grows one step per milestone, leaving earlier steps
+untouched — the milestones below reference these step numbers.
 
 ## The LLM contract (core of the system)
 
@@ -274,15 +321,18 @@ per-language morphology hint change:
 
 Ответь на языке {target_lang}, компактно, без вступлений и без
 завершающих фраз. {source_hints}
-Структура ответа:
+Структура ответа (порядок пунктов фиксирован):
 
-1. Первая строка: слово, транскрипция IPA, часть(и) речи.
-2. Переводы — по убыванию частотности в обыденной речи, с пометами
-   (разг., книжн., сленг, груб. и т.п.) там, где они важны.
-3. Употребление: типичные сочетания и предлоги, с чем часто путают.
-4. Происхождение: если слово заимствовано — 1-3 предложения о том, из
+1. Первая строка: разбираемое слово жирным.
+2. Переводы — по убыванию частотности в обыденной речи; у каждого
+   перевода часть речи и пометы (разг., книжн., сленг, груб. и т.п.)
+   там, где они важны.
+3. Транскрипция IPA.
+4. Употребление: типичные сочетания и предлоги, с чем часто путают;
+   исчисляемость и неправильные формы там, где это существенно.
+5. Происхождение: если слово заимствовано — 1-3 предложения о том, из
    какого языка и как пришло; для исконных слов — одна строка.
-5. Примеры: 2-4 коротких предложения из повседневной жизни, каждое с
+6. Примеры: 2-4 коротких предложения из повседневной жизни, каждое с
    переводом.
 
 Разбирай РОВНО введённое слово и НЕ подменяй его. Если оно похоже на
@@ -292,15 +342,15 @@ suggestion пустая строка.
 Если это идиома или фразовый глагол — объясни буквальный и переносный
 смысл и типичные ситуации употребления.
 Для выделения используй ТОЛЬКО HTML-теги <b> и <i>: разбираемое слово —
-жирным, английские примеры — курсивом. Никакого markdown, никаких
-других тегов.
+жирным, примеры на языке {source_lang} — курсивом. Никакого markdown,
+никаких других тегов.
 Весь разбор — не длиннее 3500 символов.
 
 После разбора выведи строку ровно ===CARD=== и сразу за ней JSON в одну
 строку без пояснений и без HTML-тегов внутри значений:
 {"word": "...", "ipa": "...", "suggestion": "...",
  "meanings": [{"label": "...", "translations": ["...", "..."],
- "examples": [{"en": "...", "ru": "..."}]}]}
+ "examples": [{"text": "...", "translation": "..."}]}]}
 word — введённое слово как есть (не исправляй); suggestion —
 предполагаемое исправление опечатки или пустая строка.
 Обычно meanings содержит один элемент с пустым label. Раздели на
@@ -308,13 +358,16 @@ word — введённое слово как есть (не исправляй)
 собой (как bank «банк» и bank «берег»); тогда label — помета в 1-3
 русских слова, различающая значения. translations — 2-4 главных
 перевода этого значения; examples — 1-2 самых коротких примера именно
-этого значения.
+этого значения: text — предложение на языке {source_lang}, translation —
+его перевод на язык {target_lang}.
 ```
 
 `{source_lang}` / `{target_lang}` are the language display names, and
-`{source_hints}` is an optional per-language line (e.g. for Serbian:
-«для существительных указывай род и множественное число, для глаголов —
-вид»); it is empty for languages that need no extra guidance. The prompt
+`{source_hints}` is filled from the language's optional `prompt_hints`
+field in `languages.toml` (e.g. for Serbian: «для существительных
+указывай род и множественное число, для глаголов — вид»); when the field
+is absent the slot is empty — so a new language, hints included, needs
+no code change. The prompt
 prose stays in the operator's language; only the *answer* language is
 `{target_lang}`, and `translations` in the card JSON are in that target
 language.
@@ -327,7 +380,9 @@ Parsing rules (`prompt.py` / `card.py`):
 - After the run, parse the JSON after the delimiter into a single
   `Note` (`word`, `ipa`, `meanings: list[Meaning]` where each meaning
   has `label` possibly empty, `translations: list[str]` non-empty,
-  `examples: list[Example]`); reject an empty meanings list or more
+  `examples: list[Example]`, where `Example` has `text` — the sentence
+  in the source language — and `translation` — its target-language
+  rendering); reject an empty meanings list or more
   than three meanings. Also read the optional `suggestion` string (a
   typo hint — see "Autocorrection: advisory only" in the functional
   description); it is transient UI state, not part of the stored note, so
@@ -344,7 +399,8 @@ Parsing rules (`prompt.py` / `card.py`):
   (M6) — which is therefore always the right audio, with no re-fetch in
   the normal flow. `suggestion`, when non-empty and different from the
   input (case-insensitive), is the only thing that triggers UI: the
-  streaming bridge attaches the inline correction button (M7). The
+  word pipeline attaches the inline correction button after the final
+  edit (step 8; the button logic is M7). The
   corrected word runs downstream only if the user taps that button, which
   re-processes the word exactly as a fresh send for the suggested
   spelling.
@@ -435,7 +491,11 @@ spike finds the free-tier pool insufficient even for English, the v0.1 default
 flips to `agent` and llmbroker stays a config-selectable option — but the
 backend seam and both implementations still ship. This doc is an input to M2,
 and it may amend the functional description's LLM/cost wording (llmbroker is
-also un-metered, so the cost NFR holds either way).
+also un-metered, so the cost NFR holds either way). If the default lands on
+`llmbroker`, also amend the functional description's Core flow step 4
+parenthetical ("the default agent does [stream]") — a non-streaming default
+is already sanctioned by its NFR section, but the two sentences must not
+contradict each other.
 
 ### M1 — config + bot skeleton
 
@@ -443,7 +503,10 @@ also un-metered, so the cost NFR holds either way).
 polling in the configured supergroup (`WORDGRAM_GROUP_ID`), whitelist
 filter on the sender (non-whitelisted updates are ignored, only
 debug-logged), `/start` and `/help` reply with static text (help mentions
-the `?` prefix and the one-topic-per-language layout). `languages.py`
+the `?` lookup-only prefix, the one-topic-per-language layout, AND the ✏️
+correction button offered for a suspected typo — the button itself ships
+in M7, but the help text is written once, here, and must already describe
+it, as the functional description requires). `languages.py`
 loads `WORDGRAM_LANGUAGES_CONFIG` into `Language` objects indexed by
 `topic_id` and code. Routing: a word message's `message_thread_id`
 selects the language; the General topic or any unmapped topic gets a short
@@ -563,11 +626,17 @@ supported list.
 (remember: cut at delimiter, see LLM contract), passing every edit
 through the HTML sanitizer (see LLM contract) with `parse_mode=HTML`.
 Final edit with the complete text; append the status line placeholder
-later (M5). When the parsed payload carries a non-empty `suggestion`
-that differs from the input (case-insensitive), the final edit also
-attaches the inline correction keyboard (one button — the callback
-handling and note replacement live in M7). On `AgentError`: edit the
-message to a short apology + `/redo` hint. Truncate visible text at 4000 chars with an ellipsis.
+later (M5). The bridge does NOT parse the card payload: it returns the
+final Telegram `Message` and the full accumulated raw text to the
+caller, and everything past the final edit — payload parsing (M4), the
+status line (M5), the voice message (M6), the correction keyboard
+(M7) — is layered on top of that return value by the word pipeline (see
+"Word pipeline"), so M3 depends on nothing from later milestones. The
+bridge also accepts an optional pre-existing message to reuse (edit it
+back to the placeholder, then stream into it) instead of posting a new
+placeholder — unused until the correction button (M7). On `AgentError`:
+edit the message to a short apology + `/redo` hint. Truncate visible
+text at 4000 chars with an ellipsis.
 Handle Telegram `RetryAfter`/`BadRequest("message is not modified")`
 gracefully; entity-parse `BadRequest` → retry the edit without
 `parse_mode`.
@@ -586,7 +655,8 @@ placeholder *before* acquiring the lock, and let the lock serialize
 the rest of the pipeline.
 
 Tests: fake `Message.edit_text` recorder + scripted delta sequences;
-assert edit cadence, delimiter cutting, truncation, error path;
+assert edit cadence, delimiter cutting, truncation, error path; the
+reuse-message path edits the given message and never posts a new one;
 sanitizer cases — stray `<`/`&`, disallowed tags escaped, `<b>` split
 across two deltas, unclosed `<i>` auto-closed at the cut; two words
 sent together → second agent run starts only after the first pipeline
@@ -632,7 +702,9 @@ deck (from the languages config) exists. Note type fields: `Word`, `IPA`,
   functional description puts IPA on the front — it describes the
   word's form, not the answer), Back: `{{Meanings}}`.
 - **Recall** — Front: `{{Translations}}`, Back:
-  `{{Word}} {{Audio}}<br>{{IPA}}<hr>{{Meanings}}`.
+  `{{Word}} {{Audio}}<br>{{IPA}}` — exactly the word with IPA and audio,
+  as the functional description fixes the recall back; do NOT append
+  `{{Meanings}}` here.
 
 Minimal CSS. `Translations` and `Meanings` are rendered by the backend
 from the parsed payload. `Translations`: one line per meaning — label
@@ -640,7 +712,7 @@ in bold (only when the note has more than one meaning) followed by
 that meaning's translations; no examples, so the recall front never
 gives the answer away. `Meanings`: one block per meaning — label in
 bold (same condition), translations on one line, examples in italics
-with their Russian translations — numbered `<ol>`-style when there is
+with their target-language translations — numbered `<ol>`-style when there is
 more than one block. Every payload value is HTML-escaped before being
 wrapped in tags: Anki fields are HTML, and the prompt only *asks* the
 LLM to keep tags out of JSON values — a stray `<` or `&` must not
@@ -649,7 +721,9 @@ break the card.
 One word = one note, so the first field (`Word`) is naturally unique.
 Duplicate check before adding: `col.find_notes()` with query
 `deck:"{deck}" note:Wordgram "Word:{word}"` — `{deck}` is the language's
-deck and `{word}` the canonical word from the payload; case-insensitive
+deck and `{word}` the **canonical word, i.e. the raw user input** — never
+the payload's `word` echo, which merely repeats the input and is not
+trusted for identity (see the LLM contract); case-insensitive
 match is Anki's default. Scoping by deck is what lets the same spelling
 exist in two languages without a false duplicate. If a note exists,
 nothing is added and the send reports duplicate.
@@ -668,7 +742,8 @@ status line "👁 lookup only". Wire into the handler after the final
 edit: status line appended to the message. Because the collection is
 in-process, `add_note` cannot fail with "Anki is not running" — there
 is no pending-card queue anywhere in the design. Track the last added
-note id in memory for `/undo` and `/redo` (M7).
+note id AND its media filename (the name `add_file` returned) in memory
+for `/undo` and `/redo` (M7), which remove both.
 
 After every successful add the client schedules the **AnkiWeb sync**
 (pylib: `sync_collection(auth, sync_media=True)`): on first need,
@@ -749,7 +824,14 @@ through to the next on ANY exception (log at warning level, never raise):
    failure return `None`.
 
 Runs via `asyncio.create_task` in parallel with the agent stream,
-speculatively for the raw input; awaited only after the final edit.
+speculatively for the raw input; awaited only after the final edit, and
+only with a bound — `asyncio.wait_for(task, WORDGRAM_AUDIO_TIMEOUT)`
+(default 20 s): on timeout cancel the task and proceed exactly as for
+"no audio". The functional description requires that audio never delay
+the text answer or the ~5 s card budget, and the await happens under the
+global word-lock — an unbounded hang (edge-tts is known to wedge) would
+stall the whole backlog. Every httpx request inside the chain also
+carries its own `timeout=10`.
 Because autocorrection is advisory, the canonical word always equals the
 input, so the speculative fetch is always the right one — it is used as
 is, with no re-fetch in the normal flow. A re-fetch happens only when the
@@ -766,7 +848,9 @@ choice and fall-through order; a `tts = "edge"` language (Serbian) skips
 step 2 and goes straight to edge-tts; the model-download task fetches only
 the files of engines/voices present in the config (a config with no
 `kokoro` language downloads no Kokoro model); monkeypatched edge-tts
-(success, failure → `None`); phrase input skips the dictionary step; a
+(success, failure → `None`); an audio task that never finishes is
+cancelled at the deadline (use a sub-second timeout in the test) and
+reports "🔇 no audio"; phrase input skips the dictionary step; a
 Serbian word skips the dictionary step (no `dict_api`); the normal flow
 uses the speculative
 result with no re-fetch (canonical == input), and the correction-button
@@ -789,16 +873,25 @@ accepted — no thread offloading.
 
 Commands:
 
-- `/status` — per configured language: its backend, model and deck; plus
-  AnkiWeb sync state: last sync result and time, whether unsynced local
-  changes are waiting (`col.sync_status`), and a prominent error when a
-  required one-way full sync is pending manual resolution (M5's safety
-  rule).
+- `/status` — per configured language: its backend, model, deck, and
+  **backend health** (the functional description's "agent health") — for
+  an `agent` backend, whether the CLI executable (the first argv token
+  of its command template) resolves via `shutil.which`; for `llmbroker`,
+  whether the config file exists and the broker loaded a non-empty model
+  pool — each annotated with the outcome and time of that language's
+  last LLM call, kept in memory ("no calls yet" after a restart). No
+  live LLM probe: `/status` must answer instantly and never spend a
+  request. Plus AnkiWeb sync state: last sync result and time, whether
+  unsynced local changes are waiting (`col.sync_status`), and a
+  prominent error when a required one-way full sync is pending manual
+  resolution (M5's safety rule).
 - `/stats` — words added today / last 7 days / all time, plus duplicates
   and lookups counts, broken down by source language (one global report,
   same in every topic).
 - `/undo` — remove the note the last sent word **in this topic** produced
-  (`col.remove_notes`), together with its cached audio file in
+  (`col.remove_notes`), trash its media file in the collection
+  (`col.media.trash_files([name])`, using the media name stored with the
+  undo state — M5), and delete its cached audio file in
   `WORDGRAM_DATA_DIR/audio/`; confirm with the word name.
 - `/redo` — re-run the last word **in this topic**, preserving its
   lookup-only flag and language. Before adding the new note, remove the previous
@@ -812,10 +905,16 @@ word came back with a non-empty `suggestion` different from the input
 (M4), the final edit (M3) carried a one-button inline keyboard. A
 `CallbackQueryHandler` handles the tap: it re-processes the word for the
 *other* spelling (input ↔ suggestion) and replaces the note exactly the
-way `/redo` does — remove the previous run's result (`col.remove_notes`
-plus the cached audio file), then run the
+way `/redo` does — remove the previous run's result (`col.remove_notes`,
+`col.media.trash_files`, the cached audio file), then run the
 full pipeline (LLM analysis, audio fetch, add) for the chosen word, under
-the same global word-lock so it never races an in-flight send. Audio is
+the same global word-lock so it never races an in-flight send. The re-run
+happens **in the original analysis message**: the callback passes it as
+the pipeline's `reuse_message` (M3), so that message is edited back to
+the placeholder and the new analysis streams into it — no second
+analysis message ever appears (the functional description: the button
+"acts on its own message"); only the voice message for the new spelling
+is sent as a new message. Audio is
 fetched for the chosen word (this is the only re-fetch case, M6). The
 lookup-only flag is preserved (a `?` request stays card-less on switch —
 only the analysis and voice message change). After the switch the button
@@ -823,7 +922,11 @@ flips to offer the reverse ("↩︎ Вернуть «recieve»"), so it is rever
 both ways. `callback_data` is bounded to 64 bytes, so it carries only a
 short token that keys into an in-memory map; the map holds the decision
 state per correction message — input, suggestion, language, lookup flag,
-which spelling is currently shown, and the current note id.
+which spelling is currently shown, and the current note id plus its
+media name. After a switch, if the topic's undo/redo state points at
+the note that was just replaced, update it to the new note id, media
+name, and the spelling now shown — otherwise a `/undo` issued right
+after a switch would target a note that no longer exists.
 
 Undo/redo state (last word, its note id, lookup flag) is
 per topic (per source language); the correction-button decision state is
@@ -831,11 +934,16 @@ per message (keyed by the button's `callback_data` token). Both live in
 memory and are lost on restart — documented behavior; after a restart the
 button reports that the request expired instead of acting on stale state.
 Tests: stats aggregation windows with per-language breakdown, undo
-removes the note and its audio file, redo replaces the previous
-note, undo/redo state machine, `/status` sync-state rendering (ok /
+removes the note, trashes its collection media file and deletes its
+cached audio file, redo replaces the previous
+note, undo/redo state machine, `/status` health and sync-state rendering
+(agent CLI present/missing, llmbroker pool loaded/empty, ok /
 unsynced-changes / full-sync-required error), the correction button
 toggles input↔suggestion and replaces the note (preserving the
-lookup-only flag and flipping the label), and a stale/unknown callback
+lookup-only flag and flipping the label), the correction re-run edits
+the original message and posts no new analysis message, a switch updates
+the topic's undo state when it replaced the note that state pointed to,
+and a stale/unknown callback
 token reports the request as expired instead of acting.
 
 ### M8 — polish and release
