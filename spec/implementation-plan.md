@@ -32,15 +32,40 @@ Rules:
 | Telegram framework | `python-telegram-bot` v21+ (async, long polling) |
 | HTTP client (dictionary pronunciation) | `httpx` (async) |
 | Anki integration | **`anki` pylib, headless** (the non-GUI core of Anki as a PyPI package; manylinux x86_64 + aarch64 wheels, so it runs on Oracle Free Tier ARM). The backend maintains its own collection in `WORDGRAM_DATA_DIR/anki/` and syncs to AnkiWeb via pylib's `sync_login` / `sync_collection` / `sync_media`. Pin the version (`anki==26.5` at the time of writing) — pylib's API drifts between releases; upgrades are deliberate. No AnkiConnect, no Anki desktop, no GUI anywhere. Decision record: `spec/decision-spaced-repetition.md` |
-| TTS (English, local) | Kokoro-82M via `kokoro-onnx` — local, Apache 2.0, near-natural English, faster than real time on CPU; nothing external to break. English only. Model (~300 MB) downloaded by a background task at startup into `WORDGRAM_DATA_DIR/models/` (see M6). Verify at M6 whether `kokoro-onnx` needs the `espeak-ng` system library for phonemization — if it does, it is a documented system requirement, not a hidden crash |
-| TTS (non-English, local) | Piper (`piper-tts`, ONNX voices, MIT) — local neural TTS with per-language voices (German confirmed; verify a Serbian voice exists at M6, else that language falls through to edge-tts). Keeps the local-first resilience of the English path for de/sr. Voices downloaded at startup alongside the Kokoro model, same pinned-URL + checksum mechanism (M6). Piper also phonemizes via `espeak-ng` — the same optional system dependency as Kokoro |
-| TTS (last resort) | `edge-tts` (MS Edge voices, free online, outputs mp3, per-language voices e.g. `de-DE-*`, `sr-RS-*`) — only when the local engine (Kokoro/Piper) fails or has no voice for the language; its known flakiness (unofficial API, recurring 403 breakage) is acceptable in this role |
+| TTS (English, local — **laptop profile only**) | Kokoro-82M via `kokoro-onnx` — local, Apache 2.0, near-natural English, faster than real time on CPU; nothing external to break. English only. Model (~300 MB) downloaded by a background task at startup into `WORDGRAM_DATA_DIR/models/` (see M6) — only when some language actually configures `kokoro`. Does NOT fit the 1 GB micro profile (see "Deployment profiles"): there English uses Piper or edge-tts instead. Verify at M6 whether `kokoro-onnx` needs the `espeak-ng` system library for phonemization — if it does, it is a documented system requirement, not a hidden crash |
+| TTS (local, both profiles) | Piper (`piper-tts`, ONNX voices, MIT) — local neural TTS with per-language voices, ~60–100 MB per voice, real time on Raspberry-Pi-class CPUs, so it runs even on the 1 GB micro instance. German confirmed (`de_DE-thorsten-medium`); English voices exist (e.g. `en_US-lessac-medium`) for the micro profile. **Serbian is settled: Piper has NO usable Serbian voice** — the only `sr_RS` dataset (`serbski_institut`) is actually **Lower Sorbian** (Sorbian Institute recordings miscatalogued under the Serbian locale) and must never be configured; Serbian's engine is edge-tts (decision record: `spec/decision-tts.md`). Configured voices downloaded at startup, pinned-URL + checksum mechanism (M6). Piper also phonemizes via `espeak-ng` — the same optional system dependency as Kokoro |
+| TTS (online) | `edge-tts` (MS Edge neural voices, free online, outputs mp3, per-language voices e.g. `de-DE-*`) — the **primary** engine for Serbian (`sr-RS-SophieNeural` / `sr-RS-NicholasNeural`, near-commercial quality, both scripts; no usable local voice exists — see `spec/decision-tts.md`) and the last-resort fallback for every other language when the local engine fails. Its known flakiness (unofficial API, recurring 403 breakage) is acceptable in both roles: audio is generated once per word and stored in Anki media, so an outage only affects words added during it |
 | mp3 encoding | `lameenc` (pure-wheel LAME bindings) to convert Kokoro's / Piper's WAV output to mp3 — no ffmpeg system dependency |
 | Dictionary pronunciation | `https://api.dictionaryapi.dev/api/v2/entries/{lang}/{word}` where `{lang}` is the source language's `dict_api` code (`en`, `de`, …; Serbian is unsupported → skip this step) — take the first `phonetics[].audio` non-empty URL (they are Wiktionary recordings); for English prefer entries whose URL contains the configured accent (`-us` / `-uk`), else any |
 | Settings | `pydantic-settings`, env prefix `WORDGRAM_`, `.env` support |
 | Word log (stats) | stdlib `sqlite3`, single DB file |
 | LLM | Pluggable backend behind one `stream_completion` seam (M2), **both kinds shipped in v0.1**, selected by config and by source language (from the languages table, M1): (a) **`llmbroker`** — the author's free-tier model-pool broker (`github.com/andgineer/llmbroker`): `AsyncBroker` over a pool of free, rate-limited models with automatic failover and quality-based routing, **no metered key** — a plain text→text call, so no subprocess, no agent sandbox, and much lower per-request latency than a coding agent; non-streaming (returns the full answer). (b) **CLI coding agent** — the same three as news-recap, `claude` / `codex` / `antigravity`, for what the pooled models can't handle. The **M0 spike (precedes M1)** benchmarks which backend is sufficient per language and how much faster llmbroker is, and sets the v0.1 default |
 | Lint | `ruff` (line-length 99), run in CI after tests |
+
+## Deployment profiles
+
+One codebase, two documented ways to run it — the difference is **pure
+configuration** (`languages.toml` + env), never a code path:
+
+- **laptop** (incl. Apple Silicon): no memory pressure. English uses
+  Kokoro, German uses Piper, Serbian uses edge-tts.
+- **micro** — Oracle Cloud Free Tier `VM.Standard.E2.1.Micro`: **1 GB
+  RAM**, 1/8 OCPU, x86_64. (The Arm `A1.Flex` shape — 2 OCPU / 12 GB
+  for Always Free tenancies — is frequently unobtainable per region and
+  is not assumed; if available it removes the constraints below.) A
+  **swap file (1–2 GB) is a hard setup requirement**: PTB + Anki pylib
+  + a Piper inference peak coexist in 1 GB only with swap behind them.
+  **Kokoro is excluded by config on this profile** — its model +
+  runtime does not reliably fit, and an OOM kill takes down the whole
+  bot process, so the audio chain's exception-based fall-through (M6)
+  never gets a chance; sizing engines to the host is the config's job,
+  done ahead of time. English therefore uses Piper
+  (`en_US-lessac-medium`) or edge-tts; German Piper; Serbian edge-tts.
+
+Model downloads (M6) are driven by the config: only engines and voices
+referenced by `languages.toml` are fetched, so the micro profile never
+downloads the ~300 MB Kokoro model. Full engine rationale and the
+comparison table: `spec/decision-tts.md`.
 
 ## Configuration (env vars)
 
@@ -84,7 +109,8 @@ name       = "English"
 deck       = "English::Vocabulary"
 backend    = "llmbroker"       # llmbroker | agent; omit -> WORDGRAM_LLM_BACKEND
 dict_api   = "en"              # dictionaryapi.dev code; omit if unsupported
-tts        = "kokoro"          # kokoro | piper | edge (local engine; edge is also the fallback)
+tts        = "kokoro"          # kokoro | piper | edge; laptop profile — on the 1 GB
+                               # micro profile use "piper" (en_US-lessac-medium) or "edge"
 tts_voice  = "af_heart"
 accent     = "us"              # meaningful for English
 script     = "latin"           # latin | cyrillic | latin+cyrillic (input validation)
@@ -105,8 +131,10 @@ name      = "Српски"
 deck      = "Serbian::Vocabulary"
 backend   = "agent"            # per the M0 spike, if the pool is insufficient for Serbian
 # dict_api omitted — dictionaryapi.dev has no Serbian
-tts       = "piper"            # verify a Serbian Piper voice exists at M6; else "edge"
-tts_voice = "sr_RS-serbian-medium"
+tts       = "edge"             # no usable local voice: Piper's lone sr_RS model
+                               # ("serbski_institut") is actually Lower Sorbian —
+                               # never use it (spec/decision-tts.md)
+edge_tts_voice = "sr-RS-SophieNeural"
 script    = "latin+cyrillic"
 ```
 
@@ -120,9 +148,11 @@ Semantics:
   This replaces the old `WORDGRAM_BACKEND_BY_LANG` map — one place per
   language, not a separate parallel setting.
 - **Audio.** `dict_api` (omit = skip the dictionary step), `tts` (which
-  local engine — `kokoro` for English, `piper` elsewhere), `tts_voice`,
-  and for the edge-tts fallback an optional `edge_tts_voice`; `accent`
-  where it applies. See M6.
+  engine — `kokoro` for English on the laptop profile, `piper` for
+  German and for English on the micro profile, `edge` for Serbian),
+  `tts_voice`, and an optional `edge_tts_voice` (the edge-tts voice —
+  primary for Serbian, fallback elsewhere); `accent` where it applies.
+  Engine-per-profile rationale: `spec/decision-tts.md`. See M6.
 - **Validation.** `script` selects the allowed character set for the
   language (M1). Because the topic fixes the language before validation,
   the check is exact, not a guess.
@@ -679,14 +709,20 @@ through to the next on ANY exception (log at warning level, never raise):
    languages with no `dict_api`, e.g. Serbian), first non-empty audio URL,
    download mp3 to `WORDGRAM_DATA_DIR/audio/`. Skipped for multi-word
    input.
-2. **Local TTS** — the language's `tts` engine: **Kokoro** (`kokoro-onnx`)
-   for English, **Piper** (`piper-tts`) for the other languages, each with
-   the language's `tts_voice`. All model files — Kokoro's
-   `kokoro-v1.0.onnx` + `voices-v1.0.bin` and each configured Piper voice
-   (`.onnx` + `.onnx.json`) — are downloaded into
+2. **Local TTS** — the language's `tts` engine per the languages config:
+   **Kokoro** (`kokoro-onnx`) or **Piper** (`piper-tts`), with the
+   language's `tts_voice`. Skipped entirely when the language's `tts` is
+   `edge` (Serbian — no usable local voice exists; see
+   `spec/decision-tts.md`, and never be tempted by
+   `sr_RS-serbski_institut`: it is Lower Sorbian, not Serbian). Model
+   downloads are **config-driven**: only the files of engines and voices
+   actually referenced by `languages.toml` — Kokoro's `kokoro-v1.0.onnx`
+   + `voices-v1.0.bin` when some language configures `kokoro`, and each
+   configured Piper voice (`.onnx` + `.onnx.json`) — are downloaded into
    `WORDGRAM_DATA_DIR/models/` by a background task started at bot startup,
    NOT on first request, where the download would delay the first voice
-   message. The download URLs (Kokoro GitHub release assets; Piper voices
+   message (the micro profile thus never downloads the ~300 MB Kokoro
+   model). The download URLs (Kokoro GitHub release assets; Piper voices
    from the `rhasspy/piper` voices repo) are pinned in code as constants
    with their SHA-256 checksums; verify the checksum before installing
    (log progress; a failed download or checksum mismatch must not corrupt
@@ -697,16 +733,20 @@ through to the next on ANY exception (log at warning level, never raise):
    `lameenc`; Piper likewise outputs WAV → mp3. Import `kokoro_onnx` /
    `piper` lazily at call time so a broken install degrades to step 3
    instead of killing the bot at startup — the one sanctioned exception to
-   the top-level-imports rule; mark it with a comment. First task of this
-   milestone: on a clean machine check whether Kokoro **and** Piper
-   phonemization need the `espeak-ng` system library (both can), and
-   confirm a usable Serbian Piper voice exists — if none does, set
-   Serbian's `tts` to `edge` and document it; if espeak-ng is needed,
-   document it in the README (M8) as an optional system requirement —
-   without it the local engine falls through to edge-tts.
-3. **edge-tts (online, last resort)** — the language's `edge_tts_voice`
-   (or `WORDGRAM_EDGE_TTS_VOICE` default), native mp3 output. On failure
-   return `None`.
+   the top-level-imports rule; mark it with a comment. Note the limit of
+   this fall-through: it catches runtime **exceptions**, not an OOM kill —
+   on the 1 GB micro profile Kokoro must be excluded by config up front
+   ("Deployment profiles"), not left to degrade at runtime. First task of
+   this milestone: on a clean machine check whether Kokoro **and** Piper
+   phonemization need the `espeak-ng` system library (both can); if
+   espeak-ng is needed, document it in the README (M8) as an optional
+   system requirement — without it the local engine falls through to
+   edge-tts.
+3. **edge-tts (online)** — the language's `edge_tts_voice`
+   (or `WORDGRAM_EDGE_TTS_VOICE` default), native mp3 output. Serbian's
+   **primary** engine (its chain is effectively dictionary-skip →
+   edge-tts) and the last-resort fallback for every other language. On
+   failure return `None`.
 
 Runs via `asyncio.create_task` in parallel with the agent stream,
 speculatively for the raw input; awaited only after the final edit.
@@ -722,9 +762,13 @@ Telegram rejects it, fall back to `send_audio`; if no audio, add
 "🔇 no audio" to the status line. Tests: mocked httpx for
 the dictionary path (hit, miss, HTTP error); fake kokoro/piper modules
 (success, import failure, inference failure) asserting per-language engine
-choice and fall-through order; monkeypatched edge-tts (success, failure →
-`None`); phrase input skips the dictionary step; a Serbian word skips the
-dictionary step (no `dict_api`); the normal flow uses the speculative
+choice and fall-through order; a `tts = "edge"` language (Serbian) skips
+step 2 and goes straight to edge-tts; the model-download task fetches only
+the files of engines/voices present in the config (a config with no
+`kokoro` language downloads no Kokoro model); monkeypatched edge-tts
+(success, failure → `None`); phrase input skips the dictionary step; a
+Serbian word skips the dictionary step (no `dict_api`); the normal flow
+uses the speculative
 result with no re-fetch (canonical == input), and the correction-button
 re-process (M7) fetches audio for the suggested word instead.
 
@@ -804,9 +848,14 @@ AnkiWeb credentials setup (`WORDGRAM_ANKIWEB_USER` / `_PASSWORD`; note
 the first-run full download of the existing collection and the
 self-hosted `WORDGRAM_SYNC_ENDPOINT` fallback), the optional `espeak-ng`
 system dependency for
-Kokoro/Piper, systemd/launchd hint (one paragraph, no unit files; note
-the backend is fully headless and fits a small cloud instance, e.g.
-Oracle Cloud Free Tier ARM). Bump version to `0.1.0`. Ensure `ruff check` is clean and
+Kokoro/Piper, systemd/launchd hint (one paragraph, no unit files), and
+the **two deployment profiles** ("Deployment profiles" section): the
+laptop config (English via Kokoro) and the Oracle Free Tier
+`VM.Standard.E2.1.Micro` config — 1 GB RAM, **swap file (1–2 GB) as a
+hard requirement** (one-paragraph setup hint), English via Piper or
+edge-tts, no Kokoro anywhere in `languages.toml`; note that the Arm
+`A1.Flex` shape, when a region actually has capacity, lifts the memory
+constraints. Bump version to `0.1.0`. Ensure `ruff check` is clean and
 wired into CI. Do NOT push the `v0.1.0` tag — publishing is deferred
 until PyPI credentials are configured; note this in the README.
 
@@ -862,6 +911,13 @@ until PyPI credentials are configured; note this in the README.
 - Telegram formatting IS in v0.1: HTML `<b>`/`<i>` only, enforced by
   the sanitizer, plain-text fallback on parse errors.
 - Word/phrase audio only — example sentences are never voiced (final).
+- **TTS engines are settled by research, not deferred to M6**
+  (`spec/decision-tts.md`): Serbian → edge-tts (Piper's lone `sr_RS`
+  model is Lower Sorbian, not Serbian — never use it; no other usable
+  free local voice exists); English → Kokoro on the laptop profile,
+  Piper/edge on the 1 GB micro profile; German → Piper. Two deployment
+  profiles (laptop / Oracle E2.1.Micro 1 GB + swap) differ only in
+  config; model downloads follow the config.
 - `/stats` IS in v0.1 (see M7).
 - v0.1 ships **two LLM backend kinds** behind one seam: `llmbroker` (the
   free-tier model pool — fast, no subprocess, no sandbox) and the CLI

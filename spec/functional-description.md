@@ -28,9 +28,12 @@ day becomes review material with zero extra effort.
   language of a single word is not reliable enough to trust with deck
   placement). Running as a group requires the bot's privacy mode to be
   disabled so it sees plain word messages (setup note in the README).
-- **Backend** — a single headless service; it can run on the user's
-  laptop or on a small always-on instance (e.g. Oracle Cloud Free Tier) —
-  nothing in it requires a GUI or a desktop application. It connects to
+- **Backend** — a single headless service with two supported homes: the
+  user's laptop, or a small always-on instance — an Oracle Cloud Free
+  Tier micro instance (1 GB RAM + swap) is enough; the two differ only
+  in configuration (notably which TTS engine voices English — see
+  "Pronunciation audio" and the implementation plan's "Deployment
+  profiles"). Nothing in it requires a GUI or a desktop application. It connects to
   Telegram via long polling, so no public IP, domain, or webhook is
   needed.
 - **LLM** — a pluggable backend, selected via configuration (and, once
@@ -175,10 +178,17 @@ both in the chat and on the flashcard.
   dictionary sources when one exists (for the languages those sources
   cover — English, German; Serbian has none). When no recording exists
   (phrases, rare words, unsupported languages), generate audio with a
-  **local** free TTS engine — local so that audio keeps working with no
-  external service to break: Kokoro for English, Piper for the other
-  languages. If the local engine fails for any reason, a free online TTS
-  is tried as a last resort.
+  free TTS engine, **local where a usable voice model exists** — local
+  so that audio keeps working with no external service to break: Kokoro
+  for English (on the laptop; the 1 GB micro instance uses Piper
+  instead), Piper for German. Serbian has no usable local voice model
+  at all (the decision record `decision-tts.md` documents why — the one
+  model labeled Serbian is in fact Lower Sorbian), so Serbian audio
+  comes from a free online TTS (Microsoft Edge neural voices via
+  edge-tts) — acceptable because audio is generated once per word and
+  stored with the card, so an outage only affects words added during
+  it. If the chosen engine fails for any reason, the free online TTS is
+  tried as a last resort for every language.
 - **Delivery**:
   - Telegram: a short voice message right after the analysis, so the user
     hears the word immediately.
