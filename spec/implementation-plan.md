@@ -29,6 +29,34 @@ Rules:
   ends with an explicit test list — implement those tests, plus whatever
   the code itself obviously requires.
 
+## Execution protocol (how to drive this plan)
+
+The plan is executed **one milestone per working session**, in order.
+For every milestone the executing agent must:
+
+1. Read, in this order: `functional-description.md` (at minimum the
+   sections the milestone touches), then this file's "Rules",
+   "Technology choices", "Configuration", "Languages configuration",
+   "Word pipeline", and "The LLM contract" sections, then the
+   milestone's own section — plus any section or decision doc the
+   milestone explicitly names (e.g. "Agent hardening" for M2,
+   "Deployment profiles" for M6/M8).
+2. Implement exactly the milestone's scope — code and its tests in the
+   same commit(s). Do not pull in later milestones' work; the "Word
+   pipeline" step numbers say which step belongs to which milestone.
+3. Finish only when `uv run pytest` and `ruff check` are green.
+4. Where this plan and the functional description disagree, the
+   functional description wins — and the plan is corrected in the same
+   commit.
+
+Prompt template for the operator (one per milestone):
+
+> Execute milestone M\<N\> from `spec/implementation-plan.md`, following
+> its "Execution protocol" section: read the sections it lists, then
+> implement exactly M\<N\>'s scope with its tests. On any conflict,
+> `spec/functional-description.md` wins. Finish with `uv run pytest`
+> and `ruff check` green, then commit.
+
 ## Technology choices (fixed)
 
 | Concern | Choice |
