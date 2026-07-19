@@ -71,7 +71,7 @@ Prompt template for the operator (one per milestone):
 | Dictionary pronunciation | `https://api.dictionaryapi.dev/api/v2/entries/{lang}/{word}` where `{lang}` is the source language's `dict_api` code (`en`, `de`, …; Serbian is unsupported → skip this step) — take the first `phonetics[].audio` non-empty URL (they are Wiktionary recordings); for English prefer entries whose URL contains the configured accent (`-us` / `-uk`), else any |
 | Settings | `pydantic-settings`, env prefix `WORDGRAM_`, `.env` support |
 | Word log (stats) | stdlib `sqlite3`, single DB file |
-| LLM | Pluggable backend behind one `stream_completion` seam (M2), **both kinds shipped in v0.1**, selected by config and by source language (from the languages table, M1): (a) **`llmbroker`** — the author's free-tier model-pool broker (`github.com/andgineer/llmbroker`): `AsyncBroker` over a pool of free, rate-limited models with automatic failover and quality-based routing, **no metered key** — a plain text→text call, so no subprocess, no agent sandbox, and much lower per-request latency than a coding agent; non-streaming (returns the full answer). (b) **CLI coding agent** — the same three as news-recap, `claude` / `codex` / `antigravity`, for what the pooled models can't handle. The **M0 spike (precedes M1)** benchmarks which backend is sufficient per language and how much faster llmbroker is, and sets the v0.1 default |
+| LLM | Pluggable backend behind one `stream_completion` seam (M2), **three backend kinds shipped in v0.1**, selected by config and by source language (from the languages table, M1): (a) **`llmbroker` pool** — the author's free-tier model-pool broker (`github.com/andgineer/llmbroker`): `AsyncBroker` over a pool of free, rate-limited models with automatic failover and quality-based routing, **no metered key** — a plain text→text call, so no subprocess, no agent sandbox, and much lower per-request latency than a coding agent; non-streaming (returns the full answer). (b) **`llmbroker` direct client** (paid, **opt-in, never required**) — a single explicitly named frontier model called directly through llmbroker's new *direct client* (no pool, no failover, no routing), the one backend that is both **frontier-quality and streaming** while still a plain text→text HTTPS call that fits the 1 GB micro instance (no laptop needed); its role is hard languages and "who wants quality". This direct client is a **new llmbroker feature** — tracked in `tickets/llmbroker-direct-streaming-client.md` (to be implemented in the broker); wordgram's `api` backend is a thin adapter over it, so a single dependency (llmbroker) covers backends (a) and (b) with one error taxonomy. (c) **CLI coding agent** — the same three as news-recap, `claude` / `codex` / `antigravity`; kept as a **marginal, laptop-only option** for flat-rate-subscription users willing to keep a laptop on (its runtime and interactive auth do not fit the micro instance), copy-and-paste from news-recap. The **M0 spike (precedes M1)** benchmarks which backend is sufficient per language and how much faster llmbroker is, and sets the v0.1 defaults |
 | Lint | `ruff` (line-length 99), run in CI after tests |
 
 ## Deployment profiles
@@ -94,6 +94,15 @@ configuration** (`languages.toml` + env), never a code path:
   done ahead of time. English therefore uses Piper
   (`en_US-lessac-medium`) or edge-tts; German Piper; Serbian edge-tts.
 
+**LLM backend availability is per-profile too** — the same "config, not code
+path" principle as the TTS engines. Both llmbroker backends (the free pool and
+the paid direct client) are plain HTTPS calls that fit the 1 GB micro instance,
+so on **micro** the choice is `llmbroker` (default) with `api` as the paid
+escape-hatch for hard languages. The **CLI `agent`** backend is **laptop-only**
+(its runtime footprint and interactive subscription auth do not fit micro), so
+`languages.toml` on the micro profile never sets `backend = "agent"`. On the
+**laptop** profile all three are available.
+
 Model downloads (M6) are driven by the config: only engines and voices
 referenced by `languages.toml` are fetched, so the micro profile never
 downloads the ~300 MB Kokoro model. Full engine rationale and the
@@ -108,7 +117,7 @@ comparison table: `spec/decision-tts.md`.
 | `WORDGRAM_TARGET_LANG` | language of all explanations and translations, app-wide | `ru` |
 | `WORDGRAM_LANGUAGES_CONFIG` | path to the TOML table defining each source language (see "Languages configuration" below): topic id, deck, backend, dictionary code, TTS engine + voice, accent, allowed script | `~/.wordgram/languages.toml` |
 | `WORDGRAM_GROUP_ID` | Telegram supergroup id the bot serves; messages from other chats are ignored | required |
-| `WORDGRAM_LLM_BACKEND` | `llmbroker` or `agent` — fallback backend kind for a language whose table entry omits `backend` (default set by the M0 spike) | `llmbroker` |
+| `WORDGRAM_LLM_BACKEND` | `llmbroker`, `api`, or `agent` — fallback backend kind for a language whose table entry omits `backend` (default set by the M0 spike) | `llmbroker` |
 | `WORDGRAM_AGENT` | when backend = `agent`: `claude`, `codex`, or `antigravity` | `claude` |
 | `WORDGRAM_CLAUDE_CMD` | claude argv template | `claude -p {prompt} --model {model} --output-format stream-json --include-partial-messages --verbose --allowed-tools ""` (empty allow-list = nothing allowed; see "Agent hardening") |
 | `WORDGRAM_CODEX_CMD` | codex argv template | `codex exec --model {model} --sandbox read-only -c model_reasoning_effort=low --output-last-message {out_file} {prompt}` |
@@ -119,6 +128,10 @@ comparison table: `spec/decision-tts.md`.
 | `WORDGRAM_LLMBROKER_CONFIG` | path to llmbroker's `llms.toml` (model pool); generate with `llmbroker preset freetier > llms.toml` | `~/.wordgram/llms.toml` |
 | `WORDGRAM_LLMBROKER_OPERATION` | operation label passed to `ask`/`chat` so llmbroker tracks per-task quality and routes accordingly | `vocab` |
 | `WORDGRAM_LLMBROKER_WEB` | allow the llmbroker backend a web-search tool for grounding (hard languages — see M0); off by default | `false` |
+| `WORDGRAM_API_PROVIDER` | when backend = `api`: `anthropic`, `openai`, or `google` — which provider llmbroker's direct client calls | `anthropic` |
+| `WORDGRAM_API_MODEL` | paid model name passed to the direct client (a frontier `sonnet`-class model) | per provider |
+| `WORDGRAM_API_KEY` | API key for the selected paid provider; passed only to llmbroker's direct client, never into any agent subprocess | required if any language uses backend = `api` |
+| `WORDGRAM_API_DAILY_CAP` | max paid direct-client calls per day; on exceed, that language falls back to the free `llmbroker` pool for the rest of the day (M2). `0` = unlimited | `100` |
 | `WORDGRAM_ANKIWEB_USER` | AnkiWeb account (email) for sync; required when `WORDGRAM_ANKI_SYNC` is on | required if sync on |
 | `WORDGRAM_ANKIWEB_PASSWORD` | AnkiWeb password — used once to obtain the sync key (hkey), which is then stored in `WORDGRAM_DATA_DIR` and reused | required if sync on |
 | `WORDGRAM_SYNC_ENDPOINT` | custom sync server URL (the self-hosted fallback from the decision doc); empty = AnkiWeb | empty |
@@ -162,7 +175,9 @@ script    = "latin"
 topic_id  = 4
 name      = "Српски"
 deck      = "Serbian::Vocabulary"
-backend   = "agent"            # per the M0 spike, if the pool is insufficient for Serbian
+backend   = "api"              # per the M0 spike, if the free pool is insufficient for
+                               # Serbian: "api" (paid, streams, runs on the micro instance)
+                               # or "agent" (CLI, laptop-only) — M0 decides
 # dict_api omitted — dictionaryapi.dev has no Serbian
 tts       = "edge"             # no usable local voice: Piper's lone sr_RS model
                                # ("serbski_institut") is actually Lower Sorbian —
@@ -178,9 +193,10 @@ Semantics:
   against `topic_id`. No match (General topic, or an unmapped topic) →
   short hint, no LLM call. The whitelist (`WORDGRAM_ALLOWED_USER_IDS`)
   still gates the sender independently.
-- **Backend.** `backend` per language; absent → `WORDGRAM_LLM_BACKEND`.
-  This replaces the old `WORDGRAM_BACKEND_BY_LANG` map — one place per
-  language, not a separate parallel setting.
+- **Backend.** `backend` per language — `llmbroker` (free pool), `api`
+  (paid direct client, opt-in), or `agent` (CLI); absent →
+  `WORDGRAM_LLM_BACKEND`. This replaces the old `WORDGRAM_BACKEND_BY_LANG`
+  map — one place per language, not a separate parallel setting.
 - **Audio.** `dict_api` (omit = skip the dictionary step), `tts` (which
   engine — `kokoro` for English on the laptop profile, `piper` for
   German and for English on the micro profile, `edge` for Serbian),
@@ -287,9 +303,10 @@ src/wordgram/
   main.py           # entry point: build app, run polling; console_script `wordgram`
   bot.py            # handlers (whitelist filter, topic->language routing, commands, correction-button callback) + the shared word pipeline `process_word` (see "Word pipeline")
   streaming.py      # placeholder-edit loop bridging the backend stream -> Telegram edits
-  backend.py        # stream_completion dispatcher: pick backend by lang (languages table), delegate
+  backend.py        # stream_completion dispatcher: pick backend by lang (languages table), delegate; enforce WORDGRAM_API_DAILY_CAP with fallback to the llmbroker pool
   agent.py          # CLI-agent backend: subprocess runner yielding text deltas
-  llm_backend.py    # llmbroker backend: AsyncBroker ask/chat -> single-chunk yield
+  llm_backend.py    # llmbroker pool backend: AsyncBroker ask/chat -> single-chunk yield
+  api_backend.py    # paid api backend: thin adapter over llmbroker's direct streaming client (broker feature -> tickets/llmbroker-direct-streaming-client.md)
   prompt.py         # prompt template (source/target lang slots) + card-payload extraction
   card.py           # note dataclass (word, ipa, 1-3 meanings) + optional suggestion, validation of the LLM payload
   anki.py           # headless collection wrapper (pylib): open/bootstrap, add/find/delete notes, media, debounced AnkiWeb sync
@@ -502,6 +519,14 @@ everywhere.
   language slots filled per item) so we compare backends, not prompts. For each (backend × model × language) record: total latency,
   which model llmbroker's pool actually answered with (`reply.llm_name`),
   rate-limit/failover behaviour, and the raw analysis + `===CARD===` payload.
+- **Survey the frontier (paid) models through their APIs directly** — the same
+  transport the `api` backend will later use via llmbroker's direct client. A
+  clean SDK call is cheaper and simpler to script than a CLI subprocess, and
+  because **quality is a property of the model, not the transport**, an API run
+  of a frontier `sonnet`-class model also stands in for the CLI agent's quality
+  on the same model — so the CLI agent needs only a latency note here, not a
+  separate quality pass. The harness calls provider APIs directly and does
+  **not** depend on the broker's direct-client feature having landed yet.
 - Score against a rubric — a human pass by a Russian + source-language
   speaker, optionally with an LLM-judge as a pre-filter, never the final
   word: translation & register correctness, IPA plausibility, fact-checkable
@@ -513,8 +538,9 @@ everywhere.
 per language/model, grounding on/off, and the resulting v0.1 defaults:
 `WORDGRAM_LLM_BACKEND` (expected `llmbroker` for English), the per-language
 `backend` values in the languages table for languages where the pool is not
-sufficient (Serbian is the likely `agent` case), and whether
-`WORDGRAM_LLMBROKER_WEB` defaults on for those. If the
+sufficient (Serbian's likely fallback is now `api` — paid, streaming, and it
+runs on the always-on micro instance — rather than `agent`, which needs a
+laptop), and whether `WORDGRAM_LLMBROKER_WEB` defaults on for those. If the
 spike finds the free-tier pool insufficient even for English, the v0.1 default
 flips to `agent` and llmbroker stays a config-selectable option — but the
 backend seam and both implementations still ship. This doc is an input to M2,
@@ -549,9 +575,9 @@ per-language validation incl. the `?` prefix and Cyrillic-vs-Latin per
 language, topic routing (mapped / General / unmapped), whitelist filter
 (use PTB objects directly, no live bot).
 
-### M2 — LLM backend runner (llmbroker + CLI agent)
+### M2 — LLM backend runner (llmbroker pool + paid api + CLI agent)
 
-One seam, two backend kinds — both shipped here, defaults set by M0. The
+One seam, three backend kinds — all shipped here, defaults set by M0. The
 handler calls `async def stream_completion(prompt, lang) -> AsyncIterator[str]`
 (in a small `backend.py` dispatcher) which resolves the backend from the
 language's `backend` field (`languages.py`) or, if absent,
@@ -572,6 +598,26 @@ language's `backend` field (`languages.py`) or, if absent,
   a startup crash. Optionally feed the parse outcome back via
   `reply.record_quality(...)` (a clean card JSON = good) so the pool
   self-tunes — noted, not required for v0.1.
+- **`api` backend** (`api_backend.py`): the paid, opt-in path. Delegates to
+  **llmbroker's direct client** — a single named frontier model, no pool, no
+  failover: the new broker feature tracked in
+  `tickets/llmbroker-direct-streaming-client.md` — configured by
+  `WORDGRAM_API_PROVIDER` / `WORDGRAM_API_MODEL` / `WORDGRAM_API_KEY`. Unlike
+  the pool, the direct client **streams**, so this backend yields real
+  incremental deltas into the M3 bridge (first visible content within a few
+  seconds, like the claude CLI agent, but on the micro instance without a
+  laptop). Like the pool it is a plain text→text HTTPS call the operator
+  already trusts — no subprocess, no sandbox, no default-deny env — so "Agent
+  hardening" does not apply. Map its errors (auth, rate-limit, timeout,
+  provider failure) onto the same `AgentError` the bridge already knows, via
+  llmbroker's error types, so the error path stays uniform. Import the broker's
+  direct client lazily so a missing/old llmbroker degrades to a clear config
+  error, not a startup crash. **Daily spend cap:** the `backend.py` dispatcher
+  counts this language's paid calls for the current day; once
+  `WORDGRAM_API_DAILY_CAP` is reached it transparently routes the rest of the
+  day to the free `llmbroker` pool and records the fallback (surfaced in
+  `/status`, M7). The counter lives in memory and resets on restart —
+  acceptable for a personal tool.
 - **CLI `agent` backend** (`agent.py`): unchanged from the original plan —
   spawns the agent selected by `WORDGRAM_AGENT` from its command
   template. Template handling: `shlex.split` the template FIRST, then
@@ -619,12 +665,18 @@ has no `network_access`, and no template carries
 `reply.text` as one chunk, that `operation` is passed through, that
 `NoLLMAvailableError` and a timeout both surface as `AgentError`, and that
 the `backend.py` dispatcher picks the backend from the language's `backend`
-field before falling back to `WORDGRAM_LLM_BACKEND`.
+field before falling back to `WORDGRAM_LLM_BACKEND`. For the **`api` backend**:
+a fake direct client (monkeypatched — no real provider) asserting streamed
+deltas reach the bridge as multiple chunks, that provider/model/key config is
+passed through, that provider/auth/timeout errors surface as `AgentError`, and
+that once `WORDGRAM_API_DAILY_CAP` is hit the dispatcher falls back to the
+`llmbroker` pool for the remaining calls that day.
 
 Closing this milestone requires the manual check from "Agent hardening" —
-which applies **only to the CLI `agent` backend**; the llmbroker backend is a
-plain text→text API call with no shell, file, or arbitrary-network reach, so
-the containment canaries below are moot for it (there is nothing to contain) —
+which applies **only to the CLI `agent` backend**; both llmbroker backends (the
+free pool and the paid `api` direct client) are plain text→text API calls with
+no shell, file, or arbitrary-network reach, so the containment canaries below
+are moot for them (there is nothing to contain) —
 the only sanctioned manual step in the plan; real CLIs stay out of the
 test suite. For each supported agent, run its default template once and
 confirm two things: (1) a plain word generation completes with tools
@@ -906,7 +958,10 @@ Commands:
   an `agent` backend, whether the CLI executable (the first argv token
   of its command template) resolves via `shutil.which`; for `llmbroker`,
   whether the config file exists and the broker loaded a non-empty model
-  pool — each annotated with the outcome and time of that language's
+  pool; for `api`, whether `WORDGRAM_API_KEY` is set, plus the day's
+  paid-call count against `WORDGRAM_API_DAILY_CAP` and whether the language
+  has fallen back to the free pool for the rest of the day (M2) — each
+  annotated with the outcome and time of that language's
   last LLM call, kept in memory ("no calls yet" after a restart). No
   live LLM probe: `/status` must answer instantly and never spend a
   request. Plus AnkiWeb sync state: last sync result and time, whether
@@ -965,7 +1020,8 @@ Tests: stats aggregation windows with per-language breakdown, undo
 removes the note, trashes its collection media file and deletes its
 cached audio file, redo replaces the previous
 note, undo/redo state machine, `/status` health and sync-state rendering
-(agent CLI present/missing, llmbroker pool loaded/empty, ok /
+(agent CLI present/missing, llmbroker pool loaded/empty, api key set/missing
+and daily-cap count/fallback state, ok /
 unsynced-changes / full-sync-required error), the correction button
 toggles input↔suggestion and replaces the note (preserving the
 lookup-only flag and flipping the label), the correction re-run edits
@@ -1055,15 +1111,21 @@ until PyPI credentials are configured; note this in the README.
   profiles (laptop / Oracle E2.1.Micro 1 GB + swap) differ only in
   config; model downloads follow the config.
 - `/stats` IS in v0.1 (see M7).
-- v0.1 ships **two LLM backend kinds** behind one seam: `llmbroker` (the
-  free-tier model pool — fast, no subprocess, no sandbox) and the CLI
-  coding agent (`WORDGRAM_AGENT`: `claude` / `codex` / `antigravity`).
-  Which one is the default, and which languages route to which, is fixed
-  by the **M0 spike** (precedes M1) — not a guess and not deferred to a
-  later version. This is *backend* selection, optionally per source
-  language (the `backend` field in the languages table); it is NOT
-  news-recap-style per-task routing tables, which a single-user bot still
-  doesn't need.
+- v0.1 ships **three LLM backend kinds** behind one seam: `llmbroker` (the
+  free-tier model pool — fast, no subprocess, no sandbox; the default),
+  `api` (a paid, **opt-in, never-required** single frontier model called
+  through llmbroker's new *direct client* — the only frontier-quality *and*
+  streaming backend that still runs on the micro instance; a broker feature
+  tracked in `tickets/llmbroker-direct-streaming-client.md`), and the CLI
+  coding agent (`WORDGRAM_AGENT`: `claude` / `codex` / `antigravity`) — kept
+  as a marginal, laptop-only option for flat-rate subscription users. Metered
+  spend is bounded by `WORDGRAM_API_DAILY_CAP` with automatic fallback to the
+  free pool, so no metered API is ever required. Which backend is the default,
+  and which languages route to which, is fixed by the **M0 spike** (precedes
+  M1) — not a guess and not deferred to a later version. This is *backend*
+  selection, optionally per source language (the `backend` field in the
+  languages table); it is NOT news-recap-style per-task routing tables, which
+  a single-user bot still doesn't need.
 - Agents run with tool execution denied via each vendor's **own**
   protection — claude allow-list (empty; `Read` fallback), codex
   `--sandbox read-only`, agy's own Terminal Sandbox settings — never

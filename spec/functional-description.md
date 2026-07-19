@@ -37,16 +37,23 @@ day becomes review material with zero extra effort.
   Telegram via long polling, so no public IP, domain, or webhook is
   needed.
 - **LLM** — a pluggable backend, selected via configuration (and, once
-  more source languages are added, per language). Two kinds, both present
+  more source languages are added, per language). Three kinds, all present
   from v0.1: a **direct free-tier model pool** via the author's
   `llmbroker` (many free, rate-limited models with automatic failover —
-  a plain text→text call, no subprocess, faster) and a **CLI coding
-  agent** under a flat-rate subscription (the same three as `news-recap`:
-  Claude, Codex, Antigravity/Gemini) for analysis the pooled models
-  can't do well. Neither is metered — no per-token API cost. Which
-  backend is the default, and whether harder source languages (e.g.
-  Serbian) need the coding agent or web-grounded lookups, is settled by a
-  benchmark that runs *before* the build (implementation plan, M0).
+  a plain text→text call, no subprocess, faster; the default); an
+  **optional paid frontier model** called directly through llmbroker's
+  *direct client* (opt-in, never required — for hard languages or when the
+  user wants top quality; the only backend that is both frontier-quality
+  and streaming while still running on the small always-on instance); and
+  a **CLI coding agent** under a flat-rate subscription (the same three as
+  `news-recap`: Claude, Codex, Antigravity/Gemini) for analysis the pooled
+  models can't do well — a marginal, laptop-only option. The free pool and
+  the flat-rate agent are un-metered; the paid path is opt-in and its spend
+  is capped with automatic fallback to the free pool, so **no metered API is
+  ever required**. Which backend is the default, and whether harder source
+  languages (e.g. Serbian) need the paid model, the coding agent, or
+  web-grounded lookups, is settled by a benchmark that runs *before* the
+  build (implementation plan, M0).
 - **Anki** — a server-side Anki collection maintained by the backend
   itself through the headless Anki Python library (pylib) — no Anki
   application and no AnkiConnect run next to the backend. The backend
@@ -282,16 +289,20 @@ tool.
   expected win is a *fast complete answer* (a few seconds, no agent-loop
   overhead) rather than early tokens, so the placeholder-then-answer feel
   stays within budget.
-- **Cost**: no metered per-token API. LLM usage rides either the free-tier
-  `llmbroker` model pool or the existing flat-rate coding-agent
-  subscription; the design must not require a metered API key on any
-  backend.
+- **Cost**: **no metered API is ever required.** By default LLM usage rides
+  the free-tier `llmbroker` model pool or the existing flat-rate coding-agent
+  subscription — neither is metered. A **paid per-token model is available as
+  an opt-in backend** (`api`, via llmbroker's direct client) for hard
+  languages or top quality; it is never the mandatory path, and its spend is
+  bounded by a daily cap (`WORDGRAM_API_DAILY_CAP`) that falls back to the
+  free pool once reached. The design must run fully on un-metered backends;
+  the metered backend only ever adds an optional quality tier.
 - **Safety**: this concern applies to the **CLI coding-agent backend
-  only**. The `llmbroker` backend is a plain text→text API call — it has
-  no shell, no filesystem, and no arbitrary network reach, so a hijacked
-  prompt has nothing to exfiltrate with; the injection risk below is
-  structurally absent for it (one more reason to prefer it where quality
-  allows). For the coding-agent backend: user text is forwarded to a
+  only**. Both llmbroker backends — the free pool and the paid `api` direct
+  client — are plain text→text API calls: no shell, no filesystem, and no
+  arbitrary network reach, so a hijacked prompt has nothing to exfiltrate
+  with; the injection risk below is structurally absent for them (one more
+  reason to prefer them where quality allows). For the coding-agent backend: user text is forwarded to a
   coding agent running under the user's own account on the backend host
   (the laptop or the user's cloud instance — the same invariant either
   way). The text is untrusted — a malicious or mistyped phrase that
