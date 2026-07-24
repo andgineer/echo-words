@@ -1,6 +1,6 @@
 # echo-words
 
-Turns words into rich linguistic insights and automatically adds them to your spaced repetition system. 
+Turns words into rich linguistic insights and automatically adds them to your spaced repetition system.
 
 
 ### Advanced
@@ -14,4 +14,3 @@ to see all available options.
 !!! info "About"
     ![About](images/about.jpg)
     [About][echo_words.__about__]
-

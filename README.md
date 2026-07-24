@@ -2,7 +2,7 @@
 [![Coverage](https://raw.githubusercontent.com/andgineer/echo-words/python-coverage-comment-action-data/badge.svg)](https://htmlpreview.github.io/?https://github.com/andgineer/echo-words/blob/python-coverage-comment-action-data/htmlcov/index.html)
 # echo-words
 
-Turns words into rich linguistic insights and automatically adds them to your spaced repetition system. 
+Turns words into rich linguistic insights and automatically adds them to your spaced repetition system.
 
 # Documentation
 
