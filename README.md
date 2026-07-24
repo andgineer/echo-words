@@ -5,7 +5,7 @@
 | Name                             |    Stmts |     Miss |   Cover |   Missing |
 |--------------------------------- | -------: | -------: | ------: | --------: |
 | src/echo\_words/\_\_about\_\_.py |        1 |        0 |    100% |           |
-| src/echo\_words/main.py          |       16 |        5 |     69% |     22-31 |
+| src/echo\_words/main.py          |       16 |        5 |     69% |     22-29 |
 | **TOTAL**                        |   **17** |    **5** | **71%** |           |
 
 
