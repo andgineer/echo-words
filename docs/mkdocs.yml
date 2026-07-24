@@ -1,0 +1,45 @@
+# yaml-language-server: $schema=https://squidfunk.github.io/mkdocs-material/schema.json
+site_name: echo_words
+site_url: https://andgineer.github.io/echo-words
+site_author: Andrey Sorokin
+
+# Repository
+repo_name: echo_words
+repo_url: https://github.com/andgineer/echo-words
+edit_uri: edit/master/docs
+docs_dir: 'src/LANGUAGE'
+site_dir: 'SITE_DIR'
+
+plugins:
+  - awesome-pages
+  - search:
+      lang: LANGUAGE
+  - mkdocstrings:
+        handlers:
+          python:
+            options:
+              show_root_heading: true
+
+markdown_extensions:
+  - abbr
+  - attr_list
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.snippets:
+      base_path: 'docs/includes'
+  - admonition
+
+extra:
+  alternate:
+    - name: English
+      link: /echo-words/
+      lang: en
+    - name: Русский
+      link: /echo-words/ru/
+      lang: ru
+
+nav:
+  - index.md
+  - installation.md

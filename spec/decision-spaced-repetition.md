@@ -13,7 +13,7 @@ The plan integrates with Anki through **AnkiConnect**, which is an
 add-on inside Anki desktop: it only works while a full Qt GUI
 application is running. That anchors the backend to the laptop, makes
 the deployment heavy (a desktop app as a service dependency), and rules
-out running wordgram as a small headless service on Oracle Cloud Free
+out running echo-words as a small headless service on Oracle Cloud Free
 Tier. The research question: is there an architecture that
 
 - needs no always-running GUI application,
@@ -103,7 +103,7 @@ Risks, honestly:
    between releases. Mitigation: pin `anki==` in `uv.lock` (already
    the project norm) and upgrade deliberately. `apy` has tracked this
    for years with modest effort.
-3. **One writer.** The server collection is written only by wordgram
+3. **One writer.** The server collection is written only by echo-words
    and only synced elsewhere — no concurrent-writer problem by
    construction (single-instance NFR).
 4. **AnkiWeb dependency.** If the auth path ever breaks, the fallback
@@ -252,9 +252,9 @@ which is now cheap.
   running" status/queue wording reduces to a sync-pending note.
 - **Implementation plan:** M5 rewrites `anki.py` against pylib (same
   tests, mock the collection instead of httpx); M7 drops
-  `pending_notes` (keeps `word_log`); config drops `WORDGRAM_ANKI_URL`
-  and gains `WORDGRAM_ANKIWEB_USER` / password (or a stored sync key)
-  — `WORDGRAM_ANKI_SYNC` semantics survive as-is.
+  `pending_notes` (keeps `word_log`); config drops `ECHOWORDS_ANKI_URL`
+  and gains `ECHOWORDS_ANKIWEB_USER` / password (or a stored sync key)
+  — `ECHOWORDS_ANKI_SYNC` semantics survive as-is.
 - **Not decided here:** actually moving the backend off the laptop.
   B makes the backend location-independent, but the laptop still
   anchors the **CLI coding-agent** subscriptions

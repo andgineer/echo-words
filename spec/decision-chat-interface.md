@@ -30,7 +30,7 @@ a single process on the user's laptop, pinned there by three anchors:
   added locally;
 - the **CLI coding agents** (claude / codex / antigravity) are
   authenticated under the user's flat-rate subscriptions on the laptop;
-- the **local TTS models** (Kokoro / Piper) live in `WORDGRAM_DATA_DIR`.
+- the **local TTS models** (Kokoro / Piper) live in `ECHOWORDS_DATA_DIR`.
 
 Moving the backend to a cloud instance would require exposing the
 laptop's AnkiConnect to the network — strictly worse. So a Mattermost

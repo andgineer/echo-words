@@ -1,15 +1,15 @@
-# wordgram — Implementation Plan
+# echo-words — Implementation Plan
 
-Execution handoff for the `wordgram` project. Read
+Execution handoff for the `echo-words` project. Read
 `functional-description.md` first — it is the source of truth for
 *what* to build; this plan says *how*. Where the two disagree, the
 functional description wins.
 
 ## Where the work happens
 
-Repository: `github.com/andgineer/wordgram`. It already contains the
+Repository: `github.com/andgineer/echo-words`. It already contains the
 0.0.1 scaffold: hatchling packaging with the version in
-`src/wordgram/__about__.py`, `src` layout, pytest, `uv.lock`,
+`src/echo-words/__about__.py`, `src` layout, pytest, `uv.lock`,
 CI workflow (`.github/workflows/ci.yml`, runs `uv sync --frozen` +
 `uv run pytest tests/`), and a publish workflow triggered by `v*` semver
 tags. Build on top of it; do not restructure the packaging.
@@ -63,15 +63,15 @@ Prompt template for the operator (one per milestone):
 |---|---|
 | Telegram framework | `python-telegram-bot` v21+ (async, long polling) |
 | HTTP client (dictionary pronunciation) | `httpx` (async) |
-| Anki integration | **`anki` pylib, headless** (the non-GUI core of Anki as a PyPI package; manylinux x86_64 + aarch64 wheels, so it runs on Oracle Free Tier ARM). The backend maintains its own collection in `WORDGRAM_DATA_DIR/anki/` and syncs to AnkiWeb via pylib's `sync_login` / `sync_collection` / `sync_media`. Pin the version (`anki==26.5` at the time of writing) — pylib's API drifts between releases; upgrades are deliberate. No AnkiConnect, no Anki desktop, no GUI anywhere. Decision record: `spec/decision-spaced-repetition.md` |
-| TTS (English, local — **laptop profile only**) | Kokoro-82M via `kokoro-onnx` — local, Apache 2.0, near-natural English, faster than real time on CPU; nothing external to break. English only. Model (~300 MB) downloaded by a background task at startup into `WORDGRAM_DATA_DIR/models/` (see M6) — only when some language actually configures `kokoro`. Does NOT fit the 1 GB micro profile (see "Deployment profiles"): there English uses Piper or edge-tts instead. Verify at M6 whether `kokoro-onnx` needs the `espeak-ng` system library for phonemization — if it does, it is a documented system requirement, not a hidden crash |
+| Anki integration | **`anki` pylib, headless** (the non-GUI core of Anki as a PyPI package; manylinux x86_64 + aarch64 wheels, so it runs on Oracle Free Tier ARM). The backend maintains its own collection in `ECHOWORDS_DATA_DIR/anki/` and syncs to AnkiWeb via pylib's `sync_login` / `sync_collection` / `sync_media`. Pin the version (`anki==26.5` at the time of writing) — pylib's API drifts between releases; upgrades are deliberate. No AnkiConnect, no Anki desktop, no GUI anywhere. Decision record: `spec/decision-spaced-repetition.md` |
+| TTS (English, local — **laptop profile only**) | Kokoro-82M via `kokoro-onnx` — local, Apache 2.0, near-natural English, faster than real time on CPU; nothing external to break. English only. Model (~300 MB) downloaded by a background task at startup into `ECHOWORDS_DATA_DIR/models/` (see M6) — only when some language actually configures `kokoro`. Does NOT fit the 1 GB micro profile (see "Deployment profiles"): there English uses Piper or edge-tts instead. Verify at M6 whether `kokoro-onnx` needs the `espeak-ng` system library for phonemization — if it does, it is a documented system requirement, not a hidden crash |
 | TTS (local, both profiles) | Piper (`piper-tts`, ONNX voices, MIT) — local neural TTS with per-language voices, ~60–100 MB per voice, real time on Raspberry-Pi-class CPUs, so it runs even on the 1 GB micro instance. German confirmed (`de_DE-thorsten-medium`); English voices exist (e.g. `en_US-lessac-medium`) for the micro profile. **Serbian is settled: Piper has NO usable Serbian voice** — the only `sr_RS` dataset (`serbski_institut`) is actually **Lower Sorbian** (Sorbian Institute recordings miscatalogued under the Serbian locale) and must never be configured; Serbian's engine is edge-tts (decision record: `spec/decision-tts.md`). Configured voices downloaded at startup, pinned-URL + checksum mechanism (M6). Piper also phonemizes via `espeak-ng` — the same optional system dependency as Kokoro |
 | TTS (online) | `edge-tts` (MS Edge neural voices, free online, outputs mp3, per-language voices e.g. `de-DE-*`) — the **primary** engine for Serbian (`sr-RS-SophieNeural` / `sr-RS-NicholasNeural`, near-commercial quality, both scripts; no usable local voice exists — see `spec/decision-tts.md`) and the last-resort fallback for every other language when the local engine fails. Its known flakiness (unofficial API, recurring 403 breakage) is acceptable in both roles: audio is generated once per word and stored in Anki media, so an outage only affects words added during it |
 | mp3 encoding | `lameenc` (pure-wheel LAME bindings) to convert Kokoro's / Piper's WAV output to mp3 — no ffmpeg system dependency |
 | Dictionary pronunciation | `https://api.dictionaryapi.dev/api/v2/entries/{lang}/{word}` where `{lang}` is the source language's `dict_api` code (`en`, `de`, …; Serbian is unsupported → skip this step) — take the first `phonetics[].audio` non-empty URL (they are Wiktionary recordings); for English prefer entries whose URL contains the configured accent (`-us` / `-uk`), else any |
-| Settings | `pydantic-settings`, env prefix `WORDGRAM_`, `.env` support |
+| Settings | `pydantic-settings`, env prefix `ECHOWORDS_`, `.env` support |
 | Word log (stats) | stdlib `sqlite3`, single DB file |
-| LLM | Pluggable backend behind one `stream_completion` seam (M2), **three backend kinds shipped in v0.1**, selected by config and by source language (from the languages table, M1): (a) **`llmbroker` pool** — the author's free-tier model-pool broker (`github.com/andgineer/llmbroker`): `AsyncBroker` over a pool of free, rate-limited models with automatic failover and quality-based routing, **no metered key** — a plain text→text call, so no subprocess, no agent sandbox, and much lower per-request latency than a coding agent; non-streaming (returns the full answer). (b) **`llmbroker` direct client** (paid, **opt-in, never required**) — a single explicitly named frontier model called directly through llmbroker's new *direct client* (no pool, no failover, no routing), the one backend that is both **frontier-quality and streaming** while still a plain text→text HTTPS call that fits the 1 GB micro instance (no laptop needed); its role is hard languages and "who wants quality". This direct client is a **new llmbroker feature** — tracked in `tickets/llmbroker-direct-streaming-client.md` (to be implemented in the broker); wordgram's `api` backend is a thin adapter over it, so a single dependency (llmbroker) covers backends (a) and (b) with one error taxonomy. (c) **CLI coding agent** — the same three as news-recap, `claude` / `codex` / `antigravity`; kept as a **marginal, laptop-only option** for flat-rate-subscription users willing to keep a laptop on (its runtime and interactive auth do not fit the micro instance), copy-and-paste from news-recap. The **M0 spike (precedes M1)** benchmarks which backend is sufficient per language and how much faster llmbroker is, and sets the v0.1 defaults |
+| LLM | Pluggable backend behind one `stream_completion` seam (M2), **three backend kinds shipped in v0.1**, selected by config and by source language (from the languages table, M1): (a) **`llmbroker` pool** — the author's free-tier model-pool broker (`github.com/andgineer/llmbroker`): `AsyncBroker` over a pool of free, rate-limited models with automatic failover and quality-based routing, **no metered key** — a plain text→text call, so no subprocess, no agent sandbox, and much lower per-request latency than a coding agent; non-streaming (returns the full answer). (b) **`llmbroker` direct client** (paid, **opt-in, never required**) — a single explicitly named frontier model called directly through llmbroker's new *direct client* (no pool, no failover, no routing), the one backend that is both **frontier-quality and streaming** while still a plain text→text HTTPS call that fits the 1 GB micro instance (no laptop needed); its role is hard languages and "who wants quality". This direct client is a **new llmbroker feature** — tracked in `tickets/llmbroker-direct-streaming-client.md` (to be implemented in the broker); echo-words's `api` backend is a thin adapter over it, so a single dependency (llmbroker) covers backends (a) and (b) with one error taxonomy. (c) **CLI coding agent** — the same three as news-recap, `claude` / `codex` / `antigravity`; kept as a **marginal, laptop-only option** for flat-rate-subscription users willing to keep a laptop on (its runtime and interactive auth do not fit the micro instance), copy-and-paste from news-recap. The **M0 spike (precedes M1)** benchmarks which backend is sufficient per language and how much faster llmbroker is, and sets the v0.1 defaults |
 | Lint | `ruff` (line-length 99), run in CI after tests |
 
 ## Deployment profiles
@@ -112,39 +112,39 @@ comparison table: `spec/decision-tts.md`.
 
 | Variable | Meaning | Default |
 |---|---|---|
-| `WORDGRAM_BOT_TOKEN` | Telegram bot token | required |
-| `WORDGRAM_ALLOWED_USER_IDS` | comma-separated Telegram user IDs | required |
-| `WORDGRAM_TARGET_LANG` | language of all explanations and translations, app-wide | `ru` |
-| `WORDGRAM_LANGUAGES_CONFIG` | path to the TOML table defining each source language (see "Languages configuration" below): topic id, deck, backend, dictionary code, TTS engine + voice, accent, allowed script | `~/.wordgram/languages.toml` |
-| `WORDGRAM_GROUP_ID` | Telegram supergroup id the bot serves; messages from other chats are ignored | required |
-| `WORDGRAM_LLM_BACKEND` | `llmbroker`, `api`, or `agent` — fallback backend kind for a language whose table entry omits `backend` (default set by the M0 spike) | `llmbroker` |
-| `WORDGRAM_AGENT` | when backend = `agent`: `claude`, `codex`, or `antigravity` | `claude` |
-| `WORDGRAM_CLAUDE_CMD` | claude argv template | `claude -p {prompt} --model {model} --output-format stream-json --include-partial-messages --verbose --allowed-tools ""` (empty allow-list = nothing allowed; see "Agent hardening") |
-| `WORDGRAM_CODEX_CMD` | codex argv template | `codex exec --model {model} --sandbox read-only -c model_reasoning_effort=low --output-last-message {out_file} {prompt}` |
-| `WORDGRAM_ANTIGRAVITY_CMD` | antigravity argv template | `agy --model {model} -p {prompt}` — never with `--dangerously-skip-permissions`; see "Agent hardening" |
-| `WORDGRAM_MODEL` | model substituted into the template | per agent: `sonnet` (claude — nuanced Russian linguistic analysis is worth more than haiku's latency on a flat-rate plan), `gpt-5.2` (codex), `gemini-3.5-flash` (antigravity) |
-| `WORDGRAM_AGENT_TIMEOUT` | seconds | `120` |
-| `WORDGRAM_AGENT_ENV_PASSTHROUGH` | CSV escape hatch: extra env var names allowed into the agent subprocess (see "Agent hardening") | empty |
-| `WORDGRAM_LLMBROKER_CONFIG` | path to llmbroker's `llms.toml` (model pool); generate with `llmbroker preset freetier > llms.toml` | `~/.wordgram/llms.toml` |
-| `WORDGRAM_LLMBROKER_OPERATION` | operation label passed to `ask`/`chat` so llmbroker tracks per-task quality and routes accordingly | `vocab` |
-| `WORDGRAM_LLMBROKER_WEB` | allow the llmbroker backend a web-search tool for grounding (hard languages — see M0); off by default | `false` |
-| `WORDGRAM_API_PROVIDER` | when backend = `api`: `anthropic`, `openai`, or `google` — which provider llmbroker's direct client calls | `anthropic` |
-| `WORDGRAM_API_MODEL` | paid model name passed to the direct client (a frontier `sonnet`-class model) | per provider |
-| `WORDGRAM_API_KEY` | API key for the selected paid provider; passed only to llmbroker's direct client, never into any agent subprocess | required if any language uses backend = `api` |
-| `WORDGRAM_API_DAILY_CAP` | max paid direct-client calls per day; on exceed, that language falls back to the free `llmbroker` pool for the rest of the day (M2). `0` = unlimited | `100` |
-| `WORDGRAM_ANKIWEB_USER` | AnkiWeb account (email) for sync; required when `WORDGRAM_ANKI_SYNC` is on | required if sync on |
-| `WORDGRAM_ANKIWEB_PASSWORD` | AnkiWeb password — used once to obtain the sync key (hkey), which is then stored in `WORDGRAM_DATA_DIR` and reused | required if sync on |
-| `WORDGRAM_SYNC_ENDPOINT` | custom sync server URL (the self-hosted fallback from the decision doc); empty = AnkiWeb | empty |
-| `WORDGRAM_ANKI_SYNC` | sync the collection to AnkiWeb after additions (see M5) | `true` |
-| `WORDGRAM_ACCENT` | `us` or `uk`, English dictionary-audio and voice choice; per-language override in the languages table | `us` |
-| `WORDGRAM_TTS_VOICE` | default Kokoro (English) voice; per-language `tts_voice` in the table overrides | `af_heart` (us) / `bf_emma` (uk) |
-| `WORDGRAM_EDGE_TTS_VOICE` | default last-resort edge-tts voice; per-language `edge_tts_voice` in the table overrides | `en-US-AriaNeural` (us) / `en-GB-SoniaNeural` (uk) |
-| `WORDGRAM_AUDIO_TIMEOUT` | seconds to wait for the speculative pronunciation task after the final edit; on timeout the task is cancelled and the send proceeds with "🔇 no audio" (see M6) | `20` |
-| `WORDGRAM_DATA_DIR` | Anki collection (`anki/`), word-log DB, TTS models, downloaded audio, stored sync key | `~/.wordgram` |
+| `ECHOWORDS_BOT_TOKEN` | Telegram bot token | required |
+| `ECHOWORDS_ALLOWED_USER_IDS` | comma-separated Telegram user IDs | required |
+| `ECHOWORDS_TARGET_LANG` | language of all explanations and translations, app-wide | `ru` |
+| `ECHOWORDS_LANGUAGES_CONFIG` | path to the TOML table defining each source language (see "Languages configuration" below): topic id, deck, backend, dictionary code, TTS engine + voice, accent, allowed script | `~/.echo-words/languages.toml` |
+| `ECHOWORDS_GROUP_ID` | Telegram supergroup id the bot serves; messages from other chats are ignored | required |
+| `ECHOWORDS_LLM_BACKEND` | `llmbroker`, `api`, or `agent` — fallback backend kind for a language whose table entry omits `backend` (default set by the M0 spike) | `llmbroker` |
+| `ECHOWORDS_AGENT` | when backend = `agent`: `claude`, `codex`, or `antigravity` | `claude` |
+| `ECHOWORDS_CLAUDE_CMD` | claude argv template | `claude -p {prompt} --model {model} --output-format stream-json --include-partial-messages --verbose --allowed-tools ""` (empty allow-list = nothing allowed; see "Agent hardening") |
+| `ECHOWORDS_CODEX_CMD` | codex argv template | `codex exec --model {model} --sandbox read-only -c model_reasoning_effort=low --output-last-message {out_file} {prompt}` |
+| `ECHOWORDS_ANTIGRAVITY_CMD` | antigravity argv template | `agy --model {model} -p {prompt}` — never with `--dangerously-skip-permissions`; see "Agent hardening" |
+| `ECHOWORDS_MODEL` | model substituted into the template | per agent: `sonnet` (claude — nuanced Russian linguistic analysis is worth more than haiku's latency on a flat-rate plan), `gpt-5.2` (codex), `gemini-3.5-flash` (antigravity) |
+| `ECHOWORDS_AGENT_TIMEOUT` | seconds | `120` |
+| `ECHOWORDS_AGENT_ENV_PASSTHROUGH` | CSV escape hatch: extra env var names allowed into the agent subprocess (see "Agent hardening") | empty |
+| `ECHOWORDS_LLMBROKER_CONFIG` | path to llmbroker's `llms.toml` (model pool); generate with `llmbroker preset freetier > llms.toml` | `~/.echo-words/llms.toml` |
+| `ECHOWORDS_LLMBROKER_OPERATION` | operation label passed to `ask`/`chat` so llmbroker tracks per-task quality and routes accordingly | `vocab` |
+| `ECHOWORDS_LLMBROKER_WEB` | allow the llmbroker backend a web-search tool for grounding (hard languages — see M0); off by default | `false` |
+| `ECHOWORDS_API_PROVIDER` | when backend = `api`: `anthropic`, `openai`, or `google` — which provider llmbroker's direct client calls | `anthropic` |
+| `ECHOWORDS_API_MODEL` | paid model name passed to the direct client (a frontier `sonnet`-class model) | per provider |
+| `ECHOWORDS_API_KEY` | API key for the selected paid provider; passed only to llmbroker's direct client, never into any agent subprocess | required if any language uses backend = `api` |
+| `ECHOWORDS_API_DAILY_CAP` | max paid direct-client calls per day; on exceed, that language falls back to the free `llmbroker` pool for the rest of the day (M2). `0` = unlimited | `100` |
+| `ECHOWORDS_ANKIWEB_USER` | AnkiWeb account (email) for sync; required when `ECHOWORDS_ANKI_SYNC` is on | required if sync on |
+| `ECHOWORDS_ANKIWEB_PASSWORD` | AnkiWeb password — used once to obtain the sync key (hkey), which is then stored in `ECHOWORDS_DATA_DIR` and reused | required if sync on |
+| `ECHOWORDS_SYNC_ENDPOINT` | custom sync server URL (the self-hosted fallback from the decision doc); empty = AnkiWeb | empty |
+| `ECHOWORDS_ANKI_SYNC` | sync the collection to AnkiWeb after additions (see M5) | `true` |
+| `ECHOWORDS_ACCENT` | `us` or `uk`, English dictionary-audio and voice choice; per-language override in the languages table | `us` |
+| `ECHOWORDS_TTS_VOICE` | default Kokoro (English) voice; per-language `tts_voice` in the table overrides | `af_heart` (us) / `bf_emma` (uk) |
+| `ECHOWORDS_EDGE_TTS_VOICE` | default last-resort edge-tts voice; per-language `edge_tts_voice` in the table overrides | `en-US-AriaNeural` (us) / `en-GB-SoniaNeural` (uk) |
+| `ECHOWORDS_AUDIO_TIMEOUT` | seconds to wait for the speculative pronunciation task after the final edit; on timeout the task is cancelled and the send proceeds with "🔇 no audio" (see M6) | `20` |
+| `ECHOWORDS_DATA_DIR` | Anki collection (`anki/`), word-log DB, TTS models, downloaded audio, stored sync key | `~/.echo-words` |
 
 ## Languages configuration
 
-`WORDGRAM_LANGUAGES_CONFIG` points at a TOML file with one entry per
+`ECHOWORDS_LANGUAGES_CONFIG` points at a TOML file with one entry per
 source language, keyed by language code. It is the single source of truth
 for everything that varies by language — deck, backend, audio, validation:
 
@@ -153,7 +153,7 @@ for everything that varies by language — deck, backend, audio, validation:
 topic_id   = 2                 # Telegram message_thread_id of the "English" topic
 name       = "English"
 deck       = "English::Vocabulary"
-backend    = "llmbroker"       # llmbroker | agent; omit -> WORDGRAM_LLM_BACKEND
+backend    = "llmbroker"       # llmbroker | agent; omit -> ECHOWORDS_LLM_BACKEND
 dict_api   = "en"              # dictionaryapi.dev code; omit if unsupported
 tts        = "kokoro"          # kokoro | piper | edge; laptop profile — on the 1 GB
                                # micro profile use "piper" (en_US-lessac-medium) or "edge"
@@ -191,11 +191,11 @@ Semantics:
 
 - **Routing.** An incoming message's `message_thread_id` is matched
   against `topic_id`. No match (General topic, or an unmapped topic) →
-  short hint, no LLM call. The whitelist (`WORDGRAM_ALLOWED_USER_IDS`)
+  short hint, no LLM call. The whitelist (`ECHOWORDS_ALLOWED_USER_IDS`)
   still gates the sender independently.
 - **Backend.** `backend` per language — `llmbroker` (free pool), `api`
   (paid direct client, opt-in), or `agent` (CLI); absent →
-  `WORDGRAM_LLM_BACKEND`. This replaces the old `WORDGRAM_BACKEND_BY_LANG`
+  `ECHOWORDS_LLM_BACKEND`. This replaces the old `ECHOWORDS_BACKEND_BY_LANG`
   map — one place per language, not a separate parallel setting.
 - **Audio.** `dict_api` (omit = skip the dictionary step), `tts` (which
   engine — `kokoro` for English on the laptop profile, `piper` for
@@ -234,9 +234,9 @@ controls are cheap and proportionate: deny the agent file, shell, and
 network tools, and do not build a custom sandbox unless a vendor's own
 protection demonstrably fails.
 
-wordgram has one advantage over news-recap. news-recap must deliver a
+echo-words has one advantage over news-recap. news-recap must deliver a
 multi-KB prompt via a file (`{prompt_file}`), so it has to give each agent
-a **read** tool to open it — its floor is "read-only". wordgram's prompt is
+a **read** tool to open it — its floor is "read-only". echo-words's prompt is
 one short word passed as an argv positional (M2), never a file, so it needs
 no tool at all — its floor is "**nothing allowed**".
 
@@ -250,7 +250,7 @@ CLI versions — the M2 canary check below is the real gate):
   `Bash(curl:*)` are pure exfil surface. An **allow-list is strictly
   better** than the deny-list this plan first sketched: a deny-list
   enumerates today's tools and silently permits any tool a future CLI adds.
-  Because wordgram delivers the prompt via argv, not a file, it does not
+  Because echo-words delivers the prompt via argv, not a file, it does not
   even need `Read`, so the default is `--allowed-tools ""` (nothing
   allowed). If the installed CLI rejects an empty allow-list, fall back to
   `--allowed-tools "Read"` — harmless here, since argv delivery never reads
@@ -287,23 +287,23 @@ CLI versions — the M2 canary check below is the real gate):
 **Environment hygiene (all agents).** The agent subprocess must not inherit
 the operator's whole shell. Do not pass `os.environ.copy()`; build a
 default-deny env — `PATH`, `HOME`, `LANG`, `LC_ALL`, `TERM`, `TMPDIR`, plus
-the selected agent's own auth vars and the `WORDGRAM_*` settings — so an
+the selected agent's own auth vars and the `ECHOWORDS_*` settings — so an
 unrelated secret in the shell (an API key, a token) can never reach a
-hijacked agent. `WORDGRAM_AGENT_ENV_PASSTHROUGH` (CSV) is the escape hatch
+hijacked agent. `ECHOWORDS_AGENT_ENV_PASSTHROUGH` (CSV) is the escape hatch
 for the rare extra var a specific setup needs.
 
 ## Module layout
 
 ```
-src/wordgram/
+src/echo-words/
   __about__.py      # version (exists)
   __init__.py       # exists
   config.py         # Settings
   languages.py      # Language dataclass + languages.toml loader; lookup by topic_id / code
-  main.py           # entry point: build app, run polling; console_script `wordgram`
+  main.py           # entry point: build app, run polling; console_script `echo-words`
   bot.py            # handlers (whitelist filter, topic->language routing, commands, correction-button callback) + the shared word pipeline `process_word` (see "Word pipeline")
   streaming.py      # placeholder-edit loop bridging the backend stream -> Telegram edits
-  backend.py        # stream_completion dispatcher: pick backend by lang (languages table), delegate; enforce WORDGRAM_API_DAILY_CAP with fallback to the llmbroker pool
+  backend.py        # stream_completion dispatcher: pick backend by lang (languages table), delegate; enforce ECHOWORDS_API_DAILY_CAP with fallback to the llmbroker pool
   agent.py          # CLI-agent backend: subprocess runner yielding text deltas
   llm_backend.py    # llmbroker pool backend: AsyncBroker ask/chat -> single-chunk yield
   api_backend.py    # paid api backend: thin adapter over llmbroker's direct streaming client (broker feature -> tickets/llmbroker-direct-streaming-client.md)
@@ -314,7 +314,7 @@ src/wordgram/
   word_log.py       # sqlite word_log (source for /stats)
 ```
 
-Add `wordgram = "wordgram.main:cli"` to `[project.scripts]`.
+Add `echo-words = "echo-words.main:cli"` to `[project.scripts]`.
 
 ## Word pipeline (orchestration)
 
@@ -340,7 +340,7 @@ async def process_word(chat_ctx, lang: Language, word: str,
 5. Parse the card payload out of the raw text (M4). On parse failure the
    analysis text still stands; the status line will report that the card
    failed.
-6. `await asyncio.wait_for(audio_task, WORDGRAM_AUDIO_TIMEOUT)` and send
+6. `await asyncio.wait_for(audio_task, ECHOWORDS_AUDIO_TIMEOUT)` and send
    the voice message; on timeout or `None`, note "🔇 no audio" for the
    status line (M6).
 7. Add the note unless lookup-only, duplicate, or parse failure (M5);
@@ -356,7 +356,7 @@ untouched — the milestones below reference these step numbers.
 
 `prompt.py` builds one prompt per request from a template with two
 language slots — the source language (from the topic, M1) and the target
-language (`WORDGRAM_TARGET_LANG`). The `===CARD===` JSON contract below is
+language (`ECHOWORDS_TARGET_LANG`). The `===CARD===` JSON contract below is
 identical across languages; only the two slots and an optional
 per-language morphology hint change:
 
@@ -468,13 +468,13 @@ sets the v0.1 backend defaults the rest of the plan builds on.
 
 ### M0 — LLM backend spike (precedes M1–M8; decides the v0.1 backend defaults)
 
-Runs **before** any product code. wordgram ships **both** backend kinds in
+Runs **before** any product code. echo-words ships **both** backend kinds in
 v0.1 (see the LLM technology row): `llmbroker` (free-tier model pool, fast,
 no subprocess/sandbox) and the CLI coding agent (heavier, but frontier-tier
 for what the pool can't do). M0 does not choose one *instead of* building the
 other — the backend seam is built regardless (M2) — it measures **which
 backend to default to, per source language, and whether llmbroker needs web
-grounding for hard languages**, so M2 ships with the right `WORDGRAM_LLM_BACKEND`
+grounding for hard languages**, so M2 ships with the right `ECHOWORDS_LLM_BACKEND`
 and per-language `backend` defaults instead of a guess.
 
 Why it must come first: the whole point of llmbroker here is that a plain
@@ -503,7 +503,7 @@ everywhere.
 3. **Web grounding for hard languages.** The gap for hard languages may close
    only when the model is given internet access. llmbroker supports tool
    calling (`chat(tools=...)` / `run_tool_loop`), so grounding is a
-   web-search tool wired into the llmbroker backend (`WORDGRAM_LLMBROKER_WEB`),
+   web-search tool wired into the llmbroker backend (`ECHOWORDS_LLMBROKER_WEB`),
    not a jump to the CLI agent. Determine whether grounding is necessary,
    sufficient, or neither, per language.
 
@@ -536,11 +536,11 @@ everywhere.
 
 **Deliverable: `spec/plan-llm-backend.md`** — the latency and quality numbers
 per language/model, grounding on/off, and the resulting v0.1 defaults:
-`WORDGRAM_LLM_BACKEND` (expected `llmbroker` for English), the per-language
+`ECHOWORDS_LLM_BACKEND` (expected `llmbroker` for English), the per-language
 `backend` values in the languages table for languages where the pool is not
 sufficient (Serbian's likely fallback is now `api` — paid, streaming, and it
 runs on the always-on micro instance — rather than `agent`, which needs a
-laptop), and whether `WORDGRAM_LLMBROKER_WEB` defaults on for those. If the
+laptop), and whether `ECHOWORDS_LLMBROKER_WEB` defaults on for those. If the
 spike finds the free-tier pool insufficient even for English, the v0.1 default
 flips to `agent` and llmbroker stays a config-selectable option — but the
 backend seam and both implementations still ship. This doc is an input to M2,
@@ -554,14 +554,14 @@ contradict each other.
 ### M1 — config + bot skeleton
 
 `config.py`, `languages.py`, `main.py`, `bot.py`: application starts, long
-polling in the configured supergroup (`WORDGRAM_GROUP_ID`), whitelist
+polling in the configured supergroup (`ECHOWORDS_GROUP_ID`), whitelist
 filter on the sender (non-whitelisted updates are ignored, only
 debug-logged), `/start` and `/help` reply with static text (help mentions
 the `?` lookup-only prefix, the one-topic-per-language layout, AND the ✏️
 correction button offered for a suspected typo — the button itself ships
 in M7, but the help text is written once, here, and must already describe
 it, as the functional description requires). `languages.py`
-loads `WORDGRAM_LANGUAGES_CONFIG` into `Language` objects indexed by
+loads `ECHOWORDS_LANGUAGES_CONFIG` into `Language` objects indexed by
 `topic_id` and code. Routing: a word message's `message_thread_id`
 selects the language; the General topic or any unmapped topic gets a short
 hint and no processing. Input validation is per the resolved language's
@@ -581,12 +581,12 @@ One seam, three backend kinds — all shipped here, defaults set by M0. The
 handler calls `async def stream_completion(prompt, lang) -> AsyncIterator[str]`
 (in a small `backend.py` dispatcher) which resolves the backend from the
 language's `backend` field (`languages.py`) or, if absent,
-`WORDGRAM_LLM_BACKEND`, and delegates:
+`ECHOWORDS_LLM_BACKEND`, and delegates:
 
 - **`llmbroker` backend** (`llm_backend.py`): hold one module-level
-  `llmbroker.AsyncBroker(WORDGRAM_LLMBROKER_CONFIG)`; per request
-  `await broker.ask(prompt, operation=WORDGRAM_LLMBROKER_OPERATION)` (or
-  `chat`/`run_tool_loop` with a web-search tool when `WORDGRAM_LLMBROKER_WEB`),
+  `llmbroker.AsyncBroker(ECHOWORDS_LLMBROKER_CONFIG)`; per request
+  `await broker.ask(prompt, operation=ECHOWORDS_LLMBROKER_OPERATION)` (or
+  `chat`/`run_tool_loop` with a web-search tool when `ECHOWORDS_LLMBROKER_WEB`),
   and yield `reply.text` once — llmbroker is non-streaming, so this is a
   single-chunk yield, which the M3 bridge already handles (like the codex /
   antigravity plain path). No subprocess, no sandbox, no default-deny env:
@@ -602,7 +602,7 @@ language's `backend` field (`languages.py`) or, if absent,
   **llmbroker's direct client** — a single named frontier model, no pool, no
   failover: the new broker feature tracked in
   `tickets/llmbroker-direct-streaming-client.md` — configured by
-  `WORDGRAM_API_PROVIDER` / `WORDGRAM_API_MODEL` / `WORDGRAM_API_KEY`. Unlike
+  `ECHOWORDS_API_PROVIDER` / `ECHOWORDS_API_MODEL` / `ECHOWORDS_API_KEY`. Unlike
   the pool, the direct client **streams**, so this backend yields real
   incremental deltas into the M3 bridge (first visible content within a few
   seconds, like the claude CLI agent, but on the micro instance without a
@@ -614,12 +614,12 @@ language's `backend` field (`languages.py`) or, if absent,
   direct client lazily so a missing/old llmbroker degrades to a clear config
   error, not a startup crash. **Daily spend cap:** the `backend.py` dispatcher
   counts this language's paid calls for the current day; once
-  `WORDGRAM_API_DAILY_CAP` is reached it transparently routes the rest of the
+  `ECHOWORDS_API_DAILY_CAP` is reached it transparently routes the rest of the
   day to the free `llmbroker` pool and records the fallback (surfaced in
   `/status`, M7). The counter lives in memory and resets on restart —
   acceptable for a personal tool.
 - **CLI `agent` backend** (`agent.py`): unchanged from the original plan —
-  spawns the agent selected by `WORDGRAM_AGENT` from its command
+  spawns the agent selected by `ECHOWORDS_AGENT` from its command
   template. Template handling: `shlex.split` the template FIRST, then
 substitute `{model}`, `{prompt}`, and `{out_file}` inside individual
 argv tokens with `str.replace` — substitution after splitting means
@@ -627,7 +627,7 @@ prompt content can never break quoting; no shell is involved.
 `{out_file}` is a temp file path the runner always provides (only the
 codex template uses it). The subprocess is spawned with a **default-deny
 env** built here, not `os.environ.copy()` (see "Agent hardening"): the
-allowlist plus `WORDGRAM_AGENT_ENV_PASSTHROUGH`, nothing else.
+allowlist plus `ECHOWORDS_AGENT_ENV_PASSTHROUGH`, nothing else.
 
 Three output parsers, chosen by agent:
 
@@ -644,7 +644,7 @@ Three output parsers, chosen by agent:
   chunk — acceptable degradation, the streaming bridge (M3) handles it
   transparently.
 
-Enforce `WORDGRAM_AGENT_TIMEOUT`: spawn with `start_new_session=True`
+Enforce `ECHOWORDS_AGENT_TIMEOUT`: spawn with `start_new_session=True`
 and on timeout kill the whole process group — agent CLIs spawn child
 processes that a plain `kill()` on the parent would orphan — then raise
 `AgentError`.
@@ -665,11 +665,11 @@ has no `network_access`, and no template carries
 `reply.text` as one chunk, that `operation` is passed through, that
 `NoLLMAvailableError` and a timeout both surface as `AgentError`, and that
 the `backend.py` dispatcher picks the backend from the language's `backend`
-field before falling back to `WORDGRAM_LLM_BACKEND`. For the **`api` backend**:
+field before falling back to `ECHOWORDS_LLM_BACKEND`. For the **`api` backend**:
 a fake direct client (monkeypatched — no real provider) asserting streamed
 deltas reach the bridge as multiple chunks, that provider/model/key config is
 passed through, that provider/auth/timeout errors surface as `AgentError`, and
-that once `WORDGRAM_API_DAILY_CAP` is hit the dispatcher falls back to the
+that once `ECHOWORDS_API_DAILY_CAP` is hit the dispatcher falls back to the
 `llmbroker` pool for the remaining calls that day.
 
 Closing this milestone requires the manual check from "Agent hardening" —
@@ -766,10 +766,10 @@ account already holds other decks); an added note with audio arrives on
 AnkiDroid after `sync_collection(auth, sync_media=True)`. If the
 AnkiWeb auth path fails on the current version, fall back per the
 decision doc to the official self-hosted sync server
-(`WORDGRAM_SYNC_ENDPOINT`) before touching the design.
+(`ECHOWORDS_SYNC_ENDPOINT`) before touching the design.
 
 `anki.py` wraps a headless `anki.collection.Collection` at
-`WORDGRAM_DATA_DIR/anki/collection.anki2` (directory created on first
+`ECHOWORDS_DATA_DIR/anki/collection.anki2` (directory created on first
 run; the bootstrap full-download above applies when sync is on). pylib
 is blocking — run every collection call in `asyncio.to_thread`; the
 global word-lock (M3) already serializes writers, and the process is
@@ -811,7 +811,7 @@ nothing is added and the send reports duplicate.
 `add_note(note, deck, audio_path)` (deck from the word's language) returns
 `added(note_id) | duplicate`;
 audio is copied into the collection's media with `col.media.add_file`
-under the name `wordgram-{slug}-{hash}.mp3` (where `slug` is the
+under the name `echo-words-{slug}-{hash}.mp3` (where `slug` is the
 lowercased canonical word with non-alphanumeric runs collapsed to `-`
 and `hash` is the first 8 hex chars of the canonical word's SHA-1 —
 distinct phrases that slugify identically, like "go over" vs "go-over",
@@ -827,12 +827,12 @@ for `/undo` and `/redo` (M7), which remove both.
 
 After every successful add the client schedules the **AnkiWeb sync**
 (pylib: `sync_collection(auth, sync_media=True)`): on first need,
-`sync_login(WORDGRAM_ANKIWEB_USER, WORDGRAM_ANKIWEB_PASSWORD,
-endpoint=WORDGRAM_SYNC_ENDPOINT or None)`, then persist the returned
-hkey in `WORDGRAM_DATA_DIR` and reuse it (re-login only on auth
+`sync_login(ECHOWORDS_ANKIWEB_USER, ECHOWORDS_ANKIWEB_PASSWORD,
+endpoint=ECHOWORDS_SYNC_ENDPOINT or None)`, then persist the returned
+hkey in `ECHOWORDS_DATA_DIR` and reuse it (re-login only on auth
 errors). Debounced: at most one sync per 5 minutes, scheduled trailing
 so the last add in a burst still gets synced. Disabled with
-`WORDGRAM_ANKI_SYNC=false`; a sync failure (network, AnkiWeb down) is
+`ECHOWORDS_ANKI_SYNC=false`; a sync failure (network, AnkiWeb down) is
 logged at warning level, retried on the next debounce tick, and never
 affects the status line. **Safety rule:** if `sync_collection` reports
 that a one-way full sync is required (diverged collections), never
@@ -849,7 +849,7 @@ card templates; per-language deck creation and deck-scoped dedup
 rendering of `Translations` and `Meanings`; HTML escaping of payload
 values; media naming/hashing and the `[sound:...]` reference using the
 name returned by `add_file`; lookup-only skip; sync debounce (fake
-clock), hkey persistence/reuse, the `WORDGRAM_ANKI_SYNC=false` no-op,
+clock), hkey persistence/reuse, the `ECHOWORDS_ANKI_SYNC=false` no-op,
 and the full-sync-required → error-not-auto-resolve path; error
 propagation.
 
@@ -862,7 +862,7 @@ through to the next on ANY exception (log at warning level, never raise):
 1. **Dictionary recording** — dictionaryapi.dev at the language's
    `dict_api` code (English accent preference; skipped entirely for
    languages with no `dict_api`, e.g. Serbian), first non-empty audio URL,
-   download mp3 to `WORDGRAM_DATA_DIR/audio/`. Skipped for multi-word
+   download mp3 to `ECHOWORDS_DATA_DIR/audio/`. Skipped for multi-word
    input.
 2. **Local TTS** — the language's `tts` engine per the languages config:
    **Kokoro** (`kokoro-onnx`) or **Piper** (`piper-tts`), with the
@@ -874,7 +874,7 @@ through to the next on ANY exception (log at warning level, never raise):
    actually referenced by `languages.toml` — Kokoro's `kokoro-v1.0.onnx`
    + `voices-v1.0.bin` when some language configures `kokoro`, and each
    configured Piper voice (`.onnx` + `.onnx.json`) — are downloaded into
-   `WORDGRAM_DATA_DIR/models/` by a background task started at bot startup,
+   `ECHOWORDS_DATA_DIR/models/` by a background task started at bot startup,
    NOT on first request, where the download would delay the first voice
    message (the micro profile thus never downloads the ~300 MB Kokoro
    model). The download URLs (Kokoro GitHub release assets; Piper voices
@@ -898,14 +898,14 @@ through to the next on ANY exception (log at warning level, never raise):
    system requirement — without it the local engine falls through to
    edge-tts.
 3. **edge-tts (online)** — the language's `edge_tts_voice`
-   (or `WORDGRAM_EDGE_TTS_VOICE` default), native mp3 output. Serbian's
+   (or `ECHOWORDS_EDGE_TTS_VOICE` default), native mp3 output. Serbian's
    **primary** engine (its chain is effectively dictionary-skip →
    edge-tts) and the last-resort fallback for every other language. On
    failure return `None`.
 
 Runs via `asyncio.create_task` in parallel with the agent stream,
 speculatively for the raw input; awaited only after the final edit, and
-only with a bound — `asyncio.wait_for(task, WORDGRAM_AUDIO_TIMEOUT)`
+only with a bound — `asyncio.wait_for(task, ECHOWORDS_AUDIO_TIMEOUT)`
 (default 20 s): on timeout cancel the task and proceed exactly as for
 "no audio". The functional description requires that audio never delay
 the text answer or the ~5 s card budget, and the await happens under the
@@ -943,7 +943,7 @@ in-process (M5), so a card add cannot fail on connectivity; only the
 AnkiWeb sync is asynchronous, and it retries by itself. What M7 adds is
 the word log, the remaining commands, and the correction button.
 
-`word_log.py`: sqlite (DB in `WORDGRAM_DATA_DIR`, survives restarts),
+`word_log.py`: sqlite (DB in `ECHOWORDS_DATA_DIR`, survives restarts),
 one table — `word_log(id, lang, word, meanings_count, action,
 created_at)` where action is `added | duplicate | lookup`, written on
 every processed word; the `word` column always holds the canonical
@@ -958,8 +958,8 @@ Commands:
   an `agent` backend, whether the CLI executable (the first argv token
   of its command template) resolves via `shutil.which`; for `llmbroker`,
   whether the config file exists and the broker loaded a non-empty model
-  pool; for `api`, whether `WORDGRAM_API_KEY` is set, plus the day's
-  paid-call count against `WORDGRAM_API_DAILY_CAP` and whether the language
+  pool; for `api`, whether `ECHOWORDS_API_KEY` is set, plus the day's
+  paid-call count against `ECHOWORDS_API_DAILY_CAP` and whether the language
   has fallen back to the free pool for the rest of the day (M2) — each
   annotated with the outcome and time of that language's
   last LLM call, kept in memory ("no calls yet" after a restart). No
@@ -975,7 +975,7 @@ Commands:
   (`col.remove_notes`), trash its media file in the collection
   (`col.media.trash_files([name])`, using the media name stored with the
   undo state — M5), and delete its cached audio file in
-  `WORDGRAM_DATA_DIR/audio/`; confirm with the word name.
+  `ECHOWORDS_DATA_DIR/audio/`; confirm with the word name.
 - `/redo` — re-run the last word **in this topic**, preserving its
   lookup-only flag and language. Before adding the new note, remove the previous
   run's result exactly like `/undo` does — `/redo` exists to fix a
@@ -1032,13 +1032,13 @@ token reports the request as expired instead of acting.
 
 ### M8 — polish and release
 
-README: install (`uv tool install wordgram` / `uvx wordgram`), required
+README: install (`uv tool install echo-words` / `uvx echo-words`), required
 env vars, the supergroup + forum-topics setup (one topic per source
 language, disable the bot's privacy mode in BotFather so it sees plain
 messages), the `languages.toml` format and per-language decks, the
-AnkiWeb credentials setup (`WORDGRAM_ANKIWEB_USER` / `_PASSWORD`; note
+AnkiWeb credentials setup (`ECHOWORDS_ANKIWEB_USER` / `_PASSWORD`; note
 the first-run full download of the existing collection and the
-self-hosted `WORDGRAM_SYNC_ENDPOINT` fallback), the optional `espeak-ng`
+self-hosted `ECHOWORDS_SYNC_ENDPOINT` fallback), the optional `espeak-ng`
 system dependency for
 Kokoro/Piper, systemd/launchd hint (one paragraph, no unit files), and
 the **two deployment profiles** ("Deployment profiles" section): the
@@ -1086,7 +1086,7 @@ until PyPI credentials are configured; note this in the README.
   Evaluated alternatives (GetSpace, Mochi, own FSRS in chat, genanki):
   `spec/decision-spaced-repetition.md`.
 - Anki sync to AnkiWeb runs automatically after additions,
-  debounced and retried; `WORDGRAM_ANKI_SYNC=false` turns it off.
+  debounced and retried; `ECHOWORDS_ANKI_SYNC=false` turns it off.
 - `?` prefix = lookup-only: analysis and audio, no Anki card.
 - `/redo` replaces the previous run's
   note instead of being blocked by the duplicate check.
@@ -1094,10 +1094,10 @@ until PyPI credentials are configured; note this in the README.
   language), routed by `message_thread_id`; the topic determines the deck.
   One deck per source language from the languages config, no per-message
   switching and no guessing the deck from the word. A single target
-  language for explanations (`WORDGRAM_TARGET_LANG`, Russian default).
+  language for explanations (`ECHOWORDS_TARGET_LANG`, Russian default).
   Language is never auto-detected — the topic is authoritative; the
   General/unmapped topic gets a hint, not a guess.
-- Accent: config-level (`WORDGRAM_ACCENT` default, per-language override),
+- Accent: config-level (`ECHOWORDS_ACCENT` default, per-language override),
   applies to English audio, US default, one recording per card, no
   per-message choice.
 - Telegram formatting IS in v0.1: HTML `<b>`/`<i>` only, enforced by
@@ -1117,9 +1117,9 @@ until PyPI credentials are configured; note this in the README.
   through llmbroker's new *direct client* — the only frontier-quality *and*
   streaming backend that still runs on the micro instance; a broker feature
   tracked in `tickets/llmbroker-direct-streaming-client.md`), and the CLI
-  coding agent (`WORDGRAM_AGENT`: `claude` / `codex` / `antigravity`) — kept
+  coding agent (`ECHOWORDS_AGENT`: `claude` / `codex` / `antigravity`) — kept
   as a marginal, laptop-only option for flat-rate subscription users. Metered
-  spend is bounded by `WORDGRAM_API_DAILY_CAP` with automatic fallback to the
+  spend is bounded by `ECHOWORDS_API_DAILY_CAP` with automatic fallback to the
   free pool, so no metered API is ever required. Which backend is the default,
   and which languages route to which, is fixed by the **M0 spike** (precedes
   M1) — not a guess and not deferred to a later version. This is *backend*

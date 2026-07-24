@@ -1,4 +1,4 @@
-# wordgram — Functional Description
+# echo-words — Functional Description
 
 The source of truth for *what* to build. Together with
 `implementation-plan.md` this is the complete specification for the
@@ -294,7 +294,7 @@ tool.
   subscription — neither is metered. A **paid per-token model is available as
   an opt-in backend** (`api`, via llmbroker's direct client) for hard
   languages or top quality; it is never the mandatory path, and its spend is
-  bounded by a daily cap (`WORDGRAM_API_DAILY_CAP`) that falls back to the
+  bounded by a daily cap (`ECHOWORDS_API_DAILY_CAP`) that falls back to the
   free pool once reached. The design must run fully on un-metered backends;
   the metered backend only ever adds an optional quality tier.
 - **Safety**: this concern applies to the **CLI coding-agent backend
