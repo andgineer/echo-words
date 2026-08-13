@@ -43,8 +43,8 @@ day becomes review material with zero extra effort.
   a plain text→text call, no subprocess, faster; the default); an
   **optional paid frontier model** called directly through llmbroker's
   *direct client* (opt-in, never required — for hard languages or when the
-  user wants top quality; the only backend that is both frontier-quality
-  and streaming while still running on the small always-on instance); and
+  user wants top quality; the only frontier-quality backend that still runs
+  on the small always-on instance, streaming like the free pool does); and
   a **CLI coding agent** under a flat-rate subscription (the same three as
   `news-recap`: Claude, Codex, Antigravity/Gemini) for analysis the pooled
   models can't do well — a marginal, laptop-only option. The free pool and
@@ -282,13 +282,11 @@ tool.
 - **Latency**: complete answer within ~20–30 s; card added within ~5 s
   after generation ends. Audio is fetched concurrently and must not
   extend these budgets. Incremental "first visible content within
-  ~3–5 s" applies only to **streaming-capable backends** (the Claude CLI
-  agent streams); **non-streaming backends** — `llmbroker` and the
-  codex/antigravity agents — show only the placeholder until the full
-  answer is ready. This is acceptable when the total is low: llmbroker's
-  expected win is a *fast complete answer* (a few seconds, no agent-loop
-  overhead) rather than early tokens, so the placeholder-then-answer feel
-  stays within budget.
+  ~3–5 s" applies to **streaming-capable backends** — both llmbroker
+  backends (the free pool and the paid direct client) and the Claude CLI
+  agent. **Non-streaming backends** — the codex and antigravity agents —
+  show only the placeholder until the full answer is ready, which is
+  acceptable when the total stays inside the budget above.
 - **Cost**: **no metered API is ever required.** By default LLM usage rides
   the free-tier `llmbroker` model pool or the existing flat-rate coding-agent
   subscription — neither is metered. A **paid per-token model is available as

@@ -9,7 +9,7 @@ functional description wins.
 
 Repository: `github.com/andgineer/echo-words`. It already contains the
 0.0.1 scaffold: hatchling packaging with the version in
-`src/echo-words/__about__.py`, `src` layout, pytest, `uv.lock`,
+`src/echo_words/__about__.py`, `src` layout, pytest, `uv.lock`,
 CI workflow (`.github/workflows/ci.yml`, runs `uv sync --frozen` +
 `uv run pytest tests/`), and a publish workflow triggered by `v*` semver
 tags. Build on top of it; do not restructure the packaging.
@@ -28,6 +28,25 @@ Rules:
   milestone until the previous one's tests are green. Each milestone
   ends with an explicit test list — implement those tests, plus whatever
   the code itself obviously requires.
+
+## Upstream dependency: llmbroker
+
+echo-words targets **llmbroker ≥ 1.4** and assumes three changes queued in that
+repository's own plan queue (`specs/plans/README.md` there):
+`journal-lookup-keys`, `rating-by-key`, `routed-call-identity`. **All of them ship
+before M0 starts here** — this plan is written against the state they leave, not
+against 1.4 as released. Two places depend on them:
+
+- **Quality feedback (M2).** echo-words rates a generation by whether the card
+  JSON parsed — a clean automatic signal. It records that rating with its own
+  request id (`record_quality(score, trace_id=...)`), never persisting llmbroker's
+  model names. That form arrives with `rating-by-key`.
+- **`/status` (M7).** Naming the model that answered a language's last call comes
+  from the object the call returns (`routed-call-identity`), with no journal read.
+
+Nothing else in echo-words touches those changes, so if a milestone is reached
+before they land, the fallback is stated where it applies rather than blocking the
+milestone.
 
 ## Execution protocol (how to drive this plan)
 
@@ -71,7 +90,7 @@ Prompt template for the operator (one per milestone):
 | Dictionary pronunciation | `https://api.dictionaryapi.dev/api/v2/entries/{lang}/{word}` where `{lang}` is the source language's `dict_api` code (`en`, `de`, …; Serbian is unsupported → skip this step) — take the first `phonetics[].audio` non-empty URL (they are Wiktionary recordings); for English prefer entries whose URL contains the configured accent (`-us` / `-uk`), else any |
 | Settings | `pydantic-settings`, env prefix `ECHOWORDS_`, `.env` support |
 | Word log (stats) | stdlib `sqlite3`, single DB file |
-| LLM | Pluggable backend behind one `stream_completion` seam (M2), **three backend kinds shipped in v0.1**, selected by config and by source language (from the languages table, M1): (a) **`llmbroker` pool** — the author's free-tier model-pool broker (`github.com/andgineer/llmbroker`): `AsyncBroker` over a pool of free, rate-limited models with automatic failover and quality-based routing, **no metered key** — a plain text→text call, so no subprocess, no agent sandbox, and much lower per-request latency than a coding agent; non-streaming (returns the full answer). (b) **`llmbroker` direct client** (paid, **opt-in, never required**) — a single explicitly named frontier model called directly through llmbroker's new *direct client* (no pool, no failover, no routing), the one backend that is both **frontier-quality and streaming** while still a plain text→text HTTPS call that fits the 1 GB micro instance (no laptop needed); its role is hard languages and "who wants quality". The direct client **ships in llmbroker today** (`broker.direct(name)`, configured as a `[[custom]]` entry in the same `llms.toml`; see `tickets/llmbroker-integration.md`); echo-words's `api` backend is a thin adapter over it, so a single dependency (llmbroker) and a single `AsyncBroker` instance cover backends (a) and (b) with one error taxonomy. (c) **CLI coding agent** — the same three as news-recap, `claude` / `codex` / `antigravity`; kept as a **marginal, laptop-only option** for flat-rate-subscription users willing to keep a laptop on (its runtime and interactive auth do not fit the micro instance), copy-and-paste from news-recap. The **M0 spike (precedes M1)** benchmarks which backend is sufficient per language and how much faster llmbroker is, and sets the v0.1 defaults |
+| LLM | Pluggable backend behind one `stream_completion` seam (M2), **three backend kinds shipped in v0.1**, selected by config and by source language (from the languages table, M1): (a) **`llmbroker` pool** — the author's free-tier model-pool broker (`github.com/andgineer/llmbroker`, **≥1.4**): `AsyncBroker` over a pool of free, rate-limited models with automatic failover and quality-based routing, **no metered key** — a plain text→text call, so no subprocess, no agent sandbox, and much lower per-request latency than a coding agent. It **streams** (`AsyncBroker.stream`), failing over up to the first delta and raising `StreamInterruptedError` past it. (b) **`llmbroker` direct client** (paid, **opt-in, never required**) — a single explicitly named frontier model, no pool, no failover, no routing: the model is **declared in echo-words's own code** at broker construction (`AsyncBroker(direct=[...])`) and reached with `await broker.direct(alias)`, which returns a client with `.stream()` and `.ask()`. The alias comes from llmbroker's curated paid catalog (`opus`, `sonnet`, `gpt`, `flash`, …) and is an eternal handle — llmbroker re-points it at the current model generation on its own daily clock, so a provider's new release changes nothing here. Nothing is stored anywhere: the declaration in code is the only source of truth, and the API key is read at call time from the env var the catalog names, never touched by echo-words. This is the only **frontier-quality** backend that still fits the 1 GB micro instance; its role is hard languages and "who wants quality". One `AsyncBroker` instance serves backends (a) and (b) with one error taxonomy (`LLMRequestError` and its subclasses). (c) **CLI coding agent** — the same three as news-recap, `claude` / `codex` / `antigravity`; kept as a **marginal, laptop-only option** for flat-rate-subscription users willing to keep a laptop on (its runtime and interactive auth do not fit the micro instance), copy-and-paste from news-recap. The **M0 spike (precedes M1)** benchmarks which backend is sufficient per language and how much faster llmbroker is, and sets the v0.1 defaults |
 | Lint | `ruff` (line-length 99), run in CI after tests |
 
 ## Deployment profiles
@@ -125,10 +144,10 @@ comparison table: `spec/decision-tts.md`.
 | `ECHOWORDS_MODEL` | model substituted into the template | per agent: `sonnet` (claude — nuanced Russian linguistic analysis is worth more than haiku's latency on a flat-rate plan), `gpt-5.2` (codex), `gemini-3.5-flash` (antigravity) |
 | `ECHOWORDS_AGENT_TIMEOUT` | seconds | `120` |
 | `ECHOWORDS_AGENT_ENV_PASSTHROUGH` | CSV escape hatch: extra env var names allowed into the agent subprocess (see "Agent hardening") | empty |
-| `ECHOWORDS_LLMBROKER_CONFIG` | path to llmbroker's `llms.toml` (model pool); generate with `llmbroker preset freetier > llms.toml` | `~/.echo-words/llms.toml` |
-| `ECHOWORDS_LLMBROKER_OPERATION` | operation label passed to `ask`/`chat` so llmbroker tracks per-task quality and routes accordingly | `vocab` |
+| `ECHOWORDS_LLMBROKER_HOME` | directory llmbroker keeps its own state in (curated model list, call journal) — passed as `AsyncBroker(home=...)`. Must be writable: llmbroker falls back to in-memory state where it is not, which silently disables the call journal and with it quality learning. There is **no** model-list file for the operator to write or point at — the pool arrives as a curated preset llmbroker refreshes itself | `ECHOWORDS_DATA_DIR/llmbroker` |
+| `ECHOWORDS_LLMBROKER_OPERATION` | operation-label **prefix**; the label actually passed is `{prefix}-{lang}` (`vocab-en`, `vocab-sr`). llmbroker learns quality per `(model, operation)`, so a per-language label makes the pool discover on its own which model is good at which source language — the production counterpart of M0's hypothesis 1 | `vocab` |
 | `ECHOWORDS_LLMBROKER_WEB` | allow the llmbroker backend a web-search tool for grounding (hard languages — see M0); off by default | `false` |
-| `ECHOWORDS_API_ENTRY` | when backend = `api`: what is passed to `broker.direct(...)` — the name of the paid `[[custom]]` entry in `ECHOWORDS_LLMBROKER_CONFIG`, or its stable alias once llmbroker's alias support lands (then a provider's new model generation changes nothing here). Add the entry with `llmbroker add-model --into llms.toml`; provider, model id, base URL and key-variable name all live in that TOML | `frontier` |
+| `ECHOWORDS_API_MODEL` | when backend = `api`: the paid-catalog **alias** passed to `broker.direct(...)` — `opus`, `sonnet`, `gpt`, `flash`, … (`llmbroker list` prints them). A per-language `api_model` in the languages table overrides it, so a hard language can use a stronger model than the rest. Every alias any language uses is collected at startup and declared as `AsyncBroker(direct=[...])`. The provider's key is read by llmbroker from the env var its catalog names (`ANTHROPIC_API_KEY`, …) — echo-words never reads, stores or passes it | `sonnet` |
 | `ECHOWORDS_API_DAILY_CAP` | max paid direct-client calls per day; on exceed, that language falls back to the free `llmbroker` pool for the rest of the day (M2). `0` = unlimited | `100` |
 | `ECHOWORDS_ANKIWEB_USER` | AnkiWeb account (email) for sync; required when `ECHOWORDS_ANKI_SYNC` is on | required if sync on |
 | `ECHOWORDS_ANKIWEB_PASSWORD` | AnkiWeb password — used once to obtain the sync key (hkey), which is then stored in `ECHOWORDS_DATA_DIR` and reused | required if sync on |
@@ -174,8 +193,9 @@ topic_id  = 4
 name      = "Српски"
 deck      = "Serbian::Vocabulary"
 backend   = "api"              # per the M0 spike, if the free pool is insufficient for
-                               # Serbian: "api" (paid, streams, runs on the micro instance)
+                               # Serbian: "api" (paid, runs on the micro instance)
                                # or "agent" (CLI, laptop-only) — M0 decides
+api_model = "opus"             # paid-catalog alias; omit -> ECHOWORDS_API_MODEL
 # dict_api omitted — dictionaryapi.dev has no Serbian
 tts       = "edge"             # no usable local voice: Piper's lone sr_RS model
                                # ("serbski_institut") is actually Lower Sorbian —
@@ -194,7 +214,12 @@ Semantics:
 - **Backend.** `backend` per language — `llmbroker` (free pool), `api`
   (paid direct client, opt-in), or `agent` (CLI); absent →
   `ECHOWORDS_LLM_BACKEND`. This replaces the old `ECHOWORDS_BACKEND_BY_LANG`
-  map — one place per language, not a separate parallel setting.
+  map — one place per language, not a separate parallel setting. An `api`
+  language may also carry `api_model` (a paid-catalog alias); absent →
+  `ECHOWORDS_API_MODEL`. Because llmbroker takes its declared models at
+  construction, the set of aliases across all languages is collected while
+  loading this file and passed to the single `AsyncBroker` — so the broker is
+  built *after* the languages config, not at import time.
 - **Audio.** `dict_api` (omit = skip the dictionary step), `tts` (which
   engine — `kokoro` for English on the laptop profile, `piper` for
   German and for English on the micro profile, `edge` for Serbian),
@@ -293,7 +318,7 @@ for the rare extra var a specific setup needs.
 ## Module layout
 
 ```
-src/echo-words/
+src/echo_words/
   __about__.py      # version (exists)
   __init__.py       # exists
   config.py         # Settings
@@ -303,8 +328,9 @@ src/echo-words/
   streaming.py      # placeholder-edit loop bridging the backend stream -> Telegram edits
   backend.py        # stream_completion dispatcher: pick backend by lang (languages table), delegate; enforce ECHOWORDS_API_DAILY_CAP with fallback to the llmbroker pool
   agent.py          # CLI-agent backend: subprocess runner yielding text deltas
-  llm_backend.py    # llmbroker pool backend: AsyncBroker ask/chat -> single-chunk yield
-  api_backend.py    # paid api backend: thin adapter over broker.direct(entry).stream(...) (see tickets/llmbroker-integration.md)
+  broker.py         # the one AsyncBroker: built after languages.py from home= + direct=[aliases]
+  llm_backend.py    # llmbroker pool backend: broker.stream(...) -> text deltas
+  api_backend.py    # paid api backend: (await broker.direct(alias)).stream(...) -> text deltas
   prompt.py         # prompt template (source/target lang slots) + card-payload extraction
   card.py           # note dataclass (word, ipa, 1-3 meanings) + optional suggestion, validation of the LLM payload
   anki.py           # headless collection wrapper (pylib): open/bootstrap, add/find/delete notes, media, debounced AnkiWeb sync
@@ -312,7 +338,8 @@ src/echo-words/
   word_log.py       # sqlite word_log (source for /stats)
 ```
 
-Add `echo-words = "echo-words.main:cli"` to `[project.scripts]`.
+`[project.scripts]` already carries `echo-words = "echo_words.main:echo_words"` —
+keep it; do not add a second entry point.
 
 ## Word pipeline (orchestration)
 
@@ -494,16 +521,21 @@ everywhere.
    examples, and — most consequential for us — malformed card JSON that
    `card.py` rejects.
 2. **Speed.** Dropping the agent loop makes llmbroker materially faster.
-   Quantify total latency (the pool is single-chunk today, so measure to full
-   answer, not first token) against the functional description's ~20–30 s
-   budget and against each CLI agent — the expected win is llmbroker
-   answering in a few seconds where the agent takes tens.
+   Both llmbroker backends stream, so measure **first delta and full answer**
+   against the functional description's ~20–30 s and ~3–5 s budgets and against
+   each CLI agent — the expected win is llmbroker answering in a few seconds
+   where the agent takes tens.
 3. **Web grounding for hard languages.** The gap for hard languages may close
    only when the model is given internet access. llmbroker supports tool
-   calling (`chat(tools=...)` / `run_tool_loop`), so grounding is a
+   calling (`chat(tools=...)` / `arun_tool_loop`), so grounding would be a
    web-search tool wired into the llmbroker backend (`ECHOWORDS_LLMBROKER_WEB`),
-   not a jump to the CLI agent. Determine whether grounding is necessary,
-   sufficient, or neither, per language.
+   not a jump to the CLI agent. **But llmbroker ships no web-search tool** —
+   echo-words would have to bring a search API, its key, and possibly its
+   metering, which fights the "no metered API is ever required" NFR. So test
+   this hypothesis **last and only if it is still open**: the paid `api` alias
+   now costs one config line and is the cheaper answer to a hard language. If
+   the paid model closes the gap, grounding is moot and
+   `ECHOWORDS_LLMBROKER_WEB` is dropped from v0.1 rather than shipped unused.
 
 **Method.**
 
@@ -517,14 +549,13 @@ everywhere.
   language slots filled per item) so we compare backends, not prompts. For each (backend × model × language) record: total latency,
   which model llmbroker's pool actually answered with (`reply.llm_name`),
   rate-limit/failover behaviour, and the raw analysis + `===CARD===` payload.
-- **Survey the frontier (paid) models through their APIs directly** — the same
-  transport the `api` backend will later use via llmbroker's direct client. A
-  clean SDK call is cheaper and simpler to script than a CLI subprocess, and
-  because **quality is a property of the model, not the transport**, an API run
-  of a frontier `sonnet`-class model also stands in for the CLI agent's quality
-  on the same model — so the CLI agent needs only a latency note here, not a
-  separate quality pass. The harness calls provider APIs directly and does
-  **not** depend on the broker's direct-client feature having landed yet.
+- **Survey the frontier (paid) models through llmbroker's own direct client** —
+  `AsyncBroker(direct=[...])` plus `await broker.direct(alias)`, the exact path
+  the `api` backend will use, so the spike exercises shipping code instead of a
+  parallel one. Because **quality is a property of the model, not the
+  transport**, a direct-client run of a frontier `sonnet`-class model also
+  stands in for the CLI agent's quality on the same model — so the CLI agent
+  needs only a latency note here, not a separate quality pass.
 - Score against a rubric — a human pass by a Russian + source-language
   speaker, optionally with an LLM-judge as a pre-filter, never the final
   word: translation & register correctness, IPA plausibility, fact-checkable
@@ -532,7 +563,7 @@ everywhere.
   language, per model. Run the hard-language set twice — grounding off, then
   on — to isolate hypothesis 3.
 
-**Deliverable: `spec/plan-llm-backend.md`** — the latency and quality numbers
+**Deliverable: `spec/decision-llm-backend.md`** — the latency and quality numbers
 per language/model, grounding on/off, and the resulting v0.1 defaults:
 `ECHOWORDS_LLM_BACKEND` (expected `llmbroker` for English), the per-language
 `backend` values in the languages table for languages where the pool is not
@@ -543,11 +574,9 @@ spike finds the free-tier pool insufficient even for English, the v0.1 default
 flips to `agent` and llmbroker stays a config-selectable option — but the
 backend seam and both implementations still ship. This doc is an input to M2,
 and it may amend the functional description's LLM/cost wording (llmbroker is
-also un-metered, so the cost NFR holds either way). If the default lands on
-`llmbroker`, also amend the functional description's Core flow step 4
-parenthetical ("the default agent does [stream]") — a non-streaming default
-is already sanctioned by its NFR section, but the two sentences must not
-contradict each other.
+also un-metered, so the cost NFR holds either way). Streaming no longer needs
+reconciling whichever way the default lands: both llmbroker backends stream,
+so the functional description's Core flow step 4 holds as written.
 
 ### M1 — config + bot skeleton
 
@@ -581,38 +610,44 @@ handler calls `async def stream_completion(prompt, lang) -> AsyncIterator[str]`
 language's `backend` field (`languages.py`) or, if absent,
 `ECHOWORDS_LLM_BACKEND`, and delegates:
 
-- **`llmbroker` backend** (`llm_backend.py`): hold one module-level
-  `llmbroker.AsyncBroker(ECHOWORDS_LLMBROKER_CONFIG)`; per request
-  `await broker.ask(prompt, operation=ECHOWORDS_LLMBROKER_OPERATION)` (or
-  `chat`/`run_tool_loop` with a web-search tool when `ECHOWORDS_LLMBROKER_WEB`),
-  and yield `reply.text` once — the pool is single-chunk in llmbroker's current
-  release, which the M3 bridge already handles (like the codex / antigravity
-  plain path). Pool streaming (`AsyncBroker.stream`) is planned upstream; when it
-  lands this backend yields real deltas with no change to the seam. No subprocess, no sandbox, no default-deny env:
-  it is an HTTPS API call the operator already trusts, so "Agent hardening"
-  does not apply to this backend. Map llmbroker's `NoLLMAvailableError`
-  (whole pool rate-limited) and timeouts onto the same `AgentError` the
-  bridge already knows, so the error path is uniform. Import `llmbroker`
-  lazily so a missing/broken install degrades to a clear config error, not
-  a startup crash. Optionally feed the parse outcome back via
-  `reply.record_quality(...)` (a clean card JSON = good) so the pool
-  self-tunes — noted, not required for v0.1.
+- **`llmbroker` backend** (`llm_backend.py`): one process-wide `AsyncBroker`
+  lives in `broker.py`, built after the languages config with
+  `home=ECHOWORDS_LLMBROKER_HOME` and `direct=[…aliases…]` (see "Languages
+  configuration"). Per request
+  `async for delta in broker.stream(prompt, operation=f"{prefix}-{lang.code}",
+  trace_id=…, wait=…)` — real deltas straight into the M3 bridge. `wait` carries
+  the functional description's per-call budget. No subprocess, no sandbox, no
+  default-deny env: it is an HTTPS API call the operator already trusts, so
+  "Agent hardening" does not apply to this backend. Map `NoLLMAvailableError`
+  (whole pool rate-limited), `LLMTimeoutError` and `StreamInterruptedError` (the
+  stream died after deltas — no failover possible past the first one) onto the
+  same `AgentError` the bridge already knows, so the error path is uniform.
+  Import `llmbroker` lazily so a missing/broken install degrades to a clear
+  config error, not a startup crash. **Quality feedback ships in v0.1, not
+  "optionally":** after the card is parsed (M4), record the outcome with the same
+  `trace_id` the call carried — `await broker.record_quality(1.0 if parsed else
+  0.0, trace_id=…)`. A clean card JSON is a genuine automatic quality signal and
+  costs nothing, and the per-language `operation` label means the pool learns
+  which model handles which source language. Requires the `rating-by-key` change
+  upstream; until it lands, skip the call rather than persisting model names.
 - **`api` backend** (`api_backend.py`): the paid, opt-in path. Delegates to
   **llmbroker's direct client** — a single named frontier model, no pool, no
-  failover: `broker.direct(ECHOWORDS_API_ENTRY)` on the same `AsyncBroker`
-  instance the pool backend holds, the entry configured in `llms.toml`
-  (see `tickets/llmbroker-integration.md`). The key never passes through
-  echo-words: the entry names an env var and llmbroker reads it at call time.
-  Unlike the pool today, the direct client **streams**, so this backend yields real
-  incremental deltas into the M3 bridge (first visible content within a few
-  seconds, like the claude CLI agent, but on the micro instance without a
-  laptop). Like the pool it is a plain text→text HTTPS call the operator
-  already trusts — no subprocess, no sandbox, no default-deny env — so "Agent
-  hardening" does not apply. Map its errors (auth, rate-limit, timeout,
-  provider failure) onto the same `AgentError` the bridge already knows, via
-  llmbroker's error types, so the error path stays uniform. Import the broker's
-  direct client lazily so a missing/old llmbroker degrades to a clear config
-  error, not a startup crash. **Daily spend cap:** the `backend.py` dispatcher
+  failover: `client = await broker.direct(alias)` on the same `AsyncBroker`
+  instance the pool backend holds, where `alias` is the language's `api_model`
+  or `ECHOWORDS_API_MODEL`, then `async for delta in client.stream(prompt)`.
+  The alias must already be in that broker's `direct=[…]` — collected while
+  loading the languages config — or llmbroker raises `UnknownModelError`. The
+  key never passes through echo-words: the catalog entry names an env var and
+  llmbroker reads it at call time. Like the pool it is a plain text→text HTTPS
+  call the operator already trusts — no subprocess, no sandbox, no default-deny
+  env — so "Agent hardening" does not apply. Map its errors (`AuthError`,
+  `RateLimitError`, `MissingKeyError`, `LLMTimeoutError`, `ProviderError`,
+  `InvalidProviderResponseError`) onto the same `AgentError` the bridge already
+  knows, so the error path stays uniform. Note the direct client is **not
+  journaled**, so it has no quality feedback and needs none — a declared model
+  is never routed, and there is nothing for a score to inform. Import
+  `llmbroker` lazily so a missing/old install degrades to a clear config error,
+  not a startup crash. **Daily spend cap:** the `backend.py` dispatcher
   counts this language's paid calls for the current day; once
   `ECHOWORDS_API_DAILY_CAP` is reached it transparently routes the rest of the
   day to the free `llmbroker` pool and records the fallback (surfaced in
@@ -662,15 +697,19 @@ the built env, and assert the claude template's `--allowed-tools` is empty
 has no `network_access`, and no template carries
 `--dangerously-skip-permissions`. For the **llmbroker backend**: a fake
 `AsyncBroker` (monkeypatched — no real pool) asserting the happy path yields
-`reply.text` as one chunk, that `operation` is passed through, that
-`NoLLMAvailableError` and a timeout both surface as `AgentError`, and that
-the `backend.py` dispatcher picks the backend from the language's `backend`
+streamed deltas as multiple chunks, that the per-language `operation` label
+(`vocab-en`, `vocab-sr`) and `trace_id` are passed through, that
+`NoLLMAvailableError`, `LLMTimeoutError` and `StreamInterruptedError` all
+surface as `AgentError`, that a parsed card records quality against the call's
+own `trace_id` and a parse failure records the opposite, and that the
+`backend.py` dispatcher picks the backend from the language's `backend`
 field before falling back to `ECHOWORDS_LLM_BACKEND`. For the **`api` backend**:
 a fake direct client (monkeypatched — no real provider) asserting streamed
-deltas reach the bridge as multiple chunks, that provider/model/key config is
-passed through, that provider/auth/timeout errors surface as `AgentError`, and
-that once `ECHOWORDS_API_DAILY_CAP` is hit the dispatcher falls back to the
-`llmbroker` pool for the remaining calls that day.
+deltas reach the bridge as multiple chunks, that the language's `api_model`
+overrides `ECHOWORDS_API_MODEL` and that every configured alias is present in
+the broker's `direct=[…]`, that auth/rate-limit/timeout/provider errors surface
+as `AgentError`, and that once `ECHOWORDS_API_DAILY_CAP` is hit the dispatcher
+falls back to the `llmbroker` pool for the remaining calls that day.
 
 Closing this milestone requires the manual check from "Agent hardening" —
 which applies **only to the CLI `agent` backend**; both llmbroker backends (the
@@ -956,16 +995,18 @@ Commands:
 - `/status` — per configured language: its backend, model, deck, and
   **backend health** (the functional description's "agent health") — for
   an `agent` backend, whether the CLI executable (the first argv token
-  of its command template) resolves via `shutil.which`; for `llmbroker`,
-  whether the config file exists and the broker loaded a non-empty model
-  pool; for `api`, whether `ECHOWORDS_API_ENTRY` resolves to an entry whose key
-  variable is set (llmbroker raises `MissingKeyError` otherwise), plus the day's
-  paid-call count against `ECHOWORDS_API_DAILY_CAP` and whether the language
-  has fallen back to the free pool for the rest of the day (M2) — each
-  annotated with the outcome and time of that language's
-  last LLM call, kept in memory ("no calls yet" after a restart). No
-  live LLM probe: `/status` must answer instantly and never spend a
-  request. Plus AnkiWeb sync state: last sync result and time, whether
+  of its command template) resolves via `shutil.which`; for `llmbroker` and
+  `api` alike, one `await broker.snapshot()` — `providers_usable` of
+  `providers_total`, the `degraded` flag (one quota left, nothing to fail over
+  to), `missing_keys` for the pool and `direct_missing_keys` for the declared
+  paid models, each carrying the `help` text saying where to get the key. For
+  `api` also the day's paid-call count against `ECHOWORDS_API_DAILY_CAP` and
+  whether the language has fallen back to the free pool for the rest of the
+  day (M2). Each language is annotated with the outcome and time of its last
+  LLM call and **which model answered it** — taken from the object the call
+  returned (`routed-call-identity` upstream), kept in memory ("no calls yet"
+  after a restart). No live LLM probe: `/status` must answer instantly and
+  never spend a request; `snapshot()` reads local state only. Plus AnkiWeb sync state: last sync result and time, whether
   unsynced local changes are waiting (`col.sync_status`), and a
   prominent error when a required one-way full sync is pending manual
   resolution (M5's safety rule).
@@ -1021,8 +1062,8 @@ Tests: stats aggregation windows with per-language breakdown, undo
 removes the note, trashes its collection media file and deletes its
 cached audio file, redo replaces the previous
 note, undo/redo state machine, `/status` health and sync-state rendering
-(agent CLI present/missing, llmbroker pool loaded/empty, api key set/missing
-and daily-cap count/fallback state, ok /
+(agent CLI present/missing, pool snapshot degraded/healthy, pool and direct
+missing keys, api daily-cap count/fallback state, last model that answered, ok /
 unsynced-changes / full-sync-required error), the correction button
 toggles input↔suggestion and replaces the note (preserving the
 lookup-only flag and flipping the label), the correction re-run edits
@@ -1113,11 +1154,11 @@ until PyPI credentials are configured; note this in the README.
   config; model downloads follow the config.
 - `/stats` IS in v0.1 (see M7).
 - v0.1 ships **three LLM backend kinds** behind one seam: `llmbroker` (the
-  free-tier model pool — fast, no subprocess, no sandbox; the default),
-  `api` (a paid, **opt-in, never-required** single frontier model called
-  through llmbroker's *direct client* — the only frontier-quality *and*
-  streaming backend that still runs on the micro instance; integration notes in
-  `tickets/llmbroker-integration.md`), and the CLI
+  free-tier model pool — fast, no subprocess, no sandbox, streaming; the
+  default), `api` (a paid, **opt-in, never-required** single frontier model
+  called through llmbroker's *direct client*, declared in code by a curated
+  catalog alias — the only frontier-quality backend that still runs on the
+  micro instance, streaming like the pool), and the CLI
   coding agent (`ECHOWORDS_AGENT`: `claude` / `codex` / `antigravity`) — kept
   as a marginal, laptop-only option for flat-rate subscription users. Metered
   spend is bounded by `ECHOWORDS_API_DAILY_CAP` with automatic fallback to the
