@@ -1,22 +1,26 @@
 # TTS engines per language and host — decision
 
 Status: **decided 2026-07-18 — per-language engine matrix below; do not
-re-open without new voice models appearing.** This document records the
-research behind the TTS choices in the implementation plan: which engine
-serves which language, and how the choice varies between the two
-deployment profiles (laptop / Oracle Free Tier micro instance).
+re-open without new voice models appearing. Amended 2026-08-16:** the
+laptop deployment profile was dropped (`decision-interface.md` made the
+always-on micro instance the backend's only home; the laptop is a dev
+environment), so the matrix has a single column and Kokoro — which was
+confined to the laptop profile — is no longer configured anywhere. The
+per-language research and engine comparison stand unchanged. This
+document records the research behind the TTS choices in the
+implementation plan: which engine serves which language.
 
 ## Requirements
 
 - Free or open-source only — no metered TTS API anywhere (same cost NFR
   as the LLM).
-- Preferred host: a small always-on cloud instance. The realistically
-  available Oracle Cloud Free Tier shape in the user's region is
+- Host: a small always-on cloud instance. The realistically available
+  Oracle Cloud Free Tier shape in the user's region is
   `VM.Standard.E2.1.Micro` — **1 GB RAM** (plus a swap file), 1/8 OCPU.
   The Arm `A1.Flex` shape (2 OCPU / 12 GB for Always Free tenancies)
   is frequently unobtainable ("out of capacity") and is not assumed.
-- Running TTS on the user's laptop is supported (the backend itself may
-  run there) but must not be the *only* way to get audio.
+  Every configured engine must fit this host; the laptop is only a dev
+  environment running the same configuration.
 - Output quality must be good enough for language learning: the card's
   audio is replayed dozens of times during spaced repetition, so a wrong
   or unnatural pronunciation is actively harmful, not just ugly.
@@ -54,7 +58,7 @@ bucket as Serbian below.
 | Quality for learning | near-natural (en) | good | near-commercial neural | flat 16 kHz prosody (trained largely on Bible readings) | mediocre / heavy |
 | License | Apache 2.0 | MIT | free but **unofficial** MS API | CC-BY-NC 4.0 | CPML (non-commercial) |
 | Offline | yes | yes | **no** | yes | yes |
-| Fits 1 GB RAM | **no** (~300 MB model + ONNX runtime alongside the bot + Anki pylib) | **yes** (~60–100 MB per voice, real-time on Raspberry-Pi-class CPUs) | trivially (network only) | no (torch + transformers stack) | no |
+| Fits 1 GB RAM | **no** (~300 MB model + ONNX runtime alongside the backend + Anki pylib) | **yes** (~60–100 MB per voice, real-time on Raspberry-Pi-class CPUs) | trivially (network only) | no (torch + transformers stack) | no |
 
 Rejected outright: XTTS-v2 (no sr/hr, heavy, non-commercial license),
 MMS-TTS (intelligible but monotone; heavy dependency tail for a backup
@@ -80,24 +84,29 @@ the right primary because:
 
 ## Decision
 
-Engine matrix, selected purely by per-deployment config
-(`languages.toml` + env) — the code is identical in both profiles:
+Engine matrix, selected purely by config (`languages.toml` + env), for
+the one deployment target — the 1 GB (+ swap) micro instance:
 
-| Language | laptop profile (incl. Apple Silicon) | micro profile (1 GB + swap) |
-|---|---|---|
-| English | Kokoro (`af_heart` / `bf_emma`) | Piper (e.g. `en_US-lessac-medium`) or edge-tts |
-| German | Piper `de_DE-thorsten-medium` | Piper `de_DE-thorsten-medium` |
-| Serbian | edge-tts `sr-RS-SophieNeural` | edge-tts `sr-RS-SophieNeural` |
+| Language | engine |
+|---|---|
+| English | Piper (e.g. `en_US-lessac-medium`) or edge-tts |
+| German | Piper `de_DE-thorsten-medium` |
+| Serbian | edge-tts `sr-RS-SophieNeural` |
 
-- Kokoro is confined to the laptop profile: on a 1 GB host the model +
-  runtime does not reliably fit next to the bot and Anki pylib, and an
-  OOM kill takes down the whole process — the audio chain's
-  exception-based fall-through never gets a chance to help. Engine
-  selection against host capacity is the **config's** job, done ahead
-  of time; the runtime fall-through only covers genuine runtime errors.
+- Kokoro — the best lightweight English engine in the comparison — is
+  **not configured at all**: on a 1 GB host the model + runtime does
+  not reliably fit next to the backend and Anki pylib, and an OOM kill
+  takes down the whole process — the audio chain's exception-based
+  fall-through never gets a chance to help. Sizing engines to the host
+  is the **config's** job, done ahead of time; the runtime fall-through
+  only covers genuine runtime errors. (It was previously allowed on the
+  since-dropped laptop profile; English pronunciation mostly comes from
+  real dictionary recordings anyway, so the Kokoro-vs-Piper gap only
+  shows on words the dictionary lacks.)
 - Model downloads are config-driven (M6): only engines and voices
-  actually referenced by `languages.toml` are fetched, so the micro
-  profile never downloads the ~300 MB Kokoro model.
+  actually referenced by `languages.toml` are fetched — with no
+  `kokoro` entry possible, the ~300 MB Kokoro model is never
+  downloaded.
 - The dictionary-recording step (real native recordings) stays first in
   the chain for languages that have it; edge-tts stays the last-resort
   fallback for every language, and is simultaneously Serbian's primary.
@@ -106,9 +115,9 @@ Engine matrix, selected purely by per-deployment config
 
 - **edge-tts breakage** — mitigated by generate-once semantics (above);
   worst case is temporary "no audio" for Serbian words.
-- **1 GB is tight even without Kokoro** — PTB + Anki pylib + a Piper
-  inference peak coexist only with a swap file (1–2 GB); documented as
-  a hard setup requirement for the micro profile (M8 README).
+- **1 GB is tight even without Kokoro** — the web backend + Anki pylib
+  + a Piper inference peak coexist only with a swap file (1–2 GB);
+  documented as a hard setup requirement (M8 README).
 - **Future local Serbian voice** — Piper supports training custom
   voices (Common Voice has Serbian data), and community models may
   appear; if a genuine `sr_RS` voice ships, flipping Serbian to Piper

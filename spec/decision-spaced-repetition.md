@@ -61,11 +61,13 @@ Anki's own non-GUI core ships as a standalone PyPI package `anki`
   `sync_collection(auth, sync_media)`, `sync_media(auth)`,
   `sync_status(auth)` (signatures confirmed against ankitects/anki
   main).
-- **Fits Oracle Free Tier.** Version 26.5 publishes
-  `manylinux_2_35_aarch64` wheels — it runs on the Always Free ARM
-  (A1.Flex, up to 4 OCPU / 24 GB) as well as x86. The process is one
-  Python service with an embedded Rust core — tens to a couple hundred
-  MB of RAM, no GPU, no display server.
+- **Fits Oracle Free Tier.** Version 26.5 publishes manylinux wheels
+  for both x86_64 and aarch64. The realistically available shape is
+  `VM.Standard.E2.1.Micro` — 1 GB RAM, x86_64 (the Arm A1.Flex shape is
+  frequently out of capacity and is not assumed — see
+  `decision-tts.md`); pylib fits it with a swap file behind the
+  process. One Python service with an embedded Rust core — tens to a
+  couple hundred MB of RAM, no GPU, no display server.
 - **UX is fully preserved — this is the decisive property.** The
   backend maintains its own collection server-side and syncs it to
   **AnkiWeb**; the user's AnkiDroid / AnkiMobile / desktop sync from
@@ -123,14 +125,12 @@ implementation, `pip install fsrs`) gives the same modern algorithm
 Anki itself now uses: `Scheduler.review_card(card, rating)` with
 Again/Hard/Good/Easy, card state serialization to dict — a natural fit
 for one SQLite table next to the ones M7 already creates. Reviews
-happen **in the same Telegram topics**: the bot sends the card front
-(word + voice message — Telegram lets a cached `file_id` be re-sent for
-free), a "show answer" button, then four grading buttons; a daily
-message says how many cards are due per language. Inline keyboards are
-exactly the primitive `decision-chat-interface.md` already praises for
-"in-chat spaced repetition", and a Telegram Mini App remains the
-richer-UI escape hatch (a separate PWA would violate the "no web UI —
-final" scope decision, so it is not proposed).
+happen **in the app's own interface**: it shows the card front (word +
+pronunciation audio), a "show answer" control, then four grading
+buttons; a daily note says how many cards are due per language. With
+the PWA interface (`decision-interface.md`) such a review view would be
+technically natural — which changes the cost of this option, not the
+verdict below.
 
 Cost/benefit vs Option B:
 
@@ -140,21 +140,20 @@ Cost/benefit vs Option B:
   trivial footprint). This is the true minimum for RAM/CPU/moving
   parts, and every future feature (custom exercises, LLM-generated
   quizzes) is easier because we own the review loop.
-- **Con — the UX regression the goals forbid:** reviewing in a chat
-  is linear and online-only; Anki apps give offline review, swipe
-  flow, per-deck stats, and the user's existing habit and history.
-  Review-in-chat is a *different* product experience, not a drop-in
-  replacement. It also adds the most *new* code of all options
-  (review session flow, due-card querying, grading handlers, stats —
-  a few hundred lines plus tests), whereas B mostly *deletes* code
-  (the queue) — "minimize own code" favors B, not C, once a review UI
-  is included.
+- **Con — the UX regression the goals forbid:** reviewing in the app
+  is online-only; Anki apps give offline review, swipe flow, per-deck
+  stats, and the user's existing habit and history. In-app review is a
+  *different* product experience, not a drop-in replacement. It also
+  adds the most *new* code of all options (review session flow,
+  due-card querying, grading handlers, stats — a few hundred lines plus
+  tests), whereas B mostly *deletes* code (the queue) — "minimize own
+  code" favors B, not C, once a review UI is included.
 
-Verdict: not for v0.1. Adopt only if the owner decides chat-based
-review is *desirable in itself* (always-with-you reviews in the same
-place words are added); it is a product pivot, not an integration
-swap. B does not block it later: FSRS state can be built from scratch
-or imported, and the bot already owns card content.
+Verdict: not for v0.1. Adopt only if the owner decides in-app review
+is *desirable in itself* (always-with-you reviews in the same place
+words are added); it is a product pivot, not an integration swap. B
+does not block it later: FSRS state can be built from scratch or
+imported, and the backend already owns card content.
 
 ## Option D — Mochi (SaaS with a real REST API): rejected
 
@@ -192,28 +191,27 @@ independent of the card store:
   the same `[sound:...]` field; `sync_collection(auth,
   sync_media=True)` carries it to AnkiWeb and on to the phone. Card
   audio behaves exactly as in the current plan.
-- **Option C (if ever adopted):** audio is delivered as the Telegram
-  voice message the bot already sends, re-used at review time via the
-  cached `file_id` — no new storage or serving.
+- **Option C (if ever adopted):** audio is the same mp3 the app
+  already stores and serves for the answer view, replayed at review
+  time — no new storage or serving.
 - **Platform-built-in voicing** (the "use the platform's own TTS"
   idea) exists in none of the candidates — Anki, Space, and Mochi all
   expect audio to be attached, not generated — so generating at card
   creation stays the design regardless of option. That is the right
   place anyway: generate once, play forever offline.
-- **Serbian specifically** needs no compromise and no Croatian
-  substitute: Piper has a Serbian voice (`sr_RS`, `serbski_institut`,
-  medium — confirm quality at M6 as already planned) and edge-tts has
-  `sr-RS-NicholasNeural` / `sr-RS-SophieNeural` (community reports of
-  intermittent breakage on the Nicholas voice reinforce edge-tts's
-  last-resort-only role). Croatian (`hr-HR`) / Bosnian (`bs-BA`)
-  voices remain a documented emergency fallback — phonetically close,
-  but a wrong-language recording on a language-learning card is a
-  quality cut to take only when everything else fails.
-- **On the server:** kokoro-onnx and piper run on CPU via onnxruntime,
-  which supports linux aarch64 — the M6 plan works on the Free Tier
-  ARM instance. (If the instance is the 1 GB x86 micro instead,
-  skipping Kokoro and using Piper + edge-tts is the pragmatic
-  configuration.)
+- **Serbian specifically** has no usable local voice: the lone Piper
+  `sr_RS` dataset (`serbski_institut`) turned out to be **Lower
+  Sorbian** miscatalogued under the Serbian locale and must never be
+  configured — the later TTS research (`decision-tts.md`) settled
+  Serbian on edge-tts (`sr-RS-SophieNeural` / `sr-RS-NicholasNeural`).
+  Croatian (`hr-HR`) / Bosnian (`bs-BA`) voices remain a documented
+  emergency fallback — phonetically close, but a wrong-language
+  recording on a language-learning card is a quality cut to take only
+  when everything else fails.
+- **On the server:** Piper runs on CPU via onnxruntime on the 1 GB
+  micro instance; the pragmatic configuration is Piper for languages
+  with a usable local voice plus edge-tts (see `decision-tts.md` for
+  the settled per-language matrix).
 
 ## Fit against the research goals
 
@@ -256,12 +254,10 @@ which is now cheap.
   and gains `ECHOWORDS_ANKIWEB_USER` / password (or a stored sync key)
   — `ECHOWORDS_ANKI_SYNC` semantics survive as-is.
 - **Not decided here:** actually moving the backend off the laptop.
-  B makes the backend location-independent, but the laptop still
-  anchors the **CLI coding-agent** subscriptions
-  (`decision-chat-interface.md`'s second anchor); llmbroker is a
-  plain API and moves freely. Hosting on OCI (including its known
-  idle-reclamation risk, mitigated by Telegram's 24 h buffering)
-  is a separate decision to take when v0.1 runs.
+  B makes the backend location-independent; the hosting question was
+  later settled by `decision-interface.md` — the backend's home is the
+  always-on OCI micro instance (the PWA interface requires it), and
+  the laptop-anchored CLI coding-agent backend was dropped with it.
 
 References (all checked 2026-07-17): getspace.app + /cli (CLI requires
 the installed app; no server API); ankitects/anki

@@ -20,8 +20,11 @@ Rules:
   and docs.
 - Every new module gets tests in the same commit. `uv run pytest` must be
   green after every milestone.
-- No real network, no real Telegram/Anki/agent in tests — fake or mock
-  every boundary.
+- No real network in tests — fake or mock every boundary (LLM, AnkiWeb
+  sync, TTS engines, dictionary API). The web app is tested through the
+  in-process test client, never a live server. The frontend JavaScript
+  is deliberately thin and is checked manually per milestone — it is
+  not covered by pytest.
 - Update `uv.lock` when adding dependencies (`uv lock`); CI uses
   `--frozen`.
 - Execute milestones strictly in order (M0 → M8); do not start a
@@ -31,22 +34,39 @@ Rules:
 
 ## Upstream dependency: llmbroker
 
-echo-words targets **llmbroker ≥ 1.4** and assumes three changes queued in that
-repository's own plan queue (`specs/plans/README.md` there):
-`journal-lookup-keys`, `rating-by-key`, `routed-call-identity`. **All of them ship
-before M0 starts here** — this plan is written against the state they leave, not
-against 1.4 as released. Two places depend on them:
+echo-words targets **llmbroker ≥ 1.5.1** — pin it in `pyproject.toml` and
+`uv.lock`. Everything this plan needs is in that release's public API; the
+changes echo-words once waited on (`journal-lookup-keys`, `rating-by-key`,
+`routed-call-identity`) have all landed, and they landed in a **better shape
+than the earlier plan assumed**, which is why the three call sites below are
+written the way they are:
 
-- **Quality feedback (M2).** echo-words rates a generation by whether the card
-  JSON parsed — a clean automatic signal. It records that rating with its own
-  request id (`record_quality(score, trace_id=...)`), never persisting llmbroker's
-  model names. That form arrives with `rating-by-key`.
-- **`/status` (M7).** Naming the model that answered a language's last call comes
-  from the object the call returns (`routed-call-identity`), with no journal read.
+- **`stream()` returns a `StreamHandle`, not a bare async generator.** It is
+  async-iterable (`async for delta in handle`), and it additionally *names the
+  model that answered and rates the call*. **Closing it is the consumer's
+  move** — `await handle.aclose()` hands the model's slot back — so the
+  pipeline wraps it in `contextlib.aclosing` (or try/finally) rather than
+  iterating an inline call, which matters whenever a stream is abandoned
+  (backend error, client gone, shutdown).
+- **Quality feedback (M2) needs no trace lookup.** `await
+  handle.record_quality(score)` rates the call the handle came from — the
+  model, the operation and the call id are already on it, so there is no
+  journal read and no id to persist. Sequencing constraint: a streamed call
+  becomes rateable only once its answer has ended (the handle raises
+  `ValueError` before that), which is exactly where echo-words rates it — the
+  card is parsed after the stream completes. The delayed form
+  `broker.record_quality(score, trace_id=…)` remains available and takes
+  exactly one of `call_id=` / `trace_id=`; echo-words does not need it.
+- **`/api/status` (M7) reads `handle.llm_name`** — the model that answered,
+  available from the first delta on, no journal read. Keep it in memory with
+  the call's outcome and time.
 
-Nothing else in echo-words touches those changes, so if a milestone is reached
-before they land, the fallback is stated where it applies rather than blocking the
-milestone.
+`trace_id` is still passed on every call, now purely for tracing/analytics
+rather than as the rating key.
+
+M2 starts with a one-line sanity check against the installed llmbroker that
+`StreamHandle` carries `record_quality` and `llm_name`; a mismatch is a
+dependency-pin problem to fix in `uv.lock`, not something to code around.
 
 ## Execution protocol (how to drive this plan)
 
@@ -56,10 +76,9 @@ For every milestone the executing agent must:
 1. Read, in this order: `functional-description.md` (at minimum the
    sections the milestone touches), then this file's "Rules",
    "Technology choices", "Configuration", "Languages configuration",
-   "Word pipeline", and "The LLM contract" sections, then the
-   milestone's own section — plus any section or decision doc the
-   milestone explicitly names (e.g. "Agent hardening" for M2,
-   "Deployment profiles" for M6/M8).
+   "Web app and API", "Word pipeline", and "The LLM contract" sections,
+   then the milestone's own section — plus any section or decision doc
+   the milestone explicitly names (e.g. "Deployment" for M6/M8).
 2. Implement exactly the milestone's scope — code and its tests in the
    same commit(s). Do not pull in later milestones' work; the "Word
    pipeline" step numbers say which step belongs to which milestone.
@@ -80,73 +99,58 @@ Prompt template for the operator (one per milestone):
 
 | Concern | Choice |
 |---|---|
-| Telegram framework | `python-telegram-bot` v21+ (async, long polling) |
+| Web framework | **FastAPI + uvicorn**: JSON API, server-sent events (a `StreamingResponse` with `media_type="text/event-stream"` — no extra SSE dependency), and static files (`StaticFiles`) from one process. Binds `ECHOWORDS_HOST:ECHOWORDS_PORT` (default `127.0.0.1:8080`); **`tailscale serve` publishes that port as HTTPS inside the tailnet** — the backend itself never handles TLS or auth (decision record: `spec/decision-interface.md`) |
+| Frontend | A single static page: `index.html` + `app.js` + `style.css`, vanilla JavaScript, **no build toolchain** (no npm, no bundler), served by the backend from `src/echo_words/static/`. PWA install bits (`manifest.webmanifest`, icons, a minimal service worker) land in M8 |
 | HTTP client (dictionary pronunciation) | `httpx` (async) |
-| Anki integration | **`anki` pylib, headless** (the non-GUI core of Anki as a PyPI package; manylinux x86_64 + aarch64 wheels, so it runs on Oracle Free Tier ARM). The backend maintains its own collection in `ECHOWORDS_DATA_DIR/anki/` and syncs to AnkiWeb via pylib's `sync_login` / `sync_collection` / `sync_media`. Pin the version (`anki==26.5` at the time of writing) — pylib's API drifts between releases; upgrades are deliberate. No AnkiConnect, no Anki desktop, no GUI anywhere. Decision record: `spec/decision-spaced-repetition.md` |
-| TTS (English, local — **laptop profile only**) | Kokoro-82M via `kokoro-onnx` — local, Apache 2.0, near-natural English, faster than real time on CPU; nothing external to break. English only. Model (~300 MB) downloaded by a background task at startup into `ECHOWORDS_DATA_DIR/models/` (see M6) — only when some language actually configures `kokoro`. Does NOT fit the 1 GB micro profile (see "Deployment profiles"): there English uses Piper or edge-tts instead. Verify at M6 whether `kokoro-onnx` needs the `espeak-ng` system library for phonemization — if it does, it is a documented system requirement, not a hidden crash |
-| TTS (local, both profiles) | Piper (`piper-tts`, ONNX voices, MIT) — local neural TTS with per-language voices, ~60–100 MB per voice, real time on Raspberry-Pi-class CPUs, so it runs even on the 1 GB micro instance. German confirmed (`de_DE-thorsten-medium`); English voices exist (e.g. `en_US-lessac-medium`) for the micro profile. **Serbian is settled: Piper has NO usable Serbian voice** — the only `sr_RS` dataset (`serbski_institut`) is actually **Lower Sorbian** (Sorbian Institute recordings miscatalogued under the Serbian locale) and must never be configured; Serbian's engine is edge-tts (decision record: `spec/decision-tts.md`). Configured voices downloaded at startup, pinned-URL + checksum mechanism (M6). Piper also phonemizes via `espeak-ng` — the same optional system dependency as Kokoro |
-| TTS (online) | `edge-tts` (MS Edge neural voices, free online, outputs mp3, per-language voices e.g. `de-DE-*`) — the **primary** engine for Serbian (`sr-RS-SophieNeural` / `sr-RS-NicholasNeural`, near-commercial quality, both scripts; no usable local voice exists — see `spec/decision-tts.md`) and the last-resort fallback for every other language when the local engine fails. Its known flakiness (unofficial API, recurring 403 breakage) is acceptable in both roles: audio is generated once per word and stored in Anki media, so an outage only affects words added during it |
-| mp3 encoding | `lameenc` (pure-wheel LAME bindings) to convert Kokoro's / Piper's WAV output to mp3 — no ffmpeg system dependency |
+| Anki integration | **`anki` pylib, headless** (the non-GUI core of Anki as a PyPI package; manylinux x86_64 + aarch64 wheels). The backend maintains its own collection in `ECHOWORDS_DATA_DIR/anki/` and syncs to AnkiWeb via pylib's `sync_login` / `sync_collection` / `sync_media`. Pin the version (`anki==26.5` at the time of writing) — pylib's API drifts between releases; upgrades are deliberate. No AnkiConnect, no Anki desktop, no GUI anywhere. Decision record: `spec/decision-spaced-repetition.md` |
+| TTS (local) | Piper (`piper-tts`, ONNX voices, MIT) — local neural TTS with per-language voices, ~60–100 MB per voice, real time on Raspberry-Pi-class CPUs, so it runs on the 1 GB micro instance. English `en_US-lessac-medium`, German `de_DE-thorsten-medium`. **Serbian is settled: Piper has NO usable Serbian voice** — the only `sr_RS` dataset (`serbski_institut`) is actually **Lower Sorbian** (Sorbian Institute recordings miscatalogued under the Serbian locale) and must never be configured; Serbian's engine is edge-tts (decision record: `spec/decision-tts.md`). Configured voices downloaded at startup, pinned-URL + checksum mechanism (M6). Piper phonemizes via `espeak-ng` — an optional system dependency, documented in the README (M8) |
+| TTS (online) | `edge-tts` (MS Edge neural voices, free online, outputs mp3, per-language voices) — the **primary** engine for Serbian (`sr-RS-SophieNeural` / `sr-RS-NicholasNeural`, near-commercial quality, both scripts; no usable local voice exists — see `spec/decision-tts.md`) and the last-resort fallback for every other language when the local engine fails. Its known flakiness (unofficial API, recurring 403 breakage) is acceptable in both roles: audio is generated once per word and stored in Anki media, so an outage only affects words added during it |
+| mp3 encoding | `lameenc` (pure-wheel LAME bindings) to convert Piper's WAV output to mp3 — no ffmpeg system dependency |
 | Dictionary pronunciation | `https://api.dictionaryapi.dev/api/v2/entries/{lang}/{word}` where `{lang}` is the source language's `dict_api` code (`en`, `de`, …; Serbian is unsupported → skip this step) — take the first `phonetics[].audio` non-empty URL (they are Wiktionary recordings); for English prefer entries whose URL contains the configured accent (`-us` / `-uk`), else any |
 | Settings | `pydantic-settings`, env prefix `ECHOWORDS_`, `.env` support |
-| Word log (stats) | stdlib `sqlite3`, single DB file |
-| LLM | Pluggable backend behind one `stream_completion` seam (M2), **three backend kinds shipped in v0.1**, selected by config and by source language (from the languages table, M1): (a) **`llmbroker` pool** — the author's free-tier model-pool broker (`github.com/andgineer/llmbroker`, **≥1.4**): `AsyncBroker` over a pool of free, rate-limited models with automatic failover and quality-based routing, **no metered key** — a plain text→text call, so no subprocess, no agent sandbox, and much lower per-request latency than a coding agent. It **streams** (`AsyncBroker.stream`), failing over up to the first delta and raising `StreamInterruptedError` past it. (b) **`llmbroker` direct client** (paid, **opt-in, never required**) — a single explicitly named frontier model, no pool, no failover, no routing: the model is **declared in echo-words's own code** at broker construction (`AsyncBroker(direct=[...])`) and reached with `await broker.direct(alias)`, which returns a client with `.stream()` and `.ask()`. The alias comes from llmbroker's curated paid catalog (`opus`, `sonnet`, `gpt`, `flash`, …) and is an eternal handle — llmbroker re-points it at the current model generation on its own daily clock, so a provider's new release changes nothing here. Nothing is stored anywhere: the declaration in code is the only source of truth, and the API key is read at call time from the env var the catalog names, never touched by echo-words. This is the only **frontier-quality** backend that still fits the 1 GB micro instance; its role is hard languages and "who wants quality". One `AsyncBroker` instance serves backends (a) and (b) with one error taxonomy (`LLMRequestError` and its subclasses). (c) **CLI coding agent** — the same three as news-recap, `claude` / `codex` / `antigravity`; kept as a **marginal, laptop-only option** for flat-rate-subscription users willing to keep a laptop on (its runtime and interactive auth do not fit the micro instance), copy-and-paste from news-recap. The **M0 spike (precedes M1)** benchmarks which backend is sufficient per language and how much faster llmbroker is, and sets the v0.1 defaults |
+| Word log (stats + history) | stdlib `sqlite3`, single DB file; rows carry the rendered analysis, so the history view survives restarts |
+| LLM | Pluggable backend behind one `stream_completion` seam (M2), **two backend kinds shipped in v0.1**, selected by config and by source language (from the languages table, M1) — both are plain streaming text→text HTTPS calls through the author's `llmbroker` (`github.com/andgineer/llmbroker`, **≥1.5.1**): (a) **`llmbroker` pool** — `AsyncBroker` over a pool of free, rate-limited models with automatic failover and quality-based routing, **no metered key**; the default. `broker.stream(prompt, operation=…, trace_id=…, wait=…)` returns a `StreamHandle`: async-iterable over text deltas, carrying `llm_name` (who answered, from the first delta on) and `record_quality(score)`, and closed by the consumer with `aclose()`. It fails over up to the first delta and raises `StreamInterruptedError` past it. `wait` is the **whole-call budget — queueing for a free model plus the answer** (llmbroker does not penalize a model's quality score for the caller's deadline); without it a single attempt is bounded only by an internal 60 s ceiling, so echo-words always passes it, from the functional description's ~20–30 s budget. (b) **`llmbroker` direct client** (paid, **opt-in, never required**) — a single explicitly named frontier model, no pool, no failover, no routing: the model is **declared in echo-words's own code** at broker construction (`AsyncBroker(direct=[...])`) and reached with `await broker.direct(alias)`, which returns an `AsyncDirectClient` whose `.stream(prompt, timeout=…)` is a plain async iterator of deltas. That client borrows the broker's single shared httpx client, so obtaining one per request is cheap and echo-words must **not** close it. The alias comes from llmbroker's curated paid catalog (`opus`, `sonnet`, `gpt`, `flash`, … — `llmbroker list` prints them) and is an eternal handle — llmbroker re-points it at the current model generation on its own daily clock, so a provider's new release changes nothing here. Nothing is stored anywhere: the declaration in code is the only source of truth, and the API key is read at call time from the env var the catalog names, never touched by echo-words. Its role is hard languages and "who wants quality". One `AsyncBroker` instance serves both backends with one error taxonomy (`LLMRequestError` and its subclasses); it is created in the FastAPI lifespan (after the languages config) and `aclose()`d on shutdown. The **M0 spike (precedes M1)** benchmarks which backend is sufficient per language and sets the v0.1 defaults |
 | Lint | `ruff` (line-length 99), run in CI after tests |
 
-## Deployment profiles
+## Deployment
 
-One codebase, two documented ways to run it — the difference is **pure
-configuration** (`languages.toml` + env), never a code path:
+One deployment target — the difference between it and a dev laptop is
+**pure configuration**, never a code path:
 
-- **laptop** (incl. Apple Silicon): no memory pressure. English uses
-  Kokoro, German uses Piper, Serbian uses edge-tts.
-- **micro** — Oracle Cloud Free Tier `VM.Standard.E2.1.Micro`: **1 GB
+- **Home: Oracle Cloud Free Tier `VM.Standard.E2.1.Micro`** — **1 GB
   RAM**, 1/8 OCPU, x86_64. (The Arm `A1.Flex` shape — 2 OCPU / 12 GB
   for Always Free tenancies — is frequently unobtainable per region and
-  is not assumed; if available it removes the constraints below.) A
-  **swap file (1–2 GB) is a hard setup requirement**: PTB + Anki pylib
-  + a Piper inference peak coexist in 1 GB only with swap behind them.
-  **Kokoro is excluded by config on this profile** — its model +
-  runtime does not reliably fit, and an OOM kill takes down the whole
-  bot process, so the audio chain's exception-based fall-through (M6)
-  never gets a chance; sizing engines to the host is the config's job,
-  done ahead of time. English therefore uses Piper
-  (`en_US-lessac-medium`) or edge-tts; German Piper; Serbian edge-tts.
+  is not assumed; if available it removes the memory constraints.) A
+  **swap file (1–2 GB) is a hard setup requirement**: the web backend +
+  Anki pylib + a Piper inference peak coexist in 1 GB only with swap
+  behind them. Kokoro is not configured anywhere — it does not fit this
+  host, and with the laptop deployment profile dropped it left the
+  design entirely (`spec/decision-tts.md`).
+- **Tailscale is the front door**: `tailscale up` on the instance, then
+  `tailscale serve` maps tailnet-HTTPS onto the backend's localhost
+  port. The backend binds `127.0.0.1` and never sees TLS or auth;
+  tailnet membership is the access control. Setup is a documented README
+  step (M8), not code.
+- **The laptop is a dev environment**, running the same configuration
+  (Piper and edge-tts work anywhere); it is not a supported deployment
+  profile.
 
-**LLM backend availability is per-profile too** — the same "config, not code
-path" principle as the TTS engines. Both llmbroker backends (the free pool and
-the paid direct client) are plain HTTPS calls that fit the 1 GB micro instance,
-so on **micro** the choice is `llmbroker` (default) with `api` as the paid
-escape-hatch for hard languages. The **CLI `agent`** backend is **laptop-only**
-(its runtime footprint and interactive subscription auth do not fit micro), so
-`languages.toml` on the micro profile never sets `backend = "agent"`. On the
-**laptop** profile all three are available.
-
-Model downloads (M6) are driven by the config: only engines and voices
-referenced by `languages.toml` are fetched, so the micro profile never
-downloads the ~300 MB Kokoro model. Full engine rationale and the
-comparison table: `spec/decision-tts.md`.
+Model downloads (M6) are driven by the config: only voices referenced by
+`languages.toml` are fetched. Full engine rationale and the comparison
+table: `spec/decision-tts.md`.
 
 ## Configuration (env vars)
 
 | Variable | Meaning | Default |
 |---|---|---|
-| `ECHOWORDS_BOT_TOKEN` | Telegram bot token | required |
-| `ECHOWORDS_ALLOWED_USER_IDS` | comma-separated Telegram user IDs | required |
+| `ECHOWORDS_HOST` | interface the web app binds; keep loopback — Tailscale serve is the front door | `127.0.0.1` |
+| `ECHOWORDS_PORT` | port the web app binds | `8080` |
 | `ECHOWORDS_TARGET_LANG` | language of all explanations and translations, app-wide | `ru` |
-| `ECHOWORDS_LANGUAGES_CONFIG` | path to the TOML table defining each source language (see "Languages configuration" below): topic id, deck, backend, dictionary code, TTS engine + voice, accent, allowed script | `~/.echo-words/languages.toml` |
-| `ECHOWORDS_GROUP_ID` | Telegram supergroup id the bot serves; messages from other chats are ignored | required |
-| `ECHOWORDS_LLM_BACKEND` | `llmbroker`, `api`, or `agent` — fallback backend kind for a language whose table entry omits `backend` (default set by the M0 spike) | `llmbroker` |
-| `ECHOWORDS_AGENT` | when backend = `agent`: `claude`, `codex`, or `antigravity` | `claude` |
-| `ECHOWORDS_CLAUDE_CMD` | claude argv template | `claude -p {prompt} --model {model} --output-format stream-json --include-partial-messages --verbose --allowed-tools ""` (empty allow-list = nothing allowed; see "Agent hardening") |
-| `ECHOWORDS_CODEX_CMD` | codex argv template | `codex exec --model {model} --sandbox read-only -c model_reasoning_effort=low --output-last-message {out_file} {prompt}` |
-| `ECHOWORDS_ANTIGRAVITY_CMD` | antigravity argv template | `agy --model {model} -p {prompt}` — never with `--dangerously-skip-permissions`; see "Agent hardening" |
-| `ECHOWORDS_MODEL` | model substituted into the template | per agent: `sonnet` (claude — nuanced Russian linguistic analysis is worth more than haiku's latency on a flat-rate plan), `gpt-5.2` (codex), `gemini-3.5-flash` (antigravity) |
-| `ECHOWORDS_AGENT_TIMEOUT` | seconds | `120` |
-| `ECHOWORDS_AGENT_ENV_PASSTHROUGH` | CSV escape hatch: extra env var names allowed into the agent subprocess (see "Agent hardening") | empty |
+| `ECHOWORDS_LANGUAGES_CONFIG` | path to the TOML table defining each source language (see "Languages configuration" below): deck, backend, dictionary code, TTS engine + voice, accent, allowed script | `~/.echo-words/languages.toml` |
+| `ECHOWORDS_LLM_BACKEND` | `llmbroker` or `api` — fallback backend kind for a language whose table entry omits `backend` (default set by the M0 spike) | `llmbroker` |
 | `ECHOWORDS_LLMBROKER_HOME` | directory llmbroker keeps its own state in (curated model list, call journal) — passed as `AsyncBroker(home=...)`. Must be writable: llmbroker falls back to in-memory state where it is not, which silently disables the call journal and with it quality learning. There is **no** model-list file for the operator to write or point at — the pool arrives as a curated preset llmbroker refreshes itself | `ECHOWORDS_DATA_DIR/llmbroker` |
 | `ECHOWORDS_LLMBROKER_OPERATION` | operation-label **prefix**; the label actually passed is `{prefix}-{lang}` (`vocab-en`, `vocab-sr`). llmbroker learns quality per `(model, operation)`, so a per-language label makes the pool discover on its own which model is good at which source language — the production counterpart of M0's hypothesis 1 | `vocab` |
-| `ECHOWORDS_LLMBROKER_WEB` | allow the llmbroker backend a web-search tool for grounding (hard languages — see M0); off by default | `false` |
+| `ECHOWORDS_LLMBROKER_WEB` | allow the llmbroker backend a web-search tool for grounding (hard languages — see M0); off by default. **Provisional**: M0 drops it from v0.1 if the paid `api` path closes the hard-language gap | `false` |
 | `ECHOWORDS_API_MODEL` | when backend = `api`: the paid-catalog **alias** passed to `broker.direct(...)` — `opus`, `sonnet`, `gpt`, `flash`, … (`llmbroker list` prints them). A per-language `api_model` in the languages table overrides it, so a hard language can use a stronger model than the rest. Every alias any language uses is collected at startup and declared as `AsyncBroker(direct=[...])`. The provider's key is read by llmbroker from the env var its catalog names (`ANTHROPIC_API_KEY`, …) — echo-words never reads, stores or passes it | `sonnet` |
 | `ECHOWORDS_API_DAILY_CAP` | max paid direct-client calls per day; on exceed, that language falls back to the free `llmbroker` pool for the rest of the day (M2). `0` = unlimited | `100` |
 | `ECHOWORDS_ANKIWEB_USER` | AnkiWeb account (email) for sync; required when `ECHOWORDS_ANKI_SYNC` is on | required if sync on |
@@ -154,9 +158,8 @@ comparison table: `spec/decision-tts.md`.
 | `ECHOWORDS_SYNC_ENDPOINT` | custom sync server URL (the self-hosted fallback from the decision doc); empty = AnkiWeb | empty |
 | `ECHOWORDS_ANKI_SYNC` | sync the collection to AnkiWeb after additions (see M5) | `true` |
 | `ECHOWORDS_ACCENT` | `us` or `uk`, English dictionary-audio and voice choice; per-language override in the languages table | `us` |
-| `ECHOWORDS_TTS_VOICE` | default Kokoro (English) voice; per-language `tts_voice` in the table overrides | `af_heart` (us) / `bf_emma` (uk) |
 | `ECHOWORDS_EDGE_TTS_VOICE` | default last-resort edge-tts voice; per-language `edge_tts_voice` in the table overrides | `en-US-AriaNeural` (us) / `en-GB-SoniaNeural` (uk) |
-| `ECHOWORDS_AUDIO_TIMEOUT` | seconds to wait for the speculative pronunciation task after the final edit; on timeout the task is cancelled and the send proceeds with "🔇 no audio" (see M6) | `20` |
+| `ECHOWORDS_AUDIO_TIMEOUT` | seconds to wait for the speculative pronunciation task after generation ends; on timeout the task is cancelled and the send proceeds with "🔇 no audio" (see M6) | `20` |
 | `ECHOWORDS_DATA_DIR` | Anki collection (`anki/`), word-log DB, TTS models, downloaded audio, stored sync key | `~/.echo-words` |
 
 ## Languages configuration
@@ -167,19 +170,16 @@ for everything that varies by language — deck, backend, audio, validation:
 
 ```toml
 [languages.en]
-topic_id   = 2                 # Telegram message_thread_id of the "English" topic
 name       = "English"
 deck       = "English::Vocabulary"
-backend    = "llmbroker"       # llmbroker | agent; omit -> ECHOWORDS_LLM_BACKEND
+backend    = "llmbroker"       # llmbroker | api; omit -> ECHOWORDS_LLM_BACKEND
 dict_api   = "en"              # dictionaryapi.dev code; omit if unsupported
-tts        = "kokoro"          # kokoro | piper | edge; laptop profile — on the 1 GB
-                               # micro profile use "piper" (en_US-lessac-medium) or "edge"
-tts_voice  = "af_heart"
+tts        = "piper"           # piper | edge
+tts_voice  = "en_US-lessac-medium"
 accent     = "us"              # meaningful for English
 script     = "latin"           # latin | cyrillic | latin+cyrillic (input validation)
 
 [languages.de]
-topic_id  = 3
 name      = "Deutsch"
 deck      = "German::Vocabulary"
 backend   = "llmbroker"
@@ -189,12 +189,10 @@ tts_voice = "de_DE-thorsten-medium"
 script    = "latin"
 
 [languages.sr]
-topic_id  = 4
 name      = "Српски"
 deck      = "Serbian::Vocabulary"
-backend   = "api"              # per the M0 spike, if the free pool is insufficient for
-                               # Serbian: "api" (paid, runs on the micro instance)
-                               # or "agent" (CLI, laptop-only) — M0 decides
+backend   = "api"              # per the M0 spike, if the free pool is insufficient
+                               # for Serbian — M0 decides
 api_model = "opus"             # paid-catalog alias; omit -> ECHOWORDS_API_MODEL
 # dict_api omitted — dictionaryapi.dev has no Serbian
 tts       = "edge"             # no usable local voice: Piper's lone sr_RS model
@@ -207,174 +205,122 @@ prompt_hints = "для существительных указывай род и
 
 Semantics:
 
-- **Routing.** An incoming message's `message_thread_id` is matched
-  against `topic_id`. No match (General topic, or an unmapped topic) →
-  short hint, no LLM call. The whitelist (`ECHOWORDS_ALLOWED_USER_IDS`)
-  still gates the sender independently.
-- **Backend.** `backend` per language — `llmbroker` (free pool), `api`
-  (paid direct client, opt-in), or `agent` (CLI); absent →
-  `ECHOWORDS_LLM_BACKEND`. This replaces the old `ECHOWORDS_BACKEND_BY_LANG`
-  map — one place per language, not a separate parallel setting. An `api`
-  language may also carry `api_model` (a paid-catalog alias); absent →
-  `ECHOWORDS_API_MODEL`. Because llmbroker takes its declared models at
-  construction, the set of aliases across all languages is collected while
-  loading this file and passed to the single `AsyncBroker` — so the broker is
-  built *after* the languages config, not at import time.
+- **Routing.** A submission carries the language code the user selected
+  in the UI; it is matched against this table. An unknown code → a
+  short hint, no LLM call. The language is always the explicit
+  selection, never guessed from the word.
+- **Backend.** `backend` per language — `llmbroker` (free pool) or `api`
+  (paid direct client, opt-in); absent → `ECHOWORDS_LLM_BACKEND`. An
+  `api` language may also carry `api_model` (a paid-catalog alias);
+  absent → `ECHOWORDS_API_MODEL`. Because llmbroker takes its declared
+  models at construction, the set of aliases across all languages is
+  collected while loading this file and passed to the single
+  `AsyncBroker` — so the broker is built *after* the languages config,
+  not at import time.
 - **Audio.** `dict_api` (omit = skip the dictionary step), `tts` (which
-  engine — `kokoro` for English on the laptop profile, `piper` for
-  German and for English on the micro profile, `edge` for Serbian),
+  engine — `piper` for English and German, `edge` for Serbian),
   `tts_voice`, and an optional `edge_tts_voice` (the edge-tts voice —
   primary for Serbian, fallback elsewhere); `accent` where it applies.
-  Engine-per-profile rationale: `spec/decision-tts.md`. See M6.
+  Engine rationale: `spec/decision-tts.md`. See M6.
 - **Validation.** `script` selects the allowed character set for the
-  language (M1). Because the topic fixes the language before validation,
-  the check is exact, not a guess.
+  language (M1). Because the selection fixes the language before
+  validation, the check is exact, not a guess.
 - **Prompt hints.** Optional `prompt_hints` — a per-language line
   substituted into the prompt's `{source_hints}` slot (see "The LLM
   contract"); absent → the slot is empty. Keeping hints in the config
   preserves the functional description's rule that adding a language is
   a config change, not a code change.
-- Config loads into a `Language` dataclass (new `languages.py`), looked up
-  by `topic_id` (routing) and by code (backend/prompt). A missing file or
-  a `topic_id` collision is a startup config error.
+- Config loads into a `Language` dataclass (new `languages.py`), looked
+  up by code. A missing file is a startup config error.
 
-## Agent hardening
+## Web app and API
 
-The bot forwards user text into a coding agent running under the user's
-own account on the user's own laptop. Input validation (Latin letters,
-~50 chars) is NOT a security boundary — "delete all files in home dir"
-passes it, and a poisoned phrase is textbook **indirect prompt injection**
-(OWASP LLM01): the prompt-level instructions in `prompt.py` are requests,
-not controls; what matters is what the agent process *can do* if the text
-hijacks it. The design target is the one `news-recap` settled on in
-`spec/plan-agent-sandboxing.md` (findings verified 2026-07-13): break one
-leg of the **lethal trifecta** (private data / untrusted content /
-exfiltration) using each vendor's **own** built-in protection — preferring
-the exfiltration leg — rather than a hand-built kernel sandbox. Probability
-is low (a single whitelisted family member typing a word) but the blast
-radius is irreversible (a leaked SSH key does not come back), so the
-controls are cheap and proportionate: deny the agent file, shell, and
-network tools, and do not build a custom sandbox unless a vendor's own
-protection demonstrably fails.
+One FastAPI application (`api.py`) serves everything:
 
-echo-words has one advantage over news-recap. news-recap must deliver a
-multi-KB prompt via a file (`{prompt_file}`), so it has to give each agent
-a **read** tool to open it — its floor is "read-only". echo-words's prompt is
-one short word passed as an argv positional (M2), never a file, so it needs
-no tool at all — its floor is "**nothing allowed**".
+- `GET /` and `/static/*` — the PWA page (`index.html`, `app.js`,
+  `style.css`; M8 adds `manifest.webmanifest`, icons, `sw.js`).
+- `GET /api/languages` — the configured languages (code + display name)
+  for the selector.
+- `POST /api/words` — body `{word, lang, lookup_only}`. Validates (M1),
+  assigns an `entry_id`, enqueues the job (M3), and returns
+  `{entry_id}` immediately; a validation failure returns the short hint
+  instead. The client renders the pending entry from this response.
+- `GET /api/events` — the single SSE stream. Events, each carrying the
+  `entry_id` they belong to:
+  - `accepted` — a job was enqueued (covers submissions from another
+    device); payload: word, language, lookup flag.
+  - `update` — the **full sanitized text so far** (not a delta): the
+    client just replaces the entry's content, which makes missed events
+    harmless. Sent at most ~2/s and only when the visible text changed;
+    cut at the card delimiter (see "The LLM contract").
+  - `done` — final text, the status line, the audio URL (or none), the
+    usable `suggestion` (or none) and which spelling the entry
+    currently shows.
+  - `error` — a short apology + redo hint.
+  A comment line is sent every 15 s as a keep-alive. The stream carries
+  all entries (no per-entry streams): the client opens one
+  `EventSource`, and its automatic reconnect plus a `GET
+  /api/words/recent` refetch on every (re)connect makes recovery
+  lossless.
+- `GET /api/words/recent?limit=20` — the history: finished entries from
+  the word log (word, language, sanitized analysis HTML, status, audio
+  URL) merged with in-progress jobs (their accumulated sanitized text),
+  newest first.
+- `POST /api/words/{entry_id}/switch` — the correction button (M7):
+  re-runs the pipeline for the other spelling into the same entry.
+- `POST /api/languages/{code}/undo` and `/redo` — per-language undo/redo
+  (M7).
+- `GET /api/stats`, `GET /api/status` — the stats and status views (M7).
+- `GET /api/audio/{name}` — serves a stored pronunciation mp3 from
+  `ECHOWORDS_DATA_DIR/audio/` (filenames are server-generated slugs —
+  never client-supplied paths; reject anything but a bare known
+  filename).
 
-Per agent (defaults in the config table; exact flag names may drift between
-CLI versions — the M2 canary check below is the real gate):
-
-- **claude — allow-list, not deny-list.** news-recap proved live (CLI
-  v2.1.207) that `--allowed-tools "Read"` with no `--permission-mode` and
-  no network tools is necessary and sufficient for its file-read flow;
-  `dontAsk` / `bypassPermissions` are unneeded and `WebFetch` /
-  `Bash(curl:*)` are pure exfil surface. An **allow-list is strictly
-  better** than the deny-list this plan first sketched: a deny-list
-  enumerates today's tools and silently permits any tool a future CLI adds.
-  Because echo-words delivers the prompt via argv, not a file, it does not
-  even need `Read`, so the default is `--allowed-tools ""` (nothing
-  allowed). If the installed CLI rejects an empty allow-list, fall back to
-  `--allowed-tools "Read"` — harmless here, since argv delivery never reads
-  a file — which is exactly the value news-recap verified.
-- **codex — read-only sandbox, no network flag.** codex's sandbox applies
-  to the shell commands the agent spawns, not to codex's own model API call
-  (made by the un-sandboxed launcher), so `--sandbox read-only` does **not**
-  block codex from reaching its API — and a text→text task never needs the
-  agent's shell to touch the network. That is why the default carries no
-  `network_access=true`. (macOS Seatbelt has known network edge cases —
-  codex#10390, #9298 — so confirm with one probe run in M2.)
-- **antigravity — turn on agy's OWN sandbox, don't just omit the dangerous
-  flag.** `agy` ships a native **Terminal Sandbox** (`sandbox-exec` on
-  macOS, `nsjail` on Linux) plus a permission layer, configured in
-  `~/.gemini/antigravity-cli/settings.json`: `enableTerminalSandbox` (bool,
-  default **false**), `toolPermission` (`always-proceed` | `request-review`
-  | `strict` | `proceed-in-sandbox`, default `request-review`), and
-  `permissions.allow` / `permissions.deny` (e.g.
-  `deny: ["command(curl)","command(wget)","command(rm -rf)"]`).
-  `--dangerously-skip-permissions` is not merely "skip approvals" — it also
-  auto-approves the *"bypass the sandbox"* prompt (antigravity-cli#36), so
-  it specifically defeats agy's own protection; the default template must
-  never carry it. agy has **no** read-only / plan mode for a
-  non-interactive `-p` run (antigravity-cli#45, unresolved), so hardening
-  agy means shipping the safe `settings.json` (`enableTerminalSandbox:
-  true`, `toolPermission: proceed-in-sandbox`, deny-list for
-  curl/wget/rm) — applied through a pipeline-owned config path so the
-  operator's global settings file is never clobbered. If M2 finds agy
-  cannot run headless under any setting that also contains it, drop agy
-  from the supported list rather than run it unrestricted; the community
-  fallback is a disposable Docker container with an egress allowlist and
-  headless OAuth (`shelajev/agy-sbx-kit`), out of scope for v0.1.
-
-**Environment hygiene (all agents).** The agent subprocess must not inherit
-the operator's whole shell. Do not pass `os.environ.copy()`; build a
-default-deny env — `PATH`, `HOME`, `LANG`, `LC_ALL`, `TERM`, `TMPDIR`, plus
-the selected agent's own auth vars and the `ECHOWORDS_*` settings — so an
-unrelated secret in the shell (an API key, a token) can never reach a
-hijacked agent. `ECHOWORDS_AGENT_ENV_PASSTHROUGH` (CSV) is the escape hatch
-for the rare extra var a specific setup needs.
-
-## Module layout
-
-```
-src/echo_words/
-  __about__.py      # version (exists)
-  __init__.py       # exists
-  config.py         # Settings
-  languages.py      # Language dataclass + languages.toml loader; lookup by topic_id / code
-  main.py           # entry point: build app, run polling; console_script `echo-words`
-  bot.py            # handlers (whitelist filter, topic->language routing, commands, correction-button callback) + the shared word pipeline `process_word` (see "Word pipeline")
-  streaming.py      # placeholder-edit loop bridging the backend stream -> Telegram edits
-  backend.py        # stream_completion dispatcher: pick backend by lang (languages table), delegate; enforce ECHOWORDS_API_DAILY_CAP with fallback to the llmbroker pool
-  agent.py          # CLI-agent backend: subprocess runner yielding text deltas
-  broker.py         # the one AsyncBroker: built after languages.py from home= + direct=[aliases]
-  llm_backend.py    # llmbroker pool backend: broker.stream(...) -> text deltas
-  api_backend.py    # paid api backend: (await broker.direct(alias)).stream(...) -> text deltas
-  prompt.py         # prompt template (source/target lang slots) + card-payload extraction
-  card.py           # note dataclass (word, ipa, 1-3 meanings) + optional suggestion, validation of the LLM payload
-  anki.py           # headless collection wrapper (pylib): open/bootstrap, add/find/delete notes, media, debounced AnkiWeb sync
-  audio.py          # per-language chain: dictionary + local TTS (kokoro/piper) + edge-tts -> mp3
-  word_log.py       # sqlite word_log (source for /stats)
-```
-
-`[project.scripts]` already carries `echo-words = "echo_words.main:echo_words"` —
-keep it; do not add a second entry point.
+Frontend rules: vanilla JS, no build step, no framework. The page keeps
+the selected language in `localStorage`, renders entries from
+`/api/words/recent` + live events, plays audio via an `<audio>` element
+(autoplay attempted, one-tap replay always available), and keeps a
+resend queue of words that failed to POST (M8). Server-sent HTML is
+already sanitized (see "The LLM contract") and is the only thing the
+client assigns as HTML; everything else is text nodes.
 
 ## Word pipeline (orchestration)
 
-`bot.py` owns one coroutine shared by every entry point — the word
-handler (M3), `/redo`, and the correction button (both M7):
+`pipeline.py` owns one coroutine shared by every entry point — the
+submit endpoint (M3), redo, and the correction switch (both M7):
 
 ```python
-async def process_word(chat_ctx, lang: Language, word: str,
-                       lookup_only: bool,
-                       reuse_message: Message | None = None) -> None
+async def process_word(lang: Language, word: str, lookup_only: bool,
+                       reuse_entry: str | None = None) -> None
 ```
 
-1. The caller enqueues the job before its first `await`, then posts the
-   placeholder "⏳ {word} …" in the word's topic — or, when
-   `reuse_message` is given (correction button), edits that existing
-   message back to the placeholder instead of posting a new one. Backlog
-   words are visibly accepted right away without losing send order (M3).
-2. The single queue worker takes the job in send order and runs the
-   steps below against that placeholder message (M3).
+1. The submit endpoint validates, assigns an `entry_id`, registers the
+   job in the in-memory registry and enqueues it, then returns — the
+   entry appears as pending at once, and submissions keep their order.
+   When `reuse_entry` is given (correction switch, redo), the existing
+   entry is reset to pending instead of a new one being created.
+2. The single queue worker takes jobs in submission order (a FIFO
+   `asyncio.Queue`, one worker — no parallel LLM runs, even across
+   languages) and runs the steps below.
 3. Start the speculative audio task for the raw input — parallel with
    the LLM call (M6).
-4. Run `stream_completion(prompt, lang)` through the streaming bridge;
-   the bridge edits the message in place and returns it plus the full
-   accumulated raw text (M3).
+4. Run `stream_completion(prompt, lang)`; accumulate the raw text
+   server-side, publish sanitized `update` events cut at the delimiter
+   (M3). The accumulated text is what `/api/words/recent` serves for an
+   in-progress entry.
 5. Parse the card payload out of the raw text (M4). On parse failure the
    analysis text still stands; the status line will report that the card
    failed.
-6. `await asyncio.wait_for(audio_task, ECHOWORDS_AUDIO_TIMEOUT)` and send
-   the voice message; on timeout or `None`, note "🔇 no audio" for the
-   status line (M6).
+6. `await asyncio.wait_for(audio_task, ECHOWORDS_AUDIO_TIMEOUT)`; store
+   the mp3 and note its URL; on timeout or `None`, note "🔇 no audio"
+   for the status line (M6).
 7. Add the note unless lookup-only, duplicate, or parse failure (M5);
-   append the status line to the analysis message.
-8. If the payload carried a usable `suggestion`, attach the correction
-   keyboard (M7).
-9. Write the `word_log` row and update the topic's undo/redo state (M7).
+   compose the status line.
+8. If the payload carried a usable `suggestion`, include it in the
+   `done` event so the UI renders the correction button (M7).
+9. Write the `word_log` row (with the sanitized analysis and audio
+   filename) and update the language's undo/redo state (M7); publish
+   `done`.
 
 The function grows one step per milestone, leaving earlier steps
 untouched — the milestones below reference these step numbers.
@@ -382,9 +328,9 @@ untouched — the milestones below reference these step numbers.
 ## The LLM contract (core of the system)
 
 `prompt.py` builds one prompt per request from a template with two
-language slots — the source language (from the topic, M1) and the target
-language (`ECHOWORDS_TARGET_LANG`). The `===CARD===` JSON contract below is
-identical across languages; only the two slots and an optional
+language slots — the source language (the user's selection, M1) and the
+target language (`ECHOWORDS_TARGET_LANG`). The `===CARD===` JSON contract
+below is identical across languages; only the two slots and an optional
 per-language morphology hint change:
 
 ```text
@@ -449,9 +395,10 @@ language.
 
 Parsing rules (`prompt.py` / `card.py`):
 
-- Everything before `===CARD===` is the Telegram text. During streaming,
-  cut the displayed text at the delimiter as soon as any prefix of it
-  appears at the end of the buffer (never flash `===CA` to the user).
+- Everything before `===CARD===` is the visible analysis. During
+  streaming, cut the displayed text at the delimiter as soon as any
+  prefix of it appears at the end of the buffer (never flash `===CA` to
+  the user).
 - After the run, parse the JSON after the delimiter into a single
   `Note` (`word`, `ipa`, `meanings: list[Meaning]` where each meaning
   has `label` possibly empty, `pos` possibly empty (the part-of-speech
@@ -465,8 +412,8 @@ Parsing rules (`prompt.py` / `card.py`):
   description); it is transient UI state, not part of the stored note, so
   it is returned alongside the `Note`, not on it. A missing or empty
   `suggestion` means "no correction offered". On any parse/validation
-  failure: the Telegram answer still goes out, no note is created, status
-  line says the card failed — never crash the handler.
+  failure: the analysis still stands, no note is created, the status
+  line says the card failed — never crash the pipeline.
 - The **canonical word is always the raw input**, never the LLM's output:
   autocorrection is advisory, so the payload's `word` merely echoes the
   input and is not trusted for identity. Together with the source language
@@ -476,8 +423,8 @@ Parsing rules (`prompt.py` / `card.py`):
   (M6) — which is therefore always the right audio, with no re-fetch in
   the normal flow. `suggestion`, when non-empty and different from the
   input (case-insensitive), is the only thing that triggers UI: the
-  word pipeline attaches the inline correction button after the final
-  edit (step 8; the button logic is M7). The
+  word pipeline includes it in the `done` event so the correction button
+  appears (step 8; the button logic is M7). The
   corrected word runs downstream only if the user taps that button, which
   re-processes the word exactly as a fresh send for the suggested
   spelling.
@@ -491,13 +438,48 @@ Parsing rules (`prompt.py` / `card.py`):
   out of the `find_notes` query and the media filename it would reach
   through the re-run (M5).
 
-HTML safety (`streaming.py`): Telegram gets `parse_mode=HTML`, and the
-LLM is only *asked* to emit `<b>`/`<i>` — the code must enforce it.
-Sanitizer over the visible text: escape `&`, `<`, `>` everywhere except
-whitelisted `<b>`, `</b>`, `<i>`, `</i>` tags; auto-close tags left
-open at the current cut point (streaming can split a tag pair across
-edits). If Telegram still rejects an edit with an entity-parse error,
-retry that edit without `parse_mode` — degraded but delivered.
+HTML safety (`sanitizer.py`): the LLM is only *asked* to emit
+`<b>`/`<i>` — the code must enforce it, because the client assigns the
+analysis as HTML. The sanitizer runs **server-side** over the
+accumulated text before anything is published (SSE events, the history
+endpoint) — the client never sanitizes and never receives unsanitized
+LLM output: escape `&`, `<`, `>` everywhere except whitelisted `<b>`,
+`</b>`, `<i>`, `</i>` tags; auto-close tags left open at the current
+cut point (streaming can split a tag pair across updates).
+
+## Module layout
+
+```
+src/echo_words/
+  __about__.py      # version (exists)
+  __init__.py       # exists
+  config.py         # Settings
+  languages.py      # Language dataclass + languages.toml loader; lookup by code
+  main.py           # entry point: build the app, uvicorn.run; console_script `echo-words`
+  api.py            # FastAPI routes (submit, events SSE, recent, switch, undo/redo,
+                    # stats, status, audio) + static mounting
+  pipeline.py       # process_word + the single FIFO queue worker + in-memory job registry
+  events.py         # in-process pub/sub bridging pipeline progress -> SSE subscribers
+  sanitizer.py      # whitelist <b>/<i>, escape the rest, auto-close at the cut
+  backend.py        # stream_completion dispatcher: pick backend by lang (languages
+                    # table), delegate; enforce ECHOWORDS_API_DAILY_CAP with fallback
+                    # to the llmbroker pool
+  broker.py         # the one AsyncBroker: built after languages.py from home= + direct=[aliases]
+  llm_backend.py    # llmbroker pool backend: broker.stream(...) -> text deltas
+  api_backend.py    # paid api backend: (await broker.direct(alias)).stream(...) -> text deltas
+  prompt.py         # prompt template (source/target lang slots) + card-payload extraction
+  card.py           # note dataclass (word, ipa, 1-3 meanings) + optional suggestion,
+                    # validation of the LLM payload
+  anki.py           # headless collection wrapper (pylib): open/bootstrap, add/find/delete
+                    # notes, media, debounced AnkiWeb sync
+  audio.py          # per-language chain: dictionary + Piper + edge-tts -> mp3
+  word_log.py       # sqlite word_log (source for /api/stats and the history view)
+  static/           # index.html, app.js, style.css; M8 adds manifest.webmanifest,
+                    # icons/, sw.js
+```
+
+`[project.scripts]` already carries `echo-words = "echo_words.main:echo_words"` —
+keep it; do not add a second entry point.
 
 ## Milestones
 
@@ -510,46 +492,35 @@ sets the v0.1 backend defaults the rest of the plan builds on.
 ### M0 — LLM backend spike (precedes M1–M8; decides the v0.1 backend defaults)
 
 Runs **before** any product code. echo-words ships **both** backend kinds in
-v0.1 (see the LLM technology row): `llmbroker` (free-tier model pool, fast,
-no subprocess/sandbox) and the CLI coding agent (heavier, but frontier-tier
-for what the pool can't do). M0 does not choose one *instead of* building the
-other — the backend seam is built regardless (M2) — it measures **which
-backend to default to, per source language, and whether llmbroker needs web
-grounding for hard languages**, so M2 ships with the right `ECHOWORDS_LLM_BACKEND`
-and per-language `backend` defaults instead of a guess.
-
-Why it must come first: the whole point of llmbroker here is that a plain
-text→text call has *none* of the coding-agent overhead — no process spawn, no
-agent bootstrap, no tool-permission machinery — and needs *none* of "Agent
-hardening" (a chat completion can't read a file or run a command, so the
-lethal-trifecta exfiltration leg is gone by construction). If llmbroker's
-free-tier pool is good enough, it is both faster and simpler, and that should
-shape the design from M1 — not be discovered after the CLI path is wired
-everywhere.
+v0.1 (see the LLM technology row): the `llmbroker` free-tier pool and the paid
+direct client. M0 does not choose one *instead of* building the other — the
+backend seam is built regardless (M2) — it measures **which backend each
+source language needs, and whether llmbroker needs web grounding for hard
+languages**, so M2 ships with the right `ECHOWORDS_LLM_BACKEND` and
+per-language `backend` defaults instead of a guess.
 
 **Hypotheses.**
 
-1. **Sufficiency varies by source language.** The pooled free models may match
-   the CLI agent's usefulness for *high-resource* source languages (English —
-   the v0.1 target — and German) yet degrade for *lower-resource, morphology-heavy*
+1. **Sufficiency varies by source language.** The pooled free models may be
+   fully adequate for *high-resource* source languages (English — the v0.1
+   target — and German) yet degrade for *lower-resource, morphology-heavy*
    ones (Serbian and similar: Cyrillic/Latin duality, case system): wrong
    lemmatization, invented etymology, weak register labels, unidiomatic
    examples, and — most consequential for us — malformed card JSON that
    `card.py` rejects.
-2. **Speed.** Dropping the agent loop makes llmbroker materially faster.
-   Both llmbroker backends stream, so measure **first delta and full answer**
-   against the functional description's ~20–30 s and ~3–5 s budgets and against
-   each CLI agent — the expected win is llmbroker answering in a few seconds
-   where the agent takes tens.
+2. **Speed.** Both backends stream, so measure **first delta and full answer**
+   against the functional description's ~20–30 s and ~3–5 s budgets, for the
+   pool and for the paid direct client — the expected result is answers in a
+   few seconds, well inside the budgets.
 3. **Web grounding for hard languages.** The gap for hard languages may close
    only when the model is given internet access. llmbroker supports tool
    calling (`chat(tools=...)` / `arun_tool_loop`), so grounding would be a
    web-search tool wired into the llmbroker backend (`ECHOWORDS_LLMBROKER_WEB`),
-   not a jump to the CLI agent. **But llmbroker ships no web-search tool** —
+   not a separate backend. **But llmbroker ships no web-search tool** —
    echo-words would have to bring a search API, its key, and possibly its
    metering, which fights the "no metered API is ever required" NFR. So test
    this hypothesis **last and only if it is still open**: the paid `api` alias
-   now costs one config line and is the cheaper answer to a hard language. If
+   costs one config line and is the cheaper answer to a hard language. If
    the paid model closes the gap, grounding is moot and
    `ECHOWORDS_LLMBROKER_WEB` is dropped from v0.1 rather than shipped unused.
 
@@ -562,16 +533,15 @@ everywhere.
   common and rare words, idioms/phrasal verbs, borrowed-etymology words,
   misspellings, and homonyms with genuinely unrelated meanings.
 - Reuse the **exact** `prompt.py` template (with its source/target
-  language slots filled per item) so we compare backends, not prompts. For each (backend × model × language) record: total latency,
-  which model llmbroker's pool actually answered with (`reply.llm_name`),
-  rate-limit/failover behaviour, and the raw analysis + `===CARD===` payload.
+  language slots filled per item) so we compare backends, not prompts. For
+  each (backend × model × language) record: total latency, which model
+  llmbroker's pool actually answered with (`handle.llm_name` on the stream,
+  `reply.llm_name` on `ask`), rate-limit/failover behaviour, and the raw
+  analysis + `===CARD===` payload.
 - **Survey the frontier (paid) models through llmbroker's own direct client** —
   `AsyncBroker(direct=[...])` plus `await broker.direct(alias)`, the exact path
   the `api` backend will use, so the spike exercises shipping code instead of a
-  parallel one. Because **quality is a property of the model, not the
-  transport**, a direct-client run of a frontier `sonnet`-class model also
-  stands in for the CLI agent's quality on the same model — so the CLI agent
-  needs only a latency note here, not a separate quality pass.
+  parallel one.
 - Score against a rubric — a human pass by a Russian + source-language
   speaker, optionally with an LLM-judge as a pre-filter, never the final
   word: translation & register correctness, IPA plausibility, fact-checkable
@@ -579,233 +549,164 @@ everywhere.
   language, per model. Run the hard-language set twice — grounding off, then
   on — to isolate hypothesis 3.
 
-**Deliverable: `spec/decision-llm-backend.md`** — the latency and quality numbers
-per language/model, grounding on/off, and the resulting v0.1 defaults:
+**Deliverable: `spec/decision-llm-backend.md`** — the latency and quality
+numbers per language/model, grounding on/off, and the resulting v0.1 defaults:
 `ECHOWORDS_LLM_BACKEND` (expected `llmbroker` for English), the per-language
 `backend` values in the languages table for languages where the pool is not
-sufficient (Serbian's likely fallback is now `api` — paid, streaming, and it
-runs on the always-on micro instance — rather than `agent`, which needs a
-laptop), and whether `ECHOWORDS_LLMBROKER_WEB` defaults on for those. If the
-spike finds the free-tier pool insufficient even for English, the v0.1 default
-flips to `agent` and llmbroker stays a config-selectable option — but the
-backend seam and both implementations still ship. This doc is an input to M2,
-and it may amend the functional description's LLM/cost wording (llmbroker is
-also un-metered, so the cost NFR holds either way). Streaming no longer needs
-reconciling whichever way the default lands: both llmbroker backends stream,
-so the functional description's Core flow step 4 holds as written.
+sufficient (Serbian's likely fallback is `api` — paid, streaming, capped), and
+whether `ECHOWORDS_LLMBROKER_WEB` defaults on for those or is dropped. If the
+spike finds the free-tier pool insufficient even for English, the per-language
+`backend` defaults flip to `api` — but the seam and both implementations still
+ship, and the cost NFR holds either way (the pool remains the un-metered
+default path). This doc is an input to M2.
 
-### M1 — config + bot skeleton
+### M1 — config + web app skeleton
 
-`config.py`, `languages.py`, `main.py`, `bot.py`: application starts, long
-polling in the configured supergroup (`ECHOWORDS_GROUP_ID`), whitelist
-filter on the sender (non-whitelisted updates are ignored, only
-debug-logged), `/start` and `/help` reply with static text (help mentions
-the `?` lookup-only prefix, the one-topic-per-language layout, AND the ✏️
-correction button offered for a suspected typo — the button itself ships
-in M7, but the help text is written once, here, and must already describe
-it, as the functional description requires). `languages.py`
-loads `ECHOWORDS_LANGUAGES_CONFIG` into `Language` objects indexed by
-`topic_id` and code. Routing: a word message's `message_thread_id`
-selects the language; the General topic or any unmapped topic gets a short
-hint and no processing. Input validation is per the resolved language's
-`script` (Latin incl. accented — café, naïve, Straße — for en/de; Latin or
-Cyrillic for sr; plus spaces, hyphens, apostrophes; max ~50 chars;
-otherwise a short hint). A leading `?` (with optional space) marks the
-request lookup-only and is stripped before validation. Handler for a valid
-word replies with a stub that names the resolved language. Tests: the
-languages loader (topic/code lookup, missing file, duplicate topic id),
-per-language validation incl. the `?` prefix and Cyrillic-vs-Latin per
-language, topic routing (mapped / General / unmapped), whitelist filter
-(use PTB objects directly, no live bot).
+`config.py`, `languages.py`, `main.py`, `api.py`, plus the static shell:
+the application starts, serves `GET /` (a page with the language
+selector fed by `GET /api/languages`, an input box with the lookup-only
+control, and an empty answer area) and accepts `POST /api/words`.
+`languages.py` loads `ECHOWORDS_LANGUAGES_CONFIG` into `Language`
+objects indexed by code; a submission's `lang` selects the language, an
+unknown code gets a short hint and no processing. Input validation is
+per the resolved language's `script` (Latin incl. accented — café,
+naïve, Straße — for en/de; Latin or Cyrillic for sr; plus spaces,
+hyphens, apostrophes; max ~50 chars; otherwise a short hint). A leading
+`?` (with optional space) marks the request lookup-only and is stripped
+before validation — same for the explicit `lookup_only` flag. For this
+milestone the accepted submission gets a stub response naming the
+resolved language (the queue and events arrive in M3). The help/about
+note on the page is written once, here, and must already describe the
+lookup-only control, the `?` shortcut, AND the ✏️ correction button
+offered for a suspected typo (the button itself ships in M7), as the
+functional description requires. Tests (in-process test client): the
+languages loader (code lookup, missing file), per-language validation
+incl. the `?` prefix and Cyrillic-vs-Latin per language, unknown
+language code → hint, the stub flow, and static page serving.
 
-### M2 — LLM backend runner (llmbroker pool + paid api + CLI agent)
+### M2 — LLM backend runner (llmbroker pool + paid api)
 
-One seam, three backend kinds — all shipped here, defaults set by M0. The
-handler calls `async def stream_completion(prompt, lang) -> AsyncIterator[str]`
+One seam, two backend kinds — both shipped here, defaults set by M0. The
+pipeline calls `async def stream_completion(prompt, lang) -> AsyncIterator[str]`
 (in a small `backend.py` dispatcher) which resolves the backend from the
 language's `backend` field (`languages.py`) or, if absent,
 `ECHOWORDS_LLM_BACKEND`, and delegates:
 
 - **`llmbroker` backend** (`llm_backend.py`): one process-wide `AsyncBroker`
-  lives in `broker.py`, built after the languages config with
-  `home=ECHOWORDS_LLMBROKER_HOME` and `direct=[…aliases…]` (see "Languages
-  configuration"). Per request
-  `async for delta in broker.stream(prompt, operation=f"{prefix}-{lang.code}",
-  trace_id=…, wait=…)` — real deltas straight into the M3 bridge. `wait` carries
-  the functional description's per-call budget. No subprocess, no sandbox, no
-  default-deny env: it is an HTTPS API call the operator already trusts, so
-  "Agent hardening" does not apply to this backend. Map `NoLLMAvailableError`
-  (whole pool rate-limited), `LLMTimeoutError` and `StreamInterruptedError` (the
-  stream died after deltas — no failover possible past the first one) onto the
-  same `AgentError` the bridge already knows, so the error path is uniform.
-  Import `llmbroker` lazily so a missing/broken install degrades to a clear
-  config error, not a startup crash. **Quality feedback ships in v0.1, not
-  "optionally":** after the card is parsed (M4), record the outcome with the same
-  `trace_id` the call carried — `await broker.record_quality(1.0 if parsed else
-  0.0, trace_id=…)`. A clean card JSON is a genuine automatic quality signal and
-  costs nothing, and the per-language `operation` label means the pool learns
-  which model handles which source language. Requires the `rating-by-key` change
-  upstream; until it lands, skip the call rather than persisting model names.
+  lives in `broker.py`, built in the FastAPI lifespan after the languages
+  config with `home=ECHOWORDS_LLMBROKER_HOME` and `direct=[…aliases…]` (see
+  "Languages configuration") and `aclose()`d on shutdown. Per request
+  `handle = broker.stream(prompt, operation=f"{prefix}-{lang.code}",
+  trace_id=…, wait=…)`, iterated inside `contextlib.aclosing(handle)` so the
+  model's slot is handed back even when the pipeline abandons the stream —
+  deltas go straight into the pipeline. `wait` carries the functional
+  description's per-call budget and covers **both** halves of the call
+  (queueing for a free model and the answer itself). It is an HTTPS text→text
+  call the operator already trusts — no subprocess, nothing to sandbox. Map
+  `NoLLMAvailableError` (whole pool rate-limited), `LLMTimeoutError` and
+  `StreamInterruptedError` (the stream died after deltas — no failover
+  possible past the first one) onto one `BackendError` so the error path is
+  uniform. Import `llmbroker` lazily so a missing/broken install degrades to a
+  clear config error, not a startup crash. The seam hands the handle (or just
+  its `llm_name` and a rating callback) back to the pipeline alongside the
+  deltas, because both of the following need it:
+  - **Quality feedback ships in v0.1:** after the card is parsed (M4),
+    `await handle.record_quality(1.0 if parsed else 0.0)` — the handle knows
+    its own model, operation and call id, so there is no journal read and no
+    id to persist. It is rateable only once the answer has ended, which is
+    where this runs; rating an abandoned stream is skipped rather than
+    retried. A clean card JSON is a genuine automatic quality signal and costs
+    nothing, and the per-language `operation` label means the pool learns
+    which model handles which source language.
+  - **`handle.llm_name`** is recorded in memory with the call's outcome and
+    time, for `/api/status` (M7).
+
+  (First task of the milestone: the one-line sanity check from "Upstream
+  dependency" that the installed llmbroker's `StreamHandle` carries
+  `record_quality` and `llm_name`.)
 - **`api` backend** (`api_backend.py`): the paid, opt-in path. Delegates to
   **llmbroker's direct client** — a single named frontier model, no pool, no
   failover: `client = await broker.direct(alias)` on the same `AsyncBroker`
   instance the pool backend holds, where `alias` is the language's `api_model`
-  or `ECHOWORDS_API_MODEL`, then `async for delta in client.stream(prompt)`.
-  The alias must already be in that broker's `direct=[…]` — collected while
-  loading the languages config — or llmbroker raises `UnknownModelError`. The
-  key never passes through echo-words: the catalog entry names an env var and
-  llmbroker reads it at call time. Like the pool it is a plain text→text HTTPS
-  call the operator already trusts — no subprocess, no sandbox, no default-deny
-  env — so "Agent hardening" does not apply. Map its errors (`AuthError`,
-  `RateLimitError`, `MissingKeyError`, `LLMTimeoutError`, `ProviderError`,
-  `InvalidProviderResponseError`) onto the same `AgentError` the bridge already
-  knows, so the error path stays uniform. Note the direct client is **not
-  journaled**, so it has no quality feedback and needs none — a declared model
-  is never routed, and there is nothing for a score to inform. Import
-  `llmbroker` lazily so a missing/old install degrades to a clear config error,
-  not a startup crash. **Daily spend cap:** the `backend.py` dispatcher
-  counts this language's paid calls for the current day; once
-  `ECHOWORDS_API_DAILY_CAP` is reached it transparently routes the rest of the
-  day to the free `llmbroker` pool and records the fallback (surfaced in
-  `/status`, M7). The counter lives in memory and resets on restart —
-  acceptable for a personal tool.
-- **CLI `agent` backend** (`agent.py`): unchanged from the original plan —
-  spawns the agent selected by `ECHOWORDS_AGENT` from its command
-  template. Template handling: `shlex.split` the template FIRST, then
-substitute `{model}`, `{prompt}`, and `{out_file}` inside individual
-argv tokens with `str.replace` — substitution after splitting means
-prompt content can never break quoting; no shell is involved.
-`{out_file}` is a temp file path the runner always provides (only the
-codex template uses it). The subprocess is spawned with a **default-deny
-env** built here, not `os.environ.copy()` (see "Agent hardening"): the
-allowlist plus `ECHOWORDS_AGENT_ENV_PASSTHROUGH`, nothing else.
+  or `ECHOWORDS_API_MODEL`, then `async for delta in client.stream(prompt)` —
+  here a plain async iterator, not a handle. The client borrows the broker's
+  one shared httpx client, so fetching it per request is cheap and it must
+  **not** be closed by echo-words. The alias must already be in that broker's
+  `direct=[…]` — collected while loading the languages config — or `direct()`
+  itself raises `UnknownModelError` / `PoolModelError` / `MissingKeyError`.
+  The key never passes through echo-words: the catalog entry names an env var
+  and llmbroker reads it at call time. Map those and the call's own errors
+  (`AuthError`, `RateLimitError`, `LLMTimeoutError`, `ProviderError`,
+  `InvalidProviderResponseError`) onto the same `BackendError`, so the error
+  path stays uniform. Note the direct client is **not journaled**, so it has
+  no `llm_name`, no quality feedback and needs none — a declared model is
+  never routed, there is nothing for a score to inform, and `/api/status`
+  names the configured alias itself. **Daily spend cap:** the
+  `backend.py` dispatcher counts this language's paid calls for the current
+  day; once `ECHOWORDS_API_DAILY_CAP` is reached it transparently routes the
+  rest of the day to the free `llmbroker` pool and records the fallback
+  (surfaced in `/api/status`, M7). The counter lives in memory and resets on
+  restart — acceptable for a personal tool.
 
-Three output parsers, chosen by agent:
-
-- `stream-json` (claude): parse JSON-lines on stdout, yield text deltas
-  from `stream_event`/`content_block_delta` events; if none arrived by
-  process exit, fall back to the `result` event's full text as a single
-  yield.
-- `last-message` (codex): stdout carries codex's session header and
-  reasoning noise, so it is ignored for content; after a zero exit, read
-  the answer from `{out_file}` and yield it once. No incremental
-  streaming for codex.
-- `plain` (antigravity): yield decoded stdout chunks as they arrive. If
-  the CLI buffers its output, the whole answer arrives as one late
-  chunk — acceptable degradation, the streaming bridge (M3) handles it
-  transparently.
-
-Enforce `ECHOWORDS_AGENT_TIMEOUT`: spawn with `start_new_session=True`
-and on timeout kill the whole process group — agent CLIs spawn child
-processes that a plain `kill()` on the parent would orphan — then raise
-`AgentError`.
-Non-zero exit, empty output, or missing/empty `{out_file}` →
-`AgentError` with stderr tail in the message. Tests: fake agents = tiny
-Python scripts in `tests/` — a stream-json one (happy path, no-deltas
-path, nonzero exit, hang for the timeout path with a sub-second
-timeout), a last-message one (writes the out file; also the
-missing-out-file failure), and a plain one (chunked output, single-blob
-output); plus template rendering tests proving `{prompt}` with
-quotes/spaces/newlines survives intact for every default template. Also
-test the env builder — seed a `FAKE_SECRET` and assert it is absent from
-the built env, and assert the claude template's `--allowed-tools` is empty
-(or exactly `Read`) and carries no `curl`/`WebFetch`, the codex template
-has no `network_access`, and no template carries
-`--dangerously-skip-permissions`. For the **llmbroker backend**: a fake
-`AsyncBroker` (monkeypatched — no real pool) asserting the happy path yields
-streamed deltas as multiple chunks, that the per-language `operation` label
-(`vocab-en`, `vocab-sr`) and `trace_id` are passed through, that
+Tests: for the **llmbroker backend** a fake `AsyncBroker` whose `stream()`
+returns a fake handle (monkeypatched — no real pool) asserting the happy path
+yields streamed deltas as multiple chunks, that the per-language `operation`
+label (`vocab-en`, `vocab-sr`), `trace_id` and `wait` are passed through, that
+the handle is closed even when the consumer abandons the stream mid-way, that
 `NoLLMAvailableError`, `LLMTimeoutError` and `StreamInterruptedError` all
-surface as `AgentError`, that a parsed card records quality against the call's
-own `trace_id` and a parse failure records the opposite, and that the
-`backend.py` dispatcher picks the backend from the language's `backend`
-field before falling back to `ECHOWORDS_LLM_BACKEND`. For the **`api` backend**:
-a fake direct client (monkeypatched — no real provider) asserting streamed
-deltas reach the bridge as multiple chunks, that the language's `api_model`
-overrides `ECHOWORDS_API_MODEL` and that every configured alias is present in
-the broker's `direct=[…]`, that auth/rate-limit/timeout/provider errors surface
-as `AgentError`, and that once `ECHOWORDS_API_DAILY_CAP` is hit the dispatcher
+surface as `BackendError`, that a parsed card calls `handle.record_quality`
+with a positive score and a parse failure with the opposite, that
+`handle.llm_name` is recorded for `/api/status`, and that the `backend.py`
+dispatcher picks the backend from the language's `backend` field before
+falling back to `ECHOWORDS_LLM_BACKEND`. For the **`api` backend**: a fake
+direct client (monkeypatched — no real provider) asserting streamed deltas
+arrive as multiple chunks, that the language's `api_model` overrides
+`ECHOWORDS_API_MODEL` and that every configured alias is present in the
+broker's `direct=[…]`, that the client is never closed by the backend, that
+resolution errors (`UnknownModelError`, `PoolModelError`, `MissingKeyError`)
+and call errors (auth/rate-limit/timeout/provider) all surface as
+`BackendError`, and that once `ECHOWORDS_API_DAILY_CAP` is hit the dispatcher
 falls back to the `llmbroker` pool for the remaining calls that day.
 
-Closing this milestone requires the manual check from "Agent hardening" —
-which applies **only to the CLI `agent` backend**; both llmbroker backends (the
-free pool and the paid `api` direct client) are plain text→text API calls with
-no shell, file, or arbitrary-network reach, so the containment canaries below
-are moot for them (there is nothing to contain) —
-the only sanctioned manual step in the plan; real CLIs stay out of the
-test suite. For each supported agent, run its default template once and
-confirm two things: (1) a plain word generation completes with tools
-disabled — for claude, that an empty `--allowed-tools ""` is accepted (else
-fall back to `"Read"`); for codex, the single probe that `--sandbox
-read-only` still lets it reach its API; for agy, that it runs headless
-without hanging under `enableTerminalSandbox: true` + `toolPermission:
-proceed-in-sandbox`. (2) The **containment canaries** hold, mirroring
-news-recap's acceptance bar (`spec/plan-agent-sandboxing.md`, E3): feed a
-prompt whose "word" is actually an injection payload and assert, on the
-host, that a *read* canary (a file the payload tells the agent to read and
-print) never appears in stdout; a *write* canary (payload tells the agent
-to create `~/.ssh/probe`) is never written; a *network* canary (payload
-tells the agent to `curl`/POST to a remote host) produces no egress; and an
-*env* canary (a `FAKE_SECRET` seeded into the allowlisted env, which the
-payload tells the agent to `echo`) never surfaces — proving the env
-allowlist and the sandbox together. "Does it answer?" is necessary but not
-sufficient; the canaries are the gate. An agent that cannot both answer and
-pass all four canaries under a headless setting is dropped from the
-supported list.
+### M3 — queue + streaming over SSE
 
-### M3 — streaming bridge
+`pipeline.py`, `events.py`, `sanitizer.py`, and the SSE endpoint:
 
-`streaming.py`: post placeholder "⏳ {word} …" in the word's topic
-(`message_thread_id`), accumulate deltas, edit the message at most every
-1.5 s and only when visible text changed
-(remember: cut at delimiter, see LLM contract), passing every edit
-through the HTML sanitizer (see LLM contract) with `parse_mode=HTML`.
-Final edit with the complete text; append the status line placeholder
-later (M5). The bridge does NOT parse the card payload: it returns the
-final Telegram `Message` and the full accumulated raw text to the
-caller, and everything past the final edit — payload parsing (M4), the
-status line (M5), the voice message (M6), the correction keyboard
-(M7) — is layered on top of that return value by the word pipeline (see
-"Word pipeline"), so M3 depends on nothing from later milestones. The
-bridge also accepts an optional pre-existing message to reuse (edit it
-back to the placeholder, then stream into it) instead of posting a new
-placeholder — unused until the correction button (M7). On `AgentError`:
-edit the message to a short apology + `/redo` hint. Truncate visible
-text at 4000 chars with an ellipsis.
-Handle Telegram `RetryAfter`/`BadRequest("message is not modified")`
-gracefully; entity-parse `BadRequest` → retry the edit without
-`parse_mode`.
+- **The queue.** Words are processed strictly one at a time **and in the
+  order submitted**: a single FIFO `asyncio.Queue` drained by one worker
+  task, spanning all languages (no parallel LLM runs). The submit
+  endpoint registers the job and enqueues it before returning, so the
+  response (and the `accepted` event for other devices) shows the
+  pending entry immediately while the worker catches up.
+- **Streaming.** The worker accumulates raw deltas, cuts at the
+  delimiter (never flash `===CA…` — see the LLM contract), sanitizes,
+  and publishes `update` events carrying the full sanitized text so
+  far — at most ~2/s and only when the visible text changed. The final
+  `update` carries the complete text; the status line and everything
+  after it (M5–M7) are layered onto the `done` event by later pipeline
+  steps. The accumulated sanitized text is also what
+  `/api/words/recent` returns for an in-progress entry, so an SSE
+  reconnect refetch is lossless.
+- **Events plumbing.** `events.py` is a small in-process pub/sub: the
+  SSE endpoint subscribes (one subscriber per open `EventSource`,
+  multiple allowed — phone + desktop), the pipeline publishes. A
+  keep-alive comment every 15 s; a slow/gone subscriber is dropped, it
+  recovers by reconnect + refetch.
+- **Errors.** On `BackendError`: publish an `error` event with a short
+  apology + redo hint; the entry keeps any text that already streamed.
+- The `reuse_entry` path (correction switch / redo, M7) resets the
+  existing entry to pending and streams into it instead of creating a
+  new one.
 
-Word messages are processed strictly one at a time **and in the order
-sent**: a single FIFO `asyncio.Queue` drained by one worker task,
-spanning all topics (no parallel LLM runs even across languages). Not a
-bare lock: with a lock the order is decided by how fast each handler
-reaches `acquire()`, and since the handler posts its placeholder first,
-one rate-limited send is enough to let a later word overtake an earlier
-one. After downtime Telegram delivers up to 24 h of backlog in one
-burst; without serialization that means parallel LLM runs and
-interleaved edit loops flooding Telegram's rate limits.
-
-PTB processes updates sequentially by default (`block=True`), which
-would hold back the placeholders: build the application with
-`concurrent_updates=True` so handlers start immediately. Each handler
-puts its job on the queue **before its first `await`** — handler tasks
-start in update order, so queue order equals send order — then posts the
-placeholder and attaches the resulting message to the job; the worker
-awaits the job's placeholder before streaming into it. Every queued word
-therefore still gets its placeholder immediately and the user sees the
-backlog was accepted. `RetryAfter` handling covers the placeholder
-**send** as well, not only edits — a drained backlog posts many messages
-in a burst.
-
-Tests: fake `Message.edit_text` recorder + scripted delta sequences;
-assert edit cadence, delimiter cutting, truncation, error path; the
-reuse-message path edits the given message and never posts a new one;
+Tests: scripted delta sequences through a fake backend → recorded event
+stream (update cadence, delimiter cutting, final text, error path);
 sanitizer cases — stray `<`/`&`, disallowed tags escaped, `<b>` split
 across two deltas, unclosed `<i>` auto-closed at the cut; two words
-sent together → both placeholders appear and the LLM runs execute one at
-a time in send order; a placeholder send hitting `RetryAfter` is
-retried.
+submitted together → both appear immediately and the LLM runs execute
+one at a time in submission order; `/api/words/recent` returns the
+accumulated text of an in-progress entry; the reuse-entry path updates
+the existing entry and never creates a second one; two subscribers both
+receive events.
 
 ### M4 — card extraction
 
@@ -823,9 +724,9 @@ validity), and a `suggestion` that fails the language's input validation
 ### M5 — Anki integration (headless pylib)
 
 **First task of this milestone — the sync spike** from
-`decision-spaced-repetition.md` (a sanctioned manual step, like M2's
-canaries; real AnkiWeb stays out of the test suite): with the pinned
-`anki` version, live-verify the headless path end to end —
+`decision-spaced-repetition.md` (a sanctioned manual step; real AnkiWeb
+stays out of the test suite): with the pinned `anki` version,
+live-verify the headless path end to end —
 `sync_login(user, password, endpoint=None)` returns a usable
 `SyncAuth`/hkey; a **fresh server collection bootstraps by downloading
 the user's existing AnkiWeb collection** (never upload-over it — the
@@ -877,13 +778,13 @@ example; when `pos` is empty too it shows its translations alone. An
 unmasked example must never reach this field — the front would give the
 answer away — but a bare translation alone leaves the reviewer guessing
 which source word is wanted (посылка → parcel / package / shipment),
-which is exactly what the gap resolves. `Meanings`: one block per meaning — label in
-bold (same condition), translations on one line, examples in italics
-with their target-language translations — numbered `<ol>`-style when there is
-more than one block. Every payload value is HTML-escaped before being
-wrapped in tags: Anki fields are HTML, and the prompt only *asks* the
-LLM to keep tags out of JSON values — a stray `<` or `&` must not
-break the card.
+which is exactly what the gap resolves. `Meanings`: one block per
+meaning — label in bold (same condition), translations on one line,
+examples in italics with their target-language translations — numbered
+`<ol>`-style when there is more than one block. Every payload value is
+HTML-escaped before being wrapped in tags: Anki fields are HTML, and the
+prompt only *asks* the LLM to keep tags out of JSON values — a stray `<`
+or `&` must not break the card.
 
 One word = one note, so the first field (`Word`) is naturally unique.
 Duplicate check before adding: `col.find_notes()` with query
@@ -904,13 +805,13 @@ and `hash` is the first 8 hex chars of the canonical word's SHA-1 —
 distinct phrases that slugify identically, like "go over" vs "go-over",
 must not overwrite each other's media; `add_file` may return an
 adjusted name — use the returned name) and referenced as `[sound:...]`
-in the `Audio` field. Skipped entirely for lookup-only (`?`) requests —
-status line "👁 lookup only". Wire into the handler after the final
-edit: status line appended to the message. Because the collection is
+in the `Audio` field. Skipped entirely for lookup-only requests —
+status line "👁 lookup only". Wire into the pipeline (step 7): the
+status line joins the `done` event. Because the collection is
 in-process, `add_note` cannot fail with "Anki is not running" — there
 is no pending-card queue anywhere in the design. Track the last added
 note id AND its media filename (the name `add_file` returned) in memory
-for `/undo` and `/redo` (M7), which remove both.
+for undo and redo (M7), which remove both.
 
 After every successful add the client schedules the **AnkiWeb sync**
 (pylib: `sync_collection(auth, sync_media=True)`): on first need,
@@ -923,7 +824,7 @@ so the last add in a burst still gets synced. Disabled with
 logged at warning level, retried on the next debounce tick, and never
 affects the status line. **Safety rule:** if `sync_collection` reports
 that a one-way full sync is required (diverged collections), never
-resolve it automatically — log an error and surface it in `/status`
+resolve it automatically — log an error and surface it in `/api/status`
 (M7); a full upload could clobber the user's other decks. The only
 automatic full transfer is the first-run full **download** (bootstrap,
 spike above).
@@ -957,204 +858,225 @@ through to the next on ANY exception (log at warning level, never raise):
    languages with no `dict_api`, e.g. Serbian), first non-empty audio URL,
    download mp3 to `ECHOWORDS_DATA_DIR/audio/`. Skipped for multi-word
    input.
-2. **Local TTS** — the language's `tts` engine per the languages config:
-   **Kokoro** (`kokoro-onnx`) or **Piper** (`piper-tts`), with the
-   language's `tts_voice`. Skipped entirely when the language's `tts` is
-   `edge` (Serbian — no usable local voice exists; see
-   `spec/decision-tts.md`, and never be tempted by
-   `sr_RS-serbski_institut`: it is Lower Sorbian, not Serbian). Model
-   downloads are **config-driven**: only the files of engines and voices
-   actually referenced by `languages.toml` — Kokoro's `kokoro-v1.0.onnx`
-   + `voices-v1.0.bin` when some language configures `kokoro`, and each
-   configured Piper voice (`.onnx` + `.onnx.json`) — are downloaded into
-   `ECHOWORDS_DATA_DIR/models/` by a background task started at bot startup,
-   NOT on first request, where the download would delay the first voice
-   message (the micro profile thus never downloads the ~300 MB Kokoro
-   model). The download URLs (Kokoro GitHub release assets; Piper voices
-   from the `rhasspy/piper` voices repo) are pinned in code as constants
-   with their SHA-256 checksums; verify the checksum before installing
-   (log progress; a failed download or checksum mismatch must not corrupt
+2. **Local TTS** — **Piper** (`piper-tts`) with the language's
+   `tts_voice`. Skipped entirely when the language's `tts` is `edge`
+   (Serbian — no usable local voice exists; see `spec/decision-tts.md`,
+   and never be tempted by `sr_RS-serbski_institut`: it is Lower
+   Sorbian, not Serbian). Voice downloads are **config-driven**: only
+   the configured Piper voices (`.onnx` + `.onnx.json`) are downloaded
+   into `ECHOWORDS_DATA_DIR/models/` by a background task started at
+   app startup, NOT on first request, where the download would delay
+   the first pronunciation. The download URLs (Piper voices from the
+   `rhasspy/piper` voices repo) are pinned in code as constants with
+   their SHA-256 checksums; verify the checksum before installing (log
+   progress; a failed download or checksum mismatch must not corrupt
    the cache — download to a temp name, rename only after verification;
-   retry on next startup). Until a language's files are in place this step
-   reports "not ready" and the chain falls through to step 3. Run inference
-   in `asyncio.to_thread` (CPU-bound). Encode Kokoro's samples to mp3 with
-   `lameenc`; Piper likewise outputs WAV → mp3. Import `kokoro_onnx` /
-   `piper` lazily at call time so a broken install degrades to step 3
-   instead of killing the bot at startup — the one sanctioned exception to
-   the top-level-imports rule; mark it with a comment. Note the limit of
-   this fall-through: it catches runtime **exceptions**, not an OOM kill —
-   on the 1 GB micro profile Kokoro must be excluded by config up front
-   ("Deployment profiles"), not left to degrade at runtime. First task of
-   this milestone: on a clean machine check whether Kokoro **and** Piper
-   phonemization need the `espeak-ng` system library (both can); if
-   espeak-ng is needed, document it in the README (M8) as an optional
-   system requirement — without it the local engine falls through to
-   edge-tts.
+   retry on next startup). Until a language's files are in place this
+   step reports "not ready" and the chain falls through to step 3. Run
+   inference in `asyncio.to_thread` (CPU-bound). Piper outputs WAV →
+   mp3 via `lameenc`. Import `piper` lazily at call time so a broken
+   install degrades to step 3 instead of killing the app at startup —
+   the one sanctioned exception to the top-level-imports rule; mark it
+   with a comment. Note the limit of this fall-through: it catches
+   runtime **exceptions**, not an OOM kill — engines are sized to the
+   1 GB host by config up front ("Deployment"), not left to degrade at
+   runtime. First task of this milestone: on a clean machine check
+   whether Piper phonemization needs the `espeak-ng` system library (it
+   can); if so, document it in the README (M8) as an optional system
+   requirement — without it the local engine falls through to edge-tts.
 3. **edge-tts (online)** — the language's `edge_tts_voice`
    (or `ECHOWORDS_EDGE_TTS_VOICE` default), native mp3 output. Serbian's
    **primary** engine (its chain is effectively dictionary-skip →
    edge-tts) and the last-resort fallback for every other language. On
    failure return `None`.
 
-Runs via `asyncio.create_task` in parallel with the agent stream,
-speculatively for the raw input; awaited only after the final edit, and
+Runs via `asyncio.create_task` in parallel with the LLM stream,
+speculatively for the raw input; awaited only after generation ends, and
 only with a bound — `asyncio.wait_for(task, ECHOWORDS_AUDIO_TIMEOUT)`
 (default 20 s): on timeout cancel the task and proceed exactly as for
 "no audio". The functional description requires that audio never delay
 the text answer or the ~5 s card budget, and the await happens on the
 single queue worker — an unbounded hang (edge-tts is known to wedge)
-would stall the whole backlog. Every httpx request inside the chain also
+would stall the whole queue. Every httpx request inside the chain also
 carries its own `timeout=10`.
 Because autocorrection is advisory, the canonical word always equals the
 input, so the speculative fetch is always the right one — it is used as
 is, with no re-fetch in the normal flow. A re-fetch happens only when the
-user taps the inline correction button (M7): that path re-processes the
-word for the suggested spelling (same language — the topic fixes it), so
-neither the voice message nor the card ever carries audio of a typo the
-user did not accept. That is the one case where audio arrives noticeably
-after the text. Send to chat with `send_voice` (mp3 is accepted); if
-Telegram rejects it, fall back to `send_audio`; if no audio, add
-"🔇 no audio" to the status line. Tests: mocked httpx for
-the dictionary path (hit, miss, HTTP error); fake kokoro/piper modules
-(success, import failure, inference failure) asserting per-language engine
-choice and fall-through order; a `tts = "edge"` language (Serbian) skips
-step 2 and goes straight to edge-tts; the model-download task fetches only
-the files of engines/voices present in the config (a config with no
-`kokoro` language downloads no Kokoro model); monkeypatched edge-tts
-(success, failure → `None`); an audio task that never finishes is
-cancelled at the deadline (use a sub-second timeout in the test) and
-reports "🔇 no audio"; phrase input skips the dictionary step; a
-Serbian word skips the dictionary step (no `dict_api`); the normal flow
-uses the speculative
-result with no re-fetch (canonical == input), and the correction-button
-re-process (M7) fetches audio for the suggested word instead.
+user taps the correction button (M7): that path re-processes the word for
+the suggested spelling (same language), so neither the entry nor the card
+ever carries audio of a typo the user did not accept. That is the one
+case where audio arrives noticeably after the text. Delivery: the stored
+mp3 is served by `GET /api/audio/{name}` (bare server-generated
+filenames only — reject anything else); the `done` event carries the
+URL, the page attaches an `<audio>` element (autoplay attempted, one-tap
+replay always available); if no audio, the status line gains
+"🔇 no audio". Tests: mocked httpx for the dictionary path (hit, miss,
+HTTP error); a fake piper module (success, import failure, inference
+failure) asserting per-language engine choice and fall-through order; a
+`tts = "edge"` language (Serbian) skips step 2 and goes straight to
+edge-tts; the voice-download task fetches only the voices present in
+the config; monkeypatched edge-tts (success, failure → `None`); an
+audio task that never finishes is cancelled at the deadline (use a
+sub-second timeout in the test) and reports "🔇 no audio"; phrase input
+skips the dictionary step; a Serbian word skips the dictionary step (no
+`dict_api`); the normal flow uses the speculative result with no
+re-fetch (canonical == input), and the correction-button re-process
+(M7) fetches audio for the suggested word instead; the audio endpoint
+serves a stored file and rejects a path-like name.
 
-### M7 — stats and remaining commands
+### M7 — history, stats, status, undo/redo, correction
 
 There is **no pending-card queue** in this design: the collection is
 in-process (M5), so a card add cannot fail on connectivity; only the
 AnkiWeb sync is asynchronous, and it retries by itself. What M7 adds is
-the word log, the remaining commands, and the correction button.
+the word log with the history view, the stats/status endpoints, undo/
+redo, and the correction button.
 
 `word_log.py`: sqlite (DB in `ECHOWORDS_DATA_DIR`, survives restarts),
-one table — `word_log(id, lang, word, meanings_count, action,
-created_at)` where action is `added | duplicate | lookup`, written on
-every processed word; the `word` column always holds the canonical
-word. The source for `/stats`. Queries are a handful of tiny
-statements, so calling the stdlib driver directly from async code is
-accepted — no thread offloading.
+one table — `word_log(id, entry_id, lang, word, meanings_count, action,
+analysis_html, audio_file, created_at)` where action is
+`added | duplicate | lookup`, written on every processed word; the
+`word` column always holds the canonical word, `analysis_html` the
+sanitized analysis (the source of the history view), `audio_file` the
+stored mp3 name or empty. The source for `/api/stats` and the finished
+half of `/api/words/recent`. Queries are a handful of tiny statements,
+so calling the stdlib driver directly from async code is accepted — no
+thread offloading.
 
-Commands:
+Endpoints and behaviors:
 
-- `/status` — per configured language: its backend, model, deck, and
-  **backend health** (the functional description's "agent health") — for
-  an `agent` backend, whether the CLI executable (the first argv token
-  of its command template) resolves via `shutil.which`; for `llmbroker` and
-  `api` alike, one `await broker.snapshot()` — `providers_usable` of
-  `providers_total`, the `degraded` flag (one quota left, nothing to fail over
-  to), `missing_keys` for the pool and `direct_missing_keys` for the declared
-  paid models, each carrying the `help` text saying where to get the key. For
-  `api` also the day's paid-call count against `ECHOWORDS_API_DAILY_CAP` and
-  whether the language has fallen back to the free pool for the rest of the
-  day (M2). Each language is annotated with the outcome and time of its last
-  LLM call and **which model answered it** — taken from the object the call
-  returned (`routed-call-identity` upstream), kept in memory ("no calls yet"
-  after a restart). No live LLM probe: `/status` must answer instantly and
-  never spend a request; `snapshot()` reads local state only. Plus AnkiWeb sync state: last sync result and time, whether
-  unsynced local changes are waiting (`col.sync_status`), and a
+- `GET /api/words/recent` — finished rows from `word_log` merged with
+  the in-memory registry's in-progress jobs (M3), newest first; each
+  entry carries word, language, sanitized HTML, status, audio URL, and
+  — when the in-memory correction state still knows it — the suggestion
+  and which spelling is shown.
+- `GET /api/status` — per configured language: its backend, model, deck,
+  and **backend health** — one `await broker.snapshot()` for `llmbroker`
+  and `api` alike: `providers_usable` of `providers_total`, the
+  `degraded` flag (one quota left, nothing to fail over to),
+  `missing_keys` for the pool and `direct_missing_keys` for the declared
+  paid models, each carrying the `help` text saying where to get the
+  key. For `api` also the day's paid-call count against
+  `ECHOWORDS_API_DAILY_CAP` and whether the language has fallen back to
+  the free pool for the rest of the day (M2). Each language is annotated
+  with the outcome and time of its last LLM call and **which model
+  answered it** — `handle.llm_name` from the pool call (M2), kept in
+  memory; for an `api` language the configured alias, since a direct
+  call is not journaled and names no routed model. Because that memory
+  is empty after a restart, back it with
+  `await broker.stats(operation=f"{prefix}-{lang.code}", since=…)` —
+  per-model call counts for this language's own operation label, read
+  from the local journal, which survives restarts and (like
+  `snapshot()`) never provisions the pool or spends a request. No live
+  LLM probe: status must answer instantly; `snapshot()` reads local
+  state only (its
+  `providers_usable` / `providers_total` / `degraded` / `missing_keys` /
+  `direct_missing_keys` are exactly the fields named above). Plus
+  AnkiWeb sync state: last sync result and time,
+  whether unsynced local changes are waiting (`col.sync_status`), and a
   prominent error when a required one-way full sync is pending manual
   resolution (M5's safety rule).
-- `/stats` — words added today / last 7 days / all time, plus duplicates
-  and lookups counts, broken down by source language (one global report,
-  same in every topic).
-- `/undo` — remove the note the last sent word **in this topic** produced
-  (`col.remove_notes`), trash its media file in the collection
-  (`col.media.trash_files([name])`, using the media name stored with the
-  undo state — M5), and delete its cached audio file in
+- `GET /api/stats` — words added today / last 7 days / all time, plus
+  duplicates and lookups counts, broken down by source language.
+- `POST /api/languages/{code}/undo` — remove the note the last
+  submitted word **of that language** produced (`col.remove_notes`),
+  trash its media file in the collection
+  (`col.media.trash_files([name])`, using the media name stored with
+  the undo state — M5), and delete its cached audio file in
   `ECHOWORDS_DATA_DIR/audio/`; confirm with the word name. When the
-  topic's undo state records an action of `duplicate` or `lookup` the
-  last word produced no note of ours, so `/undo` replies "nothing to
+  language's undo state records an action of `duplicate` or `lookup`
+  the last word produced no note of ours, so undo replies "nothing to
   undo" and touches nothing — deleting the note found under that word
   would destroy a note that existed before the send.
-- `/redo` — re-run the last word **in this topic**, preserving its
-  lookup-only flag and language. Before adding the new note, remove the previous
-  run's result exactly like `/undo` does — `/redo` exists to fix a
-  poor generation, and without the removal the duplicate check would
-  block the replacement ("already in Anki") and the bad card would
-  survive.
+- `POST /api/languages/{code}/redo` — re-run the last word **of that
+  language**, preserving its lookup-only flag, streaming into its
+  existing entry (`reuse_entry`, M3). Before adding the new note,
+  remove the previous run's result exactly like undo does — redo exists
+  to fix a poor generation, and without the removal the duplicate check
+  would block the replacement ("already in Anki") and the bad card
+  would survive.
 
-**Inline correction button (advisory autocorrection).** When a processed
-word came back with a non-empty `suggestion` different from the input
-(M4), the final edit (M3) carried a one-button inline keyboard. A
-`CallbackQueryHandler` handles the tap: it re-processes the word for the
-*other* spelling (input ↔ suggestion) and replaces the note exactly the
-way `/redo` does — remove the previous run's result (`col.remove_notes`,
-`col.media.trash_files`, the cached audio file), then run the
-full pipeline (LLM analysis, audio fetch, add) for the chosen word,
-through the same word queue so it never races an in-flight send. The re-run
-happens **in the original analysis message**: the callback passes it as
-the pipeline's `reuse_message` (M3), so that message is edited back to
-the placeholder and the new analysis streams into it — no second
-analysis message ever appears (the functional description: the button
-"acts on its own message"); only the voice message for the new spelling
-is sent as a new message. Audio is
-fetched for the chosen word (this is the only re-fetch case, M6). The
-lookup-only flag is preserved (a `?` request stays card-less on switch —
-only the analysis and voice message change). After the switch the button
-flips to offer the reverse ("↩︎ Вернуть «recieve»"), so it is reversible
-both ways. `callback_data` is bounded to 64 bytes, so it carries only a
-short token that keys into an in-memory map; the map holds the decision
-state per correction message — input, suggestion, language, lookup flag,
-which spelling is currently shown, and the current note id plus its
-media name. After a switch, if the topic's undo/redo state points at
-the note that was just replaced, update it to the new note id, media
-name, and the spelling now shown — otherwise a `/undo` issued right
-after a switch would target a note that no longer exists.
+**Correction button (advisory autocorrection).** When a processed word
+came back with a usable `suggestion` different from the input (M4), the
+`done` event carried it and the UI shows the button. `POST
+/api/words/{entry_id}/switch` re-processes the word for the *other*
+spelling (input ↔ suggestion) and replaces the note exactly the way redo
+does — remove the previous run's result (`col.remove_notes`,
+`col.media.trash_files`, the cached audio file), then run the full
+pipeline (LLM analysis, audio fetch, add) for the chosen word, through
+the same word queue so it never races an in-flight submission. The
+re-run streams **into the original entry** (`reuse_entry`, M3) — no
+second entry ever appears; only the audio for the new spelling arrives
+as the entry's new pronunciation. The lookup-only flag is preserved (a
+lookup-only request stays card-less on switch — only the analysis and
+audio change). After the switch the button flips to offer the reverse
+("↩︎ Вернуть «recieve»"), so it is reversible both ways. The decision
+state lives in an in-memory map keyed by `entry_id` — input, suggestion,
+language, lookup flag, which spelling is currently shown, and the
+current note id plus its media name. After a switch, if the language's
+undo/redo state points at the note that was just replaced, update it to
+the new note id, media name, and the spelling now shown — otherwise an
+undo issued right after a switch would target a note that no longer
+exists.
 
 Undo/redo state (last word, its action — `added | duplicate | lookup` —
-its note id when one was added, and the lookup flag) is
-per topic (per source language); the correction-button decision state is
-per message (keyed by the button's `callback_data` token). Both live in
-memory and are lost on restart — documented behavior; after a restart the
-button reports that the request expired instead of acting on stale state.
-Tests: stats aggregation windows with per-language breakdown, undo
-removes the note, trashes its collection media file and deletes its
-cached audio file, undo after a duplicate or a lookup-only send is a
-no-op that reports nothing to undo, redo replaces the previous
-note, undo/redo state machine, `/status` health and sync-state rendering
-(agent CLI present/missing, pool snapshot degraded/healthy, pool and direct
-missing keys, api daily-cap count/fallback state, last model that answered, ok /
-unsynced-changes / full-sync-required error), the correction button
+its note id when one was added, and the lookup flag) is per source
+language; the correction decision state is per entry. Both live in
+memory and are lost on restart — documented behavior; after a restart a
+switch on an old entry gets a "request expired" response instead of
+acting on stale state.
+
+Tests: stats aggregation windows with per-language breakdown; the
+history endpoint merges finished rows (with analysis HTML and audio
+URL) and in-progress jobs; undo removes the note, trashes its
+collection media file and deletes its cached audio file; undo after a
+duplicate or a lookup-only send is a no-op that reports nothing to
+undo; redo replaces the previous note and streams into the existing
+entry; undo/redo state machine per language; status rendering (pool
+snapshot degraded/healthy, pool and direct missing keys, api daily-cap
+count/fallback state, last model that answered, the per-language
+`stats()` fallback after a restart, ok / unsynced-changes /
+full-sync-required error); the correction switch
 toggles input↔suggestion and replaces the note (preserving the
-lookup-only flag and flipping the label), the correction re-run edits
-the original message and posts no new analysis message, a switch updates
-the topic's undo state when it replaced the note that state pointed to,
-and a stale/unknown callback
-token reports the request as expired instead of acting.
+lookup-only flag and flipping the label); the switch re-run reuses the
+original entry and creates no new one; a switch updates the language's
+undo state when it replaced the note that state pointed to; and a
+stale/unknown entry id gets the request-expired response instead of
+acting.
 
-### M8 — polish and release
+### M8 — PWA polish and release
 
-README: install (`uv tool install echo-words` / `uvx echo-words`), required
-env vars, the supergroup + forum-topics setup (one topic per source
-language, disable the bot's privacy mode in BotFather so it sees plain
-messages), the `languages.toml` format and per-language decks, the
-AnkiWeb credentials setup (`ECHOWORDS_ANKIWEB_USER` / `_PASSWORD`; note
-the first-run full download of the existing collection and the
-self-hosted `ECHOWORDS_SYNC_ENDPOINT` fallback), the optional `espeak-ng`
-system dependency for
-Kokoro/Piper, systemd/launchd hint (one paragraph, no unit files), and
-the **two deployment profiles** ("Deployment profiles" section): the
-laptop config (English via Kokoro) and the Oracle Free Tier
-`VM.Standard.E2.1.Micro` config — 1 GB RAM, **swap file (1–2 GB) as a
-hard requirement** (one-paragraph setup hint), English via Piper or
-edge-tts, no Kokoro anywhere in `languages.toml`; note that the Arm
-`A1.Flex` shape, when a region actually has capacity, lifts the memory
-constraints. Mention that `ECHOWORDS_DATA_DIR/audio/` keeps one small mp3
-per looked-up word and has no cleanup policy in v0.1 — the files are safe
-to delete at any time, since the copy Anki reviews from lives in the
-collection's own media folder. Bump version to `0.1.0`. Ensure `ruff check` is clean and
-wired into CI. Do NOT push the `v0.1.0` tag — publishing is deferred
-until PyPI credentials are configured; note this in the README.
+- **Install bits**: `manifest.webmanifest` (name, icons, standalone
+  display), icons, and a **minimal service worker**: cache-first for
+  the static shell (`/`, `/static/*`) so the home-screen app opens even
+  when the backend is unreachable; network-only for `/api/*` — never
+  cache API responses.
+- **Local resend queue**: words whose `POST /api/words` failed
+  (backend down, no connectivity) are stored in `localStorage` and
+  re-sent automatically, in order, on the next app open or successful
+  reconnect — the functional description's resilience behavior.
+- **README**: install (`uv tool install echo-words` / `uvx echo-words`),
+  required env vars, the **Tailscale setup** (`tailscale up`, then
+  `tailscale serve` onto `ECHOWORDS_PORT`; the app is tailnet-only by
+  design), "Add to Home Screen" on iOS, the optional iOS Shortcut that
+  POSTs share-sheet text to `/api/words` (recipe, one paragraph), the
+  `languages.toml` format and per-language decks, the AnkiWeb
+  credentials setup (`ECHOWORDS_ANKIWEB_USER` / `_PASSWORD`; note the
+  first-run full download of the existing collection and the
+  self-hosted `ECHOWORDS_SYNC_ENDPOINT` fallback), the optional
+  `espeak-ng` system dependency for Piper, systemd hint (one paragraph,
+  no unit files), and the **deployment target** ("Deployment" section):
+  Oracle Free Tier `VM.Standard.E2.1.Micro` — 1 GB RAM, **swap file
+  (1–2 GB) as a hard requirement** (one-paragraph setup hint); note
+  that the Arm `A1.Flex` shape, when a region actually has capacity,
+  lifts the memory constraints. Mention that
+  `ECHOWORDS_DATA_DIR/audio/` keeps one small mp3 per looked-up word
+  and has no cleanup policy in v0.1 — the files are safe to delete at
+  any time, since the copy Anki reviews from lives in the collection's
+  own media folder.
+- Bump version to `0.1.0`. Ensure `ruff check` is clean and wired into
+  CI. Do NOT push the `v0.1.0` tag — publishing is deferred until PyPI
+  credentials are configured; note this in the README.
 
 ## Product decisions (all questions resolved — do not re-open)
 
@@ -1171,17 +1093,17 @@ until PyPI credentials are configured; note this in the README.
   and the Anki `Word` field, compared case-insensitively. The same
   spelling in two languages is two notes in two decks. The LLM never
   silently swaps a misspelling: it analyzes the word as typed and returns
-  an optional `suggestion`. When the suggestion differs from the input, an
-  inline button under the message switches to the suggested word (and
-  back), re-running the analysis and replacing the note like `/redo`; only
-  that path re-fetches audio. Because that tap turns LLM output into a
+  an optional `suggestion`. When the suggestion differs from the input, a
+  button on the entry switches to the suggested word (and back),
+  re-running the analysis and replacing the note like redo; only that
+  path re-fetches audio. Because that tap turns LLM output into a
   canonical word, a `suggestion` must pass the same validation as typed
-  input or it is dropped and no button appears. Rationale: a silently swapped card looks
-  correct but is wrong and would poison the spaced-repetition deck without
-  the user noticing — analyzing as-typed keeps the card's front equal to
-  what the user sent, so a mistake is visible on the first review. There
-  is deliberately no on/off setting; this behavior is the design, not an
-  option.
+  input or it is dropped and no button appears. Rationale: a silently
+  swapped card looks correct but is wrong and would poison the
+  spaced-repetition deck without the user noticing — analyzing as-typed
+  keeps the card's front equal to what the user sent, so a mistake is
+  visible on the first review. There is deliberately no on/off setting;
+  this behavior is the design, not an option.
 - Every note produces two cards: recognition (source→target) and recall
   (target→source) — see M5. Still one note per word. The recall front
   carries, per meaning, a **gapped example** — that meaning's first
@@ -1199,71 +1121,66 @@ until PyPI credentials are configured; note this in the README.
   is no pending-card queue — adds are in-process and cannot fail on
   connectivity; only the sync retries. A required one-way full sync is
   never resolved automatically (protects the user's other decks).
-  Evaluated alternatives (GetSpace, Mochi, own FSRS in chat, genanki):
+  Evaluated alternatives (GetSpace, Mochi, own FSRS, genanki):
   `spec/decision-spaced-repetition.md`.
 - Anki sync to AnkiWeb runs automatically after additions,
   debounced and retried; `ECHOWORDS_ANKI_SYNC=false` turns it off.
-- `?` prefix = lookup-only: analysis and audio, no Anki card.
-- `/undo` removes what the last send created and is an explicit no-op
+- Lookup-only (the UI control or the `?` prefix): analysis and audio,
+  no Anki card.
+- Undo removes what the last send created and is an explicit no-op
   after a duplicate or a lookup-only send — it never deletes a note that
-  existed before. `/redo` replaces the previous run's
-  note instead of being blocked by the duplicate check.
-- Multiple source languages via **forum topics** (one topic per
-  language), routed by `message_thread_id`; the topic determines the deck.
-  One deck per source language from the languages config, no per-message
-  switching and no guessing the deck from the word. A single target
-  language for explanations (`ECHOWORDS_TARGET_LANG`, Russian default).
-  Language is never auto-detected — the topic is authoritative; the
-  General/unmapped topic gets a hint, not a guess.
+  existed before. Redo replaces the previous run's note instead of being
+  blocked by the duplicate check. Both act per source language.
+- Multiple source languages via the **language selector**; the
+  selection determines the deck. One deck per source language from the
+  languages config, no per-word switching and no guessing the deck from
+  the word. A single target language for explanations
+  (`ECHOWORDS_TARGET_LANG`, Russian default). Language is never
+  auto-detected — the selection is authoritative; an unknown code gets
+  a hint, not a guess.
 - Accent: config-level (`ECHOWORDS_ACCENT` default, per-language override),
   applies to English audio, US default, one recording per card, no
-  per-message choice.
-- Telegram formatting IS in v0.1: HTML `<b>`/`<i>` only, enforced by
-  the sanitizer, plain-text fallback on parse errors.
+  per-word choice.
+- Answer formatting IS in v0.1: HTML `<b>`/`<i>` only, enforced by the
+  server-side sanitizer — the only HTML the client ever renders.
 - Word/phrase audio only — example sentences are never voiced (final).
 - **TTS engines are settled by research, not deferred to M6**
   (`spec/decision-tts.md`): Serbian → edge-tts (Piper's lone `sr_RS`
   model is Lower Sorbian, not Serbian — never use it; no other usable
-  free local voice exists); English → Kokoro on the laptop profile,
-  Piper/edge on the 1 GB micro profile; German → Piper. Two deployment
-  profiles (laptop / Oracle E2.1.Micro 1 GB + swap) differ only in
-  config; model downloads follow the config.
-- `/stats` IS in v0.1 (see M7).
-- v0.1 ships **three LLM backend kinds** behind one seam: `llmbroker` (the
-  free-tier model pool — fast, no subprocess, no sandbox, streaming; the
-  default), `api` (a paid, **opt-in, never-required** single frontier model
-  called through llmbroker's *direct client*, declared in code by a curated
-  catalog alias — the only frontier-quality backend that still runs on the
-  micro instance, streaming like the pool), and the CLI
-  coding agent (`ECHOWORDS_AGENT`: `claude` / `codex` / `antigravity`) — kept
-  as a marginal, laptop-only option for flat-rate subscription users. Metered
-  spend is bounded by `ECHOWORDS_API_DAILY_CAP` with automatic fallback to the
-  free pool, so no metered API is ever required. Which backend is the default,
-  and which languages route to which, is fixed by the **M0 spike** (precedes
-  M1) — not a guess and not deferred to a later version. This is *backend*
-  selection, optionally per source language (the `backend` field in the
-  languages table); it is NOT news-recap-style per-task routing tables, which
-  a single-user bot still doesn't need.
-- Agents run with tool execution denied via each vendor's **own**
-  protection — claude allow-list (empty; `Read` fallback), codex
-  `--sandbox read-only`, agy's own Terminal Sandbox settings — never
-  `--dangerously-skip-permissions`, and never `os.environ.copy()` into the
-  subprocess (default-deny env allowlist). Not optional: an agent that
-  can't be restricted is dropped. Verified by containment canaries in M2,
-  following news-recap's `spec/plan-agent-sandboxing.md` (see "Agent
-  hardening").
-- Words are processed sequentially and in send order (one worker over a
-  FIFO queue), so a 24 h Telegram backlog drains one word at a time.
-- **Telegram is the chat interface — final.** Replacing it with a
-  self-hosted Mattermost server was evaluated and rejected (extra
-  always-on node instead of consolidation; inline buttons, voice
-  messages, and mobile push degraded or paywalled in the free edition;
-  a full ops stack for zero removed integration code). If chat is ever
-  outgrown, the growth path is a Telegram Mini App, not a platform
-  switch. Full analysis: `spec/decision-chat-interface.md`.
+  free local voice exists); English and German → Piper. One deployment
+  target (Oracle E2.1.Micro, 1 GB + swap); Kokoro left the design with
+  the laptop profile. Model downloads follow the config.
+- Stats and status ARE in v0.1 (see M7).
+- v0.1 ships **two LLM backend kinds** behind one seam, both through
+  llmbroker: the free-tier model pool (fast, streaming, un-metered; the
+  default) and `api` — a paid, **opt-in, never-required** single frontier
+  model called through llmbroker's *direct client*, declared in code by a
+  curated catalog alias. Metered spend is bounded by
+  `ECHOWORDS_API_DAILY_CAP` with automatic fallback to the free pool, so
+  no metered API is ever required. Which backend is the default, and
+  which languages route to which, is fixed by the **M0 spike** (precedes
+  M1) — not a guess and not deferred to a later version. The CLI
+  coding-agent backend of the earlier design was dropped with the laptop
+  deployment profile (`spec/decision-interface.md`): the paid direct
+  client covers its quality role, and with it went the whole
+  agent-sandboxing surface — both remaining backends are plain text→text
+  calls with nothing to contain.
+- Words are processed sequentially and in submission order (one worker
+  over a FIFO queue) — no parallel LLM runs, even across languages.
+- **The PWA over Tailscale is the user interface — final.** The
+  Telegram bot (the previous choice) was retired once Tailscale removed
+  the zero-ops-ingress advantage and the 24 h-buffering argument was
+  recognized as rescuing only the card, never the wanted-now answer;
+  self-hosted Mattermost was evaluated and rejected earlier. Full
+  analysis: `spec/decision-interface.md`,
+  `spec/decision-chat-interface.md`. Tailnet membership is the only
+  access control; the backend binds loopback and never handles TLS or
+  auth.
 
 ## Out of scope — final, not deferred
 
-Webhooks, Docker, multiple **users** with separate decks (multiple
-**source languages** with separate decks for the single user ARE in
-scope), example-sentence audio, any web UI.
+Chat-platform interfaces (Telegram bots included), native mobile apps,
+public internet exposure (the app lives inside the tailnet), multiple
+**users** (multiple **source languages** with separate decks for the
+single user ARE in scope), example-sentence audio, frontend build
+toolchains (no npm, no bundler), Docker.

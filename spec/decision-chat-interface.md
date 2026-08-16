@@ -1,9 +1,14 @@
 # Chat interface: Telegram vs self-hosted Mattermost — decision
 
-Status: **decided 2026-07-17 — Telegram stays; do not re-open without new
-requirements.** This document records the evaluation of replacing Telegram
-with a self-hosted Mattermost server as the user-facing chat interface,
-and why the hypothesis was rejected.
+Status: **decided 2026-07-17; superseded in part 2026-08-16.** This
+document records the evaluation of replacing Telegram with a self-hosted
+Mattermost server as the user-facing chat interface, and why that
+hypothesis was rejected. **Mattermost remains rejected on the analysis
+below.** The document's other conclusion — Telegram as the primary
+interface — was superseded by `decision-interface.md`: the interface is
+now a PWA served over Tailscale, an option this evaluation did not
+examine (its custom-web-UI paragraph assumed public hosting, auth code,
+and push, all of which Tailscale removes).
 
 ## The hypothesis that was tested
 
