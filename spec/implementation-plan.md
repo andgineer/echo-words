@@ -352,11 +352,13 @@ async def process_word(chat_ctx, lang: Language, word: str,
                        reuse_message: Message | None = None) -> None
 ```
 
-1. Post the placeholder "⏳ {word} …" in the word's topic — or, when
-   `reuse_message` is given (correction button), edit that existing
-   message back to the placeholder instead of posting a new one. Done
-   BEFORE taking the lock, so backlog words are visibly accepted (M3).
-2. Acquire the global word-lock (M3).
+1. The caller enqueues the job before its first `await`, then posts the
+   placeholder "⏳ {word} …" in the word's topic — or, when
+   `reuse_message` is given (correction button), edits that existing
+   message back to the placeholder instead of posting a new one. Backlog
+   words are visibly accepted right away without losing send order (M3).
+2. The single queue worker takes the job in send order and runs the
+   steps below against that placeholder message (M3).
 3. Start the speculative audio task for the raw input — parallel with
    the LLM call (M6).
 4. Run `stream_completion(prompt, lang)` through the streaming bridge;
@@ -419,17 +421,20 @@ suggestion пустая строка.
 После разбора выведи строку ровно ===CARD=== и сразу за ней JSON в одну
 строку без пояснений и без HTML-тегов внутри значений:
 {"word": "...", "ipa": "...", "suggestion": "...",
- "meanings": [{"label": "...", "translations": ["...", "..."],
+ "meanings": [{"label": "...", "pos": "...", "translations": ["...", "..."],
  "examples": [{"text": "...", "translation": "..."}]}]}
 word — введённое слово как есть (не исправляй); suggestion —
 предполагаемое исправление опечатки или пустая строка.
 Обычно meanings содержит один элемент с пустым label. Раздели на
 несколько (не более трёх) только если значения слова не связаны между
 собой (как bank «банк» и bank «берег»); тогда label — помета в 1-3
-русских слова, различающая значения. translations — 2-4 главных
-перевода этого значения; examples — 1-2 самых коротких примера именно
-этого значения: text — предложение на языке {source_lang}, translation —
-его перевод на язык {target_lang}.
+русских слова, различающая значения. pos — часть речи этого значения
+одним сокращением (сущ., гл., прил., нареч. и т.п.). translations — 2-4
+главных перевода этого значения; examples — 1-2 самых коротких примера
+именно этого значения: text — предложение на языке {source_lang},
+translation — его перевод на язык {target_lang}. Хотя бы в одном примере
+каждого значения употреби разбираемое слово ровно в той форме, в которой
+оно дано, если это не ломает естественность фразы.
 ```
 
 `{source_lang}` / `{target_lang}` are the language display names, and
@@ -449,11 +454,13 @@ Parsing rules (`prompt.py` / `card.py`):
   appears at the end of the buffer (never flash `===CA` to the user).
 - After the run, parse the JSON after the delimiter into a single
   `Note` (`word`, `ipa`, `meanings: list[Meaning]` where each meaning
-  has `label` possibly empty, `translations: list[str]` non-empty,
+  has `label` possibly empty, `pos` possibly empty (the part-of-speech
+  fallback for the recall front, M5), `translations: list[str]` non-empty,
   `examples: list[Example]`, where `Example` has `text` — the sentence
   in the source language — and `translation` — its target-language
   rendering); reject an empty meanings list or more
-  than three meanings. Also read the optional `suggestion` string (a
+  than three meanings. A missing `pos` is tolerated and defaults to `""`.
+  Also read the optional `suggestion` string (a
   typo hint — see "Autocorrection: advisory only" in the functional
   description); it is transient UI state, not part of the stored note, so
   it is returned alongside the `Note`, not on it. A missing or empty
@@ -474,6 +481,15 @@ Parsing rules (`prompt.py` / `card.py`):
   corrected word runs downstream only if the user taps that button, which
   re-processes the word exactly as a fresh send for the suggested
   spelling.
+- `suggestion` is the **one piece of LLM output that can still become a
+  canonical word**, so it must clear the same gate as typed input before
+  any button is offered: the M1 per-language validation (script, allowed
+  punctuation, length) applied with the word's own source language. A
+  suggestion that fails it is dropped exactly like an empty one — the
+  analysis and the card for the typed word are unaffected, there is just
+  no button. This keeps a hallucinated "correction" out of the deck, and
+  out of the `find_notes` query and the media filename it would reach
+  through the re-run (M5).
 
 HTML safety (`streaming.py`): Telegram gets `parse_mode=HTML`, and the
 LLM is only *asked* to emit `<b>`/`<i>` — the code must enforce it.
@@ -760,26 +776,36 @@ Handle Telegram `RetryAfter`/`BadRequest("message is not modified")`
 gracefully; entity-parse `BadRequest` → retry the edit without
 `parse_mode`.
 
-Word messages are processed strictly one at a time — a single global
-`asyncio.Lock` around the whole word pipeline, spanning all topics (no
-parallel LLM runs even across languages). After downtime Telegram
-delivers up to 24 h of backlog in one burst; without the lock that
-means parallel agent subprocesses and interleaved edit loops flooding
-Telegram's rate limits. Each queued word still gets its own
-placeholder immediately, so the user sees the backlog was accepted.
+Word messages are processed strictly one at a time **and in the order
+sent**: a single FIFO `asyncio.Queue` drained by one worker task,
+spanning all topics (no parallel LLM runs even across languages). Not a
+bare lock: with a lock the order is decided by how fast each handler
+reaches `acquire()`, and since the handler posts its placeholder first,
+one rate-limited send is enough to let a later word overtake an earlier
+one. After downtime Telegram delivers up to 24 h of backlog in one
+burst; without serialization that means parallel LLM runs and
+interleaved edit loops flooding Telegram's rate limits.
+
 PTB processes updates sequentially by default (`block=True`), which
-would hold back the placeholders too: build the application with
-`concurrent_updates=True` so handlers start immediately, post the
-placeholder *before* acquiring the lock, and let the lock serialize
-the rest of the pipeline.
+would hold back the placeholders: build the application with
+`concurrent_updates=True` so handlers start immediately. Each handler
+puts its job on the queue **before its first `await`** — handler tasks
+start in update order, so queue order equals send order — then posts the
+placeholder and attaches the resulting message to the job; the worker
+awaits the job's placeholder before streaming into it. Every queued word
+therefore still gets its placeholder immediately and the user sees the
+backlog was accepted. `RetryAfter` handling covers the placeholder
+**send** as well, not only edits — a drained backlog posts many messages
+in a burst.
 
 Tests: fake `Message.edit_text` recorder + scripted delta sequences;
 assert edit cadence, delimiter cutting, truncation, error path; the
 reuse-message path edits the given message and never posts a new one;
 sanitizer cases — stray `<`/`&`, disallowed tags escaped, `<b>` split
 across two deltas, unclosed `<i>` auto-closed at the cut; two words
-sent together → second agent run starts only after the first pipeline
-finishes.
+sent together → both placeholders appear and the LLM runs execute one at
+a time in send order; a placeholder send hitting `RetryAfter` is
+retried.
 
 ### M4 — card extraction
 
@@ -789,8 +815,10 @@ including the optional `suggestion` string returned alongside the `Note`
 single-meaning payload, valid multi-meaning payload (2-3 meanings with
 labels), payload with trailing garbage, missing delimiter, malformed
 JSON, empty translations, empty meanings list, four meanings (rejected),
-payload with a `suggestion` and payload without one (both parse; the
-suggestion never affects note validity).
+missing `pos` (tolerated, defaults to `""`), payload with a `suggestion`
+and payload without one (both parse; the suggestion never affects note
+validity), and a `suggestion` that fails the language's input validation
+(dropped exactly like an empty one — the note still parses, no button).
 
 ### M5 — Anki integration (headless pylib)
 
@@ -811,11 +839,19 @@ decision doc to the official self-hosted sync server
 `ECHOWORDS_DATA_DIR/anki/collection.anki2` (directory created on first
 run; the bootstrap full-download above applies when sync is on). pylib
 is blocking — run every collection call in `asyncio.to_thread`; the
-global word-lock (M3) already serializes writers, and the process is
+single queue worker (M3) already serializes writers, and the process is
 the collection's only writer by design. On first use: ensure the note
-type `Wordgram` exists and, on first use of a language, that language's
-deck (from the languages config) exists. Note type fields: `Word`, `IPA`,
-`Translations`, `Meanings`, `Audio`; two card templates:
+type `EchoWords` exists and, on first use of a language, that language's
+deck (from the languages config) exists. When the note type is already
+present — the first-run download brings the user's entire AnkiWeb
+collection, which may well carry one from an earlier version or a
+hand-made one — verify its field names and its two template names
+against the expected set (`col.models.by_name`, then its `flds` and
+`tmpls`); on mismatch fail with a clear status-line error ("note type
+EchoWords is misconfigured — fix or delete it in Anki") rather than feed
+notes into a model with unknown fields. No auto-migration in v0.1. Note
+type fields: `Word`, `IPA`, `Translations`, `Meanings`, `Audio`; two card
+templates:
 
 - **Recognition** — Front: `{{Word}} {{Audio}}<br>{{IPA}}` (the
   functional description puts IPA on the front — it describes the
@@ -826,10 +862,22 @@ deck (from the languages config) exists. Note type fields: `Word`, `IPA`,
   `{{Meanings}}` here.
 
 Minimal CSS. `Translations` and `Meanings` are rendered by the backend
-from the parsed payload. `Translations`: one line per meaning — label
-in bold (only when the note has more than one meaning) followed by
-that meaning's translations; no examples, so the recall front never
-gives the answer away. `Meanings`: one block per meaning — label in
+from the parsed payload. `Translations`: one block per meaning — label
+in bold (only when the note has more than one meaning), that meaning's
+translations, and below them **one gapped example**: the first example
+of that meaning containing the canonical word, with every occurrence of
+it replaced by `___`, followed by the example's translation. The match
+is a plain case-insensitive whole-word search for the canonical word
+exactly as the user typed it — no stemming and no per-language
+morphology, so the rule behaves identically in every configured language
+and a new language needs nothing added. When no example of a meaning
+contains the word that way (an inflected form, a German separable
+prefix), that meaning falls back to its `pos` value in place of the
+example; when `pos` is empty too it shows its translations alone. An
+unmasked example must never reach this field — the front would give the
+answer away — but a bare translation alone leaves the reviewer guessing
+which source word is wanted (посылка → parcel / package / shipment),
+which is exactly what the gap resolves. `Meanings`: one block per meaning — label in
 bold (same condition), translations on one line, examples in italics
 with their target-language translations — numbered `<ol>`-style when there is
 more than one block. Every payload value is HTML-escaped before being
@@ -839,7 +887,7 @@ break the card.
 
 One word = one note, so the first field (`Word`) is naturally unique.
 Duplicate check before adding: `col.find_notes()` with query
-`deck:"{deck}" note:Wordgram "Word:{word}"` — `{deck}` is the language's
+`deck:"{deck}" note:EchoWords "Word:{word}"` — `{deck}` is the language's
 deck and `{word}` the **canonical word, i.e. the raw user input** — never
 the payload's `word` echo, which merely repeats the input and is not
 trusted for identity (see the LLM contract); case-insensitive
@@ -883,10 +931,16 @@ spike above).
 Tests: use a **real temporary `Collection`** (pylib is a local library —
 no network, no GUI; the "no real network in tests" rule is satisfied)
 and mock only the sync calls. Assert: note-type bootstrap creates both
-card templates; per-language deck creation and deck-scoped dedup
+card templates; a pre-existing note type whose fields or template names
+differ fails with the misconfigured-model error and adds nothing;
+per-language deck creation and deck-scoped dedup
 (same word in two decks is not a duplicate); single- and multi-meaning
-rendering of `Translations` and `Meanings`; HTML escaping of payload
-values; media naming/hashing and the `[sound:...]` reference using the
+rendering of `Translations` and `Meanings`; gapped-example masking —
+exact match masked, every occurrence in the sentence masked, a
+multi-word phrase masked as one gap, an inflected form falling back to
+`pos`, an empty `pos` falling back to translations alone, and no
+unmasked example ever emitted into `Translations`; HTML escaping of
+payload values; media naming/hashing and the `[sound:...]` reference using the
 name returned by `add_file`; lookup-only skip; sync debounce (fake
 clock), hkey persistence/reuse, the `ECHOWORDS_ANKI_SYNC=false` no-op,
 and the full-sync-required → error-not-auto-resolve path; error
@@ -947,9 +1001,9 @@ speculatively for the raw input; awaited only after the final edit, and
 only with a bound — `asyncio.wait_for(task, ECHOWORDS_AUDIO_TIMEOUT)`
 (default 20 s): on timeout cancel the task and proceed exactly as for
 "no audio". The functional description requires that audio never delay
-the text answer or the ~5 s card budget, and the await happens under the
-global word-lock — an unbounded hang (edge-tts is known to wedge) would
-stall the whole backlog. Every httpx request inside the chain also
+the text answer or the ~5 s card budget, and the await happens on the
+single queue worker — an unbounded hang (edge-tts is known to wedge)
+would stall the whole backlog. Every httpx request inside the chain also
 carries its own `timeout=10`.
 Because autocorrection is advisory, the canonical word always equals the
 input, so the speculative fetch is always the right one — it is used as
@@ -1017,7 +1071,11 @@ Commands:
   (`col.remove_notes`), trash its media file in the collection
   (`col.media.trash_files([name])`, using the media name stored with the
   undo state — M5), and delete its cached audio file in
-  `ECHOWORDS_DATA_DIR/audio/`; confirm with the word name.
+  `ECHOWORDS_DATA_DIR/audio/`; confirm with the word name. When the
+  topic's undo state records an action of `duplicate` or `lookup` the
+  last word produced no note of ours, so `/undo` replies "nothing to
+  undo" and touches nothing — deleting the note found under that word
+  would destroy a note that existed before the send.
 - `/redo` — re-run the last word **in this topic**, preserving its
   lookup-only flag and language. Before adding the new note, remove the previous
   run's result exactly like `/undo` does — `/redo` exists to fix a
@@ -1032,8 +1090,8 @@ word came back with a non-empty `suggestion` different from the input
 *other* spelling (input ↔ suggestion) and replaces the note exactly the
 way `/redo` does — remove the previous run's result (`col.remove_notes`,
 `col.media.trash_files`, the cached audio file), then run the
-full pipeline (LLM analysis, audio fetch, add) for the chosen word, under
-the same global word-lock so it never races an in-flight send. The re-run
+full pipeline (LLM analysis, audio fetch, add) for the chosen word,
+through the same word queue so it never races an in-flight send. The re-run
 happens **in the original analysis message**: the callback passes it as
 the pipeline's `reuse_message` (M3), so that message is edited back to
 the placeholder and the new analysis streams into it — no second
@@ -1053,14 +1111,16 @@ the note that was just replaced, update it to the new note id, media
 name, and the spelling now shown — otherwise a `/undo` issued right
 after a switch would target a note that no longer exists.
 
-Undo/redo state (last word, its note id, lookup flag) is
+Undo/redo state (last word, its action — `added | duplicate | lookup` —
+its note id when one was added, and the lookup flag) is
 per topic (per source language); the correction-button decision state is
 per message (keyed by the button's `callback_data` token). Both live in
 memory and are lost on restart — documented behavior; after a restart the
 button reports that the request expired instead of acting on stale state.
 Tests: stats aggregation windows with per-language breakdown, undo
 removes the note, trashes its collection media file and deletes its
-cached audio file, redo replaces the previous
+cached audio file, undo after a duplicate or a lookup-only send is a
+no-op that reports nothing to undo, redo replaces the previous
 note, undo/redo state machine, `/status` health and sync-state rendering
 (agent CLI present/missing, pool snapshot degraded/healthy, pool and direct
 missing keys, api daily-cap count/fallback state, last model that answered, ok /
@@ -1089,7 +1149,10 @@ laptop config (English via Kokoro) and the Oracle Free Tier
 hard requirement** (one-paragraph setup hint), English via Piper or
 edge-tts, no Kokoro anywhere in `languages.toml`; note that the Arm
 `A1.Flex` shape, when a region actually has capacity, lifts the memory
-constraints. Bump version to `0.1.0`. Ensure `ruff check` is clean and
+constraints. Mention that `ECHOWORDS_DATA_DIR/audio/` keeps one small mp3
+per looked-up word and has no cleanup policy in v0.1 — the files are safe
+to delete at any time, since the copy Anki reviews from lives in the
+collection's own media folder. Bump version to `0.1.0`. Ensure `ruff check` is clean and
 wired into CI. Do NOT push the `v0.1.0` tag — publishing is deferred
 until PyPI credentials are configured; note this in the README.
 
@@ -1111,14 +1174,25 @@ until PyPI credentials are configured; note this in the README.
   an optional `suggestion`. When the suggestion differs from the input, an
   inline button under the message switches to the suggested word (and
   back), re-running the analysis and replacing the note like `/redo`; only
-  that path re-fetches audio. Rationale: a silently swapped card looks
+  that path re-fetches audio. Because that tap turns LLM output into a
+  canonical word, a `suggestion` must pass the same validation as typed
+  input or it is dropped and no button appears. Rationale: a silently swapped card looks
   correct but is wrong and would poison the spaced-repetition deck without
   the user noticing — analyzing as-typed keeps the card's front equal to
   what the user sent, so a mistake is visible on the first review. There
   is deliberately no on/off setting; this behavior is the design, not an
   option.
-- Every note produces two cards: recognition (EN→RU) and recall
-  (RU→EN) — see M5. Still one note per word.
+- Every note produces two cards: recognition (source→target) and recall
+  (target→source) — see M5. Still one note per word. The recall front
+  carries, per meaning, a **gapped example** — that meaning's first
+  example with the word replaced by `___` — because a bare translation
+  often fits several source words and the reviewer cannot tell which one
+  is being asked. The word is found by a plain case-insensitive
+  whole-word match on the input as typed; where no example contains it
+  verbatim the meaning shows its part of speech instead. Deliberately no
+  stemming or per-language morphology: one rule that behaves the same in
+  every configured language beats a better English front and an
+  unpredictable Serbian one.
 - **Anki without a GUI — final.** The backend maintains its own
   collection via the headless `anki` pylib and syncs it to AnkiWeb;
   AnkiConnect and Anki desktop are not part of the architecture. There
@@ -1130,7 +1204,9 @@ until PyPI credentials are configured; note this in the README.
 - Anki sync to AnkiWeb runs automatically after additions,
   debounced and retried; `ECHOWORDS_ANKI_SYNC=false` turns it off.
 - `?` prefix = lookup-only: analysis and audio, no Anki card.
-- `/redo` replaces the previous run's
+- `/undo` removes what the last send created and is an explicit no-op
+  after a duplicate or a lookup-only send — it never deletes a note that
+  existed before. `/redo` replaces the previous run's
   note instead of being blocked by the duplicate check.
 - Multiple source languages via **forum topics** (one topic per
   language), routed by `message_thread_id`; the topic determines the deck.
@@ -1176,8 +1252,8 @@ until PyPI credentials are configured; note this in the README.
   can't be restricted is dropped. Verified by containment canaries in M2,
   following news-recap's `spec/plan-agent-sandboxing.md` (see "Agent
   hardening").
-- Words are processed sequentially (global lock), so a 24 h Telegram
-  backlog drains one word at a time.
+- Words are processed sequentially and in send order (one worker over a
+  FIFO queue), so a 24 h Telegram backlog drains one word at a time.
 - **Telegram is the chat interface — final.** Replacing it with a
   self-hosted Mattermost server was evaluated and rejected (extra
   always-on node instead of consolidation; inline buttons, voice

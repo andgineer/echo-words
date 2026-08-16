@@ -160,6 +160,10 @@ Behavior — fixed, not configurable (there is no on/off setting):
   returns the suggested spelling as a separate field in the card payload
   (`suggestion`); when nothing looks wrong, the suggestion is empty and no
   button appears.
+- A suggested spelling is **LLM output that can become a canonical word**
+  — one tap makes it the word of a real card. It is therefore held to the
+  same rules as typed input: a suggestion that would have been rejected
+  had the user sent it is discarded and no button is offered.
 - The card (and its audio) is built for the word as typed and added to
   Anki immediately, exactly as for any other word.
 - When a suggestion exists, an **inline button** is attached under the
@@ -228,10 +232,18 @@ both in the chat and on the flashcard.
   (etymology, full meaning list) stays in Telegram only — cards must
   remain quick to review.
 - **Reverse (recall) card.** Every note also produces a second card:
-  front — the Russian translations (with meaning labels when there are
-  several blocks), back — the word/phrase with IPA and pronunciation
-  audio. Each word is therefore reviewed in both directions, EN→RU and
-  RU→EN, from the same single note.
+  front — the translations (with meaning labels when there are several
+  blocks), each followed by one of that meaning's examples with the word
+  masked out ("I received a ___ from Amazon yesterday", with its
+  translation); back — the word/phrase with IPA and pronunciation audio.
+  A bare translation often matches several words of the source language
+  (посылка → parcel / package / shipment), and the reviewer cannot know
+  which one is expected; the gapped example pins it down without giving
+  the answer away. A meaning's example is used only when it contains the
+  word exactly as the user typed it; when no example of that meaning does
+  (an inflected form, a separable prefix), the meaning shows its part of
+  speech instead — the front never carries an unmasked example. Each word
+  is therefore reviewed in both directions, from the same single note.
 - **One deck per source language**, set in the languages configuration
   (e.g. `English::Vocabulary`, `German::Vocabulary`,
   `Serbian::Vocabulary`). The topic the word was posted in determines the
@@ -266,7 +278,10 @@ Kept minimal:
   down by source language (the same global report whichever topic it is
   called in).
 - `/undo` — remove the note created by the last sent word from the
-  collection (mistaken sends).
+  collection (mistaken sends). When the last word created nothing — it
+  was a duplicate or a lookup-only request — `/undo` reports that there
+  is nothing to undo and changes nothing: it must never delete a note
+  that existed before the last send.
 - `/redo` — re-run the analysis for the last word (e.g. after a poor
   generation). The note from the previous run is replaced by the new
   one, so a bad card does not survive a redo. A lookup-only (`?`)
