@@ -22,9 +22,11 @@ Rules:
   green after every milestone.
 - No real network in tests — fake or mock every boundary (LLM, AnkiWeb
   sync, TTS engines, dictionary API). The web app is tested through the
-  in-process test client, never a live server. The frontend JavaScript
-  is deliberately thin and is checked manually per milestone — it is
-  not covered by pytest.
+  in-process test client, never a live server.
+- The frontend is not covered by pytest. Its **non-trivial logic** — the
+  offline resend queue and the SSE client's reconnect/refetch — gets
+  vitest tests in `webapp/`, run by `inv test` alongside pytest; markup
+  and styling are checked by hand per milestone.
 - Update `uv.lock` when adding dependencies (`uv lock`); CI uses
   `--frozen`.
 - Execute milestones strictly in order (M0 → M8); do not start a
@@ -100,7 +102,7 @@ Prompt template for the operator (one per milestone):
 | Concern | Choice |
 |---|---|
 | Web framework | **FastAPI + uvicorn**: JSON API, server-sent events (a `StreamingResponse` with `media_type="text/event-stream"` — no extra SSE dependency), and static files (`StaticFiles`) from one process. Binds `ECHOWORDS_HOST:ECHOWORDS_PORT` (default `127.0.0.1:8080`); **`tailscale serve` publishes that port as HTTPS inside the tailnet** — the backend itself never handles TLS or auth (decision record: `spec/decision-interface.md`) |
-| Frontend | A single static page: `index.html` + `app.js` + `style.css`, vanilla JavaScript, **no build toolchain** (no npm, no bundler), served by the backend from `src/echo_words/static/`. PWA install bits (`manifest.webmanifest`, icons, a minimal service worker) land in M8 |
+| Frontend | **Vue 3 + Pinia + Vite + `vite-plugin-pwa`**, sources in `webapp/`, built into `_static/` (gitignored) and served by the backend — the same stack, layout and build wiring as `dinary`, whose PWA this one is modelled on (see "Reuse from dinary"). Its `vite.config.js` PWA strategy is copied rather than re-derived: `registerType: "autoUpdate"` + `skipWaiting` + `clientsClaim` so a deploy reaches the phone on the next reload, `globPatterns` precaching the hashed output, `navigateFallback: "index.html"` with `navigateFallbackDenylist: [/^\/api\//]`, and `runtimeCaching` pinning `/api/*` to `NetworkOnly` so an API response is never served from cache. Vitest for the non-trivial client logic (resend queue, SSE reconnect); markup is checked by hand |
 | HTTP client (dictionary pronunciation) | `httpx` (async) |
 | Anki integration | **`anki` pylib, headless** (the non-GUI core of Anki as a PyPI package; manylinux x86_64 + aarch64 wheels). The backend maintains its own collection in `ECHOWORDS_DATA_DIR/anki/` and syncs to AnkiWeb via pylib's `sync_login` / `sync_collection` / `sync_media`. Pin the version (`anki==26.5` at the time of writing) — pylib's API drifts between releases; upgrades are deliberate. No AnkiConnect, no Anki desktop, no GUI anywhere. Decision record: `spec/decision-spaced-repetition.md` |
 | TTS (local) | Piper (`piper-tts`, ONNX voices, MIT) — local neural TTS with per-language voices, ~60–100 MB per voice, real time on Raspberry-Pi-class CPUs, so it runs on the 1 GB micro instance. English `en_US-lessac-medium`, German `de_DE-thorsten-medium`. **Serbian is settled: Piper has NO usable Serbian voice** — the only `sr_RS` dataset (`serbski_institut`) is actually **Lower Sorbian** (Sorbian Institute recordings miscatalogued under the Serbian locale) and must never be configured; Serbian's engine is edge-tts (decision record: `spec/decision-tts.md`). Configured voices downloaded at startup, pinned-URL + checksum mechanism (M6). Piper phonemizes via `espeak-ng` — an optional system dependency, documented in the README (M8) |
@@ -111,6 +113,46 @@ Prompt template for the operator (one per milestone):
 | Word log (stats + history) | stdlib `sqlite3`, single DB file; rows carry the rendered analysis, so the history view survives restarts |
 | LLM | Pluggable backend behind one `stream_completion` seam (M2), **two backend kinds shipped in v0.1**, selected by config and by source language (from the languages table, M1) — both are plain streaming text→text HTTPS calls through the author's `llmbroker` (`github.com/andgineer/llmbroker`, **≥1.5.1**): (a) **`llmbroker` pool** — `AsyncBroker` over a pool of free, rate-limited models with automatic failover and quality-based routing, **no metered key**; the default. `broker.stream(prompt, operation=…, trace_id=…, wait=…)` returns a `StreamHandle`: async-iterable over text deltas, carrying `llm_name` (who answered, from the first delta on) and `record_quality(score)`, and closed by the consumer with `aclose()`. It fails over up to the first delta and raises `StreamInterruptedError` past it. `wait` is the **whole-call budget — queueing for a free model plus the answer** (llmbroker does not penalize a model's quality score for the caller's deadline); without it a single attempt is bounded only by an internal 60 s ceiling, so echo-words always passes it, from the functional description's ~20–30 s budget. (b) **`llmbroker` direct client** (paid, **opt-in, never required**) — a single explicitly named frontier model, no pool, no failover, no routing: the model is **declared in echo-words's own code** at broker construction (`AsyncBroker(direct=[...])`) and reached with `await broker.direct(alias)`, which returns an `AsyncDirectClient` whose `.stream(prompt, timeout=…)` is a plain async iterator of deltas. That client borrows the broker's single shared httpx client, so obtaining one per request is cheap and echo-words must **not** close it. The alias comes from llmbroker's curated paid catalog (`opus`, `sonnet`, `gpt`, `flash`, … — `llmbroker list` prints them) and is an eternal handle — llmbroker re-points it at the current model generation on its own daily clock, so a provider's new release changes nothing here. Nothing is stored anywhere: the declaration in code is the only source of truth, and the API key is read at call time from the env var the catalog names, never touched by echo-words. Its role is hard languages and "who wants quality". One `AsyncBroker` instance serves both backends with one error taxonomy (`LLMRequestError` and its subclasses); it is created in the FastAPI lifespan (after the languages config) and `aclose()`d on shutdown. The **M0 spike (precedes M1)** benchmarks which backend is sufficient per language and sets the v0.1 defaults |
 | Lint | `ruff` (line-length 99), run in CI after tests |
+
+## Reuse from dinary
+
+`../dinary` is the author's expense-tracker PWA already running in
+production **on the same Oracle Cloud Free Tier shape this plan targets**
+(`VM.Standard.E2.1.Micro`, 1 GB + a 1 GB swap file), reached over
+Tailscale, on the same backend stack (FastAPI + uvicorn +
+pydantic-settings + llmbroker). It is a working precedent, not a
+reference design: prefer copying its solved parts to re-deriving them.
+
+**Take:**
+
+- **The PWA shell and its design system.** `webapp/src/assets/base.css`
+  (dark-theme CSS custom properties), the component idioms, and the
+  Vite + `vite-plugin-pwa` build wiring including `build.outDir:
+  "../_static"` and the dev-server `/api` proxy. The workbox strategy
+  above is the part hardest to get right by hand.
+- **Client composables that map 1:1 onto this app's needs**:
+  `useOnline`, `swHealth` (network-failure reporting), `useStaleCache`,
+  `useKeyboardVisible` (the iOS on-screen-keyboard offset — an
+  input-first app needs it), the `_request.js` fetch wrapper with its
+  error normalization, and the **`flushQueue` pattern** for the
+  offline resend queue (M8). echo-words's queue is a plain reduction of
+  it: one word per item, no catalog or review stores to reconcile.
+- **The whole deploy approach** — `invoke` tasks over ssh (see
+  "Deployment" below).
+
+**Do not take** (dinary-specific): QR/zbar scanning, the catalog /
+rules / receipts / Sheets domain, the analytics stack, the Cloudflare
+tunnel alternative, the Litestream replica VM (echo-words's Anki
+collection is already replicated off-box by the AnkiWeb sync; only
+`word_log.db` is local-only, and losing history is tolerable — revisit
+Litestream if that stops being true), and its `.deploy/llms.toml`
+(llmbroker ≥ 1.5.1 is zero-config: the pool is a curated preset, there
+is no model-list file for the operator to write).
+
+**Genuinely new here, with no dinary precedent: streaming.** dinary has
+no `EventSource` and no `text/event-stream` anywhere — its requests are
+plain fetch. echo-words's SSE pipeline (M3) and its client are original
+work; do not expect a pattern to copy.
 
 ## Deployment
 
@@ -127,10 +169,9 @@ One deployment target — the difference between it and a dev laptop is
   host, and with the laptop deployment profile dropped it left the
   design entirely (`spec/decision-tts.md`).
 - **Tailscale is the front door**: `tailscale up` on the instance, then
-  `tailscale serve` maps tailnet-HTTPS onto the backend's localhost
-  port. The backend binds `127.0.0.1` and never sees TLS or auth;
-  tailnet membership is the access control. Setup is a documented README
-  step (M8), not code.
+  `tailscale serve --bg {port}` maps tailnet-HTTPS onto the backend's
+  localhost port. The backend binds `127.0.0.1` and never sees TLS or
+  auth; tailnet membership is the access control.
 - **The laptop is a dev environment**, running the same configuration
   (Piper and edge-tts work anywhere); it is not a supported deployment
   profile.
@@ -138,6 +179,68 @@ One deployment target — the difference between it and a dev laptop is
 Model downloads (M6) are driven by the config: only voices referenced by
 `languages.toml` are fetched. Full engine rationale and the comparison
 table: `spec/decision-tts.md`.
+
+### Deploy tooling: invoke tasks over ssh, not Ansible/Chef
+
+Deployment is `invoke` tasks in `tasks/`, ported from dinary and reduced
+to what one instance needs: `setup-server` (one-time, idempotent),
+`deploy --ref=…`, `status`, `logs`, `build-static`. **Configuration
+management (Ansible, Chef, Salt) was considered and rejected** for this
+project:
+
+- The value those tools add over shell is **idempotency, inventory and
+  roles**. dinary's tasks are already idempotent by construction
+  (`test -d … ||`, `swapon --show | grep -qx /swapfile`, a Node
+  major-version check before installing, `systemctl enable --now`), and
+  inventory/roles solve a fleet problem that a **single instance with a
+  single service** does not have — the functional description fixes
+  single-instance/single-user as an NFR.
+- Ansible would add a control-node dependency and a second mental model
+  (YAML + modules) on top of the shell that still runs underneath;
+  Chef additionally wants a server or chef-solo. That is real cost for
+  no capability this project uses.
+- Decisively: porting from dinary means **inheriting code that has
+  already been debugged in production on this exact shape** — the
+  systemd sandbox block, the `ExecStartPre` loop that waits for
+  `tailscaled` (its comment records that `network.target` was found not
+  to wait for it after a reboot), the swap provisioning, the sshd and
+  fail2ban hardening. Re-expressing those in Ansible roles means
+  re-deriving hard-won details in a different language: pure risk, zero
+  gain.
+
+Revisit only if echo-words ever grows past one host.
+
+**What the tasks do**, ported with the dinary-specific parts dropped:
+
+- `setup-server` — system packages, **Node.js 22** (the PWA build runs
+  on the server, as it does for dinary on the same 1 GB shape), `uv`,
+  repo clone, `uv sync --no-dev`, the swap file, sshd hardening +
+  fail2ban, `data/` at 0700, Tailscale join + `tailscale serve`, and
+  the systemd unit.
+- `deploy --ref=…` — `git checkout` the ref, `uv sync --no-dev`, sync
+  `.deploy/.env` to the server, re-render the unit, `inv build-static`,
+  restart, then **poll `GET /api/health` until it answers (up to 30 s)**
+  so a failed start fails the deploy instead of passing on a fixed
+  sleep.
+- Secrets live in a gitignored `.deploy/.env` with a committed
+  `.deploy.example/.env` documenting every variable; the deploy syncs
+  the real one to the server, where the systemd unit reads it as
+  `EnvironmentFile`. API keys (the paid llmbroker alias's provider key,
+  AnkiWeb credentials) never enter the repo.
+- `invoke` is a **runtime** dependency, not a dev-only one: admin tasks
+  (`build-static`, migrations) run on the server through `uv run inv …`.
+
+**The systemd unit** is dinary's, renamed: `After=/Wants=
+network-online.target tailscaled.service`, the `ExecStartPre` wait loop
+for `tailscale ip -4`, `EnvironmentFile=…/.deploy/.env`,
+`ExecStart` calling the venv's `uvicorn` directly (not `uv run`, whose
+cache write conflicts with `ProtectHome=read-only`), `Restart=always`,
+and the sandbox block — `NoNewPrivileges`, `ProtectSystem=strict`,
+`ProtectHome=read-only`, `ReadWritePaths=` the data dir only,
+`PrivateTmp`, empty `CapabilityBoundingSet`, and the rest. Note for
+echo-words: `ReadWritePaths` must cover `ECHOWORDS_DATA_DIR` (the Anki
+collection, the word log, TTS voices, cached audio) — one path, if the
+data dir stays under the checkout as it does for dinary.
 
 ## Configuration (env vars)
 
@@ -237,8 +340,8 @@ Semantics:
 
 One FastAPI application (`api.py`) serves everything:
 
-- `GET /` and `/static/*` — the PWA page (`index.html`, `app.js`,
-  `style.css`; M8 adds `manifest.webmanifest`, icons, `sw.js`).
+- `GET /` and the build's hashed assets — the PWA, served from
+  `_static/` (`StaticFiles`); M8 adds the manifest and icons.
 - `GET /api/languages` — the configured languages (code + display name)
   for the selector.
 - `POST /api/words` — body `{word, lang, lookup_only}`. Validates (M1),
@@ -275,14 +378,20 @@ One FastAPI application (`api.py`) serves everything:
   `ECHOWORDS_DATA_DIR/audio/` (filenames are server-generated slugs —
   never client-supplied paths; reject anything but a bare known
   filename).
+- `GET /api/health` — a **machine-readable liveness probe**, distinct
+  from the user-facing `/api/status`: it answers as soon as the app is
+  serving, touches no LLM and no network, and is what the deploy task
+  polls before declaring a release good. Ships in M1 with the skeleton,
+  because the deploy depends on it.
 
-Frontend rules: vanilla JS, no build step, no framework. The page keeps
-the selected language in `localStorage`, renders entries from
-`/api/words/recent` + live events, plays audio via an `<audio>` element
-(autoplay attempted, one-tap replay always available), and keeps a
-resend queue of words that failed to POST (M8). Server-sent HTML is
-already sanitized (see "The LLM contract") and is the only thing the
-client assigns as HTML; everything else is text nodes.
+Frontend rules: Vue 3 + Pinia in `webapp/`, built to `_static/` (see
+"Reuse from dinary"). The app keeps the selected language in
+`localStorage`, renders entries from `/api/words/recent` + live events,
+plays audio via an `<audio>` element (autoplay attempted, one-tap replay
+always available), and keeps a resend queue of words that failed to POST
+(M8). Server-sent analysis HTML is already sanitized (see "The LLM
+contract") and is the only thing rendered with `v-html`; everything else
+is interpolated as text.
 
 ## Word pipeline (orchestration)
 
@@ -474,8 +583,23 @@ src/echo_words/
                     # notes, media, debounced AnkiWeb sync
   audio.py          # per-language chain: dictionary + Piper + edge-tts -> mp3
   word_log.py       # sqlite word_log (source for /api/stats and the history view)
-  static/           # index.html, app.js, style.css; M8 adds manifest.webmanifest,
-                    # icons/, sw.js
+
+webapp/             # Vue 3 + Vite PWA sources (see "Reuse from dinary")
+  package.json      # vue, pinia; dev: vite, @vitejs/plugin-vue, vite-plugin-pwa, vitest
+  vite.config.js    # build.outDir "../_static", /api dev proxy, workbox strategy
+  index.html
+  src/
+    main.js  App.vue
+    assets/base.css     # design tokens, ported from dinary
+    api/_request.js     # fetch wrapper (ported)
+    stores/             # pinia: entries, queue, language selection
+    composables/        # useOnline, swHealth, useKeyboardVisible, flushQueue (ported);
+                        # useEventStream (new — the SSE client, M3)
+    views/              # AddView (input + history), StatsView, StatusView
+    components/
+
+_static/            # build output, gitignored; served by the backend
+tasks/              # invoke deploy tasks, ported from dinary (see "Deployment")
 ```
 
 `[project.scripts]` already carries `echo-words = "echo_words.main:echo_words"` —
@@ -562,10 +686,16 @@ default path). This doc is an input to M2.
 
 ### M1 — config + web app skeleton
 
-`config.py`, `languages.py`, `main.py`, `api.py`, plus the static shell:
-the application starts, serves `GET /` (a page with the language
-selector fed by `GET /api/languages`, an input box with the lookup-only
-control, and an empty answer area) and accepts `POST /api/words`.
+`config.py`, `languages.py`, `main.py`, `api.py`, plus the `webapp/`
+scaffold: the application starts, answers `GET /api/health`, serves
+`GET /` (the built page: a language selector fed by `GET
+/api/languages`, an input box with the lookup-only control, and an empty
+answer area) and accepts `POST /api/words`.
+The `webapp/` scaffold is created here — `package.json`,
+`vite.config.js` (workbox strategy, `outDir: "../_static"`, `/api` dev
+proxy), `assets/base.css` ported from dinary, `api/_request.js`, and the
+`AddView` shell — so every later milestone has a page to render into;
+`inv build-static` and `inv dev` work from this milestone on.
 `languages.py` loads `ECHOWORDS_LANGUAGES_CONFIG` into `Language`
 objects indexed by code; a submission's `lang` selects the language, an
 unknown code gets a short hint and no processing. Input validation is
@@ -582,7 +712,8 @@ offered for a suspected typo (the button itself ships in M7), as the
 functional description requires. Tests (in-process test client): the
 languages loader (code lookup, missing file), per-language validation
 incl. the `?` prefix and Cyrillic-vs-Latin per language, unknown
-language code → hint, the stub flow, and static page serving.
+language code → hint, the stub flow, `/api/health` answering, and static
+page serving.
 
 ### M2 — LLM backend runner (llmbroker pool + paid api)
 
@@ -698,8 +829,18 @@ falls back to the `llmbroker` pool for the remaining calls that day.
   existing entry to pending and streams into it instead of creating a
   new one.
 
+The client side of this milestone is `useEventStream` — the one
+composable with no dinary precedent: it opens a single `EventSource`,
+applies `update` events by **replacing** an entry's content (never
+appending, so a missed event is harmless), and on every open or
+reconnect refetches `/api/words/recent` to resynchronize. Browser
+`EventSource` reconnects on its own; the composable's job is the
+refetch and the entry bookkeeping.
+
 Tests: scripted delta sequences through a fake backend → recorded event
 stream (update cadence, delimiter cutting, final text, error path);
+vitest for `useEventStream` — an update event replaces rather than
+appends, and a reconnect triggers the refetch;
 sanitizer cases — stray `<`/`&`, disallowed tags escaped, `<b>` split
 across two deltas, unclosed `<i>` auto-closed at the cut; two words
 submitted together → both appear immediately and the LLM runs execute
@@ -1044,36 +1185,44 @@ undo state when it replaced the note that state pointed to; and a
 stale/unknown entry id gets the request-expired response instead of
 acting.
 
-### M8 — PWA polish and release
+### M8 — PWA install, deploy tasks, release
 
-- **Install bits**: `manifest.webmanifest` (name, icons, standalone
-  display), icons, and a **minimal service worker**: cache-first for
-  the static shell (`/`, `/static/*`) so the home-screen app opens even
-  when the backend is unreachable; network-only for `/api/*` — never
-  cache API responses.
-- **Local resend queue**: words whose `POST /api/words` failed
-  (backend down, no connectivity) are stored in `localStorage` and
-  re-sent automatically, in order, on the next app open or successful
-  reconnect — the functional description's resilience behavior.
-- **README**: install (`uv tool install echo-words` / `uvx echo-words`),
-  required env vars, the **Tailscale setup** (`tailscale up`, then
-  `tailscale serve` onto `ECHOWORDS_PORT`; the app is tailnet-only by
-  design), "Add to Home Screen" on iOS, the optional iOS Shortcut that
-  POSTs share-sheet text to `/api/words` (recipe, one paragraph), the
-  `languages.toml` format and per-language decks, the AnkiWeb
-  credentials setup (`ECHOWORDS_ANKIWEB_USER` / `_PASSWORD`; note the
-  first-run full download of the existing collection and the
-  self-hosted `ECHOWORDS_SYNC_ENDPOINT` fallback), the optional
-  `espeak-ng` system dependency for Piper, systemd hint (one paragraph,
-  no unit files), and the **deployment target** ("Deployment" section):
-  Oracle Free Tier `VM.Standard.E2.1.Micro` — 1 GB RAM, **swap file
-  (1–2 GB) as a hard requirement** (one-paragraph setup hint); note
-  that the Arm `A1.Flex` shape, when a region actually has capacity,
-  lifts the memory constraints. Mention that
-  `ECHOWORDS_DATA_DIR/audio/` keeps one small mp3 per looked-up word
-  and has no cleanup policy in v0.1 — the files are safe to delete at
-  any time, since the copy Anki reviews from lives in the collection's
-  own media folder.
+- **Install bits**: the `manifest` (name, icons, standalone display)
+  and icons; the service worker is generated by `vite-plugin-pwa` from
+  the config already in place since M1, so this step is assets and
+  verification (home-screen install on iOS, an offline open of the
+  shell, `/api/*` never served from cache) rather than new plumbing.
+- **Local resend queue**: words whose `POST /api/words` failed (backend
+  down, no connectivity) are stored client-side and re-sent
+  automatically, in order, on the next app open or `online` event — the
+  functional description's resilience behavior. Port dinary's
+  `flushQueue` pattern (single in-flight guard, per-item error
+  branching, stop-on-first-failure) reduced to one word per item.
+  Vitest: items are re-sent in order, a failure stops the drain and
+  keeps the remainder, a duplicate response drops its item.
+- **Deploy tasks** (`tasks/`, ported from dinary — see "Deployment"):
+  `setup-server`, `deploy --ref=…`, `status`, `logs`, `build-static`,
+  plus `.deploy.example/.env` documenting every variable and a
+  gitignored `.deploy/`. Verify on the real instance: `setup-server` is
+  re-runnable without damage, `deploy` gates on `/api/health`, the unit
+  survives a reboot (the `tailscaled` wait loop is what makes this
+  work), and the app answers over the tailnet from the phone.
+- **README**: the deploy flow above; the **Tailscale setup** (join,
+  `tailscale serve --bg`; the app is tailnet-only by design), "Add to
+  Home Screen" on iOS, the optional iOS Shortcut that POSTs share-sheet
+  text to `/api/words` (recipe, one paragraph), the `languages.toml`
+  format and per-language decks, the AnkiWeb credentials setup
+  (`ECHOWORDS_ANKIWEB_USER` / `_PASSWORD`; note the first-run full
+  download of the existing collection and the self-hosted
+  `ECHOWORDS_SYNC_ENDPOINT` fallback), the optional `espeak-ng` system
+  dependency for Piper, and the **deployment target**: Oracle Free Tier
+  `VM.Standard.E2.1.Micro` — 1 GB RAM, **swap file as a hard
+  requirement** (provisioned by `setup-server`); note that the Arm
+  `A1.Flex` shape, when a region actually has capacity, lifts the
+  memory constraints. Mention that `ECHOWORDS_DATA_DIR/audio/` keeps
+  one small mp3 per looked-up word and has no cleanup policy in v0.1 —
+  the files are safe to delete at any time, since the copy Anki reviews
+  from lives in the collection's own media folder.
 - Bump version to `0.1.0`. Ensure `ruff check` is clean and wired into
   CI. Do NOT push the `v0.1.0` tag — publishing is deferred until PyPI
   credentials are configured; note this in the README.
@@ -1167,6 +1316,21 @@ acting.
   calls with nothing to contain.
 - Words are processed sequentially and in submission order (one worker
   over a FIFO queue) — no parallel LLM runs, even across languages.
+- **The PWA and the deploy are ported from `dinary`, not invented.**
+  dinary is the author's working PWA on the same Oracle Free Tier shape,
+  reached the same way over Tailscale, on the same FastAPI + llmbroker
+  stack — so echo-words takes its Vue 3 + Vite + `vite-plugin-pwa`
+  build wiring, design tokens, client composables, and its `invoke`
+  deploy tasks (systemd unit with the sandbox block and the
+  `tailscaled` wait, swap provisioning, host hardening). This overrode
+  an earlier "vanilla JS, no build toolchain" intent: the toolchain
+  demonstrably fits the 1 GB instance because dinary builds there in
+  production, and the workbox/PWA configuration is the part most
+  expensive to re-derive by hand. **Ansible/Chef were considered and
+  rejected** — their value is idempotency, inventory and roles, and the
+  ported tasks are already idempotent while a single instance has no
+  fleet to inventory. Details and the exclusion list: "Reuse from
+  dinary" and "Deploy tooling".
 - **The PWA over Tailscale is the user interface — final.** The
   Telegram bot (the previous choice) was retired once Tailscale removed
   the zero-ops-ingress advantage and the 24 h-buffering argument was
@@ -1182,5 +1346,6 @@ acting.
 Chat-platform interfaces (Telegram bots included), native mobile apps,
 public internet exposure (the app lives inside the tailnet), multiple
 **users** (multiple **source languages** with separate decks for the
-single user ARE in scope), example-sentence audio, frontend build
-toolchains (no npm, no bundler), Docker.
+single user ARE in scope), example-sentence audio, Docker,
+configuration-management tooling for deployment (Ansible/Chef — see
+"Deploy tooling").

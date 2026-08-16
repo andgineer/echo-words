@@ -40,7 +40,7 @@ The four requirements every design decision is weighed against:
 - **PWA — the only user interface** (a Telegram bot was the previous
   choice and a self-hosted Mattermost server was evaluated before that;
   both retired/rejected — see `decision-interface.md` and
-  `decision-chat-interface.md`). A single static page served by the
+  `decision-chat-interface.md`). A small app served by the
   backend itself: a source-language selector (the choice persists
   between visits), an input box, the streaming answer, playable
   pronunciation, and a history of recent words. Installed on the phone
@@ -370,6 +370,4 @@ These are decisions, not deferrals: chat-platform interfaces (the
 Telegram bot included — see `decision-interface.md`), native mobile
 apps, public internet exposure (the app lives inside the tailnet),
 multiple **users** (multiple **source languages** with separate decks
-for the single user ARE supported), example-sentence audio, frontend
-build toolchains (the PWA is a single static page — no npm, no
-bundler), Docker.
+for the single user ARE supported), example-sentence audio, Docker.
