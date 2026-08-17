@@ -1,14 +1,11 @@
 # TTS engines per language and host — decision
 
-Status: **decided 2026-07-18 — per-language engine matrix below; do not
-re-open without new voice models appearing. Amended 2026-08-16:** the
-laptop deployment profile was dropped (`decision-interface.md` made the
-always-on micro instance the backend's only home; the laptop is a dev
-environment), so the matrix has a single column and Kokoro — which was
-confined to the laptop profile — is no longer configured anywhere. The
-per-language research and engine comparison stand unchanged. This
-document records the research behind the TTS choices in the
-implementation plan: which engine serves which language.
+Status: **decided 2026-07-18 — the per-language engine matrix below; do
+not re-open without new voice models appearing.** This document records
+the research behind the TTS choices in the implementation plan: which
+engine serves which language. The backend has one home, the always-on
+micro instance (`decision-interface.md`), so the matrix has one column
+and every engine in it must fit that host.
 
 ## Requirements
 
@@ -30,8 +27,8 @@ implementation plan: which engine serves which language.
 
 ### Piper has no Serbian voice — the listed one is a trap
 
-The implementation plan originally penciled in `sr_RS-serbian-medium`
-with a "verify at M6" note. Verification came back worse than "missing":
+`sr_RS-serbian-medium` looks like the obvious choice and must never be
+used. What verification found is worse than "missing":
 
 - The **only** dataset under `sr/sr_RS` in the official voice repo
   (`huggingface.co/rhasspy/piper-voices`) is `serbski_institut`.
@@ -99,10 +96,9 @@ the one deployment target — the 1 GB (+ swap) micro instance:
   takes down the whole process — the audio chain's exception-based
   fall-through never gets a chance to help. Sizing engines to the host
   is the **config's** job, done ahead of time; the runtime fall-through
-  only covers genuine runtime errors. (It was previously allowed on the
-  since-dropped laptop profile; English pronunciation mostly comes from
-  real dictionary recordings anyway, so the Kokoro-vs-Piper gap only
-  shows on words the dictionary lacks.)
+  only covers genuine runtime errors. English pronunciation mostly comes
+  from real dictionary recordings anyway, so an engine-quality gap shows
+  only on words the dictionary lacks.
 - Model downloads are config-driven (M6): only engines and voices
   actually referenced by `languages.toml` are fetched — with no
   `kokoro` entry possible, the ~300 MB Kokoro model is never

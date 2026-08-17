@@ -12,22 +12,20 @@ audio. The measurements and the operating rules the verification
 produced live in the implementation plan (M5); the harness is
 `experiments/anki_headless_spike.py`.
 
-## The problem with the current plan
+## Why AnkiConnect is not the integration
 
-The plan integrates with Anki through **AnkiConnect**, which is an
-add-on inside Anki desktop: it only works while a full Qt GUI
-application is running. That anchors the backend to the laptop, makes
-the deployment heavy (a desktop app as a service dependency), and rules
-out running echo-words as a small headless service on Oracle Cloud Free
-Tier. The research question: is there an architecture that
+AnkiConnect is an add-on inside Anki desktop: it only works while a full
+Qt GUI application is running. That anchors the backend to the laptop,
+makes the deployment heavy (a desktop app as a service dependency), and
+rules out running echo-words as a small headless service on Oracle Cloud
+Free Tier. The research question it forced: is there an architecture that
 
 - needs no always-running GUI application,
 - keeps the backend small (code, RAM, CPU),
 - minimizes our own code,
 - can run permanently on Oracle Cloud Free Tier,
-- and does not degrade the user experience vs the current plan
-  (cards appear automatically, reviews happen in a polished mobile app,
-  audio plays on the card).
+- and keeps the user experience whole (cards appear automatically,
+  reviews happen in a polished mobile app, audio plays on the card).
 
 ## Option A — GetSpace ("Space", getspace.app): rejected
 
@@ -76,8 +74,7 @@ Anki's own non-GUI core ships as a standalone PyPI package `anki`
 - **UX is fully preserved — this is the decisive property.** The
   backend maintains its own collection server-side and syncs it to
   **AnkiWeb**; the user's AnkiDroid / AnkiMobile / desktop sync from
-  AnkiWeb exactly as in the current plan (the plan already relies on
-  AnkiWeb sync — M5's debounced `sync`). Reviews stay in the Anki apps
+  AnkiWeb (M5's debounced `sync` is what carries it there). Reviews stay in the Anki apps
   the user already knows: offline, FSRS scheduling, statistics, audio
   on the card. Nothing the user touches changes at all; only the
   invisible integration side changes.
@@ -89,9 +86,9 @@ What changes in the backend, compared to AnkiConnect:
   bootstrap, deck-scoped dedup, `[sound:...]` media, two card
   templates: all map 1:1.
 - **The pending queue shrinks to a sync-retry.** "Anki is not
-  running" ceases to exist as a state — the collection is always
-  available in-process, so `addNote` can no longer fail with a
-  connection error. Only the AnkiWeb sync can fail transiently, and
+  running" is not a state that exists: the collection is always
+  available in-process, so adding a note cannot fail on connectivity.
+  Only the AnkiWeb sync can fail transiently, and
   it is already debounced and non-blocking in the plan. M7's
   `pending_notes` machinery (queue, drain task, queued-vs-added
   statuses) collapses; `word_log`, `/undo`, `/redo` survive unchanged
@@ -199,7 +196,7 @@ dedup degrade to hope, and sync conflicts between generated packages
 and the live collection are the user's problem. Fails "no UX
 regression". (Running full Anki desktop + AnkiConnect headless under
 Xvfb in Docker — the community workaround — is rejected without
-discussion: it is the current plan's flaw made heavier.)
+discussion: it is AnkiConnect's flaw made heavier.)
 
 ## Effect on pronunciation audio
 
@@ -211,7 +208,7 @@ independent of the card store:
   pylib (`media.add_file` replacing AnkiConnect `storeMediaFile`) and
   the same `[sound:...]` field; `sync_collection(auth,
   sync_media=True)` carries it to AnkiWeb and on to the phone. Card
-  audio behaves exactly as in the current plan.
+  audio behaves exactly as it does in the app.
 - **Option C (if ever adopted):** audio is the same mp3 the app
   already stores and serves for the answer view, replayed at review
   time — no new storage or serving.
@@ -275,10 +272,9 @@ which is now cheap.
   and gains `ECHOWORDS_ANKIWEB_USER` / password (or a stored sync key)
   — `ECHOWORDS_ANKI_SYNC` semantics survive as-is.
 - **Not decided here:** actually moving the backend off the laptop.
-  B makes the backend location-independent; the hosting question was
-  later settled by `decision-interface.md` — the backend's home is the
-  always-on OCI micro instance (the PWA interface requires it), and
-  the laptop-anchored CLI coding-agent backend was dropped with it.
+  B makes the backend location-independent; where it is hosted is settled
+  by `decision-interface.md` — the always-on OCI micro instance, which
+  the PWA interface requires.
 
 References (all checked 2026-07-17): getspace.app + /cli (CLI requires
 the installed app; no server API); ankitects/anki

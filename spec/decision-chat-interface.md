@@ -1,14 +1,11 @@
 # Chat interface: Telegram vs self-hosted Mattermost — decision
 
-Status: **decided 2026-07-17; superseded in part 2026-08-16.** This
-document records the evaluation of replacing Telegram with a self-hosted
-Mattermost server as the user-facing chat interface, and why that
-hypothesis was rejected. **Mattermost remains rejected on the analysis
-below.** The document's other conclusion — Telegram as the primary
-interface — was superseded by `decision-interface.md`: the interface is
-now a PWA served over Tailscale, an option this evaluation did not
-examine (its custom-web-UI paragraph assumed public hosting, auth code,
-and push, all of which Tailscale removes).
+Status: **a self-hosted Mattermost server is rejected as the user-facing
+interface, on the analysis below. Do not re-open.** This document exists to
+keep that option from being proposed again; the interface itself is settled
+in `decision-interface.md`. The evaluation compares Mattermost against a
+Telegram bot, because those were the two candidates it weighed — neither is
+the interface now, and what survives here is why Mattermost is not one.
 
 ## The hypothesis that was tested
 
@@ -17,45 +14,18 @@ and push, all of which Tailscale removes).
 > ready-made self-hosted chat interface and no longer depends on the
 > external public Telegram service.
 
-## Why the premise fails: there is nothing to co-locate with
-
-> **Note (2026-07-17, later the same day):** the AnkiConnect anchor
-> described below was subsequently removed —
-> `decision-spaced-repetition.md` replaced AnkiConnect with the
-> headless Anki pylib, making the backend location-independent. The
-> Telegram decision stands on its own merits (feature mapping and
-> operational cost below are unaffected); only this section's
-> "pinned to the laptop" premise is historical.
-
-At the time of this evaluation the architecture had **no cloud instance
-at all**. The backend is
-a single process on the user's laptop, pinned there by three anchors:
-
-- **Anki desktop + AnkiConnect** at `127.0.0.1:8765` — cards can only be
-  added locally;
-- the **CLI coding agents** (claude / codex / antigravity) are
-  authenticated under the user's flat-rate subscriptions on the laptop;
-- the **local TTS models** (Kokoro / Piper) live in `ECHOWORDS_DATA_DIR`.
-
-Moving the backend to a cloud instance would require exposing the
-laptop's AnkiConnect to the network — strictly worse. So a Mattermost
-server on Oracle Cloud would not be "next to the backend": it would be a
-**third node** (laptop + cloud VM + phone) where today there are two
-(laptop + phone), with Telegram playing the always-available middleman
-for free. The claimed consolidation is actually a topology expansion.
-
 ## Feature mapping (verified against Mattermost docs, 2026-07)
 
 What maps cleanly:
 
-| Telegram (current plan) | Mattermost equivalent | Verdict |
+| What a chat interface has to provide | Mattermost equivalent | Verdict |
 |---|---|---|
 | Forum topics = language → deck | One channel per language | Equivalent, arguably cleaner |
 | Long polling (no public IP on backend) | Outbound WebSocket client | Equivalent |
 | Placeholder-edit streaming | `PATCH /posts/{id}` | Equivalent; laxer rate limits |
 | HTML `<b>`/`<i>` + sanitizer, 4096-char limit | Native Markdown, ~16K limit | Simpler |
 | User-ID whitelist | Server accounts | Better (real auth) |
-| 24 h update retention while laptop is off | Full server-side history | Better — *while the server is up* |
+| 24 h update retention while the backend is down | Full server-side history | Better — *while the server is up* |
 
 What breaks or degrades:
 
@@ -115,13 +85,12 @@ them, not the weaker one:
 
 ## Decision
 
-**Keep Telegram.** Self-hosted Mattermost would replace a free,
-zero-ops, highly available external dependency with a self-operated
-stack, while degrading exactly the capabilities the plan leans on
-(inline buttons, voice messages, mobile push — partly paywalled) and
-adding a third always-on node. The benefits self-hosting would buy
-(data sovereignty, compliance, team use) are not among this project's
-requirements. Revisit only if those requirements appear.
+**Mattermost is not the interface.** Self-hosting it means operating a
+stack in exchange for degrading exactly the capabilities a chat interface
+was wanted for — inline buttons, voice messages and mobile push, the last
+two partly paywalled — and adding an always-on node to run it on. What
+self-hosting buys (data sovereignty, compliance, team use) is not among
+this project's requirements. Revisit only if those requirements appear.
 
 References: Mattermost plans/pricing (voice messages = Professional),
 mobile push docs (HPNS licensed, TPNS non-production), interactive

@@ -42,10 +42,10 @@ The four requirements every design decision is weighed against:
 
 ## System context
 
-- **PWA — the only user interface** (a Telegram bot was the previous
-  choice and a self-hosted Mattermost server was evaluated before that;
-  both retired/rejected — see `decision-interface.md` and
-  `decision-chat-interface.md`). A small app served by the
+- **PWA — the only user interface.** A chat interface, whether a Telegram
+  bot or a self-hosted Mattermost server, is rejected — see
+  `decision-interface.md` and `decision-chat-interface.md`. A small app
+  served by the
   backend itself: a source-language selector (the choice persists
   between visits), an input box, the streaming answer, playable
   pronunciation, and a history of recent words. Installed on the phone
@@ -364,11 +364,11 @@ Kept minimal — everything beyond typing a word:
   reports that there is nothing to undo and changes nothing: it must
   never delete a note that existed before the last send.
 Undo acts on the most recent word **per source language** and only since
-the backend started — acceptable for a personal tool. There is no "run it
-again" control: a weak answer is not fixed by rolling the same dice, so
-what would have been a redo is the card rebuild above, which asks the
-better model and acts on the entry the user is looking at rather than on
-whichever word happened to be last.
+the backend started — acceptable for a personal tool. There is no plain
+"run it again" control: re-rolling the same model on the same prompt is
+not how a weak answer gets fixed. Rebuilding the card is, and it acts on
+the entry the user is looking at rather than on whichever word happened
+to be last.
 
 ## Non-functional requirements
 

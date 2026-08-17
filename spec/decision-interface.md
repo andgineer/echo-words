@@ -2,8 +2,8 @@
 
 Status: **decided 2026-08-16 — the user interface is a PWA (a single
 static page served by the backend itself), reachable only inside the
-owner's Tailscale tailnet. The Telegram bot, chosen on 2026-07-17, is
-retired as the interface. Do not re-open without new requirements.**
+owner's Tailscale tailnet. A Telegram bot is rejected as the interface.
+Do not re-open without new requirements.**
 
 ## Context
 
@@ -90,11 +90,12 @@ headless Anki integration, and the audio chain are interface-agnostic.
 
 ## Consequences
 
-- The backend's home is the **always-on micro instance**; the laptop is
-  demoted to a development environment, no longer a deployment profile.
-  This also removed the laptop-only CLI coding-agent LLM backend (the
-  paid llmbroker direct client fully covers its quality role) and the
-  laptop-only Kokoro TTS engine (see `decision-tts.md`).
+- The backend's home is the **always-on micro instance**; the laptop is a
+  development environment, not a deployment target. Nothing that needs a
+  laptop is part of the design — which rules out a CLI coding agent as an
+  LLM backend, the paid llmbroker direct client covering that quality
+  role, and rules out any TTS engine too heavy for the instance (see
+  `decision-tts.md`).
 - Multiple **users** were already out of scope; the tailnet-as-auth
   model additionally assumes the single owner.
 - If the UI ever needs to grow (review exercises, richer views), the
@@ -105,5 +106,5 @@ References: Tailscale Serve docs (tailnet-only HTTPS with automatic
 certificates); Apple iOS one-active-personal-VPN behavior; Web Share
 Target API support tables (absent in Safari/iOS); iOS Shortcuts
 "Receive input from Share Sheet" + "Get Contents of URL" (the POST
-workaround). Prior analysis: `decision-chat-interface.md` (Mattermost
-rejection stands; its Telegram-vs-own-UI paragraph is superseded here).
+workaround). Why a self-hosted Mattermost server is not the interface:
+`decision-chat-interface.md`.

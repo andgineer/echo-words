@@ -657,18 +657,17 @@ plural, for verbs give aspect"); when the field is absent the slot is
 empty — so a new language, hints included, needs no code change.
 
 **The prompt is written in English, and the answer language is a slot.**
-Both are deliberate and they are the same decision: English is what models
-follow instructions in most reliably, and the target language must be free
-to be anything, so it cannot be baked into the prose. A hint in
-`prompt_hints` is an instruction to the model too, so it is written in
-English like the rest of the prompt — it is not the operator's note to
-themselves. Nothing about the prompt's own language may leak into the
-answer, which is why the target-language demand is stated three times: at
-the top, where it cannot be missed; in the body, saying which two things
-stay in the source language; and at the very end, as a check the model
-performs before answering. That last repetition is not padding — the
-failure it guards against is the model mirroring the language of its
-instructions, which is exactly what an English prompt makes likelier.
+One decision with two reasons: English is what models follow instructions in
+most reliably, and the target language must be free to be anything, so it
+cannot be baked into the prose. `prompt_hints` is an instruction to the model
+and is written in English for the same reason.
+
+Nothing about the prompt's own language may reach the answer, and an English
+prompt is exactly what makes a model likeliest to mirror it, so the
+target-language demand is stated three times: at the top, in the body naming
+the two things that stay in the source language, and at the end as a check
+the model runs before answering. Measurements behind the wording are in
+`spec/decision-llm-backend.md`.
 
 Parsing rules (`prompt.py` / `card.py`):
 
@@ -829,81 +828,19 @@ keep it; do not add a second entry point.
 ## Milestones
 
 Each milestone = one or more commits, tests included, CI green. **M0 is the
-exception**: it is a research spike whose harness lives in `experiments/`,
-calls real models, and never enters CI — but it still lands as a commit (the
-harness plus the decision doc) and it **precedes M1**, because its outcome
-sets the v0.1 backend defaults the rest of the plan builds on.
+exception**: a research spike whose harness lives in `experiments/`, calls
+real models and never enters CI.
 
-### M0 — LLM backend spike (precedes M1–M8; decides the v0.1 backend defaults)
+### M0 — LLM backend spike (done; precedes M1–M8)
 
-Runs **before** any product code. echo-words ships **both** steps of the
-cascade in v0.1 (see the LLM technology row): the `llmbroker` free-tier pool
-and the paid direct client. M0 does not choose one *instead of* building the
-other — the seam is built regardless (M2) — it measures **how good each step
-is per source language, and whether llmbroker needs web grounding for hard
-languages**, so M2 ships with a measured paid model and a measured expectation
-of the pool instead of a guess. Its conclusion that no language *needs* the
-paid step is what let the per-language backend choice collapse into one
-cascade for everything.
+A research spike, run before any product code, that measured both steps of the
+cascade per source language and set the defaults the rest of the plan builds
+on. Its harness is `experiments/backend_bench.py` — outside the package and
+outside CI, it calls real models and its paid phase spends real money.
 
-**Hypotheses.**
-
-1. **Sufficiency varies by source language.** The pooled free models may be
-   fully adequate for *high-resource* source languages (English — the v0.1
-   target — and German) yet degrade for *lower-resource, morphology-heavy*
-   ones (Serbian and similar: Cyrillic/Latin duality, case system): wrong
-   lemmatization, invented etymology, weak register labels, unidiomatic
-   examples, and — most consequential for us — malformed card JSON that
-   `card.py` rejects.
-2. **Speed.** Both backends stream, so measure **first delta and full answer**
-   against the functional description's ~20–30 s and ~3–5 s budgets, for the
-   pool and for the paid direct client — the expected result is answers in a
-   few seconds, well inside the budgets.
-3. **Web grounding for hard languages.** The gap for hard languages may close
-   only when the model is given internet access. llmbroker supports tool
-   calling (`chat(tools=...)` / `arun_tool_loop`), so grounding would be a
-   web-search tool wired into the llmbroker backend (`ECHOWORDS_LLMBROKER_WEB`),
-   not a separate backend. **But llmbroker ships no web-search tool** —
-   echo-words would have to bring a search API, its key, and possibly its
-   metering, which fights the "no metered API is ever required" NFR. So test
-   this hypothesis **last and only if it is still open**: the paid `api` alias
-   costs one config line and is the cheaper answer to a hard language. If
-   the paid model closes the gap, grounding is moot and
-   `ECHOWORDS_LLMBROKER_WEB` is dropped from v0.1 rather than shipped unused.
-
-**Method.**
-
-- `experiments/backend_bench.py` (outside the package and CI — this harness
-  deliberately hits real models; the "no real network in tests" rule stands
-  for the shipped code). A fixed set of ~30–50 items per source language
-  (English, German, Serbian) covering the shapes the prompt must handle:
-  common and rare words, idioms/phrasal verbs, borrowed-etymology words,
-  misspellings, and homonyms with genuinely unrelated meanings.
-- Reuse the **exact** `prompt.py` template (with its source/target
-  language slots filled per item) so we compare backends, not prompts. For
-  each (backend × model × language) record: total latency, which model
-  llmbroker's pool actually answered with (`handle.llm_name` on the stream,
-  `reply.llm_name` on `ask`), rate-limit/failover behaviour, and the raw
-  analysis + `===CARD===` payload.
-- **Survey the frontier (paid) models through llmbroker's own direct client** —
-  `AsyncBroker(direct=[...])` plus `await broker.direct(alias)`, the exact path
-  the `api` backend will use, so the spike exercises shipping code instead of a
-  parallel one.
-- Score against a rubric — a human pass by a Russian + source-language
-  speaker, optionally with an LLM-judge as a pre-filter, never the final
-  word: translation & register correctness, fact-checkable etymology,
-  example naturalness, morphology, and card-JSON parse rate. Report per
-  language, per model. Run the hard-language set twice — grounding off, then
-  on — to isolate hypothesis 3.
-
-**Deliverable: `spec/decision-llm-backend.md`** — the latency and quality
-numbers per language and model, and the resulting v0.1 defaults. **Done
-(2026-08-17):** all three languages default to the free `llmbroker` pool,
-Serbian included; the paid direct client still ships as the opt-in quality
-tier (`gpt` is the alias the spike recommends); web grounding is dropped from
-v0.1 and its switch is gone from the configuration table. The harness is
-`experiments/backend_bench.py` — outside CI, real models, real spend on the
-paid phase. This doc is an input to M2.
+Everything it settled, and the numbers behind it, is
+**`spec/decision-llm-backend.md`**, which is an input to M2. Nothing else in
+this plan restates it.
 
 ### M1 — config + web app skeleton
 
@@ -1623,13 +1560,13 @@ acting.
   `ECHOWORDS_API_DAILY_CAP` with automatic fallback to the free pool, so
   no metered API is ever required. Which backend is the default, and
   which languages route to which, was fixed by the **M0 spike**
-  (`spec/decision-llm-backend.md`): every v0.1 language on the free
-  pool, the paid client opt-in — measured, not guessed. The CLI
-  coding-agent backend of the earlier design was dropped with the laptop
-  deployment profile (`spec/decision-interface.md`): the paid direct
-  client covers its quality role, and with it went the whole
-  agent-sandboxing surface — both remaining backends are plain text→text
-  calls with nothing to contain.
+  (`spec/decision-llm-backend.md`): every v0.1 language starts on the free
+  pool — measured, not guessed. A CLI coding agent is not one of the
+  backends: it would need the laptop, which is not a deployment target
+  (`spec/decision-interface.md`), and the paid direct client covers the
+  quality role it was wanted for. So there is no agent-sandboxing surface
+  anywhere — both backends are plain text→text calls with nothing to
+  contain.
 - Words are processed sequentially and in submission order (one worker
   over a FIFO queue) — no parallel LLM runs, even across languages.
 - **echo-words has no database.** The Anki collection is the only
@@ -1665,12 +1602,11 @@ acting.
   ported tasks are already idempotent while a single instance has no
   fleet to inventory. Details and the exclusion list: "Reuse from
   dinary" and "Deploy tooling".
-- **The PWA over Tailscale is the user interface — final.** The
-  Telegram bot (the previous choice) was retired once Tailscale removed
-  the zero-ops-ingress advantage and the 24 h-buffering argument was
-  recognized as rescuing only the card, never the wanted-now answer;
-  self-hosted Mattermost was evaluated and rejected earlier. Full
-  analysis: `spec/decision-interface.md`,
+- **The PWA over Tailscale is the user interface — final.** A Telegram bot
+  is rejected: Tailscale gives the same zero-ops ingress, and Telegram's
+  24 h buffering rescues only the card, never the answer that was wanted
+  now. A self-hosted Mattermost server is rejected too. Full analysis:
+  `spec/decision-interface.md`,
   `spec/decision-chat-interface.md`. Tailnet membership is the only
   access control; the backend binds loopback and never handles TLS or
   auth.

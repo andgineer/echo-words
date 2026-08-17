@@ -14,10 +14,8 @@ behind those defaults. It is an input to M2.
   misspellings that must not be silently corrected, and homonyms with
   unrelated meanings. The Serbian set mixes Cyrillic and Latin.
 - The production prompt, taken verbatim from the implementation plan,
-  with the language slots filled per item; answers in Russian. Backends
-  were compared against each other with the prompt held fixed — and,
-  separately, prompts against each other with the model held fixed (see
-  "The prompt's own language" below).
+  with the language slots filled per item; the target language Russian.
+  Backends were compared against each other with the prompt held fixed.
 - Two load profiles, because they give opposite answers: a **burst**
   (four requests in flight, 120 answers in seven minutes) and a
   **paced** single-user session (one request at a time, five seconds
@@ -35,19 +33,16 @@ behind those defaults. It is an input to M2.
   per group — translation and register, etymology, examples,
   morphology, 1–5. The judge is a filter, not a verdict.
 - **IPA played no part in this decision.** Pronunciation reaches the
-  learner as audio, so a transcription was never worth scoring. The
-  measurements here were taken while the prompt still asked for one;
-  it has since been dropped from the prompt and from the card
-  altogether, which removes a line of output from every answer and
-  changes nothing this decision rests on.
+  learner as audio, so a transcription is not a quality axis anything
+  here rests on.
 - Not measured: `grok` and `deepseek` — no keys. The pool's fifth model,
-  `glm-4.7-flash`, has a working key but would not answer: its shared
-  free tier hands back HTTP 429 ("the service may be temporarily
-  overloaded") most of the time, and availability swings from roughly a
-  third of attempts to none at all within the same hour — 26 consecutive
-  refusals in one stretch, short prompts and real ones alike. Nothing to
-  configure: that provider's free tier is simply oversubscribed. Four of
-  the five pool models answered.
+  `glm-4.7-flash`, answers too rarely to score: its shared free tier
+  returns HTTP 429 for most requests, and one answer in eight is what it
+  gives even when it is the only candidate the pool has. Its quality is
+  therefore unknown, and it does not matter — it is a reasoning model
+  that emits nothing for 31 seconds before it starts answering, which
+  puts it outside the first-content budget by sixfold whatever the
+  answer turns out to be worth.
 
 ## Hypothesis 1 — sufficiency varies by source language: confirmed, mildly
 
@@ -57,13 +52,11 @@ payloads, clean HTML, the input word echoed unchanged, a correction
 offered for every misspelling, and the answer in the target language.
 
 **No model drifted out of the target language, in any language, at any
-point.** That is worth stating because it was measured wrongly first: a
-share-of-Cyrillic heuristic counts the German forms a good German answer
-is full of — `Prät.`, `Part. II`, the collocations, the examples — as
-evidence of drift, and reported a sixth of German answers as off-target
-when every one of them was in Russian. What the corrected check does is
-drop the italicised example sentences, which are in the source language
-by contract, and only then decide.
+point.** Measuring that takes more care than it looks: a good German
+answer is full of German — `Prät.`, `Part. II`, the collocations, the
+examples — so a share-of-script test reads it as off-target. The check
+drops the italicised example sentences first, which are in the source
+language by contract, and only then decides.
 
 The gap is not in the contract but in the content, and on the rubric
 that counts it comes down to a single axis: **morphology**. The pool
@@ -102,35 +95,26 @@ harness, not of the product: it is what happens when one client sends
 four concurrent requests at free-tier rate limits. It matters only as
 the description of the tail — see the fallback finding below.
 
-## The prompt's own language
+## The prompt is in English, and the answer language is a slot
 
-The prompt was Russian to begin with, which was never a decision — it was
-inherited. It is English now, because the target language has to be free to
-be anything and so cannot be baked into the prose, and because models follow
-English instructions more reliably. Switching it creates one specific risk
-worth measuring: a model mirroring the language it was instructed in.
+The target language must be free to be anything, so it cannot be baked into
+the prose; and English is what models follow instructions in most reliably.
+An English prompt carries one specific risk — the model mirroring the
+language it was instructed in — so that risk is measured, not assumed.
 
-Measured with the model held fixed (the pool's primary), 40 items per source
-language, 120 answers per arm:
+With the model held fixed (the pool's primary), 40 items per source
+language: **100% of answers on target, all three languages**, and the card
+contract clean at 100 / 98 / 100% with formatting at 100% throughout. A
+separate arm with an English source and a German target came back German in
+12 of 12, so the slot drives the answer rather than the model inferring what
+the reader wants.
 
-| | answer on target | card valid | HTML clean |
-|---|---|---|---|
-| Russian prompt | 100% | 100 / 100 / 97% | 97 / 100 / 100% |
-| English prompt | 100% | 100 / 98 / 100% | 100 / 100 / 100% |
-
-**No drift, in either direction, on any of the three source languages.** The
-mirroring risk did not materialise, and the English prompt ends up ahead on
-formatting discipline. A separate arm with the target set to German — English
-source, German target — came back German in 12 of 12, so the slot genuinely
-drives the answer rather than the model inferring what the reader wants.
-
-One finding is worth keeping because it cost a whole arm to learn: the first
-attempt to strengthen the formatting rule made it **three times worse** —
-markdown in 17 answers of 30, against 12 of 120 before. The added text named
-the forbidden markup by showing it. A model reads the example and reproduces
-it; negation does not cancel the demonstration. Stating the same rule without
-exhibiting what it forbids took the violations to zero. **A prompt may name a
-forbidden form; it must never show one.**
+**A prompt may name a forbidden form; it must never show one.** Spelling out
+the forbidden markup by exhibiting it triples the rate at which a model
+produces it — the example is reproduced and the negation does not cancel it.
+This is why the formatting rule names what it forbids in words only, and why
+the target-language demand is repeated three times without ever
+demonstrating a wrong answer.
 
 ## Hypothesis 3 — web grounding: dropped from v0.1
 
@@ -163,7 +147,7 @@ answering model:
 | `groq-gpt-oss-120b` | 2.8–3.5 s | clean on en/de; HTML discipline collapses on Serbian |
 | `openrouter-nemotron-3-ultra` | 36–57 s (worst 101 s) | answered nothing at all on 3 German items of 14; 82% clean formatting |
 | `openrouter-laguna-s-2.1` | 43 s | one sample |
-| `zai-glm-4.7-flash` | — | refused every attempt; its free tier is oversubscribed |
+| `zai-glm-4.7-flash` | 34 s, of which 31 s before the first token | a reasoning model on an oversubscribed free tier: 1 answer in 8 attempts |
 
 The two slowest models carry the highest curated weights after the
 primary, so the *first* fallback is the worst possible choice for an
