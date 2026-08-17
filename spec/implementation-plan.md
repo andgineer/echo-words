@@ -567,13 +567,14 @@ per-language morphology hint change:
 2. Переводы — по убыванию частотности в обыденной речи; у каждого
    перевода часть речи и пометы (разг., книжн., сленг, груб. и т.п.)
    там, где они важны.
-3. Транскрипция IPA.
-4. Употребление: типичные сочетания и предлоги, с чем часто путают;
+3. Употребление: типичные сочетания и предлоги, с чем часто путают;
    исчисляемость и неправильные формы там, где это существенно.
-5. Происхождение: если слово заимствовано — 1-3 предложения о том, из
+4. Происхождение: если слово заимствовано — 1-3 предложения о том, из
    какого языка и как пришло; для исконных слов — одна строка.
-6. Примеры: 2-4 коротких предложения из повседневной жизни, каждое с
+5. Примеры: 2-4 коротких предложения из повседневной жизни, каждое с
    переводом.
+
+Транскрипцию не приводи: произношение даётся озвучкой.
 
 Разбирай РОВНО введённое слово и НЕ подменяй его. Если оно похоже на
 опечатку, не исправляй разбор: добавь короткую строку «✏️ Возможно: X»
@@ -588,7 +589,7 @@ suggestion пустая строка.
 
 После разбора выведи строку ровно ===CARD=== и сразу за ней JSON в одну
 строку без пояснений и без HTML-тегов внутри значений:
-{"word": "...", "ipa": "...", "suggestion": "...",
+{"word": "...", "suggestion": "...",
  "meanings": [{"label": "...", "pos": "...", "translations": ["...", "..."],
  "examples": [{"text": "...", "translation": "..."}]}]}
 word — введённое слово как есть (не исправляй); suggestion —
@@ -622,7 +623,7 @@ Parsing rules (`prompt.py` / `card.py`):
   prefix of it appears at the end of the buffer (never flash `===CA` to
   the user).
 - After the run, parse the JSON after the delimiter into a single
-  `Note` (`word`, `ipa`, `meanings: list[Meaning]` where each meaning
+  `Note` (`word`, `meanings: list[Meaning]` where each meaning
   has `label` possibly empty, `pos` possibly empty (the part-of-speech
   fallback for the recall front, M5), `translations: list[str]` non-empty,
   `examples: list[Example]`, where `Example` has `text` — the sentence
@@ -690,7 +691,7 @@ src/echo_words/
   llm_backend.py    # llmbroker pool backend: broker.stream(...) -> text deltas
   api_backend.py    # paid api backend: (await broker.direct(alias)).stream(...) -> text deltas
   prompt.py         # prompt template (source/target lang slots) + card-payload extraction
-  card.py           # note dataclass (word, ipa, 1-3 meanings) + optional suggestion,
+  card.py           # note dataclass (word, 1-3 meanings) + optional suggestion,
                     # validation of the LLM payload
   anki.py           # headless collection wrapper (pylib): open/bootstrap, add/find/delete
                     # notes, media, debounced AnkiWeb sync
@@ -784,8 +785,8 @@ per-language `backend` defaults instead of a guess.
   parallel one.
 - Score against a rubric — a human pass by a Russian + source-language
   speaker, optionally with an LLM-judge as a pre-filter, never the final
-  word: translation & register correctness, IPA plausibility, fact-checkable
-  etymology, example naturalness, and card-JSON parse rate. Report per
+  word: translation & register correctness, fact-checkable etymology,
+  example naturalness, morphology, and card-JSON parse rate. Report per
   language, per model. Run the hard-language set twice — grounding off, then
   on — to isolate hypothesis 3.
 
@@ -1045,16 +1046,13 @@ against the expected set (`col.models.by_name`, then its `flds` and
 `tmpls`); on mismatch fail with a clear status-line error ("note type
 EchoWords is misconfigured — fix or delete it in Anki") rather than feed
 notes into a model with unknown fields. No auto-migration in v0.1. Note
-type fields: `Word`, `IPA`, `Translations`, `Meanings`, `Audio`; two card
+type fields: `Word`, `Translations`, `Meanings`, `Audio`; two card
 templates:
 
-- **Recognition** — Front: `{{Word}} {{Audio}}<br>{{IPA}}` (the
-  functional description puts IPA on the front — it describes the
-  word's form, not the answer), Back: `{{Meanings}}`.
-- **Recall** — Front: `{{Translations}}`, Back:
-  `{{Word}} {{Audio}}<br>{{IPA}}` — exactly the word with IPA and audio,
-  as the functional description fixes the recall back; do NOT append
-  `{{Meanings}}` here.
+- **Recognition** — Front: `{{Word}} {{Audio}}`, Back: `{{Meanings}}`.
+- **Recall** — Front: `{{Translations}}`, Back: `{{Word}} {{Audio}}` —
+  exactly the word and its audio, as the functional description fixes
+  the recall back; do NOT append `{{Meanings}}` here.
 
 Minimal CSS. `Translations` and `Meanings` are rendered by the backend
 from the parsed payload. `Translations`: one block per meaning — label

@@ -66,9 +66,6 @@ ALLOWED_TAGS = {"b", "i"}
 TARGET_LANG = "русский"
 # The functional description's whole-answer budget; past it the answer is late, not lost.
 SLOW_ANSWER = 30.0
-# IPA extensions, the stress/length marks, the strays outside that block, and the
-# tone diacritics a Serbian transcription is written with — [kôsa] is IPA too.
-IPA_CHARS = "[ɐ-ʯˈˌːŋæœøðθâêîôûȁȃȅȇȉȋȍȏȕȗǎěǐǒǔ̀-̑]"
 
 # Display names and prompt hints exactly as the shipped languages.toml carries them
 # (spec/implementation-plan.md, "Languages configuration").
@@ -237,7 +234,6 @@ def score_run(word: str, text: str) -> dict:
     analysis, payload = split_answer(text)
     card, error = parse_json_object(payload)
     problems = validate_card(card) if card else [error]
-    ipa = bool(re.search(rf"[/\[][^/\[\]]{{0,40}}{IPA_CHARS}[^/\[\]]{{0,40}}[/\]]", analysis))
     return {
         "chars": len(text),
         "analysis_chars": len(analysis),
@@ -250,7 +246,6 @@ def score_run(word: str, text: str) -> dict:
         "tags_in_json": bool(card) and json_has_tags(card),
         "word_echoed": bool(card) and str(card.get("word", "")).strip() == word,
         "suggestion": (card or {}).get("suggestion", ""),
-        "ipa": ipa,
         "target_lang_share": round(cyrillic_share(analysis), 3),
     }
 
@@ -584,7 +579,6 @@ def summarize(runs: list[Run]) -> dict:
         "over_length": sum(1 for r in ok if r.metrics.get("over_length")),
         "tags_in_json": sum(1 for r in ok if r.metrics.get("tags_in_json")),
         "word_kept": sum(1 for r in ok if r.metrics.get("word_echoed")),
-        "ipa": sum(1 for r in ok if r.metrics.get("ipa")),
         "ru": sum(1 for r in ok if r.metrics.get("target_lang_share", 0) > 0.5),  # noqa: PLR2004
         "first_p50": round(statistics.median(firsts), 2) if firsts else 0,
         "total_p50": round(statistics.median(totals), 2) if totals else 0,
@@ -611,7 +605,7 @@ def report(out: Path, phases: list[str], by_answerer: bool = False) -> None:
         raise SystemExit(f"nothing recorded under {out}")
     header = (
         f"{'phase':6} {'model':30} {'lg':3} {'n':>4} {'fail':>5} {'card':>6} {'fmt':>6} "
-        f"{'word':>6} {'IPA':>6} {'ru':>6} {'typo':>6} {'slow':>6} "
+        f"{'word':>6} {'ru':>6} {'typo':>6} {'slow':>6} "
         f"{'1st':>6} {'p50':>6} {'p90':>6} " + " ".join(f"{k[:4]:>5}" for k in JUDGE_KEYS)
     )
     print(header)
@@ -622,7 +616,7 @@ def report(out: Path, phases: list[str], by_answerer: bool = False) -> None:
         print(
             f"{phase:6} {model:30} {lang:3} {s['n']:4} {s['failed']:5} "
             f"{pct(s['card_ok'], ok)} {pct(ok - s['format_bad'], ok)} "
-            f"{pct(s['word_kept'], ok)} {pct(s['ipa'], ok)} {pct(s['ru'], ok)} "
+            f"{pct(s['word_kept'], ok)} {pct(s['ru'], ok)} "
             f"{pct(s['typos_caught'], s['typos'])} {pct(s['slow'], ok)} "
             f"{s['first_p50']:6.2f} {s['total_p50']:6.2f} {s['total_p90']:6.2f} "
             + " ".join(f"{s['judge_' + k]:5.2f}" for k in JUDGE_KEYS),
@@ -713,7 +707,7 @@ def main() -> None:
         started = time.monotonic()
         asyncio.run(runner[args.phase](args, out))
         spent = time.monotonic() - started
-        log(f"{args.phase} done in {spent:.0f}s -> {out_path(out, args.phase)}")
+        log(f"{args.phase} done in {spent:.0f}s -> {out_path(out, args.tag or args.phase)}")
 
 
 if __name__ == "__main__":

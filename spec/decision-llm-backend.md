@@ -32,10 +32,12 @@ behind those defaults. It is an input to M2.
   language, latencies), plus an LLM judge as a pre-filter on 12 items
   per group — translation and register, etymology, examples,
   morphology, 1–5. The judge is a filter, not a verdict.
-- **IPA is not a quality axis here.** Pronunciation reaches the learner
-  as audio, so the transcription is welcome when it is right and
-  decides nothing when it is not. Whether it is *present* is still
-  checked, as one more signal that a model follows the prompt at all.
+- **IPA played no part in this decision.** Pronunciation reaches the
+  learner as audio, so a transcription was never worth scoring. The
+  measurements here were taken while the prompt still asked for one;
+  it has since been dropped from the prompt and from the card
+  altogether, which removes a line of output from every answer and
+  changes nothing this decision rests on.
 - Not measured: `grok` and `deepseek` — no keys. The pool's fifth model,
   `glm-4.7-flash`, has a working key but would not answer: its shared
   free tier hands back HTTP 429 ("the service may be temporarily
@@ -50,7 +52,7 @@ behind those defaults. It is an input to M2.
 Under the paced profile the pool's primary model answered **every**
 request in all three languages with a clean contract: 20/20 valid card
 payloads, clean HTML, the input word echoed unchanged, a correction
-offered for every misspelling, IPA present, answer in Russian.
+offered for every misspelling, answer in Russian.
 
 The gap is not in the contract but in the content, and on the rubric
 that counts it comes down to a single axis: **morphology**. The pool

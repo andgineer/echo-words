@@ -147,7 +147,6 @@ The answer contains, in this order:
   target language is an app-wide configuration setting), ordered by
   likelihood in everyday speech, each marked with part of speech and
   register (neutral / colloquial / formal / slang) where it matters.
-- **IPA transcription.**
 - **Usage notes**: typical collocations and prepositions, common
   confusions with similar words, countability/irregular forms when
   relevant.
@@ -256,7 +255,7 @@ both in the answer entry and on the flashcard.
   identical front (which the reviewer could not tell apart) can never
   exist.
 - **Compact by design.** Recognition card — front: the word/phrase with
-  IPA transcription and pronunciation audio; back: the meaning
+  pronunciation audio; back: the meaning
   block(s) — label (when there is more than one), the top 2–4
   translations, plus 1–2 short examples. The long-form analysis
   (etymology, full meaning list) stays in the app only — cards must
@@ -265,7 +264,7 @@ both in the answer entry and on the flashcard.
   front — the translations (with meaning labels when there are several
   blocks), each followed by one of that meaning's examples with the word
   masked out ("I received a ___ from Amazon yesterday", with its
-  translation); back — the word/phrase with IPA and pronunciation audio.
+  translation); back — the word/phrase with pronunciation audio.
   A bare translation often matches several words of the source language
   (посылка → parcel / package / shipment), and the reviewer cannot know
   which one is expected; the gapped example pins it down without giving
