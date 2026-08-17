@@ -63,7 +63,15 @@ CARD_DELIM = "===CARD==="
 MAX_ANALYSIS = 3500
 MAX_MEANINGS = 3
 ALLOWED_TAGS = {"b", "i"}
-TARGET_LANG = "русский"
+# Target language: the code, the display name filling the prompt slot, and the
+# function words that decide whether an answer actually came back in it.
+TARGETS = {
+    "ru": ("Russian", {"и", "в", "не", "на", "с", "что", "как", "или", "для", "это"}),
+    "de": ("German", {"der", "die", "das", "und", "nicht", "ein", "eine", "mit", "wird"}),
+    "en": ("English", {"the", "and", "of", "to", "is", "a", "in", "for", "with", "not"}),
+}
+TARGET = "ru"
+PROMPT_FILE = ""
 # The functional description's whole-answer budget; past it the answer is late, not lost.
 SLOW_ANSWER = 30.0
 
@@ -72,10 +80,7 @@ SLOW_ANSWER = 30.0
 LANGS = {
     "en": ("English", ""),
     "de": ("Deutsch", ""),
-    "sr": (
-        "Српски",
-        "для существительных указывай род и множественное число, для глаголов — вид",
-    ),
+    "sr": ("Српски", "for nouns give gender and plural, for verbs give aspect"),
 }
 
 
@@ -86,7 +91,10 @@ def log(msg: str) -> None:
 @functools.cache
 def load_template() -> str:
     """The production prompt, read from the plan's own block — the spike must compare
-    backends, not prompts, and prompt.py itself only lands in M2."""
+    backends, not prompts, and prompt.py itself only lands in M2. ``--prompt-file``
+    overrides it, which is how one prompt is measured against another."""
+    if PROMPT_FILE:
+        return Path(PROMPT_FILE).read_text(encoding="utf-8")
     plan = PLAN.read_text(encoding="utf-8")
     block = re.search(r"^```text\n(.*?)^```\n", plan, re.DOTALL | re.MULTILINE)
     if block is None:
@@ -99,8 +107,9 @@ def build_prompt(word: str, lang: str) -> str:
     return (
         load_template()
         .replace("{source_lang}", source_lang)
-        .replace("{target_lang}", TARGET_LANG)
+        .replace("{target_lang}", TARGETS[TARGET][0])
         .replace("{source_hints}", hints)
+        .replace("{context_note}", "")
         .replace("{word}", word)
     )
 
@@ -223,11 +232,22 @@ def json_has_tags(card: dict) -> bool:
     return "<" in json.dumps(card, ensure_ascii=False)
 
 
-def cyrillic_share(text: str) -> float:
-    letters = [c for c in text if c.isalpha()]
+def answer_language(text: str) -> str:
+    """Which target language the analysis is actually written in. The italicised
+    example sentences are in the *source* language by contract, so they are dropped
+    first — leaving them in makes an English source look like an English answer.
+    Script settles Cyrillic; a stopword vote settles the Latin targets, which no
+    script can tell apart."""
+    prose = re.sub(r"<i>.*?</i>", " ", text, flags=re.DOTALL)
+    letters = [c for c in prose if c.isalpha()]
     if not letters:
-        return 0.0
-    return sum(1 for c in letters if "Ѐ" <= c <= "ӿ") / len(letters)
+        return "?"
+    if sum(1 for c in letters if "Ѐ" <= c <= "ӿ") / len(letters) > 0.5:  # noqa: PLR2004
+        return "ru"
+    words = re.findall(r"[^\W\d_]+", prose.lower(), re.UNICODE)
+    counts = {code: sum(1 for w in words if w in stops) for code, (_, stops) in TARGETS.items()}
+    best = max(counts, key=lambda c: counts[c])
+    return best if counts[best] else "?"
 
 
 def score_run(word: str, text: str) -> dict:
@@ -246,7 +266,7 @@ def score_run(word: str, text: str) -> dict:
         "tags_in_json": bool(card) and json_has_tags(card),
         "word_echoed": bool(card) and str(card.get("word", "")).strip() == word,
         "suggestion": (card or {}).get("suggestion", ""),
-        "target_lang_share": round(cyrillic_share(analysis), 3),
+        "answer_lang": answer_language(analysis),
     }
 
 
@@ -563,23 +583,28 @@ def suggested(run: Run) -> bool:
 
 
 def summarize(runs: list[Run]) -> dict:
-    ok = [r for r in runs if not r.error]
+    answered = [r for r in runs if not r.error]
+    # An empty completion is not an error and not an answer either — llmbroker
+    # returns it as a well-shaped reply, so it needs its own column or it silently
+    # scores as a failure on every quality metric at once.
+    ok = [r for r in answered if r.text]
     totals = [r.t_total for r in ok if r.t_total]
     firsts = [r.t_first for r in ok if r.t_first]
     judged = [r.judge for r in runs if r.judge and "translation" in r.judge]
     typos = [r for r in ok if r.shape == "typo"]
     summary = {
+        "empty": len(answered) - len(ok),
         "typos": len(typos),
         "typos_caught": sum(1 for r in typos if suggested(r)),
         "slow": sum(1 for t in totals if t > SLOW_ANSWER),
         "n": len(runs),
-        "failed": len(runs) - len(ok),
+        "failed": len(runs) - len(answered),
         "card_ok": sum(1 for r in ok if r.metrics.get("card_ok")),
         "format_bad": sum(1 for r in ok if r.metrics.get("format_problems")),
         "over_length": sum(1 for r in ok if r.metrics.get("over_length")),
         "tags_in_json": sum(1 for r in ok if r.metrics.get("tags_in_json")),
         "word_kept": sum(1 for r in ok if r.metrics.get("word_echoed")),
-        "ru": sum(1 for r in ok if r.metrics.get("target_lang_share", 0) > 0.5),  # noqa: PLR2004
+        "on_target": sum(1 for r in ok if r.metrics.get("answer_lang") == TARGET),
         "first_p50": round(statistics.median(firsts), 2) if firsts else 0,
         "total_p50": round(statistics.median(totals), 2) if totals else 0,
         "total_p90": round(quantile(totals, 0.9), 2),
@@ -604,25 +629,26 @@ def report(out: Path, phases: list[str], by_answerer: bool = False) -> None:
     if not runs:
         raise SystemExit(f"nothing recorded under {out}")
     header = (
-        f"{'phase':6} {'model':30} {'lg':3} {'n':>4} {'fail':>5} {'card':>6} {'fmt':>6} "
-        f"{'word':>6} {'ru':>6} {'typo':>6} {'slow':>6} "
+        f"{'phase':6} {'model':30} {'lg':3} {'n':>4} {'fail':>5} {'nil':>4} {'card':>6} {'fmt':>6} "
+        f"{'word':>6} {'lang':>6} {'typo':>6} {'slow':>6} "
         f"{'1st':>6} {'p50':>6} {'p90':>6} " + " ".join(f"{k[:4]:>5}" for k in JUDGE_KEYS)
     )
     print(header)
     print("-" * len(header))
     for (phase, model, lang), rows in sorted(group(runs, by_answerer).items()):
         s = summarize(rows)
-        ok = s["n"] - s["failed"]
+        ok = s["n"] - s["failed"] - s["empty"]
         print(
-            f"{phase:6} {model:30} {lang:3} {s['n']:4} {s['failed']:5} "
+            f"{phase:6} {model:30} {lang:3} {s['n']:4} {s['failed']:5} {s['empty']:4} "
             f"{pct(s['card_ok'], ok)} {pct(ok - s['format_bad'], ok)} "
-            f"{pct(s['word_kept'], ok)} {pct(s['ru'], ok)} "
+            f"{pct(s['word_kept'], ok)} {pct(s['on_target'], ok)} "
             f"{pct(s['typos_caught'], s['typos'])} {pct(s['slow'], ok)} "
             f"{s['first_p50']:6.2f} {s['total_p50']:6.2f} {s['total_p90']:6.2f} "
             + " ".join(f"{s['judge_' + k]:5.2f}" for k in JUDGE_KEYS),
         )
-    print("\ncard = valid ===CARD=== payload, fmt = clean HTML/no markdown,")
-    print("word = payload echoed the input, ru = answer in the target language,")
+    print("\nfail = no answer at all, nil = answered with an empty completion,")
+    print("card = valid ===CARD=== payload, fmt = clean HTML/no markdown,")
+    print("word = payload echoed the input, lang = answer in the target language,")
     print("typo = misspelling came back with a correction offer (typo items only),")
     print(f"slow = answers over {SLOW_ANSWER:.0f}s, 1st/p50/p90 = seconds to first delta /")
     print("median / p90 whole answer. Judge columns are a 1-5 pre-filter, not the verdict.")
@@ -681,6 +707,13 @@ def parse_args() -> argparse.Namespace:
         help="minimum seconds between call starts — model one person, not a burst",
     )
     parser.add_argument("--tag", default="", help="record under this phase name instead")
+    parser.add_argument("--prompt-file", default="", help="use this template instead of the plan's")
+    parser.add_argument(
+        "--target",
+        default="ru",
+        choices=list(TARGETS),
+        help="target language the answer must be written in",
+    )
     parser.add_argument("--wait", type=float, default=45.0, help="whole-call budget, seconds")
     parser.add_argument("--retries", type=int, default=2, help="retries on a rate limit")
     parser.add_argument("--backoff", type=float, default=20.0)
@@ -695,7 +728,9 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    global TARGET, PROMPT_FILE  # noqa: PLW0603 - one process, one target and one prompt
     args = parse_args()
+    TARGET, PROMPT_FILE = args.target, args.prompt_file
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     if args.phase == "report":

@@ -409,7 +409,7 @@ tts       = "edge"             # no usable local voice: Piper's lone sr_RS model
                                # never use it (spec/decision-tts.md)
 edge_tts_voice = "sr-RS-SophieNeural"
 script    = "latin+cyrillic"
-prompt_hints = "для существительных указывай род и множественное число, для глаголов — вид"
+prompt_hints = "for nouns give gender and plural, for verbs give aspect"
 ```
 
 Semantics:
@@ -569,54 +569,72 @@ below is identical across languages; only the two slots and an optional
 per-language morphology hint change:
 
 ```text
-Ты помощник по изучению лексики. Язык слова — {source_lang}. Тебе дано
-слово или короткая фраза на этом языке: {word}
+You are a vocabulary tutor. The word below is in {source_lang}. Analyse
+this word or short phrase: {word}
 
-{context_note}Ответь на языке {target_lang}, компактно, без вступлений и без
-завершающих фраз. {source_hints}
-Структура ответа (порядок пунктов фиксирован):
+WRITE YOUR ENTIRE ANSWER IN {target_lang}.
+This is absolute. Every part of the answer — the translations, the labels,
+the register marks, the usage notes, the origin, the explanations of the
+examples — is written in {target_lang}, and in no other language. These
+instructions are in English; that says nothing about the answer language.
+Do not answer in English unless {target_lang} IS English. Do not answer in
+{source_lang} unless {target_lang} IS {source_lang}. Two things, and only
+these two, stay in {source_lang}: the headword itself and the example
+sentences (each of which is followed by its {target_lang} translation).
 
-1. Первая строка: разбираемое слово жирным.
-2. Переводы — по убыванию частотности в обыденной речи; у каждого
-   перевода часть речи и пометы (разг., книжн., сленг, груб. и т.п.)
-   там, где они важны.
-3. Употребление: типичные сочетания и предлоги, с чем часто путают;
-   исчисляемость и неправильные формы там, где это существенно.
-4. Происхождение: если слово заимствовано — 1-3 предложения о том, из
-   какого языка и как пришло; для исконных слов — одна строка.
-5. Примеры: 2-4 коротких предложения из повседневной жизни, каждое с
-   переводом.
+{context_note}Be compact. No preamble, no closing remarks. {source_hints}
+The order of the sections is fixed:
 
-Транскрипцию не приводи: произношение даётся озвучкой.
+1. First line: the word being analysed, in bold.
+2. Translations, most frequent in everyday speech first; each with its
+   part of speech and a register mark (colloquial, formal, slang, vulgar
+   and so on) where it matters.
+3. Usage: typical collocations and prepositions, what it is confused
+   with; countability and irregular forms where they matter.
+4. Origin: if the word was borrowed, 1-3 sentences on which language it
+   came from and how it travelled; for a native word, one line.
+5. Examples: 2-4 short everyday sentences, each followed by its
+   translation.
 
-Разбирай РОВНО введённое слово и НЕ подменяй его. Если оно похоже на
-опечатку, не исправляй разбор: добавь короткую строку «✏️ Возможно: X»
-и укажи X в поле suggestion карточного JSON. Если опечатки нет —
-suggestion пустая строка.
-Если это идиома или фразовый глагол — объясни буквальный и переносный
-смысл и типичные ситуации употребления.
-Для выделения используй ТОЛЬКО HTML-теги <b> и <i>: разбираемое слово —
-жирным, примеры на языке {source_lang} — курсивом. Никакого markdown,
-никаких других тегов.
-Весь разбор — не длиннее 3500 символов.
+Give no phonetic transcription: pronunciation is delivered as audio.
 
-После разбора выведи строку ровно ===CARD=== и сразу за ней JSON в одну
-строку без пояснений и без HTML-тегов внутри значений:
+Analyse EXACTLY the word given and do NOT substitute another. If it looks
+like a typo, do not silently fix it: add one short line beginning with ✏️
+and naming the likely intended spelling, and put that spelling in the
+suggestion field of the card JSON. If there is no typo, suggestion is an
+empty string.
+If it is an idiom or a phrasal verb, explain both the literal and the
+figurative sense and when it is used.
+ALL EMPHASIS IS HTML. Use exactly two tags and no others: <b> around the
+headword, <i> around the {source_lang} example sentences and any
+{source_lang} form quoted inside the text. Emphasis punctuation of any
+kind is forbidden — no markdown, no headings, no bullet markers, no
+tables, no code fences.
+The whole analysis: at most 3500 characters.
+
+After the analysis output the line ===CARD=== exactly, and immediately
+after it one line of JSON, with no commentary and no HTML tags inside the
+values:
 {"word": "...", "suggestion": "...",
  "meanings": [{"label": "...", "pos": "...", "translations": ["...", "..."],
  "examples": [{"text": "...", "translation": "..."}]}]}
-word — введённое слово как есть (не исправляй); suggestion —
-предполагаемое исправление опечатки или пустая строка.
-Обычно meanings содержит один элемент с пустым label. Раздели на
-несколько (не более трёх) только если значения слова не связаны между
-собой (как bank «банк» и bank «берег»); тогда label — помета в 1-3
-русских слова, различающая значения. pos — часть речи этого значения
-одним сокращением (сущ., гл., прил., нареч. и т.п.). translations — 2-4
-главных перевода этого значения; examples — 1-2 самых коротких примера
-именно этого значения: text — предложение на языке {source_lang},
-translation — его перевод на язык {target_lang}. Хотя бы в одном примере
-каждого значения употреби разбираемое слово ровно в той форме, в которой
-оно дано, если это не ломает естественность фразы.
+word — the input word exactly as given (never corrected); suggestion — the
+likely intended spelling of a typo, or an empty string.
+meanings normally holds one element with an empty label. Split it into
+several (at most three) only when the senses are genuinely unrelated (like
+bank "financial institution" and bank "river edge"); then label is a
+1-3 word tag in {target_lang} telling the senses apart. pos is that
+sense's part of speech as one short abbreviation in {target_lang}.
+translations — the 2-4 main {target_lang} translations of that sense;
+examples — the 1-2 shortest examples of that very sense: text is a
+sentence in {source_lang}, translation is its rendering in {target_lang}.
+In at least one example per sense, use the headword in exactly the form it
+was given, unless that makes the sentence unnatural.
+
+Before you answer, check two things once more. Is every word of it in
+{target_lang}, except the headword and the {source_lang} example
+sentences? And is every emphasis an HTML tag, with no punctuation used
+for emphasis anywhere?
 ```
 
 `{context_note}` is empty for a plain word. When the user submitted a phrase
@@ -626,21 +644,31 @@ lists, so the slot must also permit "this use is rare/non-standard" as an
 answer instead of forcing the word into a dictionary sense:
 
 ```text
-Слово встретилось в таком контексте: «{context}»
-Разбирай то значение, в котором слово употреблено здесь. Если это значение
-редкое, узкоспециальное или не фиксируется словарями — так и скажи прямо и
-объясни именно его, а не подменяй ближайшим словарным.
+The word was met in this context: "{context}"
+Analyse the sense in which it is used there. If that sense is rare,
+domain-specific or not recorded in dictionaries at all, say so plainly and
+explain that sense — do not substitute the nearest dictionary meaning.
 ```
 
 `{source_lang}` / `{target_lang}` are the language display names, and
 `{source_hints}` is filled from the language's optional `prompt_hints`
-field in `languages.toml` (e.g. for Serbian: «для существительных
-указывай род и множественное число, для глаголов — вид»); when the field
-is absent the slot is empty — so a new language, hints included, needs
-no code change. The prompt
-prose stays in the operator's language; only the *answer* language is
-`{target_lang}`, and `translations` in the card JSON are in that target
-language.
+field in `languages.toml` (e.g. for Serbian: "for nouns give gender and
+plural, for verbs give aspect"); when the field is absent the slot is
+empty — so a new language, hints included, needs no code change.
+
+**The prompt is written in English, and the answer language is a slot.**
+Both are deliberate and they are the same decision: English is what models
+follow instructions in most reliably, and the target language must be free
+to be anything, so it cannot be baked into the prose. A hint in
+`prompt_hints` is an instruction to the model too, so it is written in
+English like the rest of the prompt — it is not the operator's note to
+themselves. Nothing about the prompt's own language may leak into the
+answer, which is why the target-language demand is stated three times: at
+the top, where it cannot be missed; in the body, saying which two things
+stay in the source language; and at the very end, as a check the model
+performs before answering. That last repetition is not padding — the
+failure it guards against is the model mirroring the language of its
+instructions, which is exactly what an English prompt makes likelier.
 
 Parsing rules (`prompt.py` / `card.py`):
 
@@ -698,33 +726,38 @@ against the first answer, which would mean feeding the first answer back and
 making the call stateful for no gain.
 
 ```text
-Ты лексикограф. Язык слова — {source_lang}. Разбери подробно слово или
-короткую фразу: {word}
+You are a lexicographer. The word below is in {source_lang}. Analyse this
+word or short phrase in depth: {word}
 
-Ответь на языке {target_lang}. Это углублённый разбор для читателя,
-который уже видел краткую справку, поэтому не экономь на деталях, но и не
-растекайся — каждый пункт по делу.
+WRITE YOUR ENTIRE ANSWER IN {target_lang}, and in no other language. These
+instructions are in English; that says nothing about the answer language.
+Only the headword and the example sentences stay in {source_lang}, and
+every example is followed by its {target_lang} translation.
 
-1. Первая строка: разбираемое слово жирным.
-2. ВСЕ значения, а не только частотные: и переносные, и узкоспециальные, и
-   устаревшие, и региональные, и сленговые. Для каждого — часть речи,
-   помета регистра и сфера употребления. Если значение живёт только в
-   определённой области (право, медицина, спорт, жаргон), скажи в какой.
-3. Происхождение: подробно — язык-источник, исходная форма и значение, путь
-   заимствования, когда слово вошло в язык, родственные слова в этом же
-   языке и когнаты в других. Для исконных слов — корень и его развитие. Если
-   этимология спорная, назови версии.
-4. Употребление: устойчивые сочетания, управление, регистр, с чем путают,
-   ложные друзья переводчика, характерные ошибки изучающих.
-5. Оттенки и близкие слова: чем отличается от синонимов, что уместнее в
-   каком контексте.
-6. Примеры: по одному-двум на каждое значение из пункта 2, каждый с
-   переводом.
+{context_note}The reader has already seen the short entry, so do not skimp
+on detail — but stay on the point in every section.
 
-Для выделения используй ТОЛЬКО HTML-теги <b> и <i>: разбираемое слово —
-жирным, примеры на языке {source_lang} — курсивом. Никакого markdown,
-никаких других тегов. Транскрипцию не приводи. Никакого JSON и никаких
-служебных разделителей — это только текст для чтения.
+1. First line: the word being analysed, in bold.
+2. EVERY sense, not only the frequent ones: figurative, domain-specific,
+   archaic, regional and slang alike. For each, the part of speech, the
+   register mark, and the field it belongs to. If a sense lives only in a
+   particular domain (law, medicine, sport, jargon), name that domain.
+3. Origin, in depth: the source language, the original form and meaning,
+   the route the word travelled, when it entered the language, related
+   words within the language and cognates elsewhere. For a native word,
+   the root and how it developed. Where the etymology is disputed, give
+   the competing accounts.
+4. Usage: set phrases, government, register, what it is confused with,
+   false friends, the mistakes learners typically make.
+5. Shades and near-synonyms: how it differs from them and which is apt
+   where.
+6. Examples: one or two per sense from section 2, each followed by its
+   translation.
+
+For emphasis use ONLY the HTML tags <b> and <i>: the headword in bold, the
+{source_lang} examples in italics. No markdown, no other tags. Give no
+phonetic transcription. No JSON and no delimiters of any kind — this is
+reading matter only.
 ```
 
 The same sanitizer applies, for the same reason. The one new failure mode is

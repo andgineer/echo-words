@@ -52,7 +52,16 @@ behind those defaults. It is an input to M2.
 Under the paced profile the pool's primary model answered **every**
 request in all three languages with a clean contract: 20/20 valid card
 payloads, clean HTML, the input word echoed unchanged, a correction
-offered for every misspelling, answer in Russian.
+offered for every misspelling, and the answer in the target language.
+
+**No model drifted out of the target language, in any language, at any
+point.** That is worth stating because it was measured wrongly first: a
+share-of-Cyrillic heuristic counts the German forms a good German answer
+is full of — `Prät.`, `Part. II`, the collocations, the examples — as
+evidence of drift, and reported a sixth of German answers as off-target
+when every one of them was in Russian. What the corrected check does is
+drop the italicised example sentences, which are in the source language
+by contract, and only then decide.
 
 The gap is not in the contract but in the content, and on the rubric
 that counts it comes down to a single axis: **morphology**. The pool
@@ -120,7 +129,7 @@ answering model:
 |---|---|---|
 | `gemini-3.5-flash-lite` | 1.6–1.7 s | ~100% in all three languages |
 | `groq-gpt-oss-120b` | 2.8–3.5 s | clean on en/de; HTML discipline collapses on Serbian |
-| `openrouter-nemotron-3-ultra` | 35–57 s (worst 101 s) | 79–83% cards on de/en; a sixth of German answers not in Russian |
+| `openrouter-nemotron-3-ultra` | 36–57 s (worst 101 s) | answered nothing at all on 3 German items of 14; 82% clean formatting |
 | `openrouter-laguna-s-2.1` | 43 s | one sample |
 | `zai-glm-4.7-flash` | — | refused every attempt; its free tier is oversubscribed |
 
