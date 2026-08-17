@@ -122,13 +122,35 @@ def free_models() -> list[dict]:
     return preset["llms"]
 
 
+def paid_catalog() -> dict:
+    return tomllib.loads((PRESETS / "paid-catalog.toml").read_text(encoding="utf-8"))
+
+
 def paid_models() -> dict[str, dict]:
-    preset = tomllib.loads((PRESETS / "paid-catalog.toml").read_text(encoding="utf-8"))
     return {
         model["alias"]: {**model, "base_url": p["base_url"], "api_key_ref": p["api_key_ref"]}
-        for p in preset["provider"]
+        for p in paid_catalog()["provider"]
         for model in p["models"]
     }
+
+
+def resolve_paid(name: str) -> dict:
+    """A catalog alias, or ``provider:model-id`` for a model the catalog does not
+    carry — the catalog is curated, and a survey is exactly where an uncurated
+    model has to be reachable."""
+    catalog = paid_models()
+    if name in catalog:
+        return catalog[name]
+    provider_id, _, model_id = name.partition(":")
+    for provider in paid_catalog()["provider"]:
+        if provider["id"] == provider_id and model_id:
+            return {
+                "model": model_id,
+                "base_url": provider["base_url"],
+                "api_key_ref": provider["api_key_ref"],
+            }
+    known = sorted(catalog) + [p["id"] + ":<model-id>" for p in paid_catalog()["provider"]]
+    raise SystemExit(f"unknown paid model {name!r} — expected one of {known}")
 
 
 # ----------------------------------------------------------------------------
@@ -432,14 +454,10 @@ async def run_free(args, out: Path) -> None:
 
 async def run_paid(args, out: Path) -> None:
     keys = load_keys()
-    catalog = paid_models()
-    unknown = [a for a in args.alias if a not in catalog]
-    if unknown:
-        raise SystemExit(f"unknown paid aliases: {unknown}")
-    have_key = [a for a in args.alias if keys.get(catalog[a]["api_key_ref"], "").strip()]
-    targets = [(a, catalog[a]) for a in have_key]
-    if len(have_key) < len(args.alias):
-        log(f"skipped (no key): {[a for a in args.alias if a not in have_key]}")
+    specs = {name: resolve_paid(name) for name in args.alias}
+    targets = [(n, s) for n, s in specs.items() if keys.get(s["api_key_ref"], "").strip()]
+    if len(targets) < len(specs):
+        log(f"skipped (no key): {[n for n, _ in specs.items() if (n, specs[n]) not in targets]}")
     log(f"paid models: {[name for name, _ in targets]}")
     await run_direct(args, out, "paid", targets)
 
@@ -456,10 +474,10 @@ JUDGE_PROMPT = """Ты строгий эксперт-лексикограф, н�
 {answer}
 </РАЗБОР>
 
-Оцени по шкале 1-5 (5 — безупречно, 1 — негодно):
+Оцени по шкале 1-5 (5 — безупречно, 1 — негодно). Транскрипцию IPA не оценивай
+и не упоминай — произношение даёт озвучка, а не она:
 - translation: правильность переводов и их порядок по частотности, верность помет
   (разг., книжн., сленг, груб.) и части речи
-- ipa: правдоподобность транскрипции IPA именно для этого слова
 - etymology: фактическая верность происхождения (заимствование, язык-источник)
 - examples: естественность примеров и верность их перевода; употреблено ли слово
   в нужной форме
@@ -467,7 +485,7 @@ JUDGE_PROMPT = """Ты строгий эксперт-лексикограф, н�
   неправильные формы) для этого языка
 
 Ответь ОДНОЙ строкой JSON без пояснений:
-{{"translation": N, "ipa": N, "etymology": N, "examples": N, "morphology": N,
+{{"translation": N, "etymology": N, "examples": N, "morphology": N,
  "errors": ["краткое описание каждой фактической ошибки"]}}"""
 
 
@@ -527,7 +545,9 @@ async def run_judge(args, out: Path) -> None:
 # Reporting
 # ----------------------------------------------------------------------------
 
-JUDGE_KEYS = ("translation", "ipa", "etymology", "examples", "morphology")
+# IPA is deliberately absent: pronunciation is delivered as audio, so the
+# transcription is not a quality axis this project decides anything on.
+JUDGE_KEYS = ("translation", "etymology", "examples", "morphology")
 
 
 def pct(part: int, whole: int) -> str:
@@ -649,7 +669,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--lang", nargs="+", default=["en", "de", "sr"], choices=list(LANGS))
     parser.add_argument("--limit", type=int, default=0, help="first N items per language")
     parser.add_argument("--model", nargs="+", default=[], help="free: pool model names")
-    parser.add_argument("--alias", nargs="+", default=["sonnet"], help="paid: catalog aliases")
+    parser.add_argument(
+        "--alias",
+        nargs="+",
+        default=["sonnet"],
+        help="paid: catalog aliases, or provider:model-id for an uncurated model",
+    )
     parser.add_argument("--judge", default="gpt", help="judge: paid alias doing the scoring")
     parser.add_argument("--phases", nargs="+", default=["pool", "free", "paid"])
     parser.add_argument("--sample", type=int, default=0, help="judge: cap the judged runs")
