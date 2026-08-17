@@ -24,8 +24,10 @@ The four requirements every design decision is weighed against:
    language is a configuration change, never a code change.
 2. **A maximally light backend whose home is an always-on Oracle Cloud
    Free Tier micro instance** (`VM.Standard.E2.1.Micro`, 1 GB RAM +
-   swap). Anything that cannot run there is out of the design; the
-   user's laptop is a development environment, not a deployment target.
+   swap) **already occupied by another of the author's apps**. Anything
+   that cannot run there, next to that neighbour and without disturbing
+   it, is out of the design; the user's laptop is a development
+   environment, not a deployment target.
 3. **Rich, dictionary-beating explanations from an LLM.** A plain
    dictionary answer is not enough — that is the reason this project
    exists. Free models often struggle with Serbian; which model tier
@@ -54,9 +56,13 @@ The four requirements every design decision is weighed against:
   the documented share-sheet path is a one-time iOS Shortcut that POSTs
   the shared text to the API over the tailnet.
 - **Backend** — a single headless service whose home is the always-on
-  micro instance (1 GB RAM + swap). It serves the API and the static
-  PWA on a localhost port that Tailscale proxies; nothing else is
-  exposed. No public IP, domain, or certificate management is needed.
+  micro instance (1 GB RAM + swap), **shared with the author's other
+  app** (dinary): echo-words is a co-tenant there, not the machine's
+  only occupant, which caps how much memory the design may assume. It
+  serves the API and the built PWA on a localhost port that Tailscale
+  proxies — on its own HTTPS port, so the app has an origin of its own;
+  nothing else is exposed. No public IP, domain, or certificate
+  management is needed.
 - **LLM** — a pluggable backend, selected via configuration (and, per
   source language, from the languages table). Two kinds, both present
   from v0.1 and both plain streaming text→text calls through the
