@@ -110,7 +110,7 @@ Prompt template for the operator (one per milestone):
 | mp3 encoding | `lameenc` (pure-wheel LAME bindings) to convert Piper's WAV output to mp3 — no ffmpeg system dependency |
 | Dictionary pronunciation | `https://api.dictionaryapi.dev/api/v2/entries/{lang}/{word}` where `{lang}` is the source language's `dict_api` code (`en`, `de`, …; Serbian is unsupported → skip this step) — take the first `phonetics[].audio` non-empty URL (they are Wiktionary recordings); for English prefer entries whose URL contains the configured accent (`-us` / `-uk`), else any |
 | Settings | `pydantic-settings`, env prefix `ECHOWORDS_`, `.env` support |
-| Durable state | **None of its own — no database.** The Anki collection is the only thing worth keeping and it is already a file that syncs to AnkiWeb. History is an in-memory ring buffer of recent entries; "added" statistics are counted from the collection itself (Anki note ids are creation timestamps in milliseconds, so a per-deck `find_notes` gives today / 7 days / all time without any side table); duplicate and lookup-only counters, undo/redo state and correction state are in-memory and reset on restart. This removes `sqlite3`, a schema, migrations, and any need to back the app up |
+| Durable state | **None of its own — no database.** The Anki collection is the only thing worth keeping and it is already a file that syncs to AnkiWeb. History is an in-memory ring buffer of recent entries; "added" statistics are counted from the collection itself (Anki note ids are creation timestamps in milliseconds, so a per-deck `find_notes` gives today / 7 days / all time without any side table); duplicate and lookup-only counters, undo state and correction state are in-memory and reset on restart. This removes `sqlite3`, a schema, migrations, and any need to back the app up |
 | LLM | One **cascade** behind a single `stream_completion` seam (M2), not a per-language choice: every request goes to the free pool first and steps up to the paid model only when the pool misses the budget. Both steps are plain streaming text→text HTTPS calls through the author's `llmbroker` (`github.com/andgineer/llmbroker`, **≥1.5.1**), and one `AsyncBroker` instance serves both with one error taxonomy (`LLMRequestError` and its subclasses); it is created in the FastAPI lifespan (after the languages config) and `aclose()`d on shutdown. **Step 1 — the pool:** `broker.stream(prompt, operation=f"{prefix}-{lang}", wait=…)` returns a `StreamHandle`: async-iterable over text deltas, carrying `llm_name` (who answered, from the first delta on) and `record_quality(score)`, closed by the consumer with `aclose()`. `wait` bounds **queueing plus the first delta**, so it is exactly the trigger for the step-up: raise it from the functional description's ~3–5 s first-content budget and let the failure hand the request on. Past the first delta the answer is unbounded, so echo-words keeps its own ~20–30 s whole-answer deadline around the iteration — a pool model that opens fast and then dribbles (measured: 101 s) is abandoned mid-stream, rated low so the pool learns, and the request steps up too. llmbroker reads consumer-side abandonment as a completed call, not a model failure, so the low rating is the only thing that teaches it. **Step 2 — the paid direct client** (opt-in by configuration, never required): a single explicitly named frontier model, no pool, no failover, no routing. The model is **declared in echo-words's own code** at broker construction (`AsyncBroker(direct=[…])`) and reached with `await broker.direct(alias)`, which returns an `AsyncDirectClient` whose `.stream(prompt, timeout=…)` is a plain async iterator of deltas. That client borrows the broker's single shared httpx client, so obtaining one per request is cheap and echo-words must **not** close it. The alias comes from llmbroker's curated paid catalog and is an eternal handle — llmbroker re-points it at the current model generation on its own daily clock, so a provider's new release changes nothing here. Nothing is stored anywhere: the declaration in code is the only source of truth, and the API key is read at call time from the env var the catalog names, never touched by echo-words. The same client serves the user's explicit deeper-analysis request (M7). With no paid alias configured, or the daily cap spent, the cascade is one step long and a pool miss is a failure. The **M0 spike** measured both steps — see `spec/decision-llm-backend.md` |
 | Lint | `ruff` (line-length 99), run in CI after tests |
 
@@ -469,7 +469,7 @@ One FastAPI application (`api.py`) serves everything:
     stalled and the answer is being restarted on the paid model (M2).
   - `detail` — deltas of the deeper analysis, appended below the entry's
     analysis rather than replacing it (M7).
-  - `error` — a short apology + redo hint.
+  - `error` — a short apology + a hint to send the word again.
   A comment line is sent every 15 s as a keep-alive. The stream carries
   all entries (no per-entry streams): the client opens one
   `EventSource`, and its automatic reconnect plus a `GET
@@ -481,14 +481,18 @@ One FastAPI application (`api.py`) serves everything:
   sanitized text, newest first. Empty after a restart, by design.
 - `POST /api/words/{entry_id}/switch` — the correction button (M7):
   re-runs the pipeline for the other spelling into the same entry.
+- `POST /api/words/{entry_id}/rebuild` — rebuild this entry's card with the
+  paid model (M7), using the entry's context when it has one. Re-runs the
+  normal card-producing prompt, replaces the note the entry created, and
+  keeps the audio — it belongs to the word, which does not change. Refused
+  with a reason when no paid alias is configured or the daily cap is spent.
 - `POST /api/words/{entry_id}/detail` — the deeper-analysis control (M7):
   asks the paid model for the extended brief on the same word and streams it
   into the same entry as a second block, leaving the analysis, the note and
   the audio untouched. Idempotent — a second call returns the text already
   kept on the entry without paying again. Refused with a reason when no paid
   alias is configured or the daily cap is spent.
-- `POST /api/languages/{code}/undo` and `/redo` — per-language undo/redo
-  (M7).
+- `POST /api/languages/{code}/undo` — per-language undo (M7).
 - `GET /api/stats`, `GET /api/status` — the stats and status views (M7).
 - `GET /api/audio/{name}` — serves a stored pronunciation mp3 from
   `ECHOWORDS_DATA_DIR/audio/` (filenames are server-generated slugs —
@@ -513,7 +517,7 @@ is interpolated as text.
 ## Word pipeline (orchestration)
 
 `pipeline.py` owns one coroutine shared by every entry point — the
-submit endpoint (M3), redo, and the correction switch (both M7):
+submit endpoint (M3), the correction switch and the card rebuild (both M7):
 
 ```python
 async def process_word(lang: Language, word: str, lookup_only: bool,
@@ -523,7 +527,7 @@ async def process_word(lang: Language, word: str, lookup_only: bool,
 1. The submit endpoint validates, assigns an `entry_id`, registers the
    job in the in-memory registry and enqueues it, then returns — the
    entry appears as pending at once, and submissions keep their order.
-   When `reuse_entry` is given (correction switch, redo), the existing
+   When `reuse_entry` is given (correction switch, rebuild), the existing
    entry is reset to pending instead of a new one being created.
 2. The single queue worker takes jobs in submission order (a FIFO
    `asyncio.Queue`, one worker — no parallel LLM runs, even across
@@ -551,7 +555,7 @@ async def process_word(lang: Language, word: str, lookup_only: bool,
    available for this entry (M7).
 9. Update the history entry in place (final sanitized analysis, status,
    audio URL), bump the session counters, and update the language's
-   undo/redo state (M7); publish `done`.
+   undo state (M7); publish `done`.
 
 The function grows one step per milestone, leaving earlier steps
 untouched — the milestones below reference these step numbers.
@@ -568,7 +572,7 @@ per-language morphology hint change:
 Ты помощник по изучению лексики. Язык слова — {source_lang}. Тебе дано
 слово или короткая фраза на этом языке: {word}
 
-Ответь на языке {target_lang}, компактно, без вступлений и без
+{context_note}Ответь на языке {target_lang}, компактно, без вступлений и без
 завершающих фраз. {source_hints}
 Структура ответа (порядок пунктов фиксирован):
 
@@ -615,6 +619,19 @@ translation — его перевод на язык {target_lang}. Хотя бы
 оно дано, если это не ломает естественность фразы.
 ```
 
+`{context_note}` is empty for a plain word. When the user submitted a phrase
+and tapped a word in it, it carries the phrase and the instruction to answer
+for the sense used there — the point of context is a meaning no dictionary
+lists, so the slot must also permit "this use is rare/non-standard" as an
+answer instead of forcing the word into a dictionary sense:
+
+```text
+Слово встретилось в таком контексте: «{context}»
+Разбирай то значение, в котором слово употреблено здесь. Если это значение
+редкое, узкоспециальное или не фиксируется словарями — так и скажи прямо и
+объясни именно его, а не подменяй ближайшим словарным.
+```
+
 `{source_lang}` / `{target_lang}` are the language display names, and
 `{source_hints}` is filled from the language's optional `prompt_hints`
 field in `languages.toml` (e.g. for Serbian: «для существительных
@@ -651,7 +668,7 @@ Parsing rules (`prompt.py` / `card.py`):
   input and is not trusted for identity. Together with the source language
   the raw input is the key for the duplicate check (case-insensitive,
   scoped to the language's deck), the history entry,
-  undo/redo state, the Anki `Word` field, and the speculative audio fetch
+  undo state, the Anki `Word` field, and the speculative audio fetch
   (M6) — which is therefore always the right audio, with no re-fetch in
   the normal flow. `suggestion`, when non-empty and different from the
   input (case-insensitive), is the only thing that triggers UI: the
@@ -733,7 +750,7 @@ src/echo_words/
   config.py         # Settings
   languages.py      # Language dataclass + languages.toml loader; lookup by code
   main.py           # entry point: build the app, uvicorn.run; console_script `echo-words`
-  api.py            # FastAPI routes (submit, events SSE, recent, switch, undo/redo,
+  api.py            # FastAPI routes (submit, events SSE, recent, switch, undo,
                     # stats, status, audio) + static mounting
   pipeline.py       # process_word + the single FIFO queue worker + in-memory job registry
   events.py         # in-process pub/sub bridging pipeline progress -> SSE subscribers
@@ -872,7 +889,12 @@ objects indexed by code; a submission's `lang` selects the language, an
 unknown code gets a short hint and no processing. Input validation is
 per the resolved language's `script` (Latin incl. accented — café,
 naïve, Straße — for en/de; Latin or Cyrillic for sr; plus spaces,
-hyphens, apostrophes; max ~50 chars; otherwise a short hint). A leading
+hyphens, apostrophes; max ~50 chars; otherwise a short hint). A submission carrying more than one word is not
+validated as a word at all: the app resolves it to a word plus a context
+before submitting (M1 accepts both shapes; the picker itself is M7). The
+chosen word is validated exactly as a typed one; the context is free text,
+capped in length and sanitized like any LLM input, and it never becomes the
+canonical word. A leading
 `?` (with optional space) marks the request lookup-only and is stripped
 before validation — same for the explicit `lookup_only` flag. For this
 milestone the accepted submission gets a stub response naming the
@@ -1019,8 +1041,9 @@ request is refused — with the counter covering both kinds of paid call.
   keep-alive comment every 15 s; a slow/gone subscriber is dropped, it
   recovers by reconnect + refetch.
 - **Errors.** On `BackendError`: publish an `error` event with a short
-  apology + redo hint; the entry keeps any text that already streamed.
-- The `reuse_entry` path (correction switch / redo, M7) resets the
+  apology and a hint to send the word again; the entry keeps any text that
+  already streamed.
+- The `reuse_entry` path (correction switch / rebuild, M7) resets the
   existing entry to pending and streams into it instead of creating a
   new one.
 
@@ -1183,7 +1206,7 @@ status line joins the `done` event. Because the collection is
 in-process, `add_note` cannot fail with "Anki is not running" — there
 is no pending-card queue anywhere in the design. Track the last added
 note id AND its media filename (the name `add_file` returned) in memory
-for undo and redo (M7), which remove both.
+for undo and the rebuild (M7), which remove both.
 
 After every successful add the client schedules the **AnkiWeb sync**
 (pylib: `sync_collection(auth, sync_media=True)`): on first need,
@@ -1296,18 +1319,19 @@ re-fetch (canonical == input), and the correction-button re-process
 (M7) fetches audio for the suggested word instead; the audio endpoint
 serves a stored file and rejects a path-like name.
 
-### M7 — history, stats, status, undo/redo, correction
+### M7 — history, stats, status, undo, correction, rebuild
 
 There is **no pending-card queue** in this design: the collection is
 in-process (M5), so a card add cannot fail on connectivity; only the
 AnkiWeb sync is asynchronous, and it retries by itself. **There is no
 database either** — see the "Durable state" technology row. What M7 adds
-is the history buffer, the stats/status endpoints, undo/redo, the
-correction button, and the deeper-analysis control.
+is the history buffer, the stats/status endpoints, undo, the
+correction button, the deeper-analysis control, the card rebuild, and the
+word picker that turns a pasted phrase into a word plus its context.
 
 `history.py`: a bounded in-memory ring buffer (last ~50 entries) of
 `Entry(entry_id, lang, word, action, analysis_html, audio_file,
-suggestion, shown_spelling, detail_html, created_at)` where action is
+suggestion, shown_spelling, context, detail_html, created_at)` where action is
 `pending | added | duplicate | lookup | failed`, written on every
 processed word and updated in place as it progresses; `word` always
 holds the canonical word and `analysis_html` the sanitized analysis.
@@ -1372,19 +1396,22 @@ Endpoints and behaviors:
   the last word produced no note of ours, so undo replies "nothing to
   undo" and touches nothing — deleting the note found under that word
   would destroy a note that existed before the send.
-- `POST /api/languages/{code}/redo` — re-run the last word **of that
-  language**, preserving its lookup-only flag, streaming into its
-  existing entry (`reuse_entry`, M3). Before adding the new note,
-  remove the previous run's result exactly like undo does — redo exists
-  to fix a poor generation, and without the removal the duplicate check
-  would block the replacement ("already in Anki") and the bad card
-  would survive.
+- `POST /api/words/{entry_id}/rebuild` — re-run **that entry's** word on the
+  paid model, carrying the entry's context when it has one, preserving its
+  lookup-only flag, and streaming into the existing entry (`reuse_entry`,
+  M3). Before adding the new note, remove the previous run's result exactly
+  like undo does: without the removal the duplicate check would block the
+  replacement ("already in Anki") and the weak card would survive. The audio
+  is not re-fetched — the word has not changed. Refused with a reason when
+  no paid alias is configured or the daily cap is spent; the existing entry
+  and its note are then left exactly as they were.
 
 **Correction button (advisory autocorrection).** When a processed word
 came back with a usable `suggestion` different from the input (M4), the
 `done` event carried it and the UI shows the button. `POST
 /api/words/{entry_id}/switch` re-processes the word for the *other*
-spelling (input ↔ suggestion) and replaces the note exactly the way redo
+spelling (input ↔ suggestion) and replaces the note exactly the way a
+rebuild
 does — remove the previous run's result (`col.remove_notes`,
 `col.media.trash_files`, the cached audio file), then run the full
 pipeline (LLM analysis, audio fetch, add) for the chosen word, through
@@ -1398,12 +1425,12 @@ audio change). After the switch the button flips to offer the reverse
 state lives in an in-memory map keyed by `entry_id` — input, suggestion,
 language, lookup flag, which spelling is currently shown, and the
 current note id plus its media name. After a switch, if the language's
-undo/redo state points at the note that was just replaced, update it to
+undo state points at the note that was just replaced, update it to
 the new note id, media name, and the spelling now shown — otherwise an
 undo issued right after a switch would target a note that no longer
 exists.
 
-Undo/redo state (last word, its action — `added | duplicate | lookup` —
+Undo state (last word, its action — `added | duplicate | lookup` —
 its note id when one was added, and the lookup flag) is per source
 language; the correction decision state is per entry. Both live in
 memory and are lost on restart — documented behavior; after a restart a
@@ -1418,10 +1445,11 @@ and serves in-progress entries with their partial text; undo removes
 the note, trashes its
 collection media file and deletes its cached audio file; undo after a
 duplicate or a lookup-only send is a no-op that reports nothing to
-undo; redo replaces the previous note and streams into the existing
-entry; undo/redo state machine per language; status rendering (pool
+undo; a rebuild replaces the previous note, keeps the audio and streams
+into the existing entry; a rebuild refused by the cap changes nothing;
+undo state machine per language; status rendering (pool
 snapshot degraded/healthy, pool and direct missing keys, api daily-cap
-count/fallback state, last model that answered, the per-language
+count and whether the paid step is still available today, last model that answered, the per-language
 `stats()` fallback after a restart, ok / unsynced-changes /
 full-sync-required error); the correction switch
 toggles input↔suggestion and replaces the note (preserving the
@@ -1492,13 +1520,13 @@ acting.
   in Anki".
 - **Autocorrection is advisory only — hardcoded, no config flag.** The
   canonical word is always the **raw input** — together with the source
-  language, the key for dedup (deck-scoped), stats, undo/redo,
+  language, the key for dedup (deck-scoped), stats, undo,
   and the Anki `Word` field, compared case-insensitively. The same
   spelling in two languages is two notes in two decks. The LLM never
   silently swaps a misspelling: it analyzes the word as typed and returns
   an optional `suggestion`. When the suggestion differs from the input, a
   button on the entry switches to the suggested word (and back),
-  re-running the analysis and replacing the note like redo; only that
+  re-running the analysis and replacing the note like a rebuild; only that
   path re-fetches audio. Because that tap turns LLM output into a
   canonical word, a `suggestion` must pass the same validation as typed
   input or it is dropped and no button appears. Rationale: a silently
@@ -1532,7 +1560,7 @@ acting.
   no Anki card.
 - Undo removes what the last send created and is an explicit no-op
   after a duplicate or a lookup-only send — it never deletes a note that
-  existed before. Redo replaces the previous run's note instead of being
+  existed before. A rebuild replaces the previous run's note instead of being
   blocked by the duplicate check. Both act per source language.
 - Multiple source languages via the **language selector**; the
   selection determines the deck. One deck per source language from the
@@ -1574,7 +1602,7 @@ acting.
 - **echo-words has no database.** The Anki collection is the only
   durable state; history is a bounded in-memory buffer, "added" stats
   are counted from the collection's own note ids, and duplicate/lookup
-  counters, undo/redo and correction state reset on restart. Losing any
+  counters, undo and correction state reset on restart. Losing any
   of it costs nothing, because every word that mattered is already a
   card — so there is no schema, no migrations, and nothing to back up
   or replicate. See the "Durable state" technology row.

@@ -35,8 +35,10 @@ The four requirements every design decision is weighed against:
    each language needs is settled by experiment (the M0 spike), not by
    assumption.
 4. **LLM access goes through the author's own `llmbroker`** — its
-   free-tier model pool by default, its paid direct client as the
-   opt-in quality tier. No metered API is ever required.
+   free-tier model pool for every answer, its paid direct client behind
+   it for the times the pool is too slow and for what the user
+   explicitly asks the better model to do. No metered API is ever
+   required.
 
 ## System context
 
@@ -63,19 +65,17 @@ The four requirements every design decision is weighed against:
   **no database**: the Anki collection is the only durable state it
   keeps, alongside cached audio and voice models — everything else
   (recent answers, counters, undo state) is in-memory and expendable.
-- **LLM** — a pluggable backend, selected via configuration (and, per
-  source language, from the languages table). Two kinds, both present
-  from v0.1 and both plain streaming text→text calls through the
-  author's `llmbroker`: the **free-tier model pool** (many free,
-  rate-limited models with automatic failover — the default) and an
-  **optional paid frontier model** via llmbroker's *direct client*
-  (opt-in, never required — for hard languages or when the user wants
-  top quality). The free pool is un-metered; the paid path's spend is
-  capped with automatic fallback to the free pool, so **no metered API
-  is ever required**. Which backend serves which language (and whether
-  hard languages such as Serbian need the paid model or web-grounded
-  lookups) is settled by a benchmark that runs *before* the build
-  (implementation plan, M0).
+- **LLM** — one cascade, not a per-language choice. Both steps are plain
+  streaming text→text calls through the author's `llmbroker`: the
+  **free-tier model pool** (many free, rate-limited models with
+  automatic failover) takes every request, and a **paid frontier model**
+  via llmbroker's *direct client* stands behind it. The paid step is
+  reached on latency — the pool did not start, or stalled mid-answer —
+  and on the two things the user asks the better model for by name: a
+  deeper analysis, and rebuilding a card. The free pool is un-metered
+  and the paid step is capped and optional, so **no metered API is ever
+  required**. How good each step is per language was settled by a
+  benchmark that ran *before* the build (implementation plan, M0).
 - **Anki** — a server-side Anki collection maintained by the backend
   itself through the headless Anki Python library (pylib) — no Anki
   application and no AnkiConnect run next to the backend. The backend
@@ -93,6 +93,18 @@ The four requirements every design decision is weighed against:
    created — is made with the lookup-only control next to the input;
    prefixing the text with `?` ("? word") does the same as a typed
    shortcut.
+   **A phrase instead of a word means context.** When the submitted text
+   holds more than one word, the app does not guess which one is being
+   asked about: it shows the phrase's words as tappable choices and the
+   tapped one becomes the word. The whole phrase travels with it as
+   context, and the analysis answers for *the sense used there* — which
+   is the only way to reach a meaning that no dictionary lists, because
+   it is a term of art, a joke, a regionalism, or simply rare. This is
+   also what the iOS share-sheet path delivers: text shared from
+   whatever the user was reading arrives as a phrase.
+   Context never changes what the card is *about*: the canonical word is
+   still the tapped word exactly as written, so deduplication, audio,
+   statistics and the deck are unaffected by it.
 2. The backend validates the input against the selected language's
    allowed script (Latin with accented letters — café, naïve, Straße —
    for English and German; Latin or Cyrillic for Serbian) and length
@@ -128,7 +140,7 @@ The four requirements every design decision is weighed against:
 7. In parallel with the LLM call (the input word is known before
    generation starts), the backend obtains pronunciation audio for the
    word/phrase (see "Pronunciation audio"). The **canonical word** — the
-   key for the card, deduplication, statistics, and undo/redo — is
+   key for the card, deduplication, statistics, and undo — is
    always the **raw input**, never silently replaced. If the input looks
    misspelled the LLM does not swap it: it analyzes the word as typed and
    only *suggests* a correction (see "Autocorrection: advisory only"), so
@@ -209,12 +221,12 @@ Behavior — fixed, not configurable (there is no on/off setting):
 - When a suggestion exists, a button is attached to the entry —
   **[✏️ Исправить на «receive»]**. Tapping it re-runs the whole
   analysis for the suggested word, replaces the note (delete + add, the
-  same way redo replaces a note), re-fetches audio for the corrected
+  same way a rebuild replaces a note), re-fetches audio for the corrected
   word, and flips the button to **[↩︎ Вернуть «recieve»]** — so switching
   is reversible in both directions. A lookup-only request keeps its
   lookup-only flag when switched (still no card, just a re-analysis).
 - The button acts on its own entry and is remembered in memory only
-  (like undo/redo state), so it stops working after a restart —
+  (like the undo state), so it stops working after a restart —
   acceptable for a personal tool.
 
 ## Pronunciation audio
@@ -329,6 +341,15 @@ Kept minimal — everything beyond typing a word:
   with the history entry and shown again. When no paid model is
   configured or the daily cap is spent, the control says so instead of
   quietly answering from the pool: the user asked for the better model.
+- **Rebuild the card** — on any entry in the history, ask the paid model
+  to build the note again: for a weak or plainly wrong card, and for the
+  case the context was only understood afterwards. It uses the entry's
+  context when there is one, replaces the note that entry produced, and
+  keeps the audio, which belongs to the word rather than to the answer.
+  Unlike the deeper analysis, this one *is* about the deck — it is the
+  only control that rewrites a card, and it never fires on its own.
+  Bounded by the same daily cap, and refused with a reason when the cap
+  is spent or no paid model is configured.
 - **Status view** — backend health, AnkiWeb sync state (last result,
   whether unsynced changes are waiting).
 - **Stats view** — how many words were added today, over the last
@@ -342,13 +363,12 @@ Kept minimal — everything beyond typing a word:
   created nothing — it was a duplicate or a lookup-only request — undo
   reports that there is nothing to undo and changes nothing: it must
   never delete a note that existed before the last send.
-- **Redo** — re-run the analysis for the last word of the selected
-  language (e.g. after a poor generation). The note from the previous
-  run is replaced by the new one, so a bad card does not survive a
-  redo. A lookup-only request stays lookup-only on redo.
-
-Undo and redo act on the most recent word **per source language** and
-only since the backend started — acceptable for a personal tool.
+Undo acts on the most recent word **per source language** and only since
+the backend started — acceptable for a personal tool. There is no "run it
+again" control: a weak answer is not fixed by rolling the same dice, so
+what would have been a redo is the card rebuild above, which asks the
+better model and acts on the entry the user is looking at rather than on
+whichever word happened to be last.
 
 ## Non-functional requirements
 
