@@ -15,7 +15,9 @@ behind those defaults. It is an input to M2.
   unrelated meanings. The Serbian set mixes Cyrillic and Latin.
 - The production prompt, taken verbatim from the implementation plan,
   with the language slots filled per item; answers in Russian. Backends
-  were compared, never prompts.
+  were compared against each other with the prompt held fixed — and,
+  separately, prompts against each other with the model held fixed (see
+  "The prompt's own language" below).
 - Two load profiles, because they give opposite answers: a **burst**
   (four requests in flight, 120 answers in seven minutes) and a
   **paced** single-user session (one request at a time, five seconds
@@ -99,6 +101,36 @@ requests out of 120 got no answer at all. That is an artefact of the
 harness, not of the product: it is what happens when one client sends
 four concurrent requests at free-tier rate limits. It matters only as
 the description of the tail — see the fallback finding below.
+
+## The prompt's own language
+
+The prompt was Russian to begin with, which was never a decision — it was
+inherited. It is English now, because the target language has to be free to
+be anything and so cannot be baked into the prose, and because models follow
+English instructions more reliably. Switching it creates one specific risk
+worth measuring: a model mirroring the language it was instructed in.
+
+Measured with the model held fixed (the pool's primary), 40 items per source
+language, 120 answers per arm:
+
+| | answer on target | card valid | HTML clean |
+|---|---|---|---|
+| Russian prompt | 100% | 100 / 100 / 97% | 97 / 100 / 100% |
+| English prompt | 100% | 100 / 98 / 100% | 100 / 100 / 100% |
+
+**No drift, in either direction, on any of the three source languages.** The
+mirroring risk did not materialise, and the English prompt ends up ahead on
+formatting discipline. A separate arm with the target set to German — English
+source, German target — came back German in 12 of 12, so the slot genuinely
+drives the answer rather than the model inferring what the reader wants.
+
+One finding is worth keeping because it cost a whole arm to learn: the first
+attempt to strengthen the formatting rule made it **three times worse** —
+markdown in 17 answers of 30, against 12 of 120 before. The added text named
+the forbidden markup by showing it. A model reads the example and reproduces
+it; negation does not cancel the demonstration. Stating the same rule without
+exhibiting what it forbids took the violations to zero. **A prompt may name a
+forbidden form; it must never show one.**
 
 ## Hypothesis 3 — web grounding: dropped from v0.1
 
