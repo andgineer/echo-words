@@ -111,7 +111,7 @@ Prompt template for the operator (one per milestone):
 | Dictionary pronunciation | `https://api.dictionaryapi.dev/api/v2/entries/{lang}/{word}` where `{lang}` is the source language's `dict_api` code (`en`, `de`, …; Serbian is unsupported → skip this step) — take the first `phonetics[].audio` non-empty URL (they are Wiktionary recordings); for English prefer entries whose URL contains the configured accent (`-us` / `-uk`), else any |
 | Settings | `pydantic-settings`, env prefix `ECHOWORDS_`, `.env` support |
 | Durable state | **None of its own — no database.** The Anki collection is the only thing worth keeping and it is already a file that syncs to AnkiWeb. History is an in-memory ring buffer of recent entries; "added" statistics are counted from the collection itself (Anki note ids are creation timestamps in milliseconds, so a per-deck `find_notes` gives today / 7 days / all time without any side table); duplicate and lookup-only counters, undo/redo state and correction state are in-memory and reset on restart. This removes `sqlite3`, a schema, migrations, and any need to back the app up |
-| LLM | Pluggable backend behind one `stream_completion` seam (M2), **two backend kinds shipped in v0.1**, selected by config and by source language (from the languages table, M1) — both are plain streaming text→text HTTPS calls through the author's `llmbroker` (`github.com/andgineer/llmbroker`, **≥1.5.1**): (a) **`llmbroker` pool** — `AsyncBroker` over a pool of free, rate-limited models with automatic failover and quality-based routing, **no metered key**; the default. `broker.stream(prompt, operation=…, trace_id=…, wait=…)` returns a `StreamHandle`: async-iterable over text deltas, carrying `llm_name` (who answered, from the first delta on) and `record_quality(score)`, and closed by the consumer with `aclose()`. It fails over up to the first delta and raises `StreamInterruptedError` past it. `wait` bounds **queueing for a free model plus the first delta** — once deltas flow the answer is unbounded, so the ~20–30 s whole-answer budget is echo-words' own timeout around the iteration, not something the broker enforces (llmbroker does not penalize a model's quality score for the caller's deadline). Without `wait` a single attempt is bounded only by an internal 60 s ceiling, so echo-words always passes it, from the functional description's ~3–5 s first-content budget. (b) **`llmbroker` direct client** (paid, **opt-in, never required**) — a single explicitly named frontier model, no pool, no failover, no routing: the model is **declared in echo-words's own code** at broker construction (`AsyncBroker(direct=[...])`) and reached with `await broker.direct(alias)`, which returns an `AsyncDirectClient` whose `.stream(prompt, timeout=…)` is a plain async iterator of deltas. That client borrows the broker's single shared httpx client, so obtaining one per request is cheap and echo-words must **not** close it. The alias comes from llmbroker's curated paid catalog (`opus`, `sonnet`, `gpt`, `flash`, … — `llmbroker list` prints them) and is an eternal handle — llmbroker re-points it at the current model generation on its own daily clock, so a provider's new release changes nothing here. Nothing is stored anywhere: the declaration in code is the only source of truth, and the API key is read at call time from the env var the catalog names, never touched by echo-words. Its role is hard languages and "who wants quality". One `AsyncBroker` instance serves both backends with one error taxonomy (`LLMRequestError` and its subclasses); it is created in the FastAPI lifespan (after the languages config) and `aclose()`d on shutdown. The **M0 spike** measured both and put every v0.1 language on the pool — see `spec/decision-llm-backend.md` |
+| LLM | One **cascade** behind a single `stream_completion` seam (M2), not a per-language choice: every request goes to the free pool first and steps up to the paid model only when the pool misses the budget. Both steps are plain streaming text→text HTTPS calls through the author's `llmbroker` (`github.com/andgineer/llmbroker`, **≥1.5.1**), and one `AsyncBroker` instance serves both with one error taxonomy (`LLMRequestError` and its subclasses); it is created in the FastAPI lifespan (after the languages config) and `aclose()`d on shutdown. **Step 1 — the pool:** `broker.stream(prompt, operation=f"{prefix}-{lang}", wait=…)` returns a `StreamHandle`: async-iterable over text deltas, carrying `llm_name` (who answered, from the first delta on) and `record_quality(score)`, closed by the consumer with `aclose()`. `wait` bounds **queueing plus the first delta**, so it is exactly the trigger for the step-up: raise it from the functional description's ~3–5 s first-content budget and let the failure hand the request on. Past the first delta the answer is unbounded, so echo-words keeps its own ~20–30 s whole-answer deadline around the iteration — a pool model that opens fast and then dribbles (measured: 101 s) is abandoned mid-stream, rated low so the pool learns, and the request steps up too. llmbroker reads consumer-side abandonment as a completed call, not a model failure, so the low rating is the only thing that teaches it. **Step 2 — the paid direct client** (opt-in by configuration, never required): a single explicitly named frontier model, no pool, no failover, no routing. The model is **declared in echo-words's own code** at broker construction (`AsyncBroker(direct=[…])`) and reached with `await broker.direct(alias)`, which returns an `AsyncDirectClient` whose `.stream(prompt, timeout=…)` is a plain async iterator of deltas. That client borrows the broker's single shared httpx client, so obtaining one per request is cheap and echo-words must **not** close it. The alias comes from llmbroker's curated paid catalog and is an eternal handle — llmbroker re-points it at the current model generation on its own daily clock, so a provider's new release changes nothing here. Nothing is stored anywhere: the declaration in code is the only source of truth, and the API key is read at call time from the env var the catalog names, never touched by echo-words. The same client serves the user's explicit deeper-analysis request (M7). With no paid alias configured, or the daily cap spent, the cascade is one step long and a pool miss is a failure. The **M0 spike** measured both steps — see `spec/decision-llm-backend.md` |
 | Lint | `ruff` (line-length 99), run in CI after tests |
 
 ## Reuse from dinary
@@ -360,12 +360,11 @@ data dir stays under the checkout as it does for dinary.
 | `ECHOWORDS_HOST` | interface the web app binds; keep loopback — Tailscale serve is the front door | `127.0.0.1` |
 | `ECHOWORDS_PORT` | port the web app binds | `8080` |
 | `ECHOWORDS_TARGET_LANG` | language of all explanations and translations, app-wide | `ru` |
-| `ECHOWORDS_LANGUAGES_CONFIG` | path to the TOML table defining each source language (see "Languages configuration" below): deck, backend, dictionary code, TTS engine + voice, accent, allowed script | `~/.echo-words/languages.toml` |
-| `ECHOWORDS_LLM_BACKEND` | `llmbroker` or `api` — fallback backend kind for a language whose table entry omits `backend` (default confirmed by the M0 spike, `spec/decision-llm-backend.md`) | `llmbroker` |
+| `ECHOWORDS_LANGUAGES_CONFIG` | path to the TOML table defining each source language (see "Languages configuration" below): deck, dictionary code, TTS engine + voice, accent, allowed script, prompt hints | `~/.echo-words/languages.toml` |
 | `ECHOWORDS_LLMBROKER_HOME` | directory llmbroker keeps its own state in (curated model list, call journal) — passed as `AsyncBroker(home=...)`. Must be writable: llmbroker falls back to in-memory state where it is not, which silently disables the call journal and with it quality learning. There is **no** model-list file for the operator to write or point at — the pool arrives as a curated preset llmbroker refreshes itself | `ECHOWORDS_DATA_DIR/llmbroker` |
 | `ECHOWORDS_LLMBROKER_OPERATION` | operation-label **prefix**; the label actually passed is `{prefix}-{lang}` (`vocab-en`, `vocab-sr`). llmbroker learns quality per `(model, operation)`, so a per-language label makes the pool discover on its own which model is good at which source language — the production counterpart of M0's hypothesis 1 | `vocab` |
-| `ECHOWORDS_API_MODEL` | when backend = `api`: the paid-catalog **alias** passed to `broker.direct(...)` — `opus`, `sonnet`, `gpt`, `flash`, … (`llmbroker list` prints them). A per-language `api_model` in the languages table overrides it, so a hard language can use a stronger model than the rest. Every alias any language uses is collected at startup and declared as `AsyncBroker(direct=[...])`. The provider's key is read by llmbroker from the env var its catalog names (`ANTHROPIC_API_KEY`, …) — echo-words never reads, stores or passes it. M0 recommends `gpt` among the catalog's aliases — `sonnet` answered in markdown every time, breaking the prompt's HTML-only rule. The model M0 actually prefers, `gpt-5.6-luna` (same contract, near-identical quality, three times faster), is not in the curated catalog yet; adding it upstream is the way to reach it | `gpt` |
-| `ECHOWORDS_API_DAILY_CAP` | max paid direct-client calls per day; on exceed, that language falls back to the free `llmbroker` pool for the rest of the day (M2). `0` = unlimited | `100` |
+| `ECHOWORDS_API_MODEL` | the paid-catalog **alias** the cascade's second step and the deeper-analysis request both use, passed to `broker.direct(...)` (`llmbroker list` prints the catalog). A per-language `api_model` in the languages table overrides it, so one language may step up to a stronger model than the rest. Every alias any language uses is collected at startup and declared as `AsyncBroker(direct=[...])`. Empty disables the second step entirely: the cascade is one step long and no metered call can happen. The provider's key is read by llmbroker from the env var its catalog names (`OPENAI_API_KEY`, …) — echo-words never reads, stores or passes it. M0 measured `gpt-5.6-luna` as the right default: contract-clean, near the quality ceiling, and three times faster than `gpt` — it needs the llmbroker release that carries it in the curated catalog | `luna` |
+| `ECHOWORDS_API_DAILY_CAP` | max paid calls per day, counting both cascade step-ups and deeper-analysis requests — one wallet, one cap. Once spent, a pool miss becomes a failure and the deeper-analysis control reports the cap rather than answering from the pool (M2). `0` = unlimited | `100` |
 | `ECHOWORDS_ANKIWEB_USER` | AnkiWeb account (email) for sync; required when `ECHOWORDS_ANKI_SYNC` is on | required if sync on |
 | `ECHOWORDS_ANKIWEB_PASSWORD` | AnkiWeb password — used once to obtain the sync key (hkey), which is then stored in `ECHOWORDS_DATA_DIR` and reused | required if sync on |
 | `ECHOWORDS_SYNC_ENDPOINT` | custom sync server URL (the self-hosted fallback from the decision doc); empty = AnkiWeb | empty |
@@ -373,20 +372,18 @@ data dir stays under the checkout as it does for dinary.
 | `ECHOWORDS_ACCENT` | `us` or `uk`, English dictionary-audio and voice choice; per-language override in the languages table | `us` |
 | `ECHOWORDS_EDGE_TTS_VOICE` | default last-resort edge-tts voice; per-language `edge_tts_voice` in the table overrides | `en-US-AriaNeural` (us) / `en-GB-SoniaNeural` (uk) |
 | `ECHOWORDS_AUDIO_TIMEOUT` | seconds to wait for the speculative pronunciation task after generation ends; on timeout the task is cancelled and the send proceeds with "🔇 no audio" (see M6) | `20` |
-| `ECHOWORDS_DATA_DIR` | Anki collection (`anki/`), word-log DB, TTS models, downloaded audio, stored sync key | `~/.echo-words` |
+| `ECHOWORDS_DATA_DIR` | Anki collection (`anki/`), TTS models, downloaded audio, stored sync key — no database of echo-words' own | `~/.echo-words` |
 
 ## Languages configuration
 
 `ECHOWORDS_LANGUAGES_CONFIG` points at a TOML file with one entry per
 source language, keyed by language code. It is the single source of truth
-for everything that varies by language — deck, backend, audio, validation:
+for everything that varies by language — deck, audio, validation:
 
 ```toml
 [languages.en]
 name       = "English"
 deck       = "English::Vocabulary"
-backend    = "llmbroker"       # llmbroker | api; omit -> ECHOWORDS_LLM_BACKEND
-                               # (M0: the free pool serves all three languages)
 dict_api   = "en"              # dictionaryapi.dev code; omit if unsupported
 tts        = "piper"           # piper | edge
 tts_voice  = "en_US-lessac-medium"
@@ -396,7 +393,6 @@ script     = "latin"           # latin | cyrillic | latin+cyrillic (input valida
 [languages.de]
 name      = "Deutsch"
 deck      = "German::Vocabulary"
-backend   = "llmbroker"
 dict_api  = "de"
 tts       = "piper"
 tts_voice = "de_DE-thorsten-medium"
@@ -405,9 +401,7 @@ script    = "latin"
 [languages.sr]
 name      = "Српски"
 deck      = "Serbian::Vocabulary"
-backend   = "llmbroker"        # M0 measured the free pool as sufficient here too;
-                               # switch to "api" for the paid quality tier
-api_model = "gpt"              # paid-catalog alias, used only when backend = "api";
+api_model = "luna"             # paid-catalog alias for this language's step-up;
                                # omit -> ECHOWORDS_API_MODEL
 # dict_api omitted — dictionaryapi.dev has no Serbian
 tts       = "edge"             # no usable local voice: Piper's lone sr_RS model
@@ -424,12 +418,12 @@ Semantics:
   in the UI; it is matched against this table. An unknown code → a
   short hint, no LLM call. The language is always the explicit
   selection, never guessed from the word.
-- **Backend.** `backend` per language — `llmbroker` (free pool) or `api`
-  (paid direct client, opt-in); absent → `ECHOWORDS_LLM_BACKEND`. An
-  `api` language may also carry `api_model` (a paid-catalog alias);
-  absent → `ECHOWORDS_API_MODEL`. Because llmbroker takes its declared
-  models at construction, the set of aliases across all languages is
-  collected while loading this file and passed to the single
+- **Backend.** There is no per-language backend choice: every language
+  runs the same cascade, free pool first. A language may only name
+  *which* paid model its step-up uses, with `api_model` (a paid-catalog
+  alias); absent → `ECHOWORDS_API_MODEL`. Because llmbroker takes its
+  declared models at construction, the set of aliases across all
+  languages is collected while loading this file and passed to the single
   `AsyncBroker` — so the broker is built *after* the languages config,
   not at import time.
 - **Audio.** `dict_api` (omit = skip the dictionary step), `tts` (which
@@ -471,6 +465,10 @@ One FastAPI application (`api.py`) serves everything:
   - `done` — final text, the status line, the audio URL (or none), the
     usable `suggestion` (or none) and which spelling the entry
     currently shows.
+  - `reset` — drop the text accumulated for this entry so far: the pool
+    stalled and the answer is being restarted on the paid model (M2).
+  - `detail` — deltas of the deeper analysis, appended below the entry's
+    analysis rather than replacing it (M7).
   - `error` — a short apology + redo hint.
   A comment line is sent every 15 s as a keep-alive. The stream carries
   all entries (no per-entry streams): the client opens one
@@ -483,6 +481,12 @@ One FastAPI application (`api.py`) serves everything:
   sanitized text, newest first. Empty after a restart, by design.
 - `POST /api/words/{entry_id}/switch` — the correction button (M7):
   re-runs the pipeline for the other spelling into the same entry.
+- `POST /api/words/{entry_id}/detail` — the deeper-analysis control (M7):
+  asks the paid model for the extended brief on the same word and streams it
+  into the same entry as a second block, leaving the analysis, the note and
+  the audio untouched. Idempotent — a second call returns the text already
+  kept on the entry without paying again. Refused with a reason when no paid
+  alias is configured or the daily cap is spent.
 - `POST /api/languages/{code}/undo` and `/redo` — per-language undo/redo
   (M7).
 - `GET /api/stats`, `GET /api/status` — the stats and status views (M7).
@@ -526,10 +530,13 @@ async def process_word(lang: Language, word: str, lookup_only: bool,
    languages) and runs the steps below.
 3. Start the speculative audio task for the raw input — parallel with
    the LLM call (M6).
-4. Run `stream_completion(prompt, lang)`; accumulate the raw text
-   server-side, publish sanitized `update` events cut at the delimiter
-   (M3). The accumulated text is what `/api/words/recent` serves for an
-   in-progress entry.
+4. Run `stream_completion(prompt, lang)` — the cascade: the pool, then
+   the paid model where the pool missed the budget (M2). Accumulate the
+   raw text server-side, publish sanitized `update` events cut at the
+   delimiter (M3). The accumulated text is what `/api/words/recent`
+   serves for an in-progress entry. A step-up that happens mid-stream
+   publishes a `reset` event first, so the page drops the abandoned
+   partial text instead of splicing two answers together.
 5. Parse the card payload out of the raw text (M4). On parse failure the
    analysis text still stands; the status line will report that the card
    failed.
@@ -539,7 +546,9 @@ async def process_word(lang: Language, word: str, lookup_only: bool,
 7. Add the note unless lookup-only, duplicate, or parse failure (M5);
    compose the status line.
 8. If the payload carried a usable `suggestion`, include it in the
-   `done` event so the UI renders the correction button (M7).
+   `done` event so the UI renders the correction button (M7). The `done`
+   event also names which model answered and whether a deeper analysis is
+   available for this entry (M7).
 9. Update the history entry in place (final sanitized analysis, status,
    audio URL), bump the session counters, and update the language's
    undo/redo state (M7); publish `done`.
@@ -661,6 +670,51 @@ Parsing rules (`prompt.py` / `card.py`):
   out of the `find_notes` query and the media filename it would reach
   through the re-run (M5).
 
+### The extended prompt (deeper analysis)
+
+The deeper-analysis control (M7) uses a second template from the same module,
+and its differences from the one above are all consequences of one fact: **it
+produces no card.** So it has no `===CARD===` contract, no meaning cap, no
+3500-character ceiling, and nothing it returns can reach the deck or fail a
+parse. It is an independent, fuller analysis of the same word — not a diff
+against the first answer, which would mean feeding the first answer back and
+making the call stateful for no gain.
+
+```text
+Ты лексикограф. Язык слова — {source_lang}. Разбери подробно слово или
+короткую фразу: {word}
+
+Ответь на языке {target_lang}. Это углублённый разбор для читателя,
+который уже видел краткую справку, поэтому не экономь на деталях, но и не
+растекайся — каждый пункт по делу.
+
+1. Первая строка: разбираемое слово жирным.
+2. ВСЕ значения, а не только частотные: и переносные, и узкоспециальные, и
+   устаревшие, и региональные, и сленговые. Для каждого — часть речи,
+   помета регистра и сфера употребления. Если значение живёт только в
+   определённой области (право, медицина, спорт, жаргон), скажи в какой.
+3. Происхождение: подробно — язык-источник, исходная форма и значение, путь
+   заимствования, когда слово вошло в язык, родственные слова в этом же
+   языке и когнаты в других. Для исконных слов — корень и его развитие. Если
+   этимология спорная, назови версии.
+4. Употребление: устойчивые сочетания, управление, регистр, с чем путают,
+   ложные друзья переводчика, характерные ошибки изучающих.
+5. Оттенки и близкие слова: чем отличается от синонимов, что уместнее в
+   каком контексте.
+6. Примеры: по одному-двум на каждое значение из пункта 2, каждый с
+   переводом.
+
+Для выделения используй ТОЛЬКО HTML-теги <b> и <i>: разбираемое слово —
+жирным, примеры на языке {source_lang} — курсивом. Никакого markdown,
+никаких других тегов. Транскрипцию не приводи. Никакого JSON и никаких
+служебных разделителей — это только текст для чтения.
+```
+
+The same sanitizer applies, for the same reason. The one new failure mode is
+that a model may emit a `===CARD===` block out of habit; the extended text is
+cut at the delimiter exactly as the analysis is, so a stray payload is
+discarded rather than shown.
+
 HTML safety (`sanitizer.py`): the LLM is only *asked* to emit
 `<b>`/`<i>` — the code must enforce it, because the client assigns the
 analysis as HTML. The sanitizer runs **server-side** over the
@@ -732,13 +786,15 @@ sets the v0.1 backend defaults the rest of the plan builds on.
 
 ### M0 — LLM backend spike (precedes M1–M8; decides the v0.1 backend defaults)
 
-Runs **before** any product code. echo-words ships **both** backend kinds in
-v0.1 (see the LLM technology row): the `llmbroker` free-tier pool and the paid
-direct client. M0 does not choose one *instead of* building the other — the
-backend seam is built regardless (M2) — it measures **which backend each
-source language needs, and whether llmbroker needs web grounding for hard
-languages**, so M2 ships with the right `ECHOWORDS_LLM_BACKEND` and
-per-language `backend` defaults instead of a guess.
+Runs **before** any product code. echo-words ships **both** steps of the
+cascade in v0.1 (see the LLM technology row): the `llmbroker` free-tier pool
+and the paid direct client. M0 does not choose one *instead of* building the
+other — the seam is built regardless (M2) — it measures **how good each step
+is per source language, and whether llmbroker needs web grounding for hard
+languages**, so M2 ships with a measured paid model and a measured expectation
+of the pool instead of a guess. Its conclusion that no language *needs* the
+paid step is what let the per-language backend choice collapse into one
+cascade for everything.
 
 **Hypotheses.**
 
@@ -830,13 +886,28 @@ incl. the `?` prefix and Cyrillic-vs-Latin per language, unknown
 language code → hint, the stub flow, `/api/health` answering, and static
 page serving.
 
-### M2 — LLM backend runner (llmbroker pool + paid api)
+### M2 — LLM backend runner (the pool → paid cascade)
 
-One seam, two backend kinds — both shipped here, defaults set by M0. The
-pipeline calls `async def stream_completion(prompt, lang) -> AsyncIterator[str]`
-(in a small `backend.py` dispatcher) which resolves the backend from the
-language's `backend` field (`languages.py`) or, if absent,
-`ECHOWORDS_LLM_BACKEND`, and delegates:
+One seam, one cascade, both steps shipped here. The pipeline calls
+`async def stream_completion(prompt, lang) -> AsyncIterator[str]` (in a small
+`backend.py` dispatcher) which always starts at the pool and steps up to the
+paid model on exactly two triggers, both of them latency and neither of them a
+per-language choice:
+
+- **the pool never started** — the `wait` budget expired before a first delta,
+  or the pool raised before one. Nothing has been published yet, so the step-up
+  is invisible beyond a status line.
+- **the pool started and stalled** — the whole-answer deadline passed with the
+  stream still open. The dispatcher abandons the handle (which hands the slot
+  back and rates the call low, so the pool learns what its own budget cannot
+  teach it), tells the pipeline to publish `reset`, and starts the paid step
+  from the beginning of the same prompt.
+
+Anything that is *not* latency — a dead key, a malformed request, the whole
+pool rate-limited with the cap already spent — is a `BackendError`, not a
+step-up: the cascade buys time, it does not paper over faults. And with no
+paid alias configured or the daily cap spent, there is no second step at all
+and both triggers become that same error.
 
 - **`llmbroker` backend** (`llm_backend.py`): one process-wide `AsyncBroker`
   lives in `broker.py`, built in the FastAPI lifespan after the languages
@@ -846,8 +917,9 @@ language's `backend` field (`languages.py`) or, if absent,
   trace_id=…, wait=…)`, iterated inside `contextlib.aclosing(handle)` so the
   model's slot is handed back even when the pipeline abandons the stream —
   deltas go straight into the pipeline. `wait` carries the functional
-  description's per-call budget and covers **both** halves of the call
-  (queueing for a free model and the answer itself). It is an HTTPS text→text
+  description's first-content budget and bounds **queueing plus the first
+  delta** — not the answer, which is unbounded once deltas flow, and which is
+  why the dispatcher keeps its own whole-answer deadline. It is an HTTPS text→text
   call the operator already trusts — no subprocess, nothing to sandbox. Map
   `NoLLMAvailableError` (whole pool rate-limited), `LLMTimeoutError` and
   `StreamInterruptedError` (the stream died after deltas — no failover
@@ -870,7 +942,8 @@ language's `backend` field (`languages.py`) or, if absent,
   (First task of the milestone: the one-line sanity check from "Upstream
   dependency" that the installed llmbroker's `StreamHandle` carries
   `record_quality` and `llm_name`.)
-- **`api` backend** (`api_backend.py`): the paid, opt-in path. Delegates to
+- **`api` backend** (`api_backend.py`): the cascade's second step, and the
+  model the deeper-analysis request (M7) always uses. Delegates to
   **llmbroker's direct client** — a single named frontier model, no pool, no
   failover: `client = await broker.direct(alias)` on the same `AsyncBroker`
   instance the pool backend holds, where `alias` is the language's `api_model`
@@ -887,12 +960,15 @@ language's `backend` field (`languages.py`) or, if absent,
   path stays uniform. Note the direct client is **not journaled**, so it has
   no `llm_name`, no quality feedback and needs none — a declared model is
   never routed, there is nothing for a score to inform, and `/api/status`
-  names the configured alias itself. **Daily spend cap:** the
-  `backend.py` dispatcher counts this language's paid calls for the current
-  day; once `ECHOWORDS_API_DAILY_CAP` is reached it transparently routes the
-  rest of the day to the free `llmbroker` pool and records the fallback
-  (surfaced in `/api/status`, M7). The counter lives in memory and resets on
-  restart — acceptable for a personal tool.
+  names the configured alias itself. **Daily spend cap:** the `backend.py`
+  dispatcher counts every paid call — step-ups and deeper-analysis requests
+  alike, one counter for the whole app, since it is one wallet. Once
+  `ECHOWORDS_API_DAILY_CAP` is reached the second step is simply gone for the
+  rest of the day: a pool miss becomes a `BackendError` the user sees, and the
+  deeper-analysis request is refused with the reason. That is the honest
+  behavior — falling back to the pool would answer a question the user asked
+  the paid model. The cap state is surfaced in `/api/status` (M7). The counter
+  lives in memory and resets on restart — acceptable for a personal tool.
 
 Tests: for the **llmbroker backend** a fake `AsyncBroker` whose `stream()`
 returns a fake handle (monkeypatched — no real pool) asserting the happy path
@@ -902,17 +978,21 @@ the handle is closed even when the consumer abandons the stream mid-way, that
 `NoLLMAvailableError`, `LLMTimeoutError` and `StreamInterruptedError` all
 surface as `BackendError`, that a parsed card calls `handle.record_quality`
 with a positive score and a parse failure with the opposite, that
-`handle.llm_name` is recorded for `/api/status`, and that the `backend.py`
-dispatcher picks the backend from the language's `backend` field before
-falling back to `ECHOWORDS_LLM_BACKEND`. For the **`api` backend**: a fake
+`handle.llm_name` is recorded for `/api/status`. For the **cascade** itself:
+that a pool stream which yields no first delta within the budget steps up, that
+one which starts and then stalls past the whole-answer deadline is abandoned,
+rated low, and steps up with a `reset`, that a non-latency failure does *not*
+step up, and that a completed pool answer never touches the paid client. For
+the **`api` backend**: a fake
 direct client (monkeypatched — no real provider) asserting streamed deltas
 arrive as multiple chunks, that the language's `api_model` overrides
 `ECHOWORDS_API_MODEL` and that every configured alias is present in the
 broker's `direct=[…]`, that the client is never closed by the backend, that
 resolution errors (`UnknownModelError`, `PoolModelError`, `MissingKeyError`)
 and call errors (auth/rate-limit/timeout/provider) all surface as
-`BackendError`, and that once `ECHOWORDS_API_DAILY_CAP` is hit the dispatcher
-falls back to the `llmbroker` pool for the remaining calls that day.
+`BackendError`, and that once `ECHOWORDS_API_DAILY_CAP` is hit the second step
+disappears — a pool miss raises instead of paying, and a deeper-analysis
+request is refused — with the counter covering both kinds of paid call.
 
 ### M3 — queue + streaming over SSE
 
@@ -1222,12 +1302,12 @@ There is **no pending-card queue** in this design: the collection is
 in-process (M5), so a card add cannot fail on connectivity; only the
 AnkiWeb sync is asynchronous, and it retries by itself. **There is no
 database either** — see the "Durable state" technology row. What M7 adds
-is the history buffer, the stats/status endpoints, undo/redo, and the
-correction button.
+is the history buffer, the stats/status endpoints, undo/redo, the
+correction button, and the deeper-analysis control.
 
 `history.py`: a bounded in-memory ring buffer (last ~50 entries) of
 `Entry(entry_id, lang, word, action, analysis_html, audio_file,
-suggestion, shown_spelling, created_at)` where action is
+suggestion, shown_spelling, detail_html, created_at)` where action is
 `pending | added | duplicate | lookup | failed`, written on every
 processed word and updated in place as it progresses; `word` always
 holds the canonical word and `analysis_html` the sanitized analysis.
@@ -1243,15 +1323,15 @@ Endpoints and behaviors:
   the correction state still knows it — the suggestion and which
   spelling is shown. In-progress entries carry the text accumulated so
   far (M3).
-- `GET /api/status` — per configured language: its backend, model, deck,
-  and **backend health** — one `await broker.snapshot()` for `llmbroker`
+- `GET /api/status` — per configured language: its deck, the paid alias its
+  step-up would use, and **backend health** — one `await broker.snapshot()` for `llmbroker`
   and `api` alike: `providers_usable` of `providers_total`, the
   `degraded` flag (one quota left, nothing to fail over to),
   `missing_keys` for the pool and `direct_missing_keys` for the declared
   paid models, each carrying the `help` text saying where to get the
-  key. For `api` also the day's paid-call count against
-  `ECHOWORDS_API_DAILY_CAP` and whether the language has fallen back to
-  the free pool for the rest of the day (M2). Each language is annotated
+  key. Plus the day's paid-call count against
+  `ECHOWORDS_API_DAILY_CAP` and whether the second step is still available at
+  all today (M2). Each language is annotated
   with the outcome and time of its last LLM call and **which model
   answered it** — `handle.llm_name` from the pool call (M2), kept in
   memory; for an `api` language the configured alias, since a direct

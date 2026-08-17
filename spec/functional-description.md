@@ -108,6 +108,17 @@ The four requirements every design decision is weighed against:
    translations are visible within a few seconds; the full answer
    completes in the same entry. A backend that cannot stream shows the
    pending entry until the complete answer arrives at once.
+   Every answer is asked of the **free pool first**. If the pool does not
+   begin answering within the latency budget, the request moves to the
+   **paid model** and the user sees a slower answer, not an error — the
+   pool being busy is the one thing the paid path exists to absorb. If
+   the pool begins promptly but is still dribbling past the
+   complete-answer budget, the same move happens mid-answer: the partial
+   text is discarded and replaced by the paid model's, because a
+   half-finished answer that takes a minute is worth less than a whole
+   one that takes ten seconds. Which model answered is visible on the
+   entry; nothing else about the two paths differs, and the card is built
+   from whichever answer arrived.
 5. Words are processed one at a time, in the order submitted — never as
    parallel LLM runs.
 6. The LLM produces **both outputs in one generation**: the full
@@ -306,6 +317,18 @@ Kept minimal — everything beyond typing a word:
   switching devices — but it is held **in memory only** and starts
   empty after a restart. The cards it produced are unaffected; a word
   whose analysis scrolled away can always be looked up again.
+- **Deeper analysis** — on a finished answer, a control that asks the
+  same word again from the paid model with a fuller brief: every sense
+  the word has rather than the card-worthy few, a real etymology, more
+  usage and register detail, more examples. **It never touches the
+  card** — the note already added stands exactly as it was, and the
+  deeper text lives in the app only, appended to the answer rather than
+  replacing it. That is the whole point of the split: the deck stays
+  compact and reviewable while the app can go as deep as the reader
+  wants. Asking twice for the same word costs nothing — the text is kept
+  with the history entry and shown again. When no paid model is
+  configured or the daily cap is spent, the control says so instead of
+  quietly answering from the pool: the user asked for the better model.
 - **Status view** — backend health, AnkiWeb sync state (last result,
   whether unsynced changes are waiting).
 - **Stats view** — how many words were added today, over the last
@@ -334,14 +357,15 @@ only since the backend started — acceptable for a personal tool.
   extend these budgets. Incremental "first visible content within
   ~3–5 s" applies to streaming — both llmbroker backends (the free pool
   and the paid direct client) stream.
-- **Cost**: **no metered API is ever required.** By default LLM usage
-  rides the free-tier `llmbroker` model pool, which is un-metered. A
-  **paid per-token model is available as an opt-in backend** (`api`, via
-  llmbroker's direct client) for hard languages or top quality; it is
-  never the mandatory path, and its spend is bounded by a daily cap
-  (`ECHOWORDS_API_DAILY_CAP`) that falls back to the free pool once
-  reached. The design must run fully on the un-metered pool; the metered
-  backend only ever adds an optional quality tier.
+- **Cost**: **no metered API is ever required.** Every answer starts on
+  the free-tier `llmbroker` model pool, which is un-metered. A paid
+  per-token model is reached in exactly two situations, both bounded by a
+  daily cap (`ECHOWORDS_API_DAILY_CAP`): when the pool fails to start an
+  answer within the latency budget, and when the user explicitly asks for
+  a deeper analysis. With no paid key configured, or with the cap spent,
+  both simply do not happen — the pool timing out then reports a failure
+  instead, and the deeper analysis says it is unavailable. The design
+  must run fully on the un-metered pool.
 - **Safety**: both LLM backends are plain text→text API calls — no
   shell, no filesystem, and no arbitrary network reach — so a prompt
   hijacked by malicious input has nothing to exfiltrate with: the
