@@ -24,10 +24,11 @@ The four requirements every design decision is weighed against:
    language is a configuration change, never a code change.
 2. **A maximally light backend whose home is an always-on Oracle Cloud
    Free Tier micro instance** (`VM.Standard.E2.1.Micro`, 1 GB RAM +
-   swap) **already occupied by another of the author's apps**. Anything
-   that cannot run there, next to that neighbour and without disturbing
-   it, is out of the design; the user's laptop is a development
-   environment, not a deployment target.
+   swap). Anything that cannot run there is out of the design; the
+   user's laptop is a development environment, not a deployment target.
+   The backend keeps **no database of its own**: everything worth
+   keeping is already in the Anki collection, so state that is not a
+   card lives in memory and is expendable on restart.
 3. **Rich, dictionary-beating explanations from an LLM.** A plain
    dictionary answer is not enough — that is the reason this project
    exists. Free models often struggle with Serbian; which model tier
@@ -55,14 +56,13 @@ The four requirements every design decision is weighed against:
   (Safari lacks Web Share Target); copy/paste works as anywhere, and
   the documented share-sheet path is a one-time iOS Shortcut that POSTs
   the shared text to the API over the tailnet.
-- **Backend** — a single headless service whose home is the always-on
-  micro instance (1 GB RAM + swap), **shared with the author's other
-  app** (dinary): echo-words is a co-tenant there, not the machine's
-  only occupant, which caps how much memory the design may assume. It
-  serves the API and the built PWA on a localhost port that Tailscale
-  proxies — on its own HTTPS port, so the app has an origin of its own;
-  nothing else is exposed. No public IP, domain, or certificate
-  management is needed.
+- **Backend** — a single headless service whose home is an always-on
+  micro instance (1 GB RAM + swap). It serves the API and the built PWA
+  on a localhost port that Tailscale proxies; nothing else is exposed.
+  No public IP, domain, or certificate management is needed. It stores
+  **no database**: the Anki collection is the only durable state it
+  keeps, alongside cached audio and voice models — everything else
+  (recent answers, counters, undo state) is in-memory and expendable.
 - **LLM** — a pluggable backend, selected via configuration (and, per
   source language, from the languages table). Two kinds, both present
   from v0.1 and both plain streaming text→text calls through the
@@ -136,7 +136,8 @@ The four requirements every design decision is weighed against:
 
 Finished and in-progress entries live in a server-side history (see
 "UI actions"), so closing the app mid-generation, an interrupted event
-stream, or opening the page on another device never loses an answer.
+stream, or opening the page on another device never loses an answer
+while the backend is up.
 
 ## Analysis content (the answer)
 
@@ -301,13 +302,19 @@ Kept minimal — everything beyond typing a word:
   `?` shortcut, and the ✏️ correction button for a suspected typo.
 - **History** — the answer area shows recent words with their finished
   analyses, pronunciation, and status; in-progress entries appear with
-  their text accumulated so far. History is served by the backend and
-  survives restarts, reloads, and switching devices.
+  their text accumulated so far. History is served by the backend, so
+  it survives reloads, a dropped connection mid-generation, and
+  switching devices — but it is held **in memory only** and starts
+  empty after a restart. The cards it produced are unaffected; a word
+  whose analysis scrolled away can always be looked up again.
 - **Status view** — backend health, AnkiWeb sync state (last result,
   whether unsynced changes are waiting).
 - **Stats view** — how many words were added today, over the last
-  7 days, and in total, plus how many sends were duplicates or
-  lookup-only, broken down by source language.
+  7 days, and in total, broken down by source language; these are
+  counted from the Anki collection itself, so they are accurate
+  regardless of restarts. Duplicate and lookup-only sends create no
+  card and are therefore counted in memory, labeled as being since the
+  last restart.
 - **Undo** — remove the note created by the last submitted word of the
   currently selected language (mistaken sends). When the last word
   created nothing — it was a duplicate or a lookup-only request — undo
@@ -352,10 +359,12 @@ only since the backend started — acceptable for a personal tool.
   explanation, and an answer hours later is worth little. Words
   submitted while unreachable are kept in the app's local queue and
   re-sent automatically, in order, on the next successful open — so
-  they still become cards. Results live in the server-side history. The
-  collection is a local file: cards added while AnkiWeb sync was
-  failing survive restarts and reach the devices on the next successful
-  sync.
+  they still become cards. The collection is a local file: cards added
+  while AnkiWeb sync was failing survive restarts and reach the devices
+  on the next successful sync. Nothing else on the backend is durable
+  by design — a restart empties the history and the in-memory
+  counters, which is acceptable precisely because every word that
+  mattered is already a card.
 - **Single instance, single user.** Tailnet membership is the only
   access control; the design assumes the owner is the only user. No
   horizontal scaling concerns.

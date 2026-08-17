@@ -110,20 +110,20 @@ Prompt template for the operator (one per milestone):
 | mp3 encoding | `lameenc` (pure-wheel LAME bindings) to convert Piper's WAV output to mp3 — no ffmpeg system dependency |
 | Dictionary pronunciation | `https://api.dictionaryapi.dev/api/v2/entries/{lang}/{word}` where `{lang}` is the source language's `dict_api` code (`en`, `de`, …; Serbian is unsupported → skip this step) — take the first `phonetics[].audio` non-empty URL (they are Wiktionary recordings); for English prefer entries whose URL contains the configured accent (`-us` / `-uk`), else any |
 | Settings | `pydantic-settings`, env prefix `ECHOWORDS_`, `.env` support |
-| Word log (stats + history) | stdlib `sqlite3`, single DB file; rows carry the rendered analysis, so the history view survives restarts |
+| Durable state | **None of its own — no database.** The Anki collection is the only thing worth keeping and it is already a file that syncs to AnkiWeb. History is an in-memory ring buffer of recent entries; "added" statistics are counted from the collection itself (Anki note ids are creation timestamps in milliseconds, so a per-deck `find_notes` gives today / 7 days / all time without any side table); duplicate and lookup-only counters, undo/redo state and correction state are in-memory and reset on restart. This removes `sqlite3`, a schema, migrations, and any need to back the app up |
 | LLM | Pluggable backend behind one `stream_completion` seam (M2), **two backend kinds shipped in v0.1**, selected by config and by source language (from the languages table, M1) — both are plain streaming text→text HTTPS calls through the author's `llmbroker` (`github.com/andgineer/llmbroker`, **≥1.5.1**): (a) **`llmbroker` pool** — `AsyncBroker` over a pool of free, rate-limited models with automatic failover and quality-based routing, **no metered key**; the default. `broker.stream(prompt, operation=…, trace_id=…, wait=…)` returns a `StreamHandle`: async-iterable over text deltas, carrying `llm_name` (who answered, from the first delta on) and `record_quality(score)`, and closed by the consumer with `aclose()`. It fails over up to the first delta and raises `StreamInterruptedError` past it. `wait` is the **whole-call budget — queueing for a free model plus the answer** (llmbroker does not penalize a model's quality score for the caller's deadline); without it a single attempt is bounded only by an internal 60 s ceiling, so echo-words always passes it, from the functional description's ~20–30 s budget. (b) **`llmbroker` direct client** (paid, **opt-in, never required**) — a single explicitly named frontier model, no pool, no failover, no routing: the model is **declared in echo-words's own code** at broker construction (`AsyncBroker(direct=[...])`) and reached with `await broker.direct(alias)`, which returns an `AsyncDirectClient` whose `.stream(prompt, timeout=…)` is a plain async iterator of deltas. That client borrows the broker's single shared httpx client, so obtaining one per request is cheap and echo-words must **not** close it. The alias comes from llmbroker's curated paid catalog (`opus`, `sonnet`, `gpt`, `flash`, … — `llmbroker list` prints them) and is an eternal handle — llmbroker re-points it at the current model generation on its own daily clock, so a provider's new release changes nothing here. Nothing is stored anywhere: the declaration in code is the only source of truth, and the API key is read at call time from the env var the catalog names, never touched by echo-words. Its role is hard languages and "who wants quality". One `AsyncBroker` instance serves both backends with one error taxonomy (`LLMRequestError` and its subclasses); it is created in the FastAPI lifespan (after the languages config) and `aclose()`d on shutdown. The **M0 spike (precedes M1)** benchmarks which backend is sufficient per language and sets the v0.1 defaults |
 | Lint | `ruff` (line-length 99), run in CI after tests |
 
 ## Reuse from dinary
 
 `../dinary` is the author's expense-tracker PWA already running in
-production **on the very instance echo-words will share** (see
-"Co-tenancy with dinary"), reached over Tailscale, on the same backend
-stack (FastAPI + uvicorn + pydantic-settings + llmbroker). It is a
-working precedent, not a reference design: prefer copying its solved
-parts to re-deriving them — but where co-tenancy and dinary's habits
-disagree, co-tenancy wins (the frontend build moves off the server, and
-host preparation is not repeated).
+production **on the sibling of the instance echo-words will use** —
+the same Oracle Free Tier shape in the same tenancy (see "Which host")
+— reached over Tailscale, on the same backend stack (FastAPI + uvicorn
++ pydantic-settings + llmbroker). It is a working precedent, not a
+reference design: prefer copying its solved parts to re-deriving them,
+except where this app's smaller footprint says otherwise (no store
+layer, no database, and the frontend build stays off the server).
 
 **Take:**
 
@@ -144,13 +144,13 @@ host preparation is not repeated).
   "Deployment" below).
 
 **Do not take** (dinary-specific): QR/zbar scanning, the catalog /
-rules / receipts / Sheets domain, the analytics stack, the Cloudflare
-tunnel alternative, the Litestream replica VM (echo-words's Anki
-collection is already replicated off-box by the AnkiWeb sync; only
-`word_log.db` is local-only, and losing history is tolerable — revisit
-Litestream if that stops being true), and its `.deploy/llms.toml`
-(llmbroker ≥ 1.5.1 is zero-config: the pool is a curated preset, there
-is no model-list file for the operator to write).
+rules / receipts / Sheets domain, the analytics stack, the Pinia store
+layer, the Cloudflare tunnel alternative, **Litestream and the whole
+backup apparatus** (echo-words has no database at all, and its one
+durable file — the Anki collection — is already replicated off-box by
+the AnkiWeb sync), and its `.deploy/llms.toml` (llmbroker ≥ 1.5.1 is
+zero-config: the pool is a curated preset, there is no model-list file
+for the operator to write).
 
 **Genuinely new here, with no dinary precedent: streaming.** dinary has
 no `EventSource` and no `text/event-stream` anywhere — its requests are
@@ -159,10 +159,10 @@ work; do not expect a pattern to copy.
 
 ## Deployment
 
-echo-words is deployed **onto the instance that already runs dinary** —
-one Oracle Free Tier `VM.Standard.E2.1.Micro`, not a second VM. That is
-a constraint on the design, not just an operational note: see
-"Co-tenancy with dinary" below for what it forbids.
+echo-words is deployed **onto the tenancy's second free-tier instance**
+— the one that holds dinary's Litestream replica and otherwise sits
+idle — rather than onto dinary's own VM. The reasoning and the measured
+comparison are in "Which host" below.
 
 One deployment target — the difference between it and a dev laptop is
 **pure configuration**, never a code path:
@@ -176,10 +176,10 @@ One deployment target — the difference between it and a dev laptop is
   behind them. Kokoro is not configured anywhere — it does not fit this
   host, and with the laptop deployment profile dropped it left the
   design entirely (`spec/decision-tts.md`).
-- **Tailscale is the front door**: `tailscale up` on the instance, then
-  `tailscale serve --bg {port}` maps tailnet-HTTPS onto the backend's
-  localhost port. The backend binds `127.0.0.1` and never sees TLS or
-  auth; tailnet membership is the access control.
+- **Tailscale is the front door**: the instance is already in the
+  tailnet, and `tailscale serve --bg 8080` maps its tailnet-HTTPS root
+  onto the backend's localhost port. The backend binds `127.0.0.1` and
+  never sees TLS or auth; tailnet membership is the access control.
 - **The laptop is a dev environment**, running the same configuration
   (Piper and edge-tts work anywhere); it is not a supported deployment
   profile.
@@ -188,80 +188,106 @@ Model downloads (M6) are driven by the config: only voices referenced by
 `languages.toml` are fetched. Full engine rationale and the comparison
 table: `spec/decision-tts.md`.
 
-### Co-tenancy with dinary
+### Which host: the second free-tier VM, not dinary's
 
-The target host already serves dinary and must keep doing so. Measured
-on it (2026-08-17, 2 vCPU / x86_64 / 45 GB disk, 35 GB free):
+The Oracle Always Free tenancy holds **two** AMD micro instances. VM1
+serves dinary; VM2 exists to receive dinary's Litestream replica over
+SFTP. echo-words goes on **VM2**. Measured on both (2026-08-17; each
+2 vCPU / x86_64 / 45 GB disk):
 
-| | |
-|---|---|
-| RAM | 956 MB total, **570 MB available** (630 MB in reclaimable cache) |
-| Swap | 1 GB, **193 MB already in use** |
-| dinary's uvicorn | **70 MB RSS** |
-| Other resident | tailscaled 33 MB, snapd 27 MB, fail2ban 25 MB, litestream 18 MB, OCI agents ~55 MB |
-| `systemd-journald` | **98 MB RSS, 3.9 GB of journals on disk** — the single largest consumer |
+| | VM1 (dinary) | VM2 (replica) |
+|---|---|---|
+| RAM available | 570 MB of 956 | **627 MB of 956** |
+| Swap in use | 193 MB of 1 GB | **82 MB of 1 GB** |
+| Disk free | 35 GB | **41 GB** |
+| App processes | dinary uvicorn 70 MB, litestream 18 MB | **none** |
+| `tailscale serve` | root taken → `https://<node>/` | **unconfigured** |
+| `systemd-journald` | 98 MB RSS, 3.9 GB of journals | 49 MB RSS |
 
-Rules that follow, all of them load-bearing:
+VM2 wins on every axis, and one of them is architectural rather than
+numeric: **it is a separate Tailscale node, so echo-words gets its own
+hostname and the root path** — `https://<vm2>.<tailnet>.ts.net/`. On
+VM1 it would have had to take a second HTTPS port (`--https=8443`) to
+avoid sharing an origin with dinary, because dinary's service worker is
+root-scoped with `clientsClaim` and a `navigateFallback` excluding only
+`/api/`: it would claim navigations under any sibling path and answer
+them with its own `index.html`. Two PWAs on one origin is a real
+collision — on VM2 the question does not arise, and there is no port to
+explain to the browser or to iOS.
 
-- **Its own origin, not its own path.** dinary owns the node's tailnet
-  root (`tailscale serve --bg 8000` → `https://<node>.<tailnet>.ts.net/`).
-  echo-words takes a **second HTTPS port** — `tailscale serve --bg
-  --https=8443 8080` → `https://<node>.<tailnet>.ts.net:8443/` (the
-  installed Tailscale 1.96 supports `--https=<port>`). Serving it under
-  a path on the shared root instead would be actively broken: dinary's
-  service worker is root-scoped with `clientsClaim` and a
-  `navigateFallback` that excludes only `/api/`, so it would claim
-  navigations under any sibling path and answer them with dinary's
-  `index.html`. A distinct port is a distinct **origin**, which gives
-  echo-words its own service-worker scope, its own cache storage and
-  its own `localStorage` — the only clean split for two PWAs on one
-  machine.
-- **Its own port**: the backend binds `127.0.0.1:8080`; dinary holds
-  8000.
-- **Bounded memory, so a bad day here cannot kill dinary.** The
-  systemd unit sets `MemoryHigh=350M` (the kernel reclaims from
-  echo-words first, under pressure it swaps rather than spreads) and
-  `MemoryMax=450M` (a hard ceiling: if anything runs away, the OOM
-  killer takes echo-words, never its neighbour). The budget behind
-  those numbers: ~70 MB uvicorn + the Anki pylib collection + a Piper
-  inference peak. **The pylib figure is the one unknown in this whole
-  plan** — measure RSS during the M5 sync spike, before M6 adds Piper
-  on top, and re-tune the limits then rather than trusting the
-  estimate.
-- **Do not build the frontend on the server.** dinary installs Node 22
-  and runs Vite there because it had the box to itself; a Rollup build
-  peaks in the hundreds of MB, which is exactly what a shared 1 GB host
-  cannot absorb. echo-words builds `_static/` **locally or in CI** and
-  the deploy task rsyncs the output. Consequence: echo-words's setup
-  installs no Node at all, and `_static/` ships as a build artifact.
-- **Host preparation is dinary's, not repeated.** echo-words's setup
-  task is `setup-app`: clone, `uv sync --no-dev`, data dir at 0700, its
-  systemd unit, its `tailscale serve` entry — and nothing host-wide. It
-  must **not** re-run sshd hardening, fail2ban, the Tailscale join, or
-  swap creation: those are already done, and dinary's idempotent
-  swap script short-circuits on an existing `/swapfile` rather than
-  resizing it. A `--with-host-prep` flag stays available for a fresh
-  box where echo-words is first.
-- **Two changes to make on the host before the first deploy**, both
-  benefiting dinary too: grow swap to **2 GB** (35 GB of disk is free;
-  the existing file is already 19% used with one app on it), and cap
-  the journal — `SystemMaxUse=200M` in `journald.conf`, which reclaims
-  most of 3.9 GB of disk and trims the largest resident process on the
-  box.
-- **llmbroker state stays separate.** dinary pins llmbroker 1.3.0 with
-  a `sqlite://` registry inside its own DB; echo-words targets 1.5.1
-  with `home=ECHOWORDS_DATA_DIR/llmbroker`. Separate venvs and separate
-  state — never point the two at one home directory, where the version
-  gap would meet `SchemaVersionError`. Provider API keys may hold the
-  same values in both `.deploy/.env` files; that is fine, they are read
-  per process.
+Litestream is **not a service on VM2** — VM1 pushes files there over
+SFTP — so nothing but the OS, tailscaled and fail2ban is resident. The
+replica role costs disk, not RAM, and echo-words adds no replication
+concern of its own because it has no database (see "Durable state").
+
+Consequences and rules:
+
+- **Port**: the backend binds `127.0.0.1:8080`; `tailscale serve --bg
+  8080` publishes it at the node's tailnet root.
+- **Hostname**: VM2's tailnet name is currently `dinary-replica`, which
+  would make an odd URL for this app. Renaming the node is **safe** —
+  dinary reaches the replica by IP, and the name appears only in
+  dinary's runbook examples, which would need a pass. Optional: the URL
+  is seen once, at install, since the PWA lives on the home screen
+  afterwards.
+- **Host preparation is needed here.** VM2 never received dinary's
+  hardening pass (`rpcbind` is still running there, which VM1's setup
+  disables), so echo-words's `setup-app` runs **with** `--with-host-prep`
+  on this box: packages, sshd hardening, fail2ban, swap, and the
+  `rpcbind`/iptables step, all ported from dinary. Growing swap to 2 GB
+  is cheap insurance with 41 GB free, and capping the journal
+  (`SystemMaxUse=200M`) is worth doing on both VMs.
+- **Bounded memory anyway.** The unit still sets `MemoryHigh=400M` /
+  `MemoryMax=500M`: not to protect a neighbour — there is none — but so
+  a runaway is killed as itself instead of taking the box down and
+  stranding dinary's replica target. The budget: ~70 MB uvicorn + the
+  Anki pylib collection + a Piper inference peak. **The pylib figure is
+  the one unknown in this plan** — measure RSS during the M5 sync
+  spike, before M6 adds Piper on top, and re-tune the limits then.
+- **Do not build the frontend on the server.** A Rollup build peaks in
+  the hundreds of MB; on a 1 GB box that is a needless risk even
+  without a co-tenant. Build `_static/` locally or in CI and rsync the
+  output — so no Node is installed on VM2 at all.
+- **If VM1 ever dies**, the documented recovery is to restore dinary
+  onto VM2, where the two would then share a box — an emergency
+  arrangement, and the reason the memory limits above stay in the unit.
+
+### llmbroker state: its own directory, not dinary's database
+
+echo-words keeps `home=ECHOWORDS_DATA_DIR/llmbroker`. **Sharing
+dinary's llmbroker state was considered and rejected**, and the same
+verdict holds even if the two ever land on one host:
+
+- `home=` **is** the filesystem option: with no source argument
+  llmbroker builds `FileRegistry(model_list_path(home))` +
+  `FileStore(home/"store")` — plain files, no database. And that
+  directory is explicitly a **cache** ("nothing here is authoritative,
+  so no step may raise") — it is disposable, which is exactly the
+  property this app wants everywhere else too.
+- Pointing echo-words at dinary's `sqlite://` store would put **two
+  processes on one SQLite file**, and llmbroker's sqlite driver opens
+  its connections with neither WAL nor a `busy_timeout` — concurrent
+  writers get `database is locked` immediately rather than waiting. It
+  is not a supported multi-process configuration as the library stands.
+  (Making it one — WAL plus a busy timeout — would be a reasonable
+  llmbroker feature request, not something to work around here.)
+- The benefit would have been small in any case: quality learning is
+  keyed per `(model, operation)` and the two apps use different
+  operation labels, so nothing transfers between them. Only pool
+  backoff state would be shared, and llmbroker rediscovers that in a
+  single failed call.
+- It would also couple the two apps' upgrade schedules through a shared
+  schema, replacing an independence that currently costs nothing.
+
+Provider API keys may hold the same values in both `.deploy/.env`
+files; that is fine, each process reads its own.
 
 ### Deploy tooling: invoke tasks over ssh, not Ansible/Chef
 
 Deployment is `invoke` tasks in `tasks/`, ported from dinary and reduced
-to what one app on a shared instance needs: `setup-app` (one-time,
-idempotent), `deploy --ref=…`, `status`, `logs`, `build-static`
-(local). **Configuration
+to what this app needs: `setup-app` (one-time, idempotent),
+`deploy --ref=…`, `status`, `logs`, `build-static` (local).
+**Configuration
 management (Ansible, Chef, Salt) was considered and rejected** for this
 project:
 
@@ -269,13 +295,10 @@ project:
   roles**. dinary's tasks are already idempotent by construction
   (`test -d … ||`, `swapon --show | grep -qx /swapfile`,
   `systemctl enable --now`), and inventory/roles solve a fleet problem
-  that **one instance running two apps** does not have. Two co-tenants
-  do raise the question — a shared host is where config drift usually
-  starts hurting — but the answer here is narrower than a CM tool: each
-  app owns its own unit, its own port and its own data dir, and neither
-  setup task touches host-wide state after the first one has run (see
-  "Co-tenancy with dinary"). Discipline about ownership, not a
-  convergence engine.
+  that **one instance running one app** does not have. There is a
+  second VM in the picture, but it runs the other app and is
+  provisioned by that repository's own tasks — two hosts owned
+  separately, not a fleet to converge.
 - Ansible would add a control-node dependency and a second mental model
   (YAML + modules) on top of the shell that still runs underneath;
   Chef additionally wants a server or chef-solo. That is real cost for
@@ -291,14 +314,14 @@ project:
 
 Revisit only if echo-words ever grows past one host.
 
-**What the tasks do**, ported with the dinary-specific parts dropped
-and adjusted for co-tenancy:
+**What the tasks do**, ported with the dinary-specific parts dropped:
 
 - `setup-app` — repo clone, `uv sync --no-dev`, `data/` at 0700, the
-  systemd unit, and `tailscale serve --bg --https=8443 8080`. No Node,
-  no host-wide steps (see "Co-tenancy with dinary"); `--with-host-prep`
-  adds packages, swap, sshd hardening, fail2ban and the Tailscale join
-  for a fresh box.
+  systemd unit, and `tailscale serve --bg 8080`. No Node is installed.
+  `--with-host-prep` adds the host-level pass (packages, swap, sshd
+  hardening, fail2ban, the `rpcbind`/iptables step) and is **required
+  on the target VM**, which never received dinary's hardening — see
+  "Which host".
 - `deploy --ref=…` — build `_static/` **locally** (`inv build-static`),
   `git checkout` the ref on the server, `uv sync --no-dev`, rsync the
   built `_static/`, sync `.deploy/.env`, re-render the unit, restart,
@@ -320,7 +343,7 @@ cache write conflicts with `ProtectHome=read-only`), `Restart=always`,
 and the sandbox block — `NoNewPrivileges`, `ProtectSystem=strict`,
 `ProtectHome=read-only`, `ReadWritePaths=` the data dir only,
 `PrivateTmp`, empty `CapabilityBoundingSet`, and the rest — **plus the
-`MemoryHigh` / `MemoryMax` limits co-tenancy requires**. Note for
+`MemoryHigh` / `MemoryMax` limits from "Which host"**. Note for
 echo-words: `ReadWritePaths` must cover `ECHOWORDS_DATA_DIR` (the Anki
 collection, the word log, TTS voices, cached audio) — one path, if the
 data dir stays under the checkout as it does for dinary.
@@ -448,10 +471,10 @@ One FastAPI application (`api.py`) serves everything:
   `EventSource`, and its automatic reconnect plus a `GET
   /api/words/recent` refetch on every (re)connect makes recovery
   lossless.
-- `GET /api/words/recent?limit=20` — the history: finished entries from
-  the word log (word, language, sanitized analysis HTML, status, audio
-  URL) merged with in-progress jobs (their accumulated sanitized text),
-  newest first.
+- `GET /api/words/recent?limit=20` — the history: entries from the
+  in-memory ring buffer (word, language, sanitized analysis HTML,
+  status, audio URL) including in-progress ones with their accumulated
+  sanitized text, newest first. Empty after a restart, by design.
 - `POST /api/words/{entry_id}/switch` — the correction button (M7):
   re-runs the pipeline for the other spelling into the same entry.
 - `POST /api/languages/{code}/undo` and `/redo` — per-language undo/redo
@@ -511,9 +534,9 @@ async def process_word(lang: Language, word: str, lookup_only: bool,
    compose the status line.
 8. If the payload carried a usable `suggestion`, include it in the
    `done` event so the UI renders the correction button (M7).
-9. Write the `word_log` row (with the sanitized analysis and audio
-   filename) and update the language's undo/redo state (M7); publish
-   `done`.
+9. Update the history entry in place (final sanitized analysis, status,
+   audio URL), bump the session counters, and update the language's
+   undo/redo state (M7); publish `done`.
 
 The function grows one step per milestone, leaving earlier steps
 untouched — the milestones below reference these step numbers.
@@ -611,7 +634,7 @@ Parsing rules (`prompt.py` / `card.py`):
   autocorrection is advisory, so the payload's `word` merely echoes the
   input and is not trusted for identity. Together with the source language
   the raw input is the key for the duplicate check (case-insensitive,
-  scoped to the language's deck), `word_log`,
+  scoped to the language's deck), the history entry,
   undo/redo state, the Anki `Word` field, and the speculative audio fetch
   (M6) — which is therefore always the right audio, with no re-fetch in
   the normal flow. `suggestion`, when non-empty and different from the
@@ -666,7 +689,8 @@ src/echo_words/
   anki.py           # headless collection wrapper (pylib): open/bootstrap, add/find/delete
                     # notes, media, debounced AnkiWeb sync
   audio.py          # per-language chain: dictionary + Piper + edge-tts -> mp3
-  word_log.py       # sqlite word_log (source for /api/stats and the history view)
+  history.py        # in-memory ring buffer of recent entries + the session counters
+                    # (duplicates, lookups); the source for /api/words/recent
 
 webapp/             # Vue 3 + Vite PWA sources (see "Reuse from dinary")
   package.json      # vue; dev: vite, @vitejs/plugin-vue, vite-plugin-pwa, vitest
@@ -966,7 +990,7 @@ decision doc to the official self-hosted sync server
 **Measure RSS while the spike runs** — with the collection open and
 after a sync, on the real (shared) host if possible. pylib's Rust
 backend holding the user's whole downloaded collection is the one
-unquantified term in the co-tenancy budget ("Co-tenancy with dinary");
+unquantified term in the host's memory budget ("Which host");
 this is the milestone that turns it into a number and re-tunes the
 unit's `MemoryHigh`/`MemoryMax` before M6 stacks Piper on top. If it
 lands far above the estimate, the escape hatches, in order: keep the
@@ -1165,28 +1189,29 @@ serves a stored file and rejects a path-like name.
 
 There is **no pending-card queue** in this design: the collection is
 in-process (M5), so a card add cannot fail on connectivity; only the
-AnkiWeb sync is asynchronous, and it retries by itself. What M7 adds is
-the word log with the history view, the stats/status endpoints, undo/
-redo, and the correction button.
+AnkiWeb sync is asynchronous, and it retries by itself. **There is no
+database either** — see the "Durable state" technology row. What M7 adds
+is the history buffer, the stats/status endpoints, undo/redo, and the
+correction button.
 
-`word_log.py`: sqlite (DB in `ECHOWORDS_DATA_DIR`, survives restarts),
-one table — `word_log(id, entry_id, lang, word, meanings_count, action,
-analysis_html, audio_file, created_at)` where action is
-`added | duplicate | lookup`, written on every processed word; the
-`word` column always holds the canonical word, `analysis_html` the
-sanitized analysis (the source of the history view), `audio_file` the
-stored mp3 name or empty. The source for `/api/stats` and the finished
-half of `/api/words/recent`. Queries are a handful of tiny statements,
-so calling the stdlib driver directly from async code is accepted — no
-thread offloading.
+`history.py`: a bounded in-memory ring buffer (last ~50 entries) of
+`Entry(entry_id, lang, word, action, analysis_html, audio_file,
+suggestion, shown_spelling, created_at)` where action is
+`pending | added | duplicate | lookup | failed`, written on every
+processed word and updated in place as it progresses; `word` always
+holds the canonical word and `analysis_html` the sanitized analysis.
+Alongside it, per-language counters for duplicate and lookup-only sends
+since startup. Both are plain process state — no locking beyond the
+single queue worker that mutates them, no I/O, nothing to migrate, and
+nothing to back up.
 
 Endpoints and behaviors:
 
-- `GET /api/words/recent` — finished rows from `word_log` merged with
-  the in-memory registry's in-progress jobs (M3), newest first; each
-  entry carries word, language, sanitized HTML, status, audio URL, and
-  — when the in-memory correction state still knows it — the suggestion
-  and which spelling is shown.
+- `GET /api/words/recent` — the ring buffer, newest first; each entry
+  carries word, language, sanitized HTML, status, audio URL, and — when
+  the correction state still knows it — the suggestion and which
+  spelling is shown. In-progress entries carry the text accumulated so
+  far (M3).
 - `GET /api/status` — per configured language: its backend, model, deck,
   and **backend health** — one `await broker.snapshot()` for `llmbroker`
   and `api` alike: `providers_usable` of `providers_total`, the
@@ -1203,8 +1228,10 @@ Endpoints and behaviors:
   is empty after a restart, back it with
   `await broker.stats(operation=f"{prefix}-{lang.code}", since=…)` —
   per-model call counts for this language's own operation label, read
-  from the local journal, which survives restarts and (like
-  `snapshot()`) never provisions the pool or spends a request. No live
+  from **llmbroker's** own journal in its home directory (not storage
+  echo-words maintains — the app still keeps no database of its own),
+  which outlives a restart and, like `snapshot()`, never provisions the
+  pool or spends a request. No live
   LLM probe: status must answer instantly; `snapshot()` reads local
   state only (its
   `providers_usable` / `providers_total` / `degraded` / `missing_keys` /
@@ -1213,8 +1240,17 @@ Endpoints and behaviors:
   whether unsynced local changes are waiting (`col.sync_status`), and a
   prominent error when a required one-way full sync is pending manual
   resolution (M5's safety rule).
-- `GET /api/stats` — words added today / last 7 days / all time, plus
-  duplicates and lookups counts, broken down by source language.
+- `GET /api/stats` — words added today / last 7 days / all time per
+  source language, **counted from the collection**, not from a log of
+  our own: `col.find_notes(f'deck:"{deck}" note:EchoWords')` and then
+  bucket the returned note ids, which in Anki *are* creation
+  timestamps in milliseconds. That makes the numbers correct across
+  restarts and impossible to drift from the deck they describe. Run it
+  in `asyncio.to_thread` like every other pylib call. Duplicate and
+  lookup-only sends create no note, so those two counters come from
+  `history.py` and the response marks them as counted **since
+  startup** — the UI must label them that way rather than implying an
+  all-time figure.
 - `POST /api/languages/{code}/undo` — remove the note the last
   submitted word **of that language** produced (`col.remove_notes`),
   trash its media file in the collection
@@ -1263,9 +1299,12 @@ memory and are lost on restart — documented behavior; after a restart a
 switch on an old entry gets a "request expired" response instead of
 acting on stale state.
 
-Tests: stats aggregation windows with per-language breakdown; the
-history endpoint merges finished rows (with analysis HTML and audio
-URL) and in-progress jobs; undo removes the note, trashes its
+Tests: stats windows bucketed from note ids against a temporary
+collection, with the per-language breakdown and the since-startup
+counters kept separate; the history buffer evicts oldest-first at its
+bound, updates an entry in place rather than appending a second one,
+and serves in-progress entries with their partial text; undo removes
+the note, trashes its
 collection media file and deletes its cached audio file; undo after a
 duplicate or a lookup-only send is a no-op that reports nothing to
 undo; redo replaces the previous note and streams into the existing
@@ -1299,17 +1338,17 @@ acting.
 - **Deploy tasks** (`tasks/`, ported from dinary — see "Deployment"):
   `setup-app`, `deploy --ref=…`, `status`, `logs`, `build-static`,
   plus `.deploy.example/.env` documenting every variable and a
-  gitignored `.deploy/`. Verify on the real instance, which **also runs
-  dinary**: `setup-app` is re-runnable without damage and touches
-  nothing host-wide, `deploy` gates on `/api/health`, the unit survives
-  a reboot (the `tailscaled` wait loop is what makes this work), the
-  app answers over the tailnet from the phone at `:8443` — and **dinary
-  is unaffected throughout**: still serving on the tailnet root, its
-  memory unchanged. Record echo-words's steady-state and peak RSS here
-  and confirm the unit's `MemoryHigh`/`MemoryMax` match reality.
+  gitignored `.deploy/`. Verify on the real instance: `setup-app
+  --with-host-prep` is re-runnable without damage, `deploy` gates on
+  `/api/health`, the unit survives a reboot (the `tailscaled` wait loop
+  is what makes this work), and the app answers over the tailnet from
+  the phone at the node's root. Record echo-words's steady-state and
+  peak RSS here and confirm the unit's `MemoryHigh`/`MemoryMax` match
+  reality. Also confirm **dinary's replication still lands** on this
+  box after the host-prep pass — it is the same machine that receives
+  its Litestream files.
 - **README**: the deploy flow above; the **Tailscale setup** (join,
-  `tailscale serve --bg --https=8443 8080`; the app is tailnet-only by
-  design and lives on its own port so it gets its own origin), "Add to
+  `tailscale serve --bg 8080`; the app is tailnet-only by design), "Add to
   Home Screen" on iOS, the optional iOS Shortcut that POSTs share-sheet
   text to `/api/words` (recipe, one paragraph), the `languages.toml`
   format and per-language decks, the AnkiWeb credentials setup
@@ -1318,11 +1357,12 @@ acting.
   `ECHOWORDS_SYNC_ENDPOINT` fallback), the optional `espeak-ng` system
   dependency for Piper, and the **deployment target**: Oracle Free Tier
   `VM.Standard.E2.1.Micro` — 1 GB RAM, **swap file as a hard
-  requirement** (2 GB when sharing the host), plus a short
-  "running next to another app" note covering the memory limits in the
-  unit and the two host tweaks (swap, journal cap); note that the Arm
-  `A1.Flex` shape, when a region actually has capacity, lifts the
-  memory constraints. Mention that `ECHOWORDS_DATA_DIR/audio/` keeps
+  requirement** (2 GB), and the memory limits in the unit; note that
+  the Arm `A1.Flex` shape, when a region actually has capacity, lifts
+  the memory constraints. State plainly that the app keeps **no
+  database and needs no backup**: only `ECHOWORDS_DATA_DIR` matters,
+  its Anki collection is synced to AnkiWeb anyway, and history and
+  counters are in-memory by design. Mention that `ECHOWORDS_DATA_DIR/audio/` keeps
   one small mp3 per looked-up word and has no cleanup policy in v0.1 —
   the files are safe to delete at any time, since the copy Anki reviews
   from lives in the collection's own media folder.
@@ -1419,14 +1459,24 @@ acting.
   calls with nothing to contain.
 - Words are processed sequentially and in submission order (one worker
   over a FIFO queue) — no parallel LLM runs, even across languages.
-- **echo-words shares dinary's instance.** One Oracle Free Tier micro
-  VM runs both. It gets its own origin (a second Tailscale HTTPS port,
-  never a path under dinary's root — root-scoped service workers would
-  collide), its own port, its own llmbroker state, and systemd memory
-  limits so it can never OOM-kill its neighbour; the frontend build
-  moves off the server because a Rollup peak does not fit beside a
-  running app. Measured budget and the full rule set: "Co-tenancy with
-  dinary".
+- **echo-words has no database.** The Anki collection is the only
+  durable state; history is a bounded in-memory buffer, "added" stats
+  are counted from the collection's own note ids, and duplicate/lookup
+  counters, undo/redo and correction state reset on restart. Losing any
+  of it costs nothing, because every word that mattered is already a
+  card — so there is no schema, no migrations, and nothing to back up
+  or replicate. See the "Durable state" technology row.
+- **It runs on the tenancy's second free-tier VM**, the otherwise idle
+  box that holds dinary's Litestream replica — not on dinary's own VM.
+  More headroom, and its own Tailscale node, so the app owns a
+  hostname's root instead of negotiating an origin with a neighbouring
+  PWA. Measured comparison and the rules: "Which host".
+- **llmbroker state is its own directory, not dinary's database.**
+  `home=` is already the plain-files option and is explicitly a
+  disposable cache; sharing a SQLite store across processes is not
+  supported by the driver as written (no WAL, no busy timeout), and
+  would buy almost nothing since quality learning is keyed per
+  operation. See "llmbroker state".
 - **The PWA and the deploy are ported from `dinary`, not invented.**
   dinary is the author's working PWA on the same Oracle Free Tier shape,
   reached the same way over Tailscale, on the same FastAPI + llmbroker
