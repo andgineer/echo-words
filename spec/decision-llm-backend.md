@@ -36,11 +36,14 @@ behind those defaults. It is an input to M2.
   as audio, so the transcription is welcome when it is right and
   decides nothing when it is not. Whether it is *present* is still
   checked, as one more signal that a model follows the prompt at all.
-- Not measured: `grok` and `deepseek` — no keys. The pool's fifth model
-  could not be reached either: the account behind the key has no
-  resource package, and `glm-4.7-flash`, the model llmbroker's curated
-  free-tier list names, is not among the models that key is offered at
-  all. Four of the five pool models answered.
+- Not measured: `grok` and `deepseek` — no keys. The pool's fifth model,
+  `glm-4.7-flash`, has a working key but would not answer: its shared
+  free tier hands back HTTP 429 ("the service may be temporarily
+  overloaded") most of the time, and availability swings from roughly a
+  third of attempts to none at all within the same hour — 26 consecutive
+  refusals in one stretch, short prompts and real ones alike. Nothing to
+  configure: that provider's free tier is simply oversubscribed. Four of
+  the five pool models answered.
 
 ## Hypothesis 1 — sufficiency varies by source language: confirmed, mildly
 
@@ -117,6 +120,7 @@ answering model:
 | `groq-gpt-oss-120b` | 2.8–3.5 s | clean on en/de; HTML discipline collapses on Serbian |
 | `openrouter-nemotron-3-ultra` | 35–57 s (worst 101 s) | 79–83% cards on de/en; a sixth of German answers not in Russian |
 | `openrouter-laguna-s-2.1` | 43 s | one sample |
+| `zai-glm-4.7-flash` | — | refused every attempt; its free tier is oversubscribed |
 
 The two slowest models carry the highest curated weights after the
 primary, so the *first* fallback is the worst possible choice for an
