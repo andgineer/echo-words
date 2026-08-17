@@ -5,7 +5,12 @@ the headless Anki Python library (pylib) syncing to AnkiWeb; the user
 keeps reviewing in AnkiDroid/AnkiMobile/desktop unchanged.** The
 functional description and the implementation plan (M5, M7) have been
 amended accordingly — see "Impact on the plan" at the end for the
-summary of what changed.
+summary of what changed. **Verified end to end on 2026-08-17** on the
+target instance itself, against the real AnkiWeb account and the real
+collection: the card added by the server arrived on the phone with its
+audio. The measurements and the operating rules the verification
+produced live in the implementation plan (M5); the harness is
+`experiments/anki_headless_spike.py`.
 
 ## The problem with the current plan
 
@@ -94,27 +99,43 @@ What changes in the backend, compared to AnkiConnect:
 
 Risks, honestly:
 
-1. **Sync auth from a script.** Anki 24.11+ tightened what add-ons may
-   pass to `sync_login`, but the pylib call itself remains public
-   (signature above), and the Anki forum documents a supported
-   headless path: obtain `SyncAuth`/hkey once via `sync_login`, store
-   it, reuse it for `sync_collection`/`sync_media`. This needs a
-   half-day spike (like M0) before amending M5 — log in, add a note
-   with audio server-side, watch it arrive on AnkiDroid.
-2. **pylib API churn.** pylib is versioned with the app and refactors
-   between releases. Mitigation: pin `anki==` in `uv.lock` (already
-   the project norm) and upgrade deliberately. `apy` has tracked this
-   for years with modest effort.
+1. **Sync auth from a script: closed.** Headless login against the
+   real AnkiWeb works and returns a key that is reused for subsequent
+   syncs — no GUI, no add-on, nothing gated. The 24.11+ tightening
+   applies to add-ons, not to the library call.
+2. **pylib API churn: smaller than assumed.** The surface this
+   integration depends on has not changed at all across the releases
+   from 23.12.1 to 26.08.1 — about two and a half years and eight
+   releases; the changes before that were additive. The mitigation
+   stands anyway (pin the version, upgrade deliberately), but the
+   expected maintenance cost is near zero.
 3. **One writer.** The server collection is written only by echo-words
    and only synced elsewhere — no concurrent-writer problem by
    construction (single-instance NFR).
-4. **AnkiWeb dependency.** If the auth path ever breaks, the fallback
-   is Anki's **official self-hosted sync server** (built into the same
-   package, a tiny process, docs.ankiweb.net/sync-server) on the same
-   OCI instance; AnkiDroid and AnkiMobile both support a custom sync
-   endpoint. Same architecture, one extra small always-on process, no
-   AnkiWeb. Not the default because AnkiWeb costs zero ops and the
-   user already has the account.
+4. **AnkiWeb dependency.** If the AnkiWeb path ever breaks, the
+   fallback is Anki's **official self-hosted sync server** (built into
+   the same package, a tiny process, docs.ankiweb.net/sync-server) on
+   the same OCI instance; AnkiDroid and AnkiMobile both support a
+   custom sync endpoint. Same architecture, one extra small always-on
+   process, no AnkiWeb. A full round trip through it — server writes a
+   note with media, an independent client reads it back — was verified
+   headless on the target instance, so this is a switch-ready option
+   rather than a theoretical one. Not the default because AnkiWeb
+   costs zero ops and the user already has the account.
+5. **AnkiWeb's terms of service — the one risk that cannot be
+   engineered away.** The terms permit the browser and the four named
+   apps (Anki, AnkiMobile, AnkiDroid, AnkiUniversal) and disallow
+   other third-party clients, pointing programmatic users at
+   AnkiConnect instead. That text is from 2018, before pylib was
+   published as a standalone package, and it does not anticipate a
+   process that runs Anki's own synchronisation code: on the wire our
+   sync is indistinguishable from the desktop app's, and its volume is
+   lighter than a normal user with three devices. So the practical
+   exposure is low, but the sanction available to Ankitects is
+   suspension of the account at their discretion, and it is not ours
+   to appeal. This is the reason risk 4's self-hosted server is worth
+   keeping ready: it removes AnkiWeb from the architecture entirely
+   and costs one endpoint setting on the server and on the phone.
 
 ## Option C — own spaced repetition in the bot (Glosbe-style): viable, kept as the strategic alternative
 
@@ -269,3 +290,11 @@ AnkiMobile custom-server settings; lervag/apy (headless pylib
 precedent); mochi.cards/docs/api (REST API, attachments, Pro-gated);
 open-spaced-repetition/py-fsrs; rhasspy/piper VOICES.md (`sr_RS`
 serbski_institut); edge-tts voice list (`sr-RS-*`, `hr-HR-*`).
+
+References added by the 2026-08-17 verification: PyPI `anki` project
+metadata (published by the Anki team, source ankitects/anki — the same
+repository as the desktop app); ankitects/anki release tags 2.1.54
+through 26.08.1 (API stability comparison); docs.ankiweb.net/syncing
+(sync host names, six-month expiry of unused account data — which the
+server's own syncing keeps at bay); ankiweb.net/account/terms (access
+clause, last updated 2018-10-17).

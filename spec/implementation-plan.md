@@ -104,7 +104,7 @@ Prompt template for the operator (one per milestone):
 | Web framework | **FastAPI + uvicorn**: JSON API, server-sent events (a `StreamingResponse` with `media_type="text/event-stream"` — no extra SSE dependency), and static files (`StaticFiles`) from one process. Binds `ECHOWORDS_HOST:ECHOWORDS_PORT` (default `127.0.0.1:8080`); **`tailscale serve` publishes that port as HTTPS inside the tailnet** — the backend itself never handles TLS or auth (decision record: `spec/decision-interface.md`) |
 | Frontend | **Vue 3 + Vite + `vite-plugin-pwa`**, sources in `webapp/`, built into `_static/` (gitignored) and served by the backend — the same stack, layout and build wiring as `dinary`, whose PWA this one is modelled on (see "Reuse from dinary"). **No Pinia**: the whole client state is the selected language, the entry list and the resend queue, which plain `ref`/`reactive` in a few composables hold without ceremony — dinary needs a store layer for its catalog/review/queue cross-talk, this app does not. Its `vite.config.js` PWA strategy is copied rather than re-derived: `registerType: "autoUpdate"` + `skipWaiting` + `clientsClaim` so a deploy reaches the phone on the next reload, `globPatterns` precaching the hashed output, `navigateFallback: "index.html"` with `navigateFallbackDenylist: [/^\/api\//]`, and `runtimeCaching` pinning `/api/*` to `NetworkOnly` so an API response is never served from cache. Vitest for the non-trivial client logic (resend queue, SSE reconnect); markup is checked by hand |
 | HTTP client (dictionary pronunciation) | `httpx` (async) |
-| Anki integration | **`anki` pylib, headless** (the non-GUI core of Anki as a PyPI package; manylinux x86_64 + aarch64 wheels). The backend maintains its own collection in `ECHOWORDS_DATA_DIR/anki/` and syncs to AnkiWeb via pylib's `sync_login` / `sync_collection` / `sync_media`. Pin the version (`anki==26.5` at the time of writing) — pylib's API drifts between releases; upgrades are deliberate. No AnkiConnect, no Anki desktop, no GUI anywhere. Decision record: `spec/decision-spaced-repetition.md` |
+| Anki integration | **`anki` pylib, headless** (the non-GUI core of Anki as a PyPI package; manylinux x86_64 + aarch64 wheels). The backend maintains its own collection in `ECHOWORDS_DATA_DIR/anki/` and syncs to AnkiWeb via pylib's `sync_login` / `sync_collection` / `sync_media`. Pin the version (`anki==26.8.1`, verified on VM2) and upgrade deliberately — the API this project uses has been stable for years, but pylib is versioned with the app. The wheels need **glibc ≥ 2.35**, which VM2 meets exactly; an older base image would rule the package out entirely. No AnkiConnect, no Anki desktop, no GUI anywhere. Decision record: `spec/decision-spaced-repetition.md` |
 | TTS (local) | Piper (`piper-tts`, ONNX voices, MIT) — local neural TTS with per-language voices, ~60–100 MB per voice, real time on Raspberry-Pi-class CPUs, so it runs on the 1 GB micro instance. English `en_US-lessac-medium`, German `de_DE-thorsten-medium`. **Serbian is settled: Piper has NO usable Serbian voice** — the only `sr_RS` dataset (`serbski_institut`) is actually **Lower Sorbian** (Sorbian Institute recordings miscatalogued under the Serbian locale) and must never be configured; Serbian's engine is edge-tts (decision record: `spec/decision-tts.md`). Configured voices downloaded at startup, pinned-URL + checksum mechanism (M6). Piper phonemizes via `espeak-ng` — an optional system dependency, documented in the README (M8) |
 | TTS (online) | `edge-tts` (MS Edge neural voices, free online, outputs mp3, per-language voices) — the **primary** engine for Serbian (`sr-RS-SophieNeural` / `sr-RS-NicholasNeural`, near-commercial quality, both scripts; no usable local voice exists — see `spec/decision-tts.md`) and the last-resort fallback for every other language when the local engine fails. Its known flakiness (unofficial API, recurring 403 breakage) is acceptable in both roles: audio is generated once per word and stored in Anki media, so an outage only affects words added during it |
 | mp3 encoding | `lameenc` (pure-wheel LAME bindings) to convert Piper's WAV output to mp3 — no ffmpeg system dependency |
@@ -241,9 +241,14 @@ Consequences and rules:
   `MemoryMax=500M`: not to protect a neighbour — there is none — but so
   a runaway is killed as itself instead of taking the box down and
   stranding dinary's replica target. The budget: ~70 MB uvicorn + the
-  Anki pylib collection + a Piper inference peak. **The pylib figure is
-  the one unknown in this plan** — measure RSS during the M5 sync
-  spike, before M6 adds Piper on top, and re-tune the limits then.
+  Anki pylib collection + a Piper inference peak. **The pylib term is
+  now measured** — 103 MB peak on this box with the real collection
+  (M5), which leaves the limits as they stand and the room for Piper
+  intact.
+- **Outbound HTTPS to `*.ankiweb.net`** must stay open: sync starts at
+  `sync.ankiweb.net` and is redirected to a numbered shard whose name
+  varies, so an egress rule pinned to one host would break syncing at
+  a random moment. The Anki manual documents the wildcard.
 - **Do not build the frontend on the server.** A Rollup build peaks in
   the hundreds of MB; on a 1 GB box that is a needless risk even
   without a co-tenant. Build `_static/` locally or in CI and rsync the
@@ -974,28 +979,57 @@ validity), and a `suggestion` that fails the language's input validation
 
 ### M5 — Anki integration (headless pylib)
 
-**First task of this milestone — the sync spike** from
-`decision-spaced-repetition.md` (a sanctioned manual step; real AnkiWeb
-stays out of the test suite): with the pinned `anki` version,
-live-verify the headless path end to end —
-`sync_login(user, password, endpoint=None)` returns a usable
-`SyncAuth`/hkey; a **fresh server collection bootstraps by downloading
-the user's existing AnkiWeb collection** (never upload-over it — the
-account already holds other decks); an added note with audio arrives on
-AnkiDroid after `sync_collection(auth, sync_media=True)`. If the
-AnkiWeb auth path fails on the current version, fall back per the
-decision doc to the official self-hosted sync server
-(`ECHOWORDS_SYNC_ENDPOINT`) before touching the design.
+**The sync spike that gates this milestone is done** (harness:
+`experiments/anki_headless_spike.py`, outside the package and outside
+CI, like M0's — it deliberately hits real AnkiWeb, which stays out of
+the test suite). Run on VM2 itself against the real account with
+`anki==26.8.1`: headless `sync_login` works, a fresh collection
+bootstraps by downloading the existing AnkiWeb collection, and a note
+with audio added server-side arrives on AnkiDroid — confirmed by ear,
+and independently by a second fresh collection that pulled it back from
+AnkiWeb. The harness also proves the fallback: the same round trip
+through Anki's own self-hosted sync server. Re-run it after any `anki`
+version bump; `--cleanup` removes what it adds.
 
-**Measure RSS while the spike runs** — with the collection open and
-after a sync, on the real (shared) host if possible. pylib's Rust
-backend holding the user's whole downloaded collection is the one
-unquantified term in the host's memory budget ("Which host");
-this is the milestone that turns it into a number and re-tunes the
-unit's `MemoryHigh`/`MemoryMax` before M6 stacks Piper on top. If it
-lands far above the estimate, the escape hatches, in order: keep the
-collection trimmed to echo-words's own decks, or move the whole thing
-to the Arm shape when capacity appears.
+**Four rules the spike produced — the implementation must follow them:**
+
+- **Follow the endpoint AnkiWeb hands back.** Both `sync_status` and
+  `sync_collection` may return a `new_endpoint` (a shard such as
+  `sync10.ankiweb.net`); whether they do varies per session. Rebuild
+  `SyncAuth` with it and use that for everything after, exactly as
+  `qt/aqt/sync.py` does with the profile's sync URL. Skipping this
+  makes the full download fail with an opaque
+  `HttpError 400 "missing original size"` — the shard's response lacks
+  a header the client requires.
+- **A full transfer needs the collection closed and reopened around
+  it** — `close_for_full_sync()` before, `reopen(after_full_sync=True)`
+  after. The Rust backend reopens the collection itself; without this
+  the Python object keeps a handle to a database that is gone.
+- **Never touch the schema after the first sync.** Removing or
+  restructuring a note type is a schema change, after which AnkiWeb
+  demands a one-way full sync — which the safety rule below forbids,
+  so the change would sit unsynced forever. Creating the note type and
+  the language decks does *not* trigger this and syncs normally. If a
+  pre-existing `EchoWords` note type is misconfigured, fail with the
+  status-line error as specified below; never "fix" it by deleting it.
+- **Treat a `FULL_SYNC` answer as an error, not as a no-op.** It means
+  the changes were not pushed. Surface it (M7's `/api/status`) instead
+  of letting a silent branch swallow it.
+
+**Measured on VM2, 2026-08-17** (the collection: 4362 notes, 5141
+cards, 33.4 MB, plus 1353 media files at 82 MB):
+
+- **Peak RSS 103 MB** with the collection open and a media sync
+  running; 91 MB with it open and idle; 71 MB on an empty collection.
+  With uvicorn's ~70 MB that fits the unit's `MemoryHigh=400M` /
+  `MemoryMax=500M` and leaves room for M6's Piper — the limits stay as
+  "Which host" sets them, and the escape hatches (trim the collection
+  to echo-words's own decks, or move to the Arm shape) stay unused.
+- **A steady-state sync is free**: 0.02 s for the collection and 0.2 s
+  for media when nothing changed, so the 5-minute debounce is
+  generous rather than tight. Only the first run is slow — 0.9 s for
+  the collection download and 43 s to fetch the whole media library.
+- **Disk: ~115 MB** for collection plus media, against 40 GB free.
 
 `anki.py` wraps a headless `anki.collection.Collection` at
 `ECHOWORDS_DATA_DIR/anki/collection.anki2` (directory created on first
