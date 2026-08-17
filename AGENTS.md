@@ -24,3 +24,6 @@
   exception and stays out of CI.
 - English-only comments and docs. All imports at module top level (the
   one sanctioned exception is marked in the plan, M6).
+- Commit straight to `main` — no working branches, no PRs. Releases are
+  protected by their tag and by the PyPI publication, so `main` is a
+  working surface and breaking it costs nothing.
