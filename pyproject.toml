@@ -13,6 +13,10 @@ requires-python = ">=3.12"
 dependencies = [
     "click>=8.2.0",
     "rich-click>=1.8.8",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "pydantic-settings>=2.6.0",
+    "httpx>=0.27.0",
 ]
 [[project.authors]]
 name = "Andrey Sorokin"
@@ -35,7 +39,38 @@ packages = "find:"
 include = [ "README.md", "LICENSE",]
 
 [tool.ruff]
-line-length = 99
+line-length = 100
+# tasks.py and the experiments/ spikes are outside the product: the harnesses
+# deliberately import non-dependencies and are never shipped or CI-tested.
+exclude = ["tasks.py", "resources", "experiments"]
+
+[tool.ruff.lint]
+select = [
+    "PL",   # all Pylint rules
+    "A001", # shadowing Python builtins
+    "ARG",  # unused function arguments
+    "B",    # bugbear
+    "BLE",  # blind except
+    "C",    # complexity
+    "COM",  # comma placement
+    "E",    # pycodestyle errors
+    "F",    # pyflakes
+    "G",    # logging format
+    "I",    # import ordering
+    "ISC",  # implicit string concatenation
+    "N",    # naming
+    "PIE",  # misc
+    "Q",    # quotes
+    "RET",  # return statements
+    "S",    # security
+    "SIM",  # simplification
+    "SLF",  # private member access
+    "TID",  # tidy imports
+    "TRY",  # exception handling
+    "UP",   # upgrade syntax
+    "W",    # warnings
+]
+ignore = ["B019", "S101", "G004", "TRY003", "TRY300", "TRY301", "TRY400"]
 
 [tool.hatch.version]
 path = "src/echo_words/__about__.py"
@@ -43,6 +78,7 @@ path = "src/echo_words/__about__.py"
 [dependency-groups]
 dev = [
     "allure-pytest>=2.14.2",
+    "ruff>=0.16.0",
     "invoke>=2.2.0",
     "tomli-w>=1.2.0",
     "mkdocs-awesome-pages-plugin>=2.10.1",

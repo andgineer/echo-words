@@ -29,8 +29,15 @@ Rules:
   and styling are checked by hand per milestone.
 - Update `uv.lock` when adding dependencies (`uv lock`); CI uses
   `--frozen`.
+- **CI runs on Linux only** (`ubuntu-latest`, Python 3.12 and 3.13). The
+  deployment target is an x86_64 Linux VM, and two of this project's
+  dependencies are Linux-first: the `anki` pylib wheels the plan pins and
+  Piper's phonemization stack. macOS is the author's dev box and is covered
+  by running the suite there by hand; Windows is not a supported profile for
+  either running or testing this app.
 - Execute milestones strictly in order (M0 → M8); do not start a
-  milestone until the previous one's tests are green. Each milestone
+  milestone until the previous one's tests are green. M7 is the one
+  milestone split across two sessions — M7a then M7b, see its section. Each milestone
   ends with an explicit test list — implement those tests, plus whatever
   the code itself obviously requires.
 
@@ -78,8 +85,9 @@ dependency-pin problem to fix in `uv.lock`, not something to code around.
 
 ## Execution protocol (how to drive this plan)
 
-The plan is executed **one milestone per working session**, in order.
-For every milestone the executing agent must:
+The plan is executed **one milestone per working session**, in order
+(M7's two halves are two such sessions). For every milestone the
+executing agent must:
 
 1. Read, in this order: `functional-description.md` (at minimum the
    sections the milestone touches), then this file's "Rules",
@@ -124,9 +132,9 @@ Prompt template for the operator (one per milestone):
 
 `../dinary` is the author's expense-tracker PWA already running in
 production **on the sibling of the instance echo-words will use** —
-the same Oracle Free Tier shape in the same tenancy (see "Which host")
-— reached over Tailscale, on the same backend stack (FastAPI + uvicorn
-+ pydantic-settings + llmbroker). It is a working precedent, not a
+the same Oracle Free Tier shape in the same tenancy
+(`spec/decision-deployment.md`) — reached over Tailscale, on the same
+backend stack (FastAPI + uvicorn + pydantic-settings + llmbroker). It is a working precedent, not a
 reference design: prefer copying its solved parts to re-deriving them,
 except where this app's smaller footprint says otherwise (no store
 layer, no database, and the frontend build stays off the server).
@@ -168,7 +176,7 @@ work; do not expect a pattern to copy.
 echo-words is deployed **onto the tenancy's second free-tier instance**
 — the one that holds dinary's Litestream replica and otherwise sits
 idle — rather than onto dinary's own VM. The reasoning and the measured
-comparison are in "Which host" below.
+comparison are in `spec/decision-deployment.md`.
 
 One deployment target — the difference between it and a dev laptop is
 **pure configuration**, never a code path:
@@ -194,39 +202,12 @@ Model downloads (M6) are driven by the config: only voices referenced by
 `languages.toml` are fetched. Full engine rationale and the comparison
 table: `spec/decision-tts.md`.
 
-### Which host: the second free-tier VM, not dinary's
+### Rules the host imposes
 
-The Oracle Always Free tenancy holds **two** AMD micro instances. VM1
-serves dinary; VM2 exists to receive dinary's Litestream replica over
-SFTP. echo-words goes on **VM2**. Measured on both (2026-08-17; each
-2 vCPU / x86_64 / 45 GB disk):
-
-| | VM1 (dinary) | VM2 (replica) |
-|---|---|---|
-| RAM available | 570 MB of 956 | **627 MB of 956** |
-| Swap in use | 193 MB of 1 GB | **82 MB of 1 GB** |
-| Disk free | 35 GB | **41 GB** |
-| App processes | dinary uvicorn 70 MB, litestream 18 MB | **none** |
-| `tailscale serve` | root taken → `https://<node>/` | **unconfigured** |
-| `systemd-journald` | 98 MB RSS, 3.9 GB of journals | 49 MB RSS |
-
-VM2 wins on every axis, and one of them is architectural rather than
-numeric: **it is a separate Tailscale node, so echo-words gets its own
-hostname and the root path** — `https://<vm2>.<tailnet>.ts.net/`. On
-VM1 it would have had to take a second HTTPS port (`--https=8443`) to
-avoid sharing an origin with dinary, because dinary's service worker is
-root-scoped with `clientsClaim` and a `navigateFallback` excluding only
-`/api/`: it would claim navigations under any sibling path and answer
-them with its own `index.html`. Two PWAs on one origin is a real
-collision — on VM2 the question does not arise, and there is no port to
-explain to the browser or to iOS.
-
-Litestream is **not a service on VM2** — VM1 pushes files there over
-SFTP — so nothing but the OS, tailscaled and fail2ban is resident. The
-replica role costs disk, not RAM, and echo-words adds no replication
-concern of its own because it has no database (see "Durable state").
-
-Consequences and rules:
+Why VM2 rather than dinary's own VM, why `invoke` tasks over ssh rather
+than Ansible, and why llmbroker keeps its state in a directory of its
+own: `spec/decision-deployment.md`, with the measurements behind each.
+What follows is what M6 and M8 must actually do.
 
 - **Port**: the backend binds `127.0.0.1:8080`; `tailscale serve --bg
   8080` publishes it at the node's tailnet root.
@@ -263,67 +244,14 @@ Consequences and rules:
   onto VM2, where the two would then share a box — an emergency
   arrangement, and the reason the memory limits above stay in the unit.
 
-### llmbroker state: its own directory, not dinary's database
 
-echo-words keeps `home=ECHOWORDS_DATA_DIR/llmbroker`. **Sharing
-dinary's llmbroker state was considered and rejected**, and the same
-verdict holds even if the two ever land on one host:
-
-- `home=` **is** the filesystem option: with no source argument
-  llmbroker builds `FileRegistry(model_list_path(home))` +
-  `FileStore(home/"store")` — plain files, no database. And that
-  directory is explicitly a **cache** ("nothing here is authoritative,
-  so no step may raise") — it is disposable, which is exactly the
-  property this app wants everywhere else too.
-- Pointing echo-words at dinary's `sqlite://` store would put **two
-  processes on one SQLite file**, and llmbroker's sqlite driver opens
-  its connections with neither WAL nor a `busy_timeout` — concurrent
-  writers get `database is locked` immediately rather than waiting. It
-  is not a supported multi-process configuration as the library stands.
-  (Making it one — WAL plus a busy timeout — would be a reasonable
-  llmbroker feature request, not something to work around here.)
-- The benefit would have been small in any case: quality learning is
-  keyed per `(model, operation)` and the two apps use different
-  operation labels, so nothing transfers between them. Only pool
-  backoff state would be shared, and llmbroker rediscovers that in a
-  single failed call.
-- It would also couple the two apps' upgrade schedules through a shared
-  schema, replacing an independence that currently costs nothing.
-
-Provider API keys may hold the same values in both `.deploy/.env`
-files; that is fine, each process reads its own.
-
-### Deploy tooling: invoke tasks over ssh, not Ansible/Chef
+### Deploy tasks
 
 Deployment is `invoke` tasks in `tasks/`, ported from dinary and reduced
 to what this app needs: `setup-app` (one-time, idempotent),
-`deploy --ref=…`, `status`, `logs`, `build-static` (local).
-**Configuration
-management (Ansible, Chef, Salt) was considered and rejected** for this
-project:
-
-- The value those tools add over shell is **idempotency, inventory and
-  roles**. dinary's tasks are already idempotent by construction
-  (`test -d … ||`, `swapon --show | grep -qx /swapfile`,
-  `systemctl enable --now`), and inventory/roles solve a fleet problem
-  that **one instance running one app** does not have. There is a
-  second VM in the picture, but it runs the other app and is
-  provisioned by that repository's own tasks — two hosts owned
-  separately, not a fleet to converge.
-- Ansible would add a control-node dependency and a second mental model
-  (YAML + modules) on top of the shell that still runs underneath;
-  Chef additionally wants a server or chef-solo. That is real cost for
-  no capability this project uses.
-- Decisively: porting from dinary means **inheriting code that has
-  already been debugged in production on this exact shape** — the
-  systemd sandbox block, the `ExecStartPre` loop that waits for
-  `tailscaled` (its comment records that `network.target` was found not
-  to wait for it after a reboot), the swap provisioning, the sshd and
-  fail2ban hardening. Re-expressing those in Ansible roles means
-  re-deriving hard-won details in a different language: pure risk, zero
-  gain.
-
-Revisit only if echo-words ever grows past one host.
+`deploy --ref=…`, `status`, `logs`, `build-static` (local). Ansible and
+Chef were considered and rejected — the argument is in
+`spec/decision-deployment.md`.
 
 **What the tasks do**, ported with the dinary-specific parts dropped:
 
@@ -332,7 +260,7 @@ Revisit only if echo-words ever grows past one host.
   `--with-host-prep` adds the host-level pass (packages, swap, sshd
   hardening, fail2ban, the `rpcbind`/iptables step) and is **required
   on the target VM**, which never received dinary's hardening — see
-  "Which host".
+  "Rules the host imposes".
 - `deploy --ref=…` — build `_static/` **locally** (`inv build-static`),
   `git checkout` the ref on the server, `uv sync --no-dev`, rsync the
   built `_static/`, sync `.deploy/.env`, re-render the unit, restart,
@@ -354,8 +282,8 @@ cache write conflicts with `ProtectHome=read-only`), `Restart=always`,
 and the sandbox block — `NoNewPrivileges`, `ProtectSystem=strict`,
 `ProtectHome=read-only`, `ReadWritePaths=` the data dir only,
 `PrivateTmp`, empty `CapabilityBoundingSet`, and the rest — **plus the
-`MemoryHigh` / `MemoryMax` limits from "Which host"**. Note for
-echo-words: `ReadWritePaths` must cover `ECHOWORDS_DATA_DIR` (the Anki
+`MemoryHigh` / `MemoryMax` limits from "Rules the host imposes"**. Note
+for echo-words: `ReadWritePaths` must cover `ECHOWORDS_DATA_DIR` (the Anki
 collection, the word log, TTS voices, cached audio) — one path, if the
 data dir stays under the checkout as it does for dinary.
 
@@ -456,7 +384,12 @@ One FastAPI application (`api.py`) serves everything:
   `_static/` (`StaticFiles`); M8 adds the manifest and icons.
 - `GET /api/languages` — the configured languages (code + display name)
   for the selector.
-- `POST /api/words` — body `{word, lang, lookup_only}`. Validates (M1),
+- `POST /api/words` — body `{word, lang, lookup_only, context}`, where
+  `context` is optional: the client sends it when the word came from a
+  pasted phrase the user picked it out of (M7's picker), and the word
+  pipeline passes it into the prompt's `{context_note}` slot. It is free
+  text, capped and sanitized like any LLM input, and it never becomes the
+  canonical word. Validates (M1),
   assigns an `entry_id`, enqueues the job (M3), and returns
   `{entry_id}` immediately; a validation failure returns the short hint
   instead. The client renders the pending entry from this response.
@@ -787,7 +720,11 @@ src/echo_words/
   __init__.py       # exists
   config.py         # Settings
   languages.py      # Language dataclass + languages.toml loader; lookup by code
-  main.py           # entry point: build the app, uvicorn.run; console_script `echo-words`
+  main.py           # the existing `echo-words` click command, reduced to a server
+                    # launcher: it keeps --version (the scaffold's test covers it)
+                    # and runs uvicorn on ECHOWORDS_HOST:ECHOWORDS_PORT. The app
+                    # object itself is built in api.py, so the deploy's ExecStart
+                    # can call uvicorn directly without importing click
   api.py            # FastAPI routes (submit, events SSE, recent, switch, undo,
                     # stats, status, audio) + static mounting
   pipeline.py       # process_word + the single FIFO queue worker + in-memory job registry
@@ -849,6 +786,12 @@ Everything it settled, and the numbers behind it, is
 this plan restates it.
 
 ### M1 — config + web app skeleton
+
+The Python side of the dependency set is already in `pyproject.toml` and
+`uv.lock` — `fastapi`, `uvicorn[standard]`, `pydantic-settings`, `httpx`
+(the last one is also what the in-process test client needs); the
+`webapp/` scaffold brings its own `package.json`. Later milestones add
+`llmbroker` (M2), `anki` (M5) and the TTS stack (M6).
 
 `config.py`, `languages.py`, `main.py`, `api.py`, plus the `webapp/`
 scaffold: the application starts, answers `GET /api/health`, serves
@@ -1106,8 +1049,9 @@ cards, 33.4 MB, plus 1353 media files at 82 MB):
   running; 91 MB with it open and idle; 71 MB on an empty collection.
   With uvicorn's ~70 MB that fits the unit's `MemoryHigh=400M` /
   `MemoryMax=500M` and leaves room for M6's Piper — the limits stay as
-  "Which host" sets them, and the escape hatches (trim the collection
-  to echo-words's own decks, or move to the Arm shape) stay unused.
+  "Rules the host imposes" sets them, and the escape hatches (trim the
+  collection to echo-words's own decks, or move to the Arm shape) stay
+  unused.
 - **A steady-state sync is free**: 0.02 s for the collection and 0.2 s
   for media when nothing changed, so the 5-minute debounce is
   generous rather than tight. Only the first run is slow — 0.9 s for
@@ -1299,7 +1243,7 @@ re-fetch (canonical == input), and the correction-button re-process
 (M7) fetches audio for the suggested word instead; the audio endpoint
 serves a stored file and rejects a path-like name.
 
-### M7 — history, stats, status, undo, correction, rebuild
+### M7 — the app's own features (two sessions: M7a, then M7b)
 
 There is **no pending-card queue** in this design: the collection is
 in-process (M5), so a card add cannot fail on connectivity; only the
@@ -1309,12 +1253,26 @@ is the history buffer, the stats/status endpoints, undo, the
 correction button, the deeper-analysis control, the card rebuild, and the
 word picker that turns a pasted phrase into a word plus its context.
 
+That is twice the scope of any other milestone, so M7 is executed as
+**two sessions in order**, each ending with its own green suite:
+**M7a** builds the read-only surfaces plus undo — the history buffer that
+everything else reads from, stats, status; **M7b** builds the four
+controls that re-run or rewrite something — the correction switch, the
+card rebuild, the deeper analysis, and the word picker. M7a is worth
+running on its own and ships alone; nothing in M7b is reachable before it.
+A "(M7)" reference anywhere else in this plan means the pair.
+
+#### M7a — history, stats, status, undo
+
 `history.py`: a bounded in-memory ring buffer (last ~50 entries) of
 `Entry(entry_id, lang, word, action, analysis_html, audio_file,
 suggestion, shown_spelling, context, detail_html, created_at)` where action is
 `pending | added | duplicate | lookup | failed`, written on every
 processed word and updated in place as it progresses; `word` always
-holds the canonical word and `analysis_html` the sanitized analysis.
+holds the canonical word and `analysis_html` the sanitized analysis. The
+whole dataclass is defined here, but `shown_spelling`, `context` and
+`detail_html` are only written by M7b's controls and stay empty until
+then; `suggestion` already arrives from M4 through the `done` event.
 Alongside it, per-language counters for duplicate and lookup-only sends
 since startup. Both are plain process state — no locking beyond the
 single queue worker that mutates them, no I/O, nothing to migrate, and
@@ -1376,6 +1334,38 @@ Endpoints and behaviors:
   the last word produced no note of ours, so undo replies "nothing to
   undo" and touches nothing — deleting the note found under that word
   would destroy a note that existed before the send.
+
+Undo state (last word, its action — `added | duplicate | lookup` — its
+note id when one was added, its media name, and the lookup flag) is per
+source language, lives in memory and is lost on restart — documented
+behavior.
+
+Views: `StatsView` and `StatusView` (see "Module layout"), plus the
+history rendering in `AddView` that until now showed only the live
+entries.
+
+Tests: stats windows bucketed from note ids against a temporary
+collection, with the per-language breakdown and the since-startup
+counters kept separate; the history buffer evicts oldest-first at its
+bound, updates an entry in place rather than appending a second one,
+and serves in-progress entries with their partial text; undo removes
+the note, trashes its collection media file and deletes its cached
+audio file; undo after a duplicate or a lookup-only send is a no-op
+that reports nothing to undo; the undo state machine per language;
+status rendering (pool snapshot degraded/healthy, pool and direct
+missing keys, api daily-cap count and whether the paid step is still
+available today, last model that answered, the per-language `stats()`
+fallback after a restart, ok / unsynced-changes / full-sync-required
+error).
+
+#### M7b — correction switch, card rebuild, deeper analysis, word picker
+
+Four controls, one shared shape: each re-runs an LLM call for an entry
+that already exists, through **the same FIFO queue worker** (M3) so it
+never races an in-flight submission, and each streams into the original
+entry via `reuse_entry` rather than creating a second one. Three of them
+touch the deck; the deeper analysis deliberately does not.
+
 - `POST /api/words/{entry_id}/rebuild` — re-run **that entry's** word on the
   paid model, carrying the entry's context when it has one, preserving its
   lookup-only flag, and streaming into the existing entry (`reuse_entry`,
@@ -1385,6 +1375,33 @@ Endpoints and behaviors:
   is not re-fetched — the word has not changed. Refused with a reason when
   no paid alias is configured or the daily cap is spent; the existing entry
   and its note are then left exactly as they were.
+- `POST /api/words/{entry_id}/detail` — the deeper analysis. Runs the
+  **extended prompt** (see "The extended prompt") on the paid model — the
+  language's `api_model` or `ECHOWORDS_API_MODEL`, never the pool, because
+  the user asked for the better model by name — carrying the entry's
+  context when it has one. Its deltas are published as `detail` events and
+  **appended below** the entry's analysis, which is left exactly as it was,
+  as are the note and the audio: this control never touches the deck. The
+  text is sanitized and cut at the `===CARD===` delimiter like any other
+  answer (a model may emit a payload out of habit), and kept on the entry
+  as `detail_html` — so the call is **idempotent**: a second request for an
+  entry that already has one returns the kept text and pays nothing.
+  Refused with a reason when no paid alias is configured or the daily cap
+  is spent (the same one counter as every other paid call, M2) — never
+  silently answered from the pool.
+- `POST /api/words/{entry_id}/switch` — the correction button, below.
+- **The word picker** — client-side, in `AddView`. A submission whose text
+  holds more than one word is never sent as a word: the app renders the
+  phrase's words as tappable choices and sends nothing until one is
+  tapped. The tapped token becomes `word` (surrounding punctuation
+  stripped) and the whole phrase becomes `context` in the same `POST
+  /api/words` body; the tapped word is validated server-side exactly as a
+  typed one (M1), so a token that fails gets the same short hint. A
+  leading `?` is the lookup-only shortcut and is stripped before the split
+  (M1's normalization), never offered as a choice, and the flag rides
+  along with whichever word is tapped. This is also where the iOS
+  share-sheet path lands: shared text arrives as a phrase and the picker
+  is what turns it into a word.
 
 **Correction button (advisory autocorrection).** When a processed word
 came back with a usable `suggestion` different from the input (M4), the
@@ -1410,34 +1427,28 @@ the new note id, media name, and the spelling now shown — otherwise an
 undo issued right after a switch would target a note that no longer
 exists.
 
-Undo state (last word, its action — `added | duplicate | lookup` —
-its note id when one was added, and the lookup flag) is per source
-language; the correction decision state is per entry. Both live in
-memory and are lost on restart — documented behavior; after a restart a
-switch on an old entry gets a "request expired" response instead of
-acting on stale state.
+The correction decision state is per entry, lives in memory, and is lost
+on restart — documented behavior; after a restart a switch, rebuild or
+detail request on an old entry gets a "request expired" response instead
+of acting on stale state.
 
-Tests: stats windows bucketed from note ids against a temporary
-collection, with the per-language breakdown and the since-startup
-counters kept separate; the history buffer evicts oldest-first at its
-bound, updates an entry in place rather than appending a second one,
-and serves in-progress entries with their partial text; undo removes
-the note, trashes its
-collection media file and deletes its cached audio file; undo after a
-duplicate or a lookup-only send is a no-op that reports nothing to
-undo; a rebuild replaces the previous note, keeps the audio and streams
+Tests: a rebuild replaces the previous note, keeps the audio and streams
 into the existing entry; a rebuild refused by the cap changes nothing;
-undo state machine per language; status rendering (pool
-snapshot degraded/healthy, pool and direct missing keys, api daily-cap
-count and whether the paid step is still available today, last model that answered, the per-language
-`stats()` fallback after a restart, ok / unsynced-changes /
-full-sync-required error); the correction switch
-toggles input↔suggestion and replaces the note (preserving the
-lookup-only flag and flipping the label); the switch re-run reuses the
-original entry and creates no new one; a switch updates the language's
-undo state when it replaced the note that state pointed to; and a
-stale/unknown entry id gets the request-expired response instead of
-acting.
+the deeper analysis appends below the analysis instead of replacing it
+and leaves the note and audio untouched, a second call returns the kept
+text without a second paid call, a stray `===CARD===` block in its
+answer is cut away, and a request refused (no alias / cap spent) leaves
+the entry exactly as it was; the correction switch toggles
+input↔suggestion and replaces the note (preserving the lookup-only flag
+and flipping the label); the switch re-run reuses the original entry and
+creates no new one; a switch updates the language's undo state when it
+replaced the note that state pointed to; a stale/unknown entry id gets
+the request-expired response instead of acting on any of the three
+controls. Vitest for the picker: a multi-word submission renders one
+choice per word and posts nothing until a tap, the tap posts the tapped
+word with the whole phrase as `context`, a leading `?` sets the
+lookup-only flag and never appears as a choice, and a single-word
+submission goes straight through with no picker.
 
 ### M8 — PWA install, deploy tasks, release
 
@@ -1489,143 +1500,11 @@ acting.
   CI. Do NOT push the `v0.1.0` tag — publishing is deferred until PyPI
   credentials are configured; note this in the README.
 
-## Product decisions (all questions resolved — do not re-open)
+## Product decisions and scope
 
-- One note per word. Genuinely unrelated meanings (bank «банк» / bank
-  «берег») become numbered blocks on the back — at most three, split
-  by the LLM; usually one. Never separate cards: identical fronts
-  would be indistinguishable during review, and one note per word
-  keeps dedup and undo trivially correct.
-- Duplicate send → report only, existing note untouched: "📌 already
-  in Anki".
-- **Autocorrection is advisory only — hardcoded, no config flag.** The
-  canonical word is always the **raw input** — together with the source
-  language, the key for dedup (deck-scoped), stats, undo,
-  and the Anki `Word` field, compared case-insensitively. The same
-  spelling in two languages is two notes in two decks. The LLM never
-  silently swaps a misspelling: it analyzes the word as typed and returns
-  an optional `suggestion`. When the suggestion differs from the input, a
-  button on the entry switches to the suggested word (and back),
-  re-running the analysis and replacing the note like a rebuild; only that
-  path re-fetches audio. Because that tap turns LLM output into a
-  canonical word, a `suggestion` must pass the same validation as typed
-  input or it is dropped and no button appears. Rationale: a silently
-  swapped card looks correct but is wrong and would poison the
-  spaced-repetition deck without the user noticing — analyzing as-typed
-  keeps the card's front equal to what the user sent, so a mistake is
-  visible on the first review. There is deliberately no on/off setting;
-  this behavior is the design, not an option.
-- Every note produces two cards: recognition (source→target) and recall
-  (target→source) — see M5. Still one note per word. The recall front
-  carries, per meaning, a **gapped example** — that meaning's first
-  example with the word replaced by `___` — because a bare translation
-  often fits several source words and the reviewer cannot tell which one
-  is being asked. The word is found by a plain case-insensitive
-  whole-word match on the input as typed; where no example contains it
-  verbatim the meaning shows its part of speech instead. Deliberately no
-  stemming or per-language morphology: one rule that behaves the same in
-  every configured language beats a better English front and an
-  unpredictable Serbian one.
-- **Anki without a GUI — final.** The backend maintains its own
-  collection via the headless `anki` pylib and syncs it to AnkiWeb;
-  AnkiConnect and Anki desktop are not part of the architecture. There
-  is no pending-card queue — adds are in-process and cannot fail on
-  connectivity; only the sync retries. A required one-way full sync is
-  never resolved automatically (protects the user's other decks).
-  Evaluated alternatives (GetSpace, Mochi, own FSRS, genanki):
-  `spec/decision-spaced-repetition.md`.
-- Anki sync to AnkiWeb runs automatically after additions,
-  debounced and retried; `ECHOWORDS_ANKI_SYNC=false` turns it off.
-- Lookup-only (the UI control or the `?` prefix): analysis and audio,
-  no Anki card.
-- Undo removes what the last send created and is an explicit no-op
-  after a duplicate or a lookup-only send — it never deletes a note that
-  existed before. A rebuild replaces the previous run's note instead of being
-  blocked by the duplicate check. Both act per source language.
-- Multiple source languages via the **language selector**; the
-  selection determines the deck. One deck per source language from the
-  languages config, no per-word switching and no guessing the deck from
-  the word. A single target language for explanations
-  (`ECHOWORDS_TARGET_LANG`, Russian default). Language is never
-  auto-detected — the selection is authoritative; an unknown code gets
-  a hint, not a guess.
-- Accent: config-level (`ECHOWORDS_ACCENT` default, per-language override),
-  applies to English audio, US default, one recording per card, no
-  per-word choice.
-- Answer formatting IS in v0.1: HTML `<b>`/`<i>` only, enforced by the
-  server-side sanitizer — the only HTML the client ever renders.
-- Word/phrase audio only — example sentences are never voiced (final).
-- **TTS engines are settled by research, not deferred to M6**
-  (`spec/decision-tts.md`): Serbian → edge-tts (Piper's lone `sr_RS`
-  model is Lower Sorbian, not Serbian — never use it; no other usable
-  free local voice exists); English and German → Piper. One deployment
-  target (Oracle E2.1.Micro, 1 GB + swap); Kokoro left the design with
-  the laptop profile. Model downloads follow the config.
-- Stats and status ARE in v0.1 (see M7).
-- v0.1 ships **two LLM backend kinds** behind one seam, both through
-  llmbroker: the free-tier model pool (fast, streaming, un-metered; the
-  default) and `api` — a paid, **opt-in, never-required** single frontier
-  model called through llmbroker's *direct client*, declared in code by a
-  curated catalog alias. Metered spend is bounded by
-  `ECHOWORDS_API_DAILY_CAP` with automatic fallback to the free pool, so
-  no metered API is ever required. Which backend is the default, and
-  which languages route to which, was fixed by the **M0 spike**
-  (`spec/decision-llm-backend.md`): every v0.1 language starts on the free
-  pool — measured, not guessed. A CLI coding agent is not one of the
-  backends: it would need the laptop, which is not a deployment target
-  (`spec/decision-interface.md`), and the paid direct client covers the
-  quality role it was wanted for. So there is no agent-sandboxing surface
-  anywhere — both backends are plain text→text calls with nothing to
-  contain.
-- Words are processed sequentially and in submission order (one worker
-  over a FIFO queue) — no parallel LLM runs, even across languages.
-- **echo-words has no database.** The Anki collection is the only
-  durable state; history is a bounded in-memory buffer, "added" stats
-  are counted from the collection's own note ids, and duplicate/lookup
-  counters, undo and correction state reset on restart. Losing any
-  of it costs nothing, because every word that mattered is already a
-  card — so there is no schema, no migrations, and nothing to back up
-  or replicate. See the "Durable state" technology row.
-- **It runs on the tenancy's second free-tier VM**, the otherwise idle
-  box that holds dinary's Litestream replica — not on dinary's own VM.
-  More headroom, and its own Tailscale node, so the app owns a
-  hostname's root instead of negotiating an origin with a neighbouring
-  PWA. Measured comparison and the rules: "Which host".
-- **llmbroker state is its own directory, not dinary's database.**
-  `home=` is already the plain-files option and is explicitly a
-  disposable cache; sharing a SQLite store across processes is not
-  supported by the driver as written (no WAL, no busy timeout), and
-  would buy almost nothing since quality learning is keyed per
-  operation. See "llmbroker state".
-- **The PWA and the deploy are ported from `dinary`, not invented.**
-  dinary is the author's working PWA on the same Oracle Free Tier shape,
-  reached the same way over Tailscale, on the same FastAPI + llmbroker
-  stack — so echo-words takes its Vue 3 + Vite + `vite-plugin-pwa`
-  build wiring, design tokens, client composables, and its `invoke`
-  deploy tasks (systemd unit with the sandbox block and the
-  `tailscaled` wait, swap provisioning, host hardening). This overrode
-  an earlier "vanilla JS, no build toolchain" intent: the toolchain
-  demonstrably fits the 1 GB instance because dinary builds there in
-  production, and the workbox/PWA configuration is the part most
-  expensive to re-derive by hand. **Ansible/Chef were considered and
-  rejected** — their value is idempotency, inventory and roles, and the
-  ported tasks are already idempotent while a single instance has no
-  fleet to inventory. Details and the exclusion list: "Reuse from
-  dinary" and "Deploy tooling".
-- **The PWA over Tailscale is the user interface — final.** A Telegram bot
-  is rejected: Tailscale gives the same zero-ops ingress, and Telegram's
-  24 h buffering rescues only the card, never the answer that was wanted
-  now. A self-hosted Mattermost server is rejected too. Full analysis:
-  `spec/decision-interface.md`,
-  `spec/decision-chat-interface.md`. Tailnet membership is the only
-  access control; the backend binds loopback and never handles TLS or
-  auth.
-
-## Out of scope — final, not deferred
-
-Chat-platform interfaces (Telegram bots included), native mobile apps,
-public internet exposure (the app lives inside the tailnet), multiple
-**users** (multiple **source languages** with separate decks for the
-single user ARE in scope), example-sentence audio, Docker,
-configuration-management tooling for deployment (Ansible/Chef — see
-"Deploy tooling").
+Every product question this plan depends on is already answered, with
+the rationale, in `spec/decision-product.md` — one note per word, the
+two cards it produces, advisory-only autocorrection, headless Anki, the
+sequential queue, no database, the two LLM steps, and the final
+out-of-scope list. Read it when a milestone makes you wonder whether a
+behaviour is deliberate; do not re-open it.

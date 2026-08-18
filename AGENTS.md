@@ -7,8 +7,13 @@
 - `spec/implementation-plan.md` — HOW to build it: milestones M0–M8.
   Work is driven by its "Execution protocol" section — one milestone
   per session, strictly in order.
-- `spec/decision-*.md` — background for settled decisions (user
-  interface, spaced repetition, TTS). Do not re-open them.
+- `spec/decision-*.md` — background for settled decisions: the guard
+  list of product decisions (`decision-product.md`), the user interface
+  (`decision-interface.md`, `decision-chat-interface.md`), spaced
+  repetition, TTS, the LLM backend, and the deployment host and tooling
+  (`decision-deployment.md`). They hold the reasoning and the
+  measurements so the plan can stay instructions only. Do not re-open
+  them.
 
 ## Hard rules
 
@@ -17,7 +22,7 @@
 - Dependencies via `uv`; run `uv lock` when adding any (CI uses
   `--frozen`).
 - Every new module ships its tests in the same commit. A milestone is
-  done only when `uv run pytest` and `ruff check` (line-length 99) are
+  done only when `uv run pytest` and `ruff check` (line-length 100) are
   green.
 - No real network, Anki sync, or LLM calls in tests — fake or mock
   every boundary. The M0 harness in `experiments/` is the sanctioned
