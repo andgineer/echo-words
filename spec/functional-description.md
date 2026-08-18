@@ -70,9 +70,9 @@ The four requirements every design decision is weighed against:
   **free-tier model pool** (many free, rate-limited models with
   automatic failover) takes every request, and a **paid frontier model**
   via llmbroker's *direct client* stands behind it. The paid step is
-  reached on latency — the pool did not start, or stalled mid-answer —
-  and on the two things the user asks the better model for by name: a
-  deeper analysis, and rebuilding a card. The free pool is un-metered
+  reached on latency — the pool did not finish the answer inside the
+  budget — and on the two things the user asks the better model for by
+  name: a deeper analysis, and rebuilding a card. The free pool is un-metered
   and the paid step is capped and optional, so **no metered API is ever
   required**. How good each step is per language was settled by a
   benchmark that ran *before* the build (implementation plan, M0).
@@ -116,21 +116,25 @@ The four requirements every design decision is weighed against:
 3. The word immediately appears in the answer area as a pending entry
    ("⏳ *word* …"), so the user sees the request was accepted.
 4. The LLM runs in streaming mode; the entry's text builds up live in
-   place (delivered over a server-sent event stream). The first
-   translations are visible within a few seconds; the full answer
-   completes in the same entry. A backend that cannot stream shows the
-   pending entry until the complete answer arrives at once.
-   Every answer is asked of the **free pool first**. If the pool does not
-   begin answering within the latency budget, the request moves to the
-   **paid model** and the user sees a slower answer, not an error — the
-   pool being busy is the one thing the paid path exists to absorb. If
-   the pool begins promptly but is still dribbling past the
-   complete-answer budget, the same move happens mid-answer: the partial
-   text is discarded and replaced by the paid model's, because a
-   half-finished answer that takes a minute is worth less than a whole
-   one that takes ten seconds. Which model answered is visible on the
-   entry; nothing else about the two paths differs, and the card is built
-   from whichever answer arrived.
+   place (delivered over a server-sent event stream). A backend that
+   cannot stream shows the pending entry until the complete answer
+   arrives at once.
+   Every answer is asked of the **free pool first**. The request moves to
+   the **paid model** when the pool does not deliver a *complete* answer
+   within the latency budget — whether it never started or started at
+   once and then kept going — and the user sees a slower answer, not an
+   error; the pool being busy is the one thing the paid path exists to
+   absorb. When the move happens mid-answer the partial text is
+   discarded and replaced by the paid model's. Which model answered is
+   visible on the entry; nothing else about the two paths differs, and
+   the card is built from whichever answer arrived.
+   **How fast the first token arrives is not a criterion and is never
+   measured.** It is the easiest number in the system to look good on and
+   the least related to what the user waits for: a model that emits one
+   token immediately and the rest over a minute has answered slowly. Only
+   the complete answer is judged, and streaming is a display choice —
+   text appears as it is produced rather than in one jump — not a
+   deadline of its own.
 5. Words are processed one at a time, in the order submitted — never as
    parallel LLM runs.
 6. The LLM produces **both outputs in one generation**: the full
@@ -372,11 +376,13 @@ to be last.
 
 ## Non-functional requirements
 
-- **Latency**: complete answer within ~20–30 s; card added within ~5 s
-  after generation ends. Audio is fetched concurrently and must not
-  extend these budgets. Incremental "first visible content within
-  ~3–5 s" applies to streaming — both llmbroker backends (the free pool
-  and the paid direct client) stream.
+- **Latency**: **complete answer within ~20–30 s** — the one budget, and
+  the only one worth stating; card added within ~5 s after generation
+  ends. Audio is fetched concurrently and must not extend these budgets.
+  Time to the first token is deliberately not a requirement: it measures
+  how quickly a model starts talking, not how long the user waits, and
+  bounding it would prefer a model that trickles for a minute over one
+  that thinks briefly and then answers at once.
 - **Cost**: **no metered API is ever required.** Every answer starts on
   the free-tier `llmbroker` model pool, which is un-metered. A paid
   per-token model is reached in exactly two situations, both bounded by a

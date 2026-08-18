@@ -40,9 +40,8 @@ behind those defaults. It is an input to M2.
   returns HTTP 429 for most requests, and one answer in eight is what it
   gives even when it is the only candidate the pool has. Its quality is
   therefore unknown, and it does not matter — it is a reasoning model
-  that emits nothing for 31 seconds before it starts answering, which
-  puts it outside the first-content budget by sixfold whatever the
-  answer turns out to be worth.
+  whose whole answer takes 34 s, outside the complete-answer budget
+  whatever the answer turns out to be worth.
 
 ## Hypothesis 1 — sufficiency varies by source language: confirmed, mildly
 
@@ -73,21 +72,20 @@ cheaper and safer than moving a language onto a metered backend.
 
 ## Hypothesis 2 — speed: the pool wins outright, one paid model fails the NFR
 
-Paced, single user, per language: **first delta 0.8 s, whole answer
-1.8–1.9 s, p90 2.6 s** — an order of magnitude inside both budgets
-(first content ~3–5 s, complete answer ~20–30 s).
+Paced, single user, per language: **whole answer 1.8–1.9 s, p90 2.6 s**
+— an order of magnitude inside the complete-answer budget (~20–30 s),
+which is the only budget the product states. Time to the first token is
+recorded here because the harness records it, and is not a criterion:
+it says how quickly a model starts talking, not how long the user waits.
 
 The paid tier is far slower, and the models differ by a factor of
 three among themselves:
 
-- `sonnet` — first delta 2.2–3.4 s, whole answer ~11 s. Inside both
-  budgets.
-- `gpt-5.6-luna` — first delta 5.5–6.3 s, whole answer 8.6–9.7 s, p90
-  under 14 s. Marginally over the first-content budget, comfortably
-  inside the complete-answer one.
-- `gpt` — first delta 12–20 s, whole answer 19–27 s, p90 up to 48 s on
-  Serbian. **Misses the first-content budget on every call** and its
-  tail misses the complete-answer budget.
+- `sonnet` — whole answer ~11 s. Inside the budget.
+- `gpt-5.6-luna` — whole answer 8.6–9.7 s, p90 under 14 s. Comfortably
+  inside it, and the fastest paid model measured.
+- `gpt` — whole answer 19–27 s, p90 up to 48 s on Serbian. At the edge
+  of the budget, and its tail misses it.
 
 Under the burst profile the pool's p90 degraded to 40–49 s and three
 requests out of 120 got no answer at all. That is an artefact of the
@@ -162,17 +160,18 @@ Two consequences, both recorded here rather than acted on in v0.1:
   per-language by construction and therefore also the production
   counterpart of hypothesis 1. It shifts *which* model is preferred; it
   cannot express "prefer a fast one when the good one is busy".
-- The fix belongs in llmbroker: it already deprioritises (never
-  excludes) a model that recently failed to answer within a comparable
-  budget, and it already journals each call's full latency. Feeding
-  observed latency into that same mechanism would order the fallback by
-  speed for a caller that offers a small budget, while still answering
-  slowly rather than not at all when nothing faster is free.
+- The fix belonged in llmbroker, and is there: a caller's `wait` bounds
+  the **whole answer**, counted in provider time, so a model that
+  outlives the budget ends the call however it chunked its output, and
+  the pool deprioritises it for the next caller offering no more. That
+  is one budget with one meaning, the same one a completion has.
 
-A related correction: a wait budget bounds queueing and the **first
-delta** only. Once deltas flow, nothing stops a model from trickling
-for a hundred seconds — which is exactly what the slow fallback did.
-A whole-answer budget is the consumer's own responsibility.
+What was tried and rejected on the way: ordering the pool by latency
+read off the answers models gave. It measured time to the first token —
+the one number a slow model looks good on — and bought, over the miss
+bound already there, a single saved request per model per window. The
+measurements behind the rejection are in llmbroker's own record of the
+same workload.
 
 ## The paid tier: `gpt-5.6-luna` is the one worth reaching for
 
