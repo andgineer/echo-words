@@ -87,11 +87,12 @@ three among themselves:
 - `gpt` — whole answer 19–27 s, p90 up to 48 s on Serbian. At the edge
   of the budget, and its tail misses it.
 
-Under the burst profile the pool's p90 degraded to 40–49 s and three
-requests out of 120 got no answer at all. That is an artefact of the
+Under the burst profile the pool's p90 degrades to 20–29 s and ten
+requests out of 120 get no answer at all. That is an artefact of the
 harness, not of the product: it is what happens when one client sends
 four concurrent requests at free-tier rate limits. It matters only as
-the description of the tail — see the fallback finding below.
+the description of the tail — see the fallback finding below, and the
+budget section after it.
 
 ## The prompt is in English, and the answer language is a slot
 
@@ -173,6 +174,30 @@ bound already there, a single saved request per model per window. The
 measurements behind the rejection are in llmbroker's own record of the
 same workload.
 
+## The budget's value: the low end of the range, and why it is not a detail
+
+`wait` is the only knob echo-words sets on the pool, and where it sits
+inside the functional description's ~20–30 s complete-answer budget
+decides **what a miss looks like**, not merely how many misses there are.
+Measured over the burst profile, 120 requests, three languages:
+
+| budget | answered | the answers | what a miss is |
+|---|---|---|---|
+| 25 s | 64 of 120 | 100% valid card, clean HTML, word echoed and answer on target, in all three languages; slowest answer 20.3 s | 56 of 56 `NoLLMAvailableError` — the pool gave up before any model produced a delta |
+| 45 s | 110 of 120 | 91–95% clean HTML; eight answers past 30 s | 8 of 10 `LLMTimeoutError` — the answer died with text already delivered |
+
+The pool's slow entries spend 9–42 s before their first token, so a
+budget at the low end cuts them before they start talking. That is the
+difference between a step-up that begins from nothing and one that has
+already shown the user half an answer it cannot finish — and past the
+first delta there is nothing to fail over to. Every contract violation in
+either run belongs to those same slow entries; the primary model is
+clean on every axis in both.
+
+So the budget goes at the **low end** of the range, and the paced profile
+pays nothing for it: whole answers there are 1.3–2.5 s, an order of
+magnitude inside it.
+
 ## The paid tier: `gpt-5.6-luna` is the one worth reaching for
 
 - `sonnet` writes **markdown** — `**word**`, `*example*` — instead of
@@ -188,12 +213,11 @@ same workload.
   decides anything here, it matches it (4.7 against 4.7) — and answers
   three times faster.
 
-So the paid tier has one clear pick. Its catch is administrative:
-`gpt-5.6-luna` is not in llmbroker's curated paid catalog, and the
-design deliberately reaches paid models by curated alias, so that
-llmbroker can re-point the alias at the next model generation on its
-own. Reaching this model as a first-class option means adding it to
-that catalog upstream.
+So the paid tier has one clear pick, and it is reachable the way the
+design demands: llmbroker's curated paid catalog carries `gpt-5.6-luna`
+under the alias `gpt-fast`. Paid models are named by curated alias and
+never by model id, so that llmbroker can re-point the alias at the next
+model generation on its own.
 
 ## Decisions for v0.1
 
@@ -209,11 +233,10 @@ that catalog upstream.
   cheaper place to attack. The paid tier stays one config line away
   for whoever wants it.
 - **The paid direct client still ships.** Preferred model:
-  `gpt-5.6-luna` — contract-perfect, near the quality ceiling,
-  three times faster than `gpt`; it needs a curated-catalog entry
-  upstream before a language can name it by alias. Until then `gpt` is
-  the catalog alias to use, with its latency understood. `sonnet` is
-  not recommended while it answers in markdown.
+  `gpt-5.6-luna` — contract-perfect, near the quality ceiling, three
+  times faster than `gpt` — named by the catalog alias `gpt-fast`. `gpt`
+  remains the alias for the quality ceiling, with its latency
+  understood. `sonnet` is not recommended while it answers in markdown.
 - **Web grounding is dropped** from v0.1 — no switch, no search
   dependency.
 

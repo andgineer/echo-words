@@ -36,7 +36,7 @@ Rules:
 
 ## Upstream dependency: llmbroker
 
-echo-words targets **llmbroker ≥ 1.5.1** — pin it in `pyproject.toml` and
+echo-words targets **llmbroker ≥ 1.5.2** — pin it in `pyproject.toml` and
 `uv.lock`. Everything this plan needs is in that release's public API; the
 changes echo-words once waited on (`journal-lookup-keys`, `rating-by-key`,
 `routed-call-identity`) have all landed, and they landed in a **better shape
@@ -62,6 +62,12 @@ written the way they are:
 - **`/api/status` (M7) reads `handle.llm_name`** — the model that answered,
   available from the first delta on, no journal read. Keep it in memory with
   the call's outcome and time.
+- **The pin's floor is the cascade itself.** `wait` bounding queueing *and
+  the whole answer* in provider time, and a 200 carrying no text at all
+  counting as a failure the pool fails over rather than an answer handed on,
+  are both behaviours of the pinned release. Below it `wait` stops binding at
+  the first delta, which turns the step-up trigger into a first-token timeout
+  and lets an empty completion through as a successful answer.
 
 `trace_id` is still passed on every call, now purely for tracing/analytics
 rather than as the rating key.
@@ -111,7 +117,7 @@ Prompt template for the operator (one per milestone):
 | Dictionary pronunciation | `https://api.dictionaryapi.dev/api/v2/entries/{lang}/{word}` where `{lang}` is the source language's `dict_api` code (`en`, `de`, …; Serbian is unsupported → skip this step) — take the first `phonetics[].audio` non-empty URL (they are Wiktionary recordings); for English prefer entries whose URL contains the configured accent (`-us` / `-uk`), else any |
 | Settings | `pydantic-settings`, env prefix `ECHOWORDS_`, `.env` support |
 | Durable state | **None of its own — no database.** The Anki collection is the only thing worth keeping and it is already a file that syncs to AnkiWeb. History is an in-memory ring buffer of recent entries; "added" statistics are counted from the collection itself (Anki note ids are creation timestamps in milliseconds, so a per-deck `find_notes` gives today / 7 days / all time without any side table); duplicate and lookup-only counters, undo state and correction state are in-memory and reset on restart. This removes `sqlite3`, a schema, migrations, and any need to back the app up |
-| LLM | One **cascade** behind a single `stream_completion` seam (M2), not a per-language choice: every request goes to the free pool first and steps up to the paid model only when the pool misses the budget. Both steps are plain streaming text→text HTTPS calls through the author's `llmbroker` (`github.com/andgineer/llmbroker`, **≥1.5.1**), and one `AsyncBroker` instance serves both with one error taxonomy (`LLMRequestError` and its subclasses); it is created in the FastAPI lifespan (after the languages config) and `aclose()`d on shutdown. **Step 1 — the pool:** `broker.stream(prompt, operation=f"{prefix}-{lang}", wait=…)` returns a `StreamHandle`: async-iterable over text deltas, carrying `llm_name` (who answered) and `record_quality(score)`, closed by the consumer with `aclose()`. `wait` bounds **queueing plus the whole answer**, counted in provider time — the consumer's own pace is disarmed across every delta — so it is the single trigger for the step-up: set it to the functional description's ~20–30 s complete-answer budget and let the failure hand the request on. echo-words keeps no clock of its own and never measures the first token: a model that opens at once and then takes a minute misses that budget exactly like one that says nothing at all, which is the point of bounding the answer instead of its opening. **Step 2 — the paid direct client** (opt-in by configuration, never required): a single explicitly named frontier model, no pool, no failover, no routing. The model is **declared in echo-words's own code** at broker construction (`AsyncBroker(direct=[…])`) and reached with `await broker.direct(alias)`, which returns an `AsyncDirectClient` whose `.stream(prompt, timeout=…)` is a plain async iterator of deltas. That client borrows the broker's single shared httpx client, so obtaining one per request is cheap and echo-words must **not** close it. The alias comes from llmbroker's curated paid catalog and is an eternal handle — llmbroker re-points it at the current model generation on its own daily clock, so a provider's new release changes nothing here. Nothing is stored anywhere: the declaration in code is the only source of truth, and the API key is read at call time from the env var the catalog names, never touched by echo-words. The same client serves the user's explicit deeper-analysis request (M7). With no paid alias configured, or the daily cap spent, the cascade is one step long and a pool miss is a failure. The **M0 spike** measured both steps — see `spec/decision-llm-backend.md` |
+| LLM | One **cascade** behind a single `stream_completion` seam (M2), not a per-language choice: every request goes to the free pool first and steps up to the paid model only when the pool misses the budget. Both steps are plain streaming text→text HTTPS calls through the author's `llmbroker` (`github.com/andgineer/llmbroker`, **≥1.5.2**), and one `AsyncBroker` instance serves both with one error taxonomy (`LLMRequestError` and its subclasses); it is created in the FastAPI lifespan (after the languages config) and `aclose()`d on shutdown. **Step 1 — the pool:** `broker.stream(prompt, operation=f"{prefix}-{lang}", wait=…)` returns a `StreamHandle`: async-iterable over text deltas, carrying `llm_name` (who answered) and `record_quality(score)`, closed by the consumer with `aclose()`. `wait` bounds **queueing plus the whole answer**, counted in provider time — the consumer's own pace is disarmed across every delta — so it is the single trigger for the step-up: set it at the **low end** of the functional description's ~20–30 s complete-answer budget — low enough that the pool's slow entries are cut before their first token, so a miss carries no half-answer to the user — and let the failure hand the request on. echo-words keeps no clock of its own and never measures the first token: a model that opens at once and then takes a minute misses that budget exactly like one that says nothing at all, which is the point of bounding the answer instead of its opening. **Step 2 — the paid direct client** (opt-in by configuration, never required): a single explicitly named frontier model, no pool, no failover, no routing. The model is **declared in echo-words's own code** at broker construction (`AsyncBroker(direct=[…])`) and reached with `await broker.direct(alias)`, which returns an `AsyncDirectClient` whose `.stream(prompt, timeout=…)` is a plain async iterator of deltas. That client borrows the broker's single shared httpx client, so obtaining one per request is cheap and echo-words must **not** close it. The alias comes from llmbroker's curated paid catalog and is an eternal handle — llmbroker re-points it at the current model generation on its own daily clock, so a provider's new release changes nothing here. Nothing is stored anywhere: the declaration in code is the only source of truth, and the API key is read at call time from the env var the catalog names, never touched by echo-words. The same client serves the user's explicit deeper-analysis request (M7). With no paid alias configured, or the daily cap spent, the cascade is one step long and a pool miss is a failure. The **M0 spike** measured both steps — see `spec/decision-llm-backend.md` |
 | Lint | `ruff` (line-length 99), run in CI after tests |
 
 ## Reuse from dinary
@@ -148,7 +154,7 @@ rules / receipts / Sheets domain, the analytics stack, the Pinia store
 layer, the Cloudflare tunnel alternative, **Litestream and the whole
 backup apparatus** (echo-words has no database at all, and its one
 durable file — the Anki collection — is already replicated off-box by
-the AnkiWeb sync), and its `.deploy/llms.toml` (llmbroker ≥ 1.5.1 is
+the AnkiWeb sync), and its `.deploy/llms.toml` (llmbroker ≥ 1.5.2 is
 zero-config: the pool is a curated preset, there is no model-list file
 for the operator to write).
 
@@ -912,9 +918,10 @@ and both triggers become that same error.
   trace_id=…, wait=…)`, iterated inside `contextlib.aclosing(handle)` so the
   model's slot is handed back even when the pipeline abandons the stream —
   deltas go straight into the pipeline. `wait` carries the functional
-  description's complete-answer budget: it bounds queueing and the whole answer
-  in provider time, so a budget exhausted past the first delta raises
-  `LLMTimeoutError` with the deltas so far already delivered. It is an HTTPS text→text
+  description's complete-answer budget, at its low end: it bounds queueing and
+  the whole answer in provider time, so a budget exhausted past the first delta
+  raises `LLMTimeoutError` with the deltas so far already delivered — which the
+  low end is chosen to avoid (`spec/decision-llm-backend.md`). It is an HTTPS text→text
   call the operator already trusts — no subprocess, nothing to sandbox. Map
   `NoLLMAvailableError` (whole pool rate-limited), `LLMTimeoutError` and
   `StreamInterruptedError` (the stream died after deltas — no failover

@@ -21,15 +21,15 @@ Keys are read from ``.deploy/.env`` (falling back to the real environment), and
 llmbroker keeps its state under the output directory, not in the user's cache.
 
 Run:
-    uv run --no-project --python 3.12 --with "llmbroker>=1.5.1" \\
+    uv run --no-project --python 3.12 --with "llmbroker>=1.5.2" \\
         python experiments/backend_bench.py pool --lang en de sr
-    uv run --no-project --python 3.12 --with "llmbroker>=1.5.1" \\
+    uv run --no-project --python 3.12 --with "llmbroker>=1.5.2" \\
         python experiments/backend_bench.py free --lang sr --limit 20
-    uv run --no-project --python 3.12 --with "llmbroker>=1.5.1" \\
+    uv run --no-project --python 3.12 --with "llmbroker>=1.5.2" \\
         python experiments/backend_bench.py paid --alias sonnet flash --lang sr
-    uv run --no-project --python 3.12 --with "llmbroker>=1.5.1" \\
+    uv run --no-project --python 3.12 --with "llmbroker>=1.5.2" \\
         python experiments/backend_bench.py judge --judge gpt
-    uv run --no-project --python 3.12 --with "llmbroker>=1.5.1" \\
+    uv run --no-project --python 3.12 --with "llmbroker>=1.5.2" \\
         python experiments/backend_bench.py report
 """
 
