@@ -1,0 +1,34 @@
+# Example source-language table. Copy to the path named by
+# ECHOWORDS_LANGUAGES_CONFIG (default ~/.echo-words/languages.toml) and edit;
+# `inv dev` copies it for you when that file does not exist yet.
+#
+# Required per language: name, deck, script (latin | cyrillic | latin+cyrillic).
+# Everything else is optional and documented in spec/implementation-plan.md.
+
+[languages.en]
+name       = "English"
+deck       = "English::Vocabulary"
+dict_api   = "en"              # dictionaryapi.dev code; omit if unsupported
+tts        = "piper"           # piper | edge
+tts_voice  = "en_US-lessac-medium"
+accent     = "us"              # meaningful for English
+script     = "latin"
+
+[languages.de]
+name      = "Deutsch"
+deck      = "German::Vocabulary"
+dict_api  = "de"
+tts       = "piper"
+tts_voice = "de_DE-thorsten-medium"
+script    = "latin"
+
+[languages.sr]
+name      = "Српски"
+deck      = "Serbian::Vocabulary"
+# dict_api omitted — dictionaryapi.dev has no Serbian
+tts       = "edge"             # no usable local voice: Piper's lone sr_RS model
+                               # ("serbski_institut") is actually Lower Sorbian —
+                               # never use it (spec/decision-tts.md)
+edge_tts_voice = "sr-RS-SophieNeural"
+script    = "latin+cyrillic"
+prompt_hints = "for nouns give gender and plural, for verbs give aspect"

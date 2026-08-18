@@ -38,5 +38,6 @@ repos:
 #          "--ignore=missing-import",
 #          "--ignore=missing-source-for-stubs",
           "--project-excludes=tests",
+          "--project-excludes=experiments",
           "--python-interpreter-path=.venv/bin/python"
         ]

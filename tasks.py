@@ -10,6 +10,10 @@ import time
 
 DOCS_PATH = Path("docs")
 DOCS_SRC_PATH = DOCS_PATH / 'src'
+WEBAPP_PATH = Path("webapp")
+STATIC_PATH = Path("_static")
+LANGUAGES_EXAMPLE = Path("languages.example.toml")
+DEFAULT_LANGUAGES_CONFIG = Path.home() / ".echo-words" / "languages.toml"
 
 
 def get_allowed_doc_languages():
@@ -112,6 +116,73 @@ def pre(c):
     """Run pre-commit checks"""
     c.run("pre-commit run --verbose --all-files")
 
+
+def _run_build(c: Context):
+    if not WEBAPP_PATH.is_dir():
+        raise RuntimeError(f"Cannot build the PWA: {WEBAPP_PATH}/ is missing.")
+
+    lock = WEBAPP_PATH / "package-lock.json"
+    node_lock = WEBAPP_PATH / "node_modules" / ".package-lock.json"
+    needs_install = (
+        not node_lock.exists()
+        or not lock.exists()
+        or lock.stat().st_mtime > node_lock.stat().st_mtime
+    )
+    if needs_install:
+        c.run(f"npm --prefix {WEBAPP_PATH} ci --no-audit --no-fund")
+
+    c.run(f"npm --prefix {WEBAPP_PATH} run build")
+    index = STATIC_PATH / "index.html"
+    if not index.is_file():
+        raise RuntimeError(f"The Vite build did not produce {index}.")
+    print(f"Built {STATIC_PATH}/")
+
+
+@task(name="build-static")
+def build_static(c: Context):
+    """Build the Vue 3 PWA from webapp/ into _static/. Run after any webapp/ change."""
+    _run_build(c)
+
+
+def _ensure_languages_config():
+    """Bootstrap the languages table so a fresh checkout can start the app."""
+    configured = os.environ.get("ECHOWORDS_LANGUAGES_CONFIG") or DEFAULT_LANGUAGES_CONFIG
+    target = Path(configured).expanduser()
+    if target.exists():
+        return
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy(LANGUAGES_EXAMPLE, target)
+    print(f"Created {target} from {LANGUAGES_EXAMPLE} — edit it to taste.")
+
+
+@task(help={"port": "TCP port to listen on (default 8080).",
+            "rebuild": "Rebuild _static/ from webapp/ before starting."})
+def dev(c: Context, port=8080, rebuild=False):
+    """Run the web app locally with uvicorn --reload (http://127.0.0.1:<port>).
+
+    Serves the built bundle. For frontend work with hot reload run
+    `npm --prefix webapp run dev` alongside it and open port 5173,
+    which proxies /api here.
+    """
+    _ensure_languages_config()
+    if rebuild or not (STATIC_PATH / "index.html").is_file():
+        _run_build(c)
+    c.run(
+        f"uv run uvicorn echo_words.api:app --reload --reload-dir src "
+        f"--host 127.0.0.1 --port {port}",
+        pty=True,
+    )
+
+
+@task
+def test(c: Context):
+    """Run the Python suite and, when webapp/ is installed, the frontend one."""
+    c.run("uv run pytest", pty=True)
+    if (WEBAPP_PATH / "node_modules").is_dir():
+        c.run(f"npm --prefix {WEBAPP_PATH} run test")
+    else:
+        print(f"Skipped the frontend tests: {WEBAPP_PATH}/node_modules is missing "
+              f"(inv build-static installs it).")
 
 
 namespace = Collection.from_module(sys.modules[__name__])
