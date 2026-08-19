@@ -213,12 +213,10 @@ What follows is what M6 and M8 must actually do.
 
 - **Port**: the backend binds `127.0.0.1:8080`; `tailscale serve --bg
   8080` publishes it at the node's tailnet root.
-- **Hostname**: VM2's tailnet name is currently `dinary-replica`, which
-  would make an odd URL for this app. Renaming the node is **safe** —
-  dinary reaches the replica by IP, and the name appears only in
-  dinary's runbook examples, which would need a pass. Optional: the URL
-  is seen once, at install, since the PWA lives on the home screen
-  afterwards.
+- **Hostname**: the node keeps its `dinary-replica` tailnet name, so the
+  app is published at `https://dinary-replica.<tailnet>.ts.net/` and
+  dinary's runbook keeps working unchanged. The odd-looking URL is seen
+  once, at install, since the PWA lives on the home screen afterwards.
 - **Host preparation is needed here.** VM2 never received dinary's
   hardening pass (`rpcbind` is still running there, which VM1's setup
   disables), so echo-words's `setup-app` runs **with** `--with-host-prep`
@@ -273,8 +271,10 @@ Chef were considered and rejected — the argument is in
   the real one to the server, where the systemd unit reads it as
   `EnvironmentFile`. API keys (the paid llmbroker alias's provider key,
   AnkiWeb credentials) never enter the repo.
-- `invoke` is a **runtime** dependency, not a dev-only one: admin tasks
-  (`build-static`, migrations) run on the server through `uv run inv …`.
+- `invoke` is a **dev-only** dependency: every deploy task runs from the
+  operator's machine over ssh, the server has no admin task of its own
+  (no migrations, and the frontend is never built there), so `uv sync
+  --no-dev` on the VM is complete without it.
 
 **The systemd unit** is dinary's, renamed: `After=/Wants=
 network-online.target tailscaled.service`, the `ExecStartPre` wait loop

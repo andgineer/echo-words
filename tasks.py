@@ -352,12 +352,15 @@ def _host_prep_script() -> str:
     return f"""\
 set -euo pipefail
 sudo apt-get update
-sudo DEBIAN_FRONTEND=noninteractive apt-get install -y fail2ban iptables-persistent
+sudo DEBIAN_FRONTEND=noninteractive apt-get install -y fail2ban
 sudo systemctl disable --now rpcbind rpcbind.socket 2>/dev/null || true
-sudo iptables -C INPUT -i lo -j ACCEPT 2>/dev/null || sudo iptables -I INPUT 1 -i lo -j ACCEPT
+# Re-asserting the image's own rules must never fail the pass: a host that
+# rejects one of them is left as it is rather than half-reconfigured.
+sudo iptables -C INPUT -i lo -j ACCEPT 2>/dev/null || \
+  sudo iptables -I INPUT 3 -i lo -j ACCEPT || true
 sudo iptables -C INPUT -j REJECT --reject-with icmp-host-prohibited 2>/dev/null || \
-  sudo iptables -A INPUT -j REJECT --reject-with icmp-host-prohibited
-sudo netfilter-persistent save
+  sudo iptables -A INPUT -j REJECT --reject-with icmp-host-prohibited || true
+sudo netfilter-persistent save 2>/dev/null || true
 sudo install -d /etc/ssh/sshd_config.d
 echo 'X11Forwarding no' | sudo tee /etc/ssh/sshd_config.d/echo-words.conf >/dev/null
 sudo sed -i 's/^#\\?PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config

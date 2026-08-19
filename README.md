@@ -44,14 +44,14 @@ swap file is a hard requirement. The systemd unit also applies `MemoryHigh=400M`
 `MemoryMax=500M`, preventing a runaway backend from taking down the VM. An Arm `A1.Flex`, when a
 region has capacity, removes these tight memory constraints but is not assumed.
 
-Tailscale is the only front door. Join the VM to the tailnet first, then setup configures
-`tailscale serve --bg 8080`, which publishes the app at the node's HTTPS root while uvicorn stays
-bound to `127.0.0.1:8080`. There is no login page or public-internet exposure. Renaming the node
-to `echo-words` is optional.
+Tailscale is the only front door for the app itself. Join the VM to the tailnet first, then setup
+configures `tailscale serve --bg 8080`, which publishes the app at the node's HTTPS root while
+uvicorn stays bound to `127.0.0.1:8080`. There is no login page or public-internet exposure. The
+node keeps whatever tailnet name it already has; nothing here renames it.
 
 ```sh
 curl -fsSL https://tailscale.com/install.sh | sh
-sudo tailscale up --hostname=echo-words
+sudo tailscale up
 ```
 
 Keep outbound HTTPS unrestricted for `*.ankiweb.net`: AnkiWeb redirects sync to numbered shards,
@@ -62,8 +62,11 @@ Create the production secrets file and choose the SSH host:
 ```sh
 cp .deploy.example/.env .deploy/.env
 chmod 600 .deploy/.env
-export ECHOWORDS_DEPLOY_HOST=echo-words
+export ECHOWORDS_DEPLOY_HOST=ubuntu@<vm-public-ip>
 ```
+
+`ECHOWORDS_DEPLOY_HOST` is an ssh destination, and it is the VM's public address — administration
+rides public ssh, only the app is tailnet-only.
 
 The llmbroker free pool needs provider credentials. Fill at least one of `GROQ_API_KEY`,
 `OPENROUTER_API_KEY`, `GEMINI_API_KEY`, or `ZAI_API_KEY`; filling all four gives the pool its full
@@ -90,8 +93,10 @@ but fails without overwriting an existing non-swap file, symlink, special path, 
 configuration. Swap creation, activation, and verification failures stop setup. The command also
 hardens sshd and enables an explicit fail2ban sshd jail (3 failures in 10 minutes, escalating 1-day
 bans capped at 30 days). The jail uses the systemd backend and excludes Tailscale's
-`100.64.0.0/10` range so tailnet administration cannot ban itself. Setup also disables rpcbind,
-preserves the host firewall, and caps the system journal. It
+`100.64.0.0/10` range, so tailnet administration cannot ban itself; public ssh — the deploy path,
+and whatever else reaches port 22 from the internet — is subject to the jail. Setup also disables rpcbind and caps the system
+journal. It leaves the host firewall as it finds it: the loopback and terminal-REJECT rules are
+re-asserted only when absent, and a rejected change is skipped instead of failing the pass. It
 deliberately leaves an existing checkout and running service untouched; on a fresh host it does
 not start the service. `deploy` is the only code-and-PWA activation path: it requires a clean
 local checkout of the requested ref, builds that exact commit's `_static/` locally, checks out the

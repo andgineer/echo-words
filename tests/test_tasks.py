@@ -39,6 +39,15 @@ def test_host_prep_provisions_swap_hardening_and_bounded_journal():
     assert "SystemMaxUse=200M" in script
 
 
+def test_host_prep_never_fails_on_the_firewall_recheck():
+    script = tasks._host_prep_script()
+
+    assert "sudo iptables -I INPUT 3 -i lo -j ACCEPT || true" in script
+    assert "sudo iptables -A INPUT -j REJECT --reject-with icmp-host-prohibited || true" in script
+    assert "sudo netfilter-persistent save 2>/dev/null || true" in script
+    assert "iptables-persistent" not in script
+
+
 def test_host_prep_enables_an_explicit_systemd_sshd_jail_without_banning_tailnet_admins():
     script = tasks._host_prep_script()
 
