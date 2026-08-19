@@ -1,6 +1,9 @@
-"""The card-producing vocabulary prompt."""
+"""The card-producing vocabulary prompt and response extraction."""
 
+from echo_words.card import CardParseError, ParsedCard, parse_card_payload
 from echo_words.languages import Language
+
+CARD_DELIMITER = "===CARD==="
 
 _PROMPT = """You are a vocabulary tutor. The word below is in {source_lang}. Analyse
 this word or short phrase: {word}
@@ -78,7 +81,7 @@ explain that sense — do not substitute the nearest dictionary meaning.
 
 
 def build_prompt(language: Language, word: str, target_lang: str, *, context: str = "") -> str:
-    """Build the compact analysis prompt; card parsing is added in M4."""
+    """Build the compact analysis prompt."""
     context_note = _CONTEXT_NOTE.format(context=context) if context else ""
     return _PROMPT.format(
         source_lang=language.name,
@@ -87,3 +90,15 @@ def build_prompt(language: Language, word: str, target_lang: str, *, context: st
         word=word,
         context_note=context_note,
     )
+
+
+def extract_card(raw: str, word: str, language: Language) -> ParsedCard | None:
+    """Extract and validate the hidden card block, returning ``None`` when it is unusable."""
+    delimiter_at = raw.find(CARD_DELIMITER)
+    if delimiter_at < 0:
+        return None
+    payload = raw[delimiter_at + len(CARD_DELIMITER) :]
+    try:
+        return parse_card_payload(payload, word, language)
+    except CardParseError:
+        return None

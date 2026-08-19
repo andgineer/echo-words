@@ -25,6 +25,7 @@ class Completion:
         self.reset_after = reset_after
         self.on_reset = None
         self.closed = False
+        self.scores: list[float] = []
 
     def __aiter__(self) -> AsyncIterator[str]:
         return self._stream()
@@ -43,6 +44,9 @@ class Completion:
 
     async def aclose(self) -> None:
         self.closed = True
+
+    async def record_quality(self, score: float) -> None:
+        self.scores.append(score)
 
 
 class ScriptedCascade:
@@ -97,7 +101,11 @@ async def test_deltas_are_throttled_cut_sanitized_and_finished(languages):
         assert updates == ["<b>W</b>", "<b>Word</b> &amp; meaning"]
         assert events[-1] == Event(
             "done",
-            {"entry_id": entry.entry_id, "text": "<b>Word</b> &amp; meaning"},
+            {
+                "entry_id": entry.entry_id,
+                "text": "<b>Word</b> &amp; meaning",
+                "suggestion": None,
+            },
         )
     finally:
         await pipeline.close()
@@ -118,6 +126,60 @@ async def test_a_backend_error_keeps_partial_text_and_publishes_a_safe_hint(lang
         assert events[-1] == Event(
             "error",
             {"entry_id": entry.entry_id, "message": ERROR_MESSAGE},
+        )
+    finally:
+        await pipeline.close()
+
+
+async def test_card_parse_quality_and_suggestion_are_published_after_completion(languages):
+    completion = Completion(
+        [
+            "analysis===CARD===",
+            '{"word":"recieve","suggestion":"receive","meanings":',
+            '[{"label":"","translations":["получать"],"examples":',
+            '[{"text":"I recieve it.","translation":"Я получаю это."}]}]}',
+        ],
+    )
+    cascade = ScriptedCascade([completion])
+    hub = EventHub()
+    pipeline = WordPipeline(cascade, target_lang="ru", events=hub)
+    pipeline.start()
+    try:
+        async with hub.subscribe() as subscriber:
+            entry = await pipeline.enqueue(languages["en"], "recieve", False)
+            await pipeline.join()
+            events = drain(subscriber)
+        assert completion.scores == [1.0]
+        assert events[-1] == Event(
+            "done",
+            {"entry_id": entry.entry_id, "text": "analysis", "suggestion": "receive"},
+        )
+    finally:
+        await pipeline.close()
+
+
+async def test_card_without_examples_is_rated_as_a_failure_without_losing_analysis(languages):
+    completion = Completion(
+        [
+            "analysis===CARD===",
+            '{"word":"word","meanings":[{"label":"","translations":["слово"],',
+            '"examples":[]}]}',
+        ],
+    )
+    cascade = ScriptedCascade([completion])
+    hub = EventHub()
+    pipeline = WordPipeline(cascade, target_lang="ru", events=hub)
+    pipeline.start()
+    try:
+        async with hub.subscribe() as subscriber:
+            entry = await pipeline.enqueue(languages["en"], "word", False)
+            await pipeline.join()
+            events = drain(subscriber)
+        assert completion.scores == [0.0]
+        assert entry.status == "done"
+        assert events[-1] == Event(
+            "done",
+            {"entry_id": entry.entry_id, "text": "analysis", "suggestion": None},
         )
     finally:
         await pipeline.close()

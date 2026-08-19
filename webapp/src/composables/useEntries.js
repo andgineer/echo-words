@@ -19,4 +19,3 @@ export function upsertEntry(entry, { newest = false } = {}) {
 export function useEntries() {
   return { entries, replaceEntries, upsertEntry };
 }
-

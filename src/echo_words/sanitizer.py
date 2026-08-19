@@ -36,4 +36,3 @@ def sanitize_html(text: str) -> str:
 
     result.extend(f"</{name}>" for name in reversed(stack))
     return "".join(result)
-

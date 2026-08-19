@@ -19,6 +19,7 @@ _DEFAULT_BEHAVIOR_BY_FILE: dict[str, tuple[str, str, str | None]] = {
     "test_api_backend.py": (_VOCABULARY, "LLM cascade", "Paid attempt"),
     "test_backend.py": (_VOCABULARY, "LLM cascade", None),
     "test_broker.py": (_VOCABULARY, "LLM cascade", "Broker lifecycle"),
+    "test_card.py": (_VOCABULARY, "Card extraction", "Card payload validation"),
     "test_config.py": (_PLATFORM, "Configuration and lifecycle", "Settings"),
     "test_echo_words.py": (_PLATFORM, "Configuration and lifecycle", "CLI startup"),
     "test_languages.py": (_VOCABULARY, "Input and languages", None),
