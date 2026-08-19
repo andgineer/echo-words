@@ -1,10 +1,22 @@
 <script setup>
-import { ref } from "vue";
+import { onMounted, onUnmounted, ref } from "vue";
+import { flushQueue } from "./composables/useResendQueue.js";
 import AddView from "./views/AddView.vue";
 import StatsView from "./views/StatsView.vue";
 import StatusView from "./views/StatusView.vue";
 
 const view = ref("add");
+
+function retryQueuedWords() {
+  void flushQueue();
+}
+
+onMounted(() => {
+  retryQueuedWords();
+  window.addEventListener("online", retryQueuedWords);
+});
+
+onUnmounted(() => window.removeEventListener("online", retryQueuedWords));
 </script>
 
 <template>

@@ -109,11 +109,7 @@ class History:
         """Evict oldest terminal entries, never work the FIFO still needs."""
         while len(self.order) > self.limit:
             expired = next(
-                (
-                    entry_id
-                    for entry_id in self.order
-                    if self.entries[entry_id].action != "pending"
-                ),
+                (entry_id for entry_id in self.order if self.entries[entry_id].action != "pending"),
                 None,
             )
             if expired is None:

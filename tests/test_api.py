@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
+from uuid import UUID
 
 import pytest
 from fakes import FakeBroker
@@ -12,7 +13,7 @@ from fastapi.testclient import TestClient
 
 from echo_words import __version__
 from echo_words.anki import SyncState
-from echo_words.api import create_app
+from echo_words.api import SubmissionRegistry, create_app
 from echo_words.backend import CallRecord
 from echo_words.config import Settings
 from echo_words.events import EventHub
@@ -86,6 +87,109 @@ def test_every_entry_gets_its_own_id(client: TestClient):
     first = submit(client, word="receive").json()["entry_id"]
     second = submit(client, word="receive").json()["entry_id"]
     assert first != second
+
+
+def test_retried_request_id_returns_the_first_entry_without_rerunning_pipeline(client: TestClient):
+    pipeline = client.app.state.pipeline
+    pipeline.enqueue = AsyncMock(wraps=pipeline.enqueue)
+    body = {
+        "word": "receive",
+        "request_id": "a7237d5b-2b51-443d-bdb7-1b6e4259d10a",
+    }
+
+    first = submit(client, **body)
+    retried = submit(client, **body)
+
+    assert first.status_code == 200
+    assert retried.status_code == 200
+    assert retried.json() == first.json()
+    pipeline.enqueue.assert_awaited_once()
+
+
+def test_request_id_cannot_be_reused_for_different_work(client: TestClient):
+    request_id = "a7237d5b-2b51-443d-bdb7-1b6e4259d10a"
+    first = submit(client, word="receive", request_id=request_id)
+    conflict = submit(client, word="another", request_id=request_id)
+
+    assert first.status_code == 200
+    assert conflict.status_code == 409
+    assert conflict.json() == {"detail": "request_id was already used for another submission"}
+
+
+def test_distinct_request_ids_preserve_normal_duplicate_word_submissions(client: TestClient):
+    first = submit(
+        client,
+        word="receive",
+        request_id="a7237d5b-2b51-443d-bdb7-1b6e4259d10a",
+    )
+    second = submit(
+        client,
+        word="receive",
+        request_id="31471d2e-eb22-46ba-8544-401ea599ee3c",
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.json()["entry_id"] != second.json()["entry_id"]
+
+
+@pytest.mark.anyio
+async def test_submission_receipts_expire_on_a_deterministic_retry_window():
+    now = [100.0]
+    registry = SubmissionRegistry(ttl_seconds=10, max_entries=2, clock=lambda: now[0])
+    enqueue = AsyncMock(return_value=SimpleNamespace(entry_id="first"))
+    request_id = UUID("a7237d5b-2b51-443d-bdb7-1b6e4259d10a")
+    fingerprint = ("en", "receive", False, "")
+
+    assert await registry.accept(request_id, fingerprint, enqueue) == "first"
+    now[0] = 109.0
+    assert await registry.accept(request_id, fingerprint, enqueue) == "first"
+    enqueue.return_value = SimpleNamespace(entry_id="after-expiry")
+    now[0] = 110.0
+    assert await registry.accept(request_id, fingerprint, enqueue) == "after-expiry"
+    assert enqueue.await_count == 2
+
+
+@pytest.mark.anyio
+async def test_submission_receipts_evict_the_oldest_at_the_hard_limit():
+    now = [100.0]
+    registry = SubmissionRegistry(ttl_seconds=100, max_entries=2, clock=lambda: now[0])
+    ids = [
+        UUID("a7237d5b-2b51-443d-bdb7-1b6e4259d10a"),
+        UUID("31471d2e-eb22-46ba-8544-401ea599ee3c"),
+        UUID("dd0cf2cd-f176-46f4-8c3a-5730896d72c6"),
+    ]
+    enqueue = AsyncMock()
+    for index, request_id in enumerate(ids):
+        enqueue.return_value = SimpleNamespace(entry_id=f"entry-{index}")
+        await registry.accept(request_id, ("en", f"word-{index}", False, ""), enqueue)
+        now[0] += 1
+
+    enqueue.return_value = SimpleNamespace(entry_id="oldest-again")
+    result = await registry.accept(ids[0], ("en", "word-0", False, ""), enqueue)
+
+    assert result == "oldest-again"
+    assert enqueue.await_count == 4
+
+
+@pytest.mark.anyio
+async def test_submission_receipt_lock_coalesces_concurrent_same_id_retries():
+    registry = SubmissionRegistry(ttl_seconds=10, max_entries=2)
+    request_id = UUID("a7237d5b-2b51-443d-bdb7-1b6e4259d10a")
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def enqueue():
+        started.set()
+        await release.wait()
+        return SimpleNamespace(entry_id="one-entry")
+
+    first = asyncio.create_task(registry.accept(request_id, ("en", "word", False, ""), enqueue))
+    await started.wait()
+    retry = asyncio.create_task(registry.accept(request_id, ("en", "word", False, ""), enqueue))
+    release.set()
+
+    assert await asyncio.gather(first, retry) == ["one-entry", "one-entry"]
 
 
 def test_recent_words_contains_the_accumulated_text_while_a_word_is_in_progress(

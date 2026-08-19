@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
+import { readFileSync } from "node:fs";
 
 vi.mock("../src/api/_request.js", () => ({ apiRequest: vi.fn() }));
 
@@ -33,6 +34,22 @@ afterEach(() => {
 });
 
 describe("AddView", () => {
+  it("documents a Shortcut matcher that trims token-edge punctuation", () => {
+    const readme = readFileSync("../README.md", "utf8");
+    const documentedPattern = readme.match(/Use \*\*Match Text\*\* with\s+`([^`]+)`/u)?.[1];
+    expect(documentedPattern).toBe(String.raw`\p{L}(?:[\p{L}\p{N}'’-]*[\p{L}\p{N}])?`);
+
+    const shortcutMatcher = new RegExp(documentedPattern, "gu");
+    const sharedText = "“don’t,” word' word’ go-over- '(Straße)'";
+    expect([...sharedText.matchAll(shortcutMatcher)].map(([token]) => token)).toEqual([
+      "don’t",
+      "word",
+      "word",
+      "go-over",
+      "Straße",
+    ]);
+  });
+
   it("renders the configured language selector and M1 controls", async () => {
     const wrapper = mount(AddView);
     await flushPromises();
@@ -66,7 +83,12 @@ describe("AddView", () => {
 
     expect(apiRequest).toHaveBeenCalledWith("/api/words", {
       method: "POST",
-      body: { word: "Straße", lang: "de", lookup_only: true },
+      body: {
+        word: "Straße",
+        lang: "de",
+        lookup_only: true,
+        request_id: expect.any(String),
+      },
     });
     expect(wrapper.find(".entry-head").text()).toContain("Straße");
     expect(wrapper.find(".entry-meta").text()).toContain("Deutsch · без карточки");
@@ -88,6 +110,31 @@ describe("AddView", () => {
 
     expect(wrapper.find(".hint").text()).toBe("Для «English» нужна латиница.");
     expect(wrapper.find(".entry").exists()).toBe(false);
+  });
+
+  it("queues a word when its POST cannot reach the backend", async () => {
+    apiRequest.mockImplementation(async (path) => {
+      if (path === "/api/languages") return OPTIONS;
+      throw new TypeError("Failed to fetch");
+    });
+    const wrapper = mount(AddView);
+    await flushPromises();
+    await wrapper.find("#word").setValue("offline");
+
+    await wrapper.find(".btn-primary").trigger("click");
+    await flushPromises();
+
+    const saved = JSON.parse(localStorage.getItem("echo-words-resend-queue"));
+    expect(saved[0].body).toEqual({
+      word: "offline",
+      lang: "en",
+      lookup_only: false,
+      request_id: expect.any(String),
+    });
+    const posted = apiRequest.mock.calls.find(([path]) => path === "/api/words")[1].body;
+    expect(saved[0].body.request_id).toBe(posted.request_id);
+    expect(wrapper.find(".hint").text()).toContain("будет отправлено позже");
+    expect(wrapper.find("#word").element.value).toBe("");
   });
 
   it("shows streamed text while an entry is still pending", async () => {
@@ -183,6 +230,7 @@ describe("AddView", () => {
         lang: "en",
         lookup_only: false,
         context: "He kicked the bucket.",
+        request_id: expect.any(String),
       },
     });
   });
@@ -214,6 +262,7 @@ describe("AddView", () => {
         lang: "en",
         lookup_only: true,
         context: "kick the bucket",
+        request_id: expect.any(String),
       },
     });
   });
@@ -233,7 +282,12 @@ describe("AddView", () => {
 
     expect(apiRequest).toHaveBeenCalledWith("/api/words", {
       method: "POST",
-      body: { word: "hello!", lang: "en", lookup_only: false },
+      body: {
+        word: "hello!",
+        lang: "en",
+        lookup_only: false,
+        request_id: expect.any(String),
+      },
     });
     expect(wrapper.find(".hint").text()).toBe("Недопустимая пунктуация.");
   });
@@ -274,6 +328,7 @@ describe("AddView", () => {
         lang: "en",
         lookup_only: true,
         context: "changed phrase",
+        request_id: expect.any(String),
       },
     });
   });

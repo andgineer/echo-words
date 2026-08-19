@@ -3,11 +3,14 @@
 import asyncio
 import json
 import logging
-from collections.abc import AsyncIterator
+import time
+from collections import OrderedDict
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 from datetime import datetime
 from functools import partial
+from uuid import UUID
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, StreamingResponse
@@ -22,6 +25,7 @@ from echo_words.broker import BackendError, create_broker
 from echo_words.config import Settings
 from echo_words.config import settings as default_settings
 from echo_words.events import EventHub
+from echo_words.history import Entry
 from echo_words.languages import (
     MAX_CONTEXT_LENGTH,
     MAX_WORD_LENGTH,
@@ -42,6 +46,63 @@ _MAX_LANG_INPUT = 32
 
 logger = logging.getLogger(__name__)
 SSE_KEEP_ALIVE_SECONDS = 15
+SUBMISSION_RECEIPT_TTL_SECONDS = 7 * 24 * 60 * 60
+SUBMISSION_RECEIPT_LIMIT = 4096
+SubmissionFingerprint = tuple[str, str, bool, str]
+Clock = Callable[[], float]
+SubmissionReceipt = tuple[SubmissionFingerprint, str, float]
+
+
+class SubmissionRegistry:
+    """Bounded process-local receipts for idempotent offline resends."""
+
+    def __init__(
+        self,
+        *,
+        ttl_seconds: float = SUBMISSION_RECEIPT_TTL_SECONDS,
+        max_entries: int = SUBMISSION_RECEIPT_LIMIT,
+        clock: Clock = time.monotonic,
+    ) -> None:
+        if ttl_seconds <= 0 or max_entries <= 0:
+            raise ValueError("receipt TTL and limit must be positive")
+        self._lock = asyncio.Lock()
+        self._accepted: OrderedDict[UUID, SubmissionReceipt] = OrderedDict()
+        self._ttl_seconds = ttl_seconds
+        self._max_entries = max_entries
+        self._clock = clock
+
+    def _expire(self, now: float) -> None:
+        cutoff = now - self._ttl_seconds
+        while self._accepted:
+            _request_id, (_fingerprint, _entry_id, accepted_at) = next(
+                iter(self._accepted.items()),
+            )
+            if accepted_at > cutoff:
+                return
+            self._accepted.popitem(last=False)
+
+    async def accept(
+        self,
+        request_id: UUID | None,
+        fingerprint: SubmissionFingerprint,
+        enqueue: Callable[[], Awaitable[Entry]],
+    ) -> str:
+        if request_id is None:
+            return (await enqueue()).entry_id
+        async with self._lock:
+            now = self._clock()
+            self._expire(now)
+            accepted = self._accepted.get(request_id)
+            if accepted is not None:
+                accepted_fingerprint, entry_id, _accepted_at = accepted
+                if accepted_fingerprint != fingerprint:
+                    raise ValueError("request_id was already used for another submission")
+                return entry_id
+            entry = await enqueue()
+            while len(self._accepted) >= self._max_entries:
+                self._accepted.popitem(last=False)
+            self._accepted[request_id] = (fingerprint, entry.entry_id, self._clock())
+            return entry.entry_id
 
 
 def _report_voice_task(task: asyncio.Task[None]) -> None:
@@ -108,6 +169,7 @@ def _lifespan(settings: Settings):
             audio_timeout=settings.audio_timeout,
             audio_dir=settings.data_dir / "audio",
         )
+        app.state.submissions = SubmissionRegistry()
         app.state.pipeline.start()
         try:
             yield
@@ -127,6 +189,7 @@ class WordSubmission(BaseModel):
     lang: str = Field(max_length=_MAX_LANG_INPUT)
     lookup_only: bool = False
     context: str = Field(default="", max_length=_MAX_CONTEXT_INPUT)
+    request_id: UUID | None = None
 
 
 class SubmissionAccepted(BaseModel):
@@ -138,7 +201,7 @@ class LanguageOption(BaseModel):
     name: str
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:  # noqa: C901
+def create_app(settings: Settings | None = None) -> FastAPI:  # noqa: C901, PLR0915
     settings = settings or default_settings
     app = FastAPI(title="echo-words", version=__version__, lifespan=_lifespan(settings))
 
@@ -161,13 +224,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:  # noqa: C901
         if hint:
             raise HTTPException(status_code=400, detail=hint)
         context = sanitize_context(submission.context)
-        entry = await request.app.state.pipeline.enqueue(
-            language,
-            word,
-            lookup_only,
-            context=context,
-        )
-        return SubmissionAccepted(entry_id=entry.entry_id)
+        fingerprint = (language.code, word, lookup_only, context)
+        try:
+            entry_id = await request.app.state.submissions.accept(
+                submission.request_id,
+                fingerprint,
+                partial(
+                    request.app.state.pipeline.enqueue,
+                    language,
+                    word,
+                    lookup_only,
+                    context=context,
+                ),
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return SubmissionAccepted(entry_id=entry_id)
 
     @app.get("/api/words/recent")
     async def recent_words(

@@ -1,9 +1,14 @@
 <script setup>
-import { onMounted, onUnmounted, ref, watch } from "vue";
+import { nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { apiRequest } from "../api/_request.js";
 import { upsertEntry } from "../composables/useEntries.js";
 import { useEventStream } from "../composables/useEventStream.js";
 import { useLanguage } from "../composables/useLanguage.js";
+import {
+  enqueueWord,
+  isRetryableWordError,
+  withRequestId,
+} from "../composables/useResendQueue.js";
 
 const { languages, selected, loadLanguages } = useLanguage();
 const { entries, start: startEventStream, stop: stopEventStream } = useEventStream();
@@ -63,13 +68,13 @@ async function chooseWord(token) {
 async function sendWord(submittedWord, submittedLookupOnly, context = "") {
   busy.value = true;
   hint.value = "";
+  const body = withRequestId({
+    word: submittedWord,
+    lang: selected.value,
+    lookup_only: submittedLookupOnly,
+  });
+  if (context) body.context = context;
   try {
-    const body = {
-      word: submittedWord,
-      lang: selected.value,
-      lookup_only: submittedLookupOnly,
-    };
-    if (context) body.context = context;
     const accepted = await apiRequest("/api/words", {
       method: "POST",
       body,
@@ -91,7 +96,16 @@ async function sendWord(submittedWord, submittedLookupOnly, context = "") {
     lookupOnly.value = false;
     picker.value = null;
   } catch (e) {
-    hint.value = e.message;
+    if (isRetryableWordError(e)) {
+      enqueueWord(body);
+      word.value = "";
+      lookupOnly.value = false;
+      picker.value = null;
+      await nextTick();
+      hint.value = "Нет связи — слово сохранено и будет отправлено позже.";
+    } else {
+      hint.value = e.message;
+    }
   } finally {
     busy.value = false;
   }

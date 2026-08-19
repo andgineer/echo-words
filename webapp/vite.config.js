@@ -18,7 +18,26 @@ export default defineConfig({
     VitePWA({
       registerType: "autoUpdate",
       injectRegister: "auto",
-      manifest: false,
+      manifest: {
+        name: "echo-words Vocabulary Assistant",
+        short_name: "echo-words",
+        description: "Rich word explanations with automatic Anki cards.",
+        theme_color: "#16213e",
+        background_color: "#16213e",
+        display: "standalone",
+        lang: "ru",
+        start_url: "/",
+        icons: [
+          { src: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
+          { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
+          {
+            src: "/icons/icon-512.png",
+            sizes: "512x512",
+            type: "image/png",
+            purpose: "maskable",
+          },
+        ],
+      },
       workbox: {
         globPatterns: ["**/*.{js,css,html,svg,png,ico,webmanifest,json}"],
         skipWaiting: true,
