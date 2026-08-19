@@ -5,8 +5,15 @@
 | Name                             |    Stmts |     Miss |   Cover |   Missing |
 |--------------------------------- | -------: | -------: | ------: | --------: |
 | src/echo\_words/\_\_about\_\_.py |        1 |        0 |    100% |           |
-| src/echo\_words/main.py          |       16 |        5 |     69% |     22-29 |
-| **TOTAL**                        |   **17** |    **5** | **71%** |           |
+| src/echo\_words/api.py           |       64 |        0 |    100% |           |
+| src/echo\_words/api\_backend.py  |       17 |        0 |    100% |           |
+| src/echo\_words/backend.py       |      133 |        1 |     99% |       217 |
+| src/echo\_words/broker.py        |       28 |        0 |    100% |           |
+| src/echo\_words/config.py        |       36 |        0 |    100% |           |
+| src/echo\_words/languages.py     |       89 |        1 |     99% |        72 |
+| src/echo\_words/llm\_backend.py  |       38 |        0 |    100% |           |
+| src/echo\_words/main.py          |       11 |        0 |    100% |           |
+| **TOTAL**                        |  **417** |    **2** | **99%** |           |
 
 
 ## Setup coverage badge
