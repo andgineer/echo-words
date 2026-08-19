@@ -1,15 +1,17 @@
 <script setup>
-import { onMounted, ref, watch } from "vue";
+import { onMounted, onUnmounted, ref, watch } from "vue";
 import { apiRequest } from "../api/_request.js";
+import { upsertEntry } from "../composables/useEntries.js";
+import { useEventStream } from "../composables/useEventStream.js";
 import { useLanguage } from "../composables/useLanguage.js";
 
 const { languages, selected, loadLanguages } = useLanguage();
+const { entries, start: startEventStream, stop: stopEventStream } = useEventStream();
 
 const word = ref("");
 const lookupOnly = ref(false);
 const hint = ref("");
 const busy = ref(false);
-const entries = ref([]);
 const helpOpen = ref(false);
 
 watch([word, selected], () => {
@@ -17,6 +19,7 @@ watch([word, selected], () => {
 });
 
 onMounted(async () => {
+  startEventStream();
   try {
     await loadLanguages();
   } catch (e) {
@@ -24,16 +27,34 @@ onMounted(async () => {
   }
 });
 
+onUnmounted(stopEventStream);
+
 async function submit() {
   if (busy.value || !word.value.trim() || !selected.value) return;
   busy.value = true;
   hint.value = "";
+  const submittedWord = word.value.trim();
+  const submittedLookupOnly = lookupOnly.value || submittedWord.startsWith("?");
   try {
     const accepted = await apiRequest("/api/words", {
       method: "POST",
       body: { word: word.value, lang: selected.value, lookup_only: lookupOnly.value },
     });
-    entries.value.unshift(accepted);
+    const displayWord = submittedWord.startsWith("?")
+      ? submittedWord.slice(1).trim()
+      : submittedWord;
+    const metadata = {
+      entry_id: accepted.entry_id,
+      word: displayWord,
+      lang: selected.value,
+      language: languages.value.find((item) => item.code === selected.value)?.name || "",
+      lookup_only: submittedLookupOnly,
+    };
+    const alreadyStreaming = entries.value.some((entry) => entry.entry_id === accepted.entry_id);
+    upsertEntry(
+      alreadyStreaming ? metadata : { ...metadata, status: "pending" },
+      { newest: true },
+    );
     word.value = "";
     lookupOnly.value = false;
   } catch (e) {
@@ -82,9 +103,11 @@ async function submit() {
   <section class="answers">
     <p v-if="!entries.length" class="empty">Здесь появятся разборы слов.</p>
     <article v-for="entry in entries" :key="entry.entry_id" class="card entry">
-      <p class="entry-head">
+      <p v-if="entry.status === 'pending' && !entry.text" class="entry-head">
         ⏳ <b>{{ entry.word }}</b> …
       </p>
+      <div v-if="entry.text" class="entry-text" v-html="entry.text"></div>
+      <p v-if="entry.error" class="entry-error">{{ entry.error }}</p>
       <p class="entry-meta">
         {{ entry.language }}<span v-if="entry.lookup_only"> · без карточки</span>
       </p>
@@ -153,6 +176,15 @@ async function submit() {
   margin-top: 0.35rem;
   font-size: 0.75rem;
   color: var(--text-muted);
+}
+
+.entry-text {
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.entry-error {
+  color: var(--error);
 }
 
 .about {

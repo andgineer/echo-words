@@ -9,7 +9,7 @@ def test_defaults_match_the_specification():
     settings = Settings(_env_file=None)
     assert settings.host == "127.0.0.1"
     assert settings.port == 8080
-    assert settings.target_lang == "ru"
+    assert settings.target_lang == "Russian"
     assert settings.languages_config == Path.home() / ".echo-words" / "languages.toml"
     assert settings.data_dir == Path.home() / ".echo-words"
     assert settings.static_dir == REPO_ROOT / "_static"
@@ -55,3 +55,8 @@ def test_the_environment_prefix_is_echowords(monkeypatch, tmp_path: Path):
     settings = Settings(_env_file=None)
     assert settings.port == 9001
     assert settings.languages_config == tmp_path / "languages.toml"
+
+
+def test_the_documented_target_code_becomes_the_prompt_display_name():
+    assert Settings(_env_file=None, target_lang="ru").target_lang == "Russian"
+    assert Settings(_env_file=None, target_lang="Italian").target_lang == "Italian"

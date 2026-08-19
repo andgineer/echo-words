@@ -1,16 +1,52 @@
+import asyncio
+import threading
+import time
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
+from fakes import FakeBroker
 from fastapi.testclient import TestClient
 
 from echo_words import __version__
 from echo_words.api import create_app
 from echo_words.config import Settings
+from echo_words.events import EventHub
 from echo_words.languages import MAX_CONTEXT_LENGTH, MAX_WORD_LENGTH, LanguagesConfigError
+
+
+class BlockingHandle:
+    def __init__(self) -> None:
+        self.llm_name = "waiting-model"
+        self.started = threading.Event()
+        self.release = threading.Event()
+        self._iterator = self._stream()
+
+    def __aiter__(self):
+        return self._iterator
+
+    async def _stream(self):
+        self.started.set()
+        yield "<b>part"
+        while not self.release.is_set():
+            await asyncio.sleep(0.01)
+        yield "ial</b>"
+
+    async def aclose(self):
+        await self._iterator.aclose()
+
+    async def record_quality(self, _score):
+        return None
 
 
 def submit(client: TestClient, **body):
     return client.post("/api/words", json={"lang": "en", **body})
+
+
+def recent_entry(client: TestClient, entry_id: str):
+    return next(
+        entry for entry in client.get("/api/words/recent").json() if entry["entry_id"] == entry_id
+    )
 
 
 def test_health_answers_without_any_backend(client: TestClient):
@@ -33,12 +69,13 @@ def test_accepted_submission_names_the_resolved_language(client: TestClient):
     response = submit(client, word="receive")
     assert response.status_code == 200
     body = response.json()
-    assert body["entry_id"]
-    assert body["word"] == "receive"
-    assert body["lang"] == "en"
-    assert body["language"] == "English"
-    assert body["lookup_only"] is False
-    assert body["context"] == ""
+    assert list(body) == ["entry_id"]
+    entry = recent_entry(client, body["entry_id"])
+    assert entry["word"] == "receive"
+    assert entry["lang"] == "en"
+    assert entry["language"] == "English"
+    assert entry["lookup_only"] is False
+    assert entry["context"] == ""
 
 
 def test_every_entry_gets_its_own_id(client: TestClient):
@@ -47,25 +84,53 @@ def test_every_entry_gets_its_own_id(client: TestClient):
     assert first != second
 
 
+def test_recent_words_contains_the_accumulated_text_while_a_word_is_in_progress(
+    monkeypatch: pytest.MonkeyPatch,
+    settings: Settings,
+):
+    handle = BlockingHandle()
+    broker = FakeBroker(handles=[handle])
+    monkeypatch.setattr("echo_words.api.create_broker", lambda *_args: broker)
+    with TestClient(create_app(settings)) as live_client:
+        entry_id = submit(live_client, word="partial").json()["entry_id"]
+        assert handle.started.wait(timeout=1)
+        deadline = time.monotonic() + 1
+        recent = []
+        while time.monotonic() < deadline:
+            recent = live_client.get("/api/words/recent").json()
+            if recent and recent[0]["text"]:
+                break
+            time.sleep(0.01)
+        assert recent[0]["entry_id"] == entry_id
+        assert recent[0]["status"] == "pending"
+        assert recent[0]["text"] == "<b>part</b>"
+        handle.release.set()
+
+
 def test_question_mark_prefix_means_lookup_only(client: TestClient):
-    body = submit(client, word="? receive").json()
-    assert body["word"] == "receive"
-    assert body["lookup_only"] is True
+    entry_id = submit(client, word="? receive").json()["entry_id"]
+    entry = recent_entry(client, entry_id)
+    assert entry["word"] == "receive"
+    assert entry["lookup_only"] is True
 
 
 def test_lookup_only_flag_is_honored(client: TestClient):
-    assert submit(client, word="receive", lookup_only=True).json()["lookup_only"] is True
+    entry_id = submit(client, word="receive", lookup_only=True).json()["entry_id"]
+    assert recent_entry(client, entry_id)["lookup_only"] is True
 
 
 def test_context_travels_with_the_word_sanitized(client: TestClient):
-    body = submit(client, word="bucket", context="  he kicked  the\tbucket ").json()
-    assert body["word"] == "bucket"
-    assert body["context"] == "he kicked the bucket"
+    entry_id = submit(client, word="bucket", context="  he kicked  the\tbucket ").json()["entry_id"]
+    entry = recent_entry(client, entry_id)
+    assert entry["word"] == "bucket"
+    assert entry["context"] == "he kicked the bucket"
 
 
 def test_context_is_capped(client: TestClient):
-    body = submit(client, word="bucket", context="x" * (MAX_CONTEXT_LENGTH + 100)).json()
-    assert len(body["context"]) == MAX_CONTEXT_LENGTH
+    entry_id = submit(client, word="bucket", context="x" * (MAX_CONTEXT_LENGTH + 100)).json()[
+        "entry_id"
+    ]
+    assert len(recent_entry(client, entry_id)["context"]) == MAX_CONTEXT_LENGTH
 
 
 def test_unknown_language_gets_a_hint_and_no_processing(client: TestClient):
@@ -120,3 +185,30 @@ def test_missing_languages_config_stops_the_startup(tmp_path: Path):
     app = create_app(Settings(_env_file=None, languages_config=tmp_path / "absent.toml"))
     with pytest.raises(LanguagesConfigError), TestClient(app):
         pass  # pragma: no cover
+
+
+@pytest.mark.anyio
+async def test_sse_endpoint_frames_events_keeps_alive_and_cleans_up_subscribers(
+    monkeypatch: pytest.MonkeyPatch,
+    settings: Settings,
+):
+    monkeypatch.setattr("echo_words.api.SSE_KEEP_ALIVE_SECONDS", 0.001)
+    hub = EventHub()
+    app = create_app(settings)
+    route = next(route for route in app.routes if getattr(route, "path", None) == "/api/events")
+    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(events=hub)))
+    response = await route.endpoint(request)
+
+    assert response.media_type == "text/event-stream"
+    assert response.headers["content-type"] == "text/event-stream; charset=utf-8"
+    assert response.headers["cache-control"] == "no-cache"
+    assert response.headers["x-accel-buffering"] == "no"
+
+    stream = response.body_iterator
+    assert await anext(stream) == ": keep-alive\n\n"
+    assert hub.subscriber_count == 1
+    await hub.publish("update", {"entry_id": "one", "text": "слово"})
+    assert await anext(stream) == ('event: update\ndata: {"entry_id":"one","text":"слово"}\n\n')
+
+    await stream.aclose()
+    assert hub.subscriber_count == 0

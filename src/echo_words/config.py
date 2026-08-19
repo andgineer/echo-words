@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     host: str = "127.0.0.1"
     port: int = 8080
 
-    target_lang: str = "ru"
+    target_lang: str = Field(default="ru", validate_default=True)
     languages_config: Path = Path.home() / ".echo-words" / "languages.toml"
     data_dir: Path = Path.home() / ".echo-words"
     static_dir: Path = REPO_ROOT / "_static"
@@ -49,6 +49,13 @@ class Settings(BaseSettings):
     accent: Literal["us", "uk"] = "us"
     edge_tts_voice: str = ""
     audio_timeout: int = 20
+
+    @field_validator("target_lang", mode="before")
+    @classmethod
+    def _target_language_display_name(cls, value: object) -> object:
+        # The documented default is the ISO code, while the LLM contract requires
+        # a display name. Other target languages may be configured by display name.
+        return "Russian" if value == "ru" else value
 
     @field_validator("llmbroker_home", mode="before")
     @classmethod

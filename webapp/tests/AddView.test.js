@@ -4,6 +4,7 @@ import { flushPromises, mount } from "@vue/test-utils";
 vi.mock("../src/api/_request.js", () => ({ apiRequest: vi.fn() }));
 
 import { apiRequest } from "../src/api/_request.js";
+import { entries } from "../src/composables/useEntries.js";
 import { languages, selected } from "../src/composables/useLanguage.js";
 import AddView from "../src/views/AddView.vue";
 import { EPIC, FEATURE, labelBehavior } from "./allure-taxonomy.js";
@@ -16,6 +17,7 @@ const OPTIONS = [
 beforeEach(async () => {
   await labelBehavior(EPIC.VOCABULARY_ANALYSIS, FEATURE.INPUT_AND_LANGUAGES, "Word submission");
   languages.value = [];
+  entries.value = [];
   selected.value = "";
   localStorage.clear();
   apiRequest.mockReset();
@@ -49,14 +51,7 @@ describe("AddView", () => {
     apiRequest.mockImplementation(async (path) => {
       if (path === "/api/languages") return OPTIONS;
       if (path === "/api/words") {
-        return {
-          entry_id: "entry-1",
-          word: "Straße",
-          lang: "de",
-          language: "Deutsch",
-          lookup_only: true,
-          context: "",
-        };
+        return { entry_id: "entry-1" };
       }
       throw new Error(`Unexpected request: ${path}`);
     });
@@ -93,6 +88,22 @@ describe("AddView", () => {
 
     expect(wrapper.find(".hint").text()).toBe("Для «English» нужна латиница.");
     expect(wrapper.find(".entry").exists()).toBe(false);
+  });
+
+  it("shows streamed text while an entry is still pending", async () => {
+    entries.value = [{
+      entry_id: "entry-1",
+      word: "Word",
+      language: "English",
+      lookup_only: false,
+      status: "pending",
+      text: "<b>Word</b> — meaning",
+    }];
+    const wrapper = mount(AddView);
+    await flushPromises();
+
+    expect(wrapper.find(".entry-text").html()).toContain("<b>Word</b> — meaning");
+    expect(wrapper.find(".entry-head").exists()).toBe(false);
   });
 
   it("documents both lookup shortcuts and the reversible correction control", async () => {
