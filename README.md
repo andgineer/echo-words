@@ -5,7 +5,8 @@
 | Name                             |    Stmts |     Miss |   Cover |   Missing |
 |--------------------------------- | -------: | -------: | ------: | --------: |
 | src/echo\_words/\_\_about\_\_.py |        1 |        0 |    100% |           |
-| src/echo\_words/api.py           |       95 |        1 |     99% |        54 |
+| src/echo\_words/anki.py          |      305 |       10 |     97% |110, 117, 167, 273, 293, 329, 365, 384, 389, 420 |
+| src/echo\_words/api.py           |       99 |        1 |     99% |        55 |
 | src/echo\_words/api\_backend.py  |       17 |        0 |    100% |           |
 | src/echo\_words/backend.py       |      132 |        1 |     99% |       217 |
 | src/echo\_words/broker.py        |       28 |        0 |    100% |           |
@@ -15,10 +16,10 @@
 | src/echo\_words/languages.py     |       89 |        1 |     99% |        72 |
 | src/echo\_words/llm\_backend.py  |       38 |        0 |    100% |           |
 | src/echo\_words/main.py          |       11 |        0 |    100% |           |
-| src/echo\_words/pipeline.py      |      181 |        9 |     95% |85, 166, 174-175, 189, 216, 259, 262-263 |
+| src/echo\_words/pipeline.py      |      208 |       10 |     95% |98, 180, 188-189, 203, 238, 247, 297, 300-301 |
 | src/echo\_words/prompt.py        |       17 |        0 |    100% |           |
 | src/echo\_words/sanitizer.py     |       24 |        1 |     96% |        34 |
-| **TOTAL**                        |  **779** |   **15** | **98%** |           |
+| **TOTAL**                        | **1115** |   **26** | **98%** |           |
 
 
 ## Setup coverage badge
