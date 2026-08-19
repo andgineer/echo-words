@@ -15,7 +15,10 @@ def payload(**changes) -> str:
                 "pos": "сущ.",
                 "translations": ["банк", "банковское учреждение"],
                 "examples": [
-                    {"text": "The bank opens at nine.", "translation": "Банк открывается в девять."},
+                    {
+                        "text": "The bank opens at nine.",
+                        "translation": "Банк открывается в девять.",
+                    },
                 ],
             },
         ],

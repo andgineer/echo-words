@@ -28,9 +28,9 @@ class Completion:
         self.scores: list[float] = []
 
     def __aiter__(self) -> AsyncIterator[str]:
-        return self._stream()
+        return self.stream()
 
-    async def _stream(self) -> AsyncIterator[str]:
+    async def stream(self) -> AsyncIterator[str]:
         if self.started is not None:
             self.started.set()
         for index, delta in enumerate(self.deltas, start=1):
@@ -54,15 +54,17 @@ class ScriptedCascade:
         self.completions = list(completions)
         self.calls: list[str] = []
         self.prompts: list[str] = []
+        self.trace_ids: list[str | None] = []
         self.active = 0
         self.max_active = 0
 
     def stream_completion(self, prompt, language, *, trace_id=None, on_reset=None):
         self.calls.append(language.code)
         self.prompts.append(prompt)
+        self.trace_ids.append(trace_id)
         completion = self.completions.pop(0)
         completion.on_reset = on_reset
-        original = completion._stream
+        original = completion.stream
 
         async def tracked():
             self.active += 1
@@ -73,7 +75,7 @@ class ScriptedCascade:
             finally:
                 self.active -= 1
 
-        completion._stream = tracked
+        completion.stream = tracked
         return completion
 
 

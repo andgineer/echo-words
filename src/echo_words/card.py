@@ -7,6 +7,9 @@ from typing import Any
 
 from echo_words.languages import Language, validate_word
 
+MAX_MEANINGS = 3
+MAX_EXAMPLES_PER_MEANING = 2
+
 
 class CardParseError(ValueError):
     """The card payload is not usable as a vocabulary note."""
@@ -47,7 +50,7 @@ def parse_card_payload(payload: str, word: str, language: Language) -> ParsedCar
     meanings_value = card.get("meanings")
     if not isinstance(meanings_value, list):
         raise CardParseError("card.meanings must be a list")
-    if not 1 <= len(meanings_value) <= 3:
+    if not 1 <= len(meanings_value) <= MAX_MEANINGS:
         raise CardParseError("card.meanings must contain between one and three meanings")
     meanings = [
         _parse_meaning(item, index, require_label=len(meanings_value) > 1)
@@ -68,7 +71,10 @@ def _parse_meaning(value: Any, index: int, *, require_label: bool) -> Meaning:
         for translation_index, item in enumerate(translations_value)
     ]
     examples_value = meaning.get("examples")
-    if not isinstance(examples_value, list) or not 1 <= len(examples_value) <= 2:
+    if (
+        not isinstance(examples_value, list)
+        or not 1 <= len(examples_value) <= MAX_EXAMPLES_PER_MEANING
+    ):
         raise CardParseError(f"{path}.examples must contain between one and two examples")
     examples = [
         _parse_example(item, f"{path}.examples[{example_index}]")

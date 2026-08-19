@@ -21,9 +21,9 @@ repos:
         exclude: ^tests/
         args: [ --fix ]
       - id: ruff
-        name: ruff-format-tests
+        name: ruff-tests
         files: ^tests/
-        args: [ --fix-only ]
+        args: [ --fix ]
       - id: ruff-format
 
 
