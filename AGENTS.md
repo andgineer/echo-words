@@ -21,9 +21,11 @@
   the packaging.
 - Dependencies via `uv`; run `uv lock` when adding any (CI uses
   `--frozen`).
-- Every new module ships its tests in the same commit. A milestone is
-  done only when `uv run pytest` and `ruff check` (line-length 100) are
-  green.
+- Every new module ships its tests in the same commit. Run static checks
+  only through `inv pre`, never by invoking Ruff directly. A milestone is
+  done only when `inv pre` and the full `inv test` suite are green.
+- Never present changes as ready or ask for permission to commit before
+  both required commands have completed successfully.
 - No real network, Anki sync, or LLM calls in tests — fake or mock
   every boundary. The M0 harness in `experiments/` is the sanctioned
   exception and stays out of CI.

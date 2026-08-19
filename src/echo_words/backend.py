@@ -211,12 +211,11 @@ class Cascade:
             return f"the daily paid-call cap ({cap}) is spent"
         return None
 
-    def spend_paid_call(self, language: Language) -> str:
+    def spend_paid_call(self, language: Language) -> None:
         refusal = self.paid_refusal(language)
         if refusal is not None:
             raise BackendError(refusal)
         self._paid_calls += 1
-        return self.paid_alias(language)
 
     def record_call(
         self,

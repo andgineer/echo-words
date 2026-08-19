@@ -81,9 +81,7 @@ _STORY_BY_FILE_AND_TEST: dict[tuple[str, str], str] = {
     ("test_backend.py", "test_the_language_names_which_paid_model_it_steps_up_to"): (
         "Paid recovery"
     ),
-    ("test_backend.py", "test_without_a_paid_alias_a_pool_miss_is_a_failure"): (
-        "Paid recovery"
-    ),
+    ("test_backend.py", "test_without_a_paid_alias_a_pool_miss_is_a_failure"): ("Paid recovery"),
     ("test_backend.py", "test_without_a_paid_alias_a_deeper_analysis_is_refused"): (
         "Explicit paid requests"
     ),
@@ -103,9 +101,7 @@ _STORY_BY_FILE_AND_TEST: dict[tuple[str, str], str] = {
     ("test_backend.py", "test_an_unresolvable_paid_alias_does_not_spend_the_wallet"): (
         "Daily paid-call cap"
     ),
-    ("test_backend.py", "test_calls_today_rolls_over_in_utc_when_read"): (
-        "Daily paid-call cap"
-    ),
+    ("test_backend.py", "test_calls_today_rolls_over_in_utc_when_read"): ("Daily paid-call cap"),
 }
 
 _LANGUAGE_CONFIG_TESTS = frozenset(
