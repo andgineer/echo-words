@@ -9,15 +9,16 @@
 | src/echo\_words/api\_backend.py  |       17 |        0 |    100% |           |
 | src/echo\_words/backend.py       |      132 |        1 |     99% |       217 |
 | src/echo\_words/broker.py        |       28 |        0 |    100% |           |
+| src/echo\_words/card.py          |       70 |        2 |     97% |  111, 125 |
 | src/echo\_words/config.py        |       40 |        0 |    100% |           |
 | src/echo\_words/events.py        |       34 |        0 |    100% |           |
 | src/echo\_words/languages.py     |       89 |        1 |     99% |        72 |
 | src/echo\_words/llm\_backend.py  |       38 |        0 |    100% |           |
 | src/echo\_words/main.py          |       11 |        0 |    100% |           |
-| src/echo\_words/pipeline.py      |      169 |        9 |     95% |86, 167, 175-176, 189, 202, 223, 226-227 |
-| src/echo\_words/prompt.py        |        6 |        0 |    100% |           |
+| src/echo\_words/pipeline.py      |      181 |        9 |     95% |85, 166, 174-175, 189, 216, 259, 262-263 |
+| src/echo\_words/prompt.py        |       17 |        0 |    100% |           |
 | src/echo\_words/sanitizer.py     |       24 |        1 |     96% |        34 |
-| **TOTAL**                        |  **684** |   **13** | **98%** |           |
+| **TOTAL**                        |  **777** |   **15** | **98%** |           |
 
 
 ## Setup coverage badge
