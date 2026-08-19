@@ -3,10 +3,12 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+from fakes import FakeBroker
 from fastapi.testclient import TestClient
 
 from echo_words.api import create_app
 from echo_words.config import Settings
+from echo_words.languages import Language, load_languages
 
 LANGUAGES_TOML = """
 [languages.en]
@@ -35,6 +37,17 @@ edge_tts_voice = "sr-RS-SophieNeural"
 script    = "latin+cyrillic"
 prompt_hints = "for nouns give gender and plural"
 """
+
+
+@pytest.fixture
+def anyio_backend() -> str:
+    return "asyncio"
+
+
+@pytest.fixture(autouse=True)
+def _no_real_broker(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A real AsyncBroker would refresh llmbroker's curated pool over the network.
+    monkeypatch.setattr("llmbroker.AsyncBroker", FakeBroker)
 
 
 @pytest.fixture(autouse=True)
@@ -73,3 +86,8 @@ def settings(languages_file: Path, static_dir: Path, tmp_path: Path) -> Settings
 def client(settings: Settings) -> Iterator[TestClient]:
     with TestClient(create_app(settings)) as test_client:
         yield test_client
+
+
+@pytest.fixture
+def languages(languages_file: Path) -> dict[str, Language]:
+    return load_languages(languages_file)

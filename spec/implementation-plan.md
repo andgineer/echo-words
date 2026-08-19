@@ -730,9 +730,9 @@ src/echo_words/
   pipeline.py       # process_word + the single FIFO queue worker + in-memory job registry
   events.py         # in-process pub/sub bridging pipeline progress -> SSE subscribers
   sanitizer.py      # whitelist <b>/<i>, escape the rest, auto-close at the cut
-  backend.py        # stream_completion dispatcher: pick backend by lang (languages
-                    # table), delegate; enforce ECHOWORDS_API_DAILY_CAP with fallback
-                    # to the llmbroker pool
+  backend.py        # stream_completion dispatcher: the pool first, the paid step where
+                    # the pool missed the budget; enforce ECHOWORDS_API_DAILY_CAP —
+                    # a spent cap is a failure, never a fallback to the pool
   broker.py         # the one AsyncBroker: built after languages.py from home= + direct=[aliases]
   llm_backend.py    # llmbroker pool backend: broker.stream(...) -> text deltas
   api_backend.py    # paid api backend: (await broker.direct(alias)).stream(...) -> text deltas
@@ -830,8 +830,10 @@ page serving.
 ### M2 — LLM backend runner (the pool → paid cascade)
 
 One seam, one cascade, both steps shipped here. The pipeline calls
-`async def stream_completion(prompt, lang) -> AsyncIterator[str]` (in a small
-`backend.py` dispatcher) which always starts at the pool and steps up to the
+`stream_completion(prompt, lang, trace_id=…, on_reset=…)` (in a small
+`backend.py` dispatcher), which hands back one object — async-iterable over the
+text deltas, carrying `llm_name`, `record_quality()` and `aclose()`, the same
+shape llmbroker's own handle has — and which always starts at the pool and steps up to the
 paid model on **one** trigger, latency and not a per-language choice: **the pool
 did not deliver a complete answer within the budget.** llmbroker's `wait` covers
 the whole answer in provider time, so that one budget is the whole rule — it
@@ -847,11 +849,11 @@ step from the beginning of the same prompt, so two answers are never spliced.
 description states why: it is the number a slow model looks best on, and the
 user waits for the whole answer.
 
-Anything that is *not* latency — a dead key, a malformed request, the whole
-pool rate-limited with the cap already spent — is a `BackendError`, not a
-step-up: the cascade buys time, it does not paper over faults. And with no
-paid alias configured or the daily cap spent, there is no second step at all
-and both triggers become that same error.
+Anything that is *not* latency — a dead key, an empty or disabled pool, a
+malformed request — is a `BackendError`, not a step-up: the cascade buys time,
+it does not paper over faults. With no paid alias configured or the daily cap
+spent, there is no second step at all, and a pool timeout is also surfaced as
+a `BackendError` carrying that refusal reason.
 
 - **`llmbroker` backend** (`llm_backend.py`): one process-wide `AsyncBroker`
   lives in `broker.py`, built in the FastAPI lifespan after the languages
@@ -866,11 +868,13 @@ and both triggers become that same error.
   raises `LLMTimeoutError` with the deltas so far already delivered — which the
   low end is chosen to avoid (`spec/decision-llm-backend.md`). It is an HTTPS text→text
   call the operator already trusts — no subprocess, nothing to sandbox. Map
-  `NoLLMAvailableError` (whole pool rate-limited), `LLMTimeoutError` and
+  `NoLLMAvailableError(reason="timeout")` (whole pool rate-limited),
+  `LLMTimeoutError` and
   `StreamInterruptedError` (the stream died after deltas — no failover
   possible past the first one) onto one `BackendError` so the error path is
   uniform. Import `llmbroker` lazily so a missing/broken install degrades to a
-  clear config error, not a startup crash. The seam hands the handle (or just
+  clear config error, not a startup crash — a sanctioned exception to the
+  top-level-imports rule; mark it with a comment. The seam hands the handle (or just
   its `llm_name` and a rating callback) back to the pipeline alongside the
   deltas, because both of the following need it:
   - **Quality feedback ships in v0.1:** after the card is parsed (M4),
@@ -902,7 +906,9 @@ and both triggers become that same error.
   and llmbroker reads it at call time. Map those and the call's own errors
   (`AuthError`, `RateLimitError`, `LLMTimeoutError`, `ProviderError`,
   `InvalidProviderResponseError`) onto the same `BackendError`, so the error
-  path stays uniform. Note the direct client is **not journaled**, so it has
+  path stays uniform. Its timeout is the same complete-answer budget as the
+  pool's; the faster paid model gets no separate minute-long allowance. Note
+  the direct client is **not journaled**, so it has
   no `llm_name`, no quality feedback and needs none — a declared model is
   never routed, there is nothing for a score to inform, and `/api/status`
   names the configured alias itself. **Daily spend cap:** the `backend.py`
@@ -920,8 +926,10 @@ returns a fake handle (monkeypatched — no real pool) asserting the happy path
 yields streamed deltas as multiple chunks, that the per-language `operation`
 label (`vocab-en`, `vocab-sr`), `trace_id` and `wait` are passed through, that
 the handle is closed even when the consumer abandons the stream mid-way, that
-`NoLLMAvailableError`, `LLMTimeoutError` and `StreamInterruptedError` all
-surface as `BackendError`, that a parsed card calls `handle.record_quality`
+`NoLLMAvailableError` surfaces as a budget miss only for `reason="timeout"`
+and as a non-step-up fault for every other documented reason, that
+`LLMTimeoutError` and `StreamInterruptedError` surface as `BackendError`, that
+a parsed card calls `handle.record_quality`
 with a positive score and a parse failure with the opposite, that
 `handle.llm_name` is recorded for `/api/status`. For the **cascade** itself:
 that a pool stream which yields nothing within the budget steps up invisibly,
@@ -1195,8 +1203,8 @@ through to the next on ANY exception (log at warning level, never raise):
    inference in `asyncio.to_thread` (CPU-bound). Piper outputs WAV →
    mp3 via `lameenc`. Import `piper` lazily at call time so a broken
    install degrades to step 3 instead of killing the app at startup —
-   the one sanctioned exception to the top-level-imports rule; mark it
-   with a comment. Note the limit of this fall-through: it catches
+   a sanctioned exception to the top-level-imports rule, the other being
+   M2's llmbroker; mark it with a comment. Note the limit of this fall-through: it catches
    runtime **exceptions**, not an OOM kill — engines are sized to the
    1 GB host by config up front ("Deployment"), not left to degrade at
    runtime. First task of this milestone: on a clean machine check

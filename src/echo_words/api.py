@@ -1,5 +1,6 @@
 """The FastAPI application: health, the languages table, word submission, and the built PWA."""
 
+import logging
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -9,6 +10,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from echo_words import __version__
+from echo_words.backend import Cascade
+from echo_words.broker import create_broker
 from echo_words.config import Settings
 from echo_words.config import settings as default_settings
 from echo_words.languages import (
@@ -27,6 +30,8 @@ from echo_words.languages import (
 _MAX_WORD_INPUT = MAX_WORD_LENGTH * 4
 _MAX_CONTEXT_INPUT = MAX_CONTEXT_LENGTH * 4
 _MAX_LANG_INPUT = 32
+
+logger = logging.getLogger(__name__)
 
 
 class WordSubmission(BaseModel):
@@ -56,7 +61,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.languages = load_languages(settings.languages_config)
-        yield
+        app.state.cascade = None
+        broker = None
+        try:
+            broker = create_broker(settings, app.state.languages)
+        except Exception as exc:  # noqa: BLE001
+            logger.error("no LLM backend: %s: %s", type(exc).__name__, exc)
+        else:
+            app.state.cascade = Cascade(broker, settings)
+        try:
+            yield
+        finally:
+            if broker is not None:
+                await broker.aclose()
 
     app = FastAPI(title="echo-words", version=__version__, lifespan=lifespan)
 
