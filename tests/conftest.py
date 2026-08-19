@@ -15,6 +15,7 @@ _VOCABULARY = "Vocabulary analysis"
 _PLATFORM = "Application platform"
 
 _DEFAULT_BEHAVIOR_BY_FILE: dict[str, tuple[str, str, str | None]] = {
+    "test_anki.py": (_VOCABULARY, "Anki cards", "Headless collection"),
     "test_api.py": (_VOCABULARY, "Input and languages", None),
     "test_api_backend.py": (_VOCABULARY, "LLM cascade", "Paid attempt"),
     "test_backend.py": (_VOCABULARY, "LLM cascade", None),
@@ -229,6 +230,7 @@ def settings(languages_file: Path, static_dir: Path, tmp_path: Path) -> Settings
         languages_config=languages_file,
         data_dir=tmp_path / "data",
         static_dir=static_dir,
+        anki_sync=False,
     )
 
 

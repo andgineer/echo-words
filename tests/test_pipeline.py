@@ -1,9 +1,17 @@
 import asyncio
 from collections.abc import AsyncIterator, Iterable
 
+from echo_words.anki import Added, Duplicate, MisconfiguredNoteTypeError
 from echo_words.broker import BackendError
 from echo_words.events import Event, EventHub
-from echo_words.pipeline import ERROR_MESSAGE, WordPipeline
+from echo_words.pipeline import (
+    ADDED_STATUS,
+    CARD_FAILED_STATUS,
+    DUPLICATE_STATUS,
+    ERROR_MESSAGE,
+    LOOKUP_ONLY_STATUS,
+    WordPipeline,
+)
 
 pytestmark = __import__("pytest").mark.anyio
 
@@ -107,6 +115,7 @@ async def test_deltas_are_throttled_cut_sanitized_and_finished(languages):
                 "entry_id": entry.entry_id,
                 "text": "<b>Word</b> &amp; meaning",
                 "suggestion": None,
+                "card_status": CARD_FAILED_STATUS,
             },
         )
     finally:
@@ -154,7 +163,12 @@ async def test_card_parse_quality_and_suggestion_are_published_after_completion(
         assert completion.scores == [1.0]
         assert events[-1] == Event(
             "done",
-            {"entry_id": entry.entry_id, "text": "analysis", "suggestion": "receive"},
+            {
+                "entry_id": entry.entry_id,
+                "text": "analysis",
+                "suggestion": "receive",
+                "card_status": CARD_FAILED_STATUS,
+            },
         )
     finally:
         await pipeline.close()
@@ -181,8 +195,104 @@ async def test_card_without_examples_is_rated_as_a_failure_without_losing_analys
         assert entry.status == "done"
         assert events[-1] == Event(
             "done",
-            {"entry_id": entry.entry_id, "text": "analysis", "suggestion": None},
+            {
+                "entry_id": entry.entry_id,
+                "text": "analysis",
+                "suggestion": None,
+                "card_status": CARD_FAILED_STATUS,
+            },
         )
+    finally:
+        await pipeline.close()
+
+
+class RecordingAnki:
+    def __init__(self, result):
+        self.result = result
+        self.calls = []
+
+    async def add_note(self, note, deck):
+        self.calls.append((note, deck))
+        return self.result
+
+
+def valid_card(word):
+    return (
+        f'analysis===CARD==={{"word":"{word}","meanings":[{{'
+        '"label":"","translations":["перевод"],"examples":'
+        f'[{{"text":"Use {word} now.","translation":"Перевод."}}]}}]}}'
+    )
+
+
+async def test_lookup_only_skips_anki_and_reports_it_in_done(languages):
+    anki = RecordingAnki(Added(1, None))
+    hub = EventHub()
+    pipeline = WordPipeline(
+        ScriptedCascade([Completion([valid_card("word")])]),
+        target_lang="ru",
+        events=hub,
+        anki=anki,
+    )
+    pipeline.start()
+    try:
+        async with hub.subscribe() as subscriber:
+            entry = await pipeline.enqueue(languages["en"], "word", True)
+            await pipeline.join()
+            events = drain(subscriber)
+        assert anki.calls == []
+        assert entry.card_status == LOOKUP_ONLY_STATUS
+        assert events[-1].data["card_status"] == LOOKUP_ONLY_STATUS
+    finally:
+        await pipeline.close()
+
+
+async def test_added_and_duplicate_results_become_done_statuses(languages):
+    for result, expected in [(Added(10, None), ADDED_STATUS), (Duplicate(), DUPLICATE_STATUS)]:
+        anki = RecordingAnki(result)
+        hub = EventHub()
+        pipeline = WordPipeline(
+            ScriptedCascade([Completion([valid_card("word")])]),
+            target_lang="ru",
+            events=hub,
+            anki=anki,
+        )
+        pipeline.start()
+        try:
+            async with hub.subscribe() as subscriber:
+                entry = await pipeline.enqueue(languages["en"], "word", False)
+                await pipeline.join()
+                events = drain(subscriber)
+            assert len(anki.calls) == 1
+            assert anki.calls[0][1] == "English::Vocabulary"
+            assert entry.card_status == expected
+            assert events[-1].data["card_status"] == expected
+        finally:
+            await pipeline.close()
+
+
+async def test_a_misconfigured_note_type_is_a_clear_done_status_not_a_lost_answer(languages):
+    class MisconfiguredAnki:
+        async def add_note(self, _note, _deck):
+            raise MisconfiguredNoteTypeError
+
+    hub = EventHub()
+    pipeline = WordPipeline(
+        ScriptedCascade([Completion([valid_card("word")])]),
+        target_lang="ru",
+        events=hub,
+        anki=MisconfiguredAnki(),
+    )
+    pipeline.start()
+    try:
+        async with hub.subscribe() as subscriber:
+            entry = await pipeline.enqueue(languages["en"], "word", False)
+            await pipeline.join()
+            events = drain(subscriber)
+        expected = "⚠️ note type EchoWords is misconfigured — fix or delete it in Anki"
+        assert entry.status == "done"
+        assert entry.text == "analysis"
+        assert entry.card_status == expected
+        assert events[-1].data["card_status"] == expected
     finally:
         await pipeline.close()
 

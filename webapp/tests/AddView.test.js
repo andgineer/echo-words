@@ -106,6 +106,23 @@ describe("AddView", () => {
     expect(wrapper.find(".entry-head").exists()).toBe(false);
   });
 
+  it("shows the Anki result attached to a completed answer", async () => {
+    await labelBehavior(EPIC.ANKI_CARDS, FEATURE.COLLECTION, "Card delivery status");
+    entries.value = [{
+      entry_id: "entry-1",
+      word: "Word",
+      language: "English",
+      lookup_only: false,
+      status: "done",
+      text: "<b>Word</b> — meaning",
+      card_status: "✅ added to Anki",
+    }];
+    const wrapper = mount(AddView);
+    await flushPromises();
+
+    expect(wrapper.find(".entry-card-status").text()).toBe("✅ added to Anki");
+  });
+
   it("documents both lookup shortcuts and the reversible correction control", async () => {
     const wrapper = mount(AddView);
     await flushPromises();

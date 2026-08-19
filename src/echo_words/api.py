@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from echo_words import __version__
+from echo_words.anki import AnkiStore
 from echo_words.backend import Cascade
 from echo_words.broker import create_broker
 from echo_words.config import Settings
@@ -60,6 +61,8 @@ def _lifespan(settings: Settings):
     @asynccontextmanager
     async def manage(app: FastAPI) -> AsyncIterator[None]:
         app.state.languages = load_languages(settings.languages_config)
+        app.state.anki = AnkiStore(settings)
+        await app.state.anki.open()
         app.state.cascade = None
         app.state.events = EventHub()
         broker = None
@@ -73,12 +76,14 @@ def _lifespan(settings: Settings):
             app.state.cascade,
             target_lang=settings.target_lang,
             events=app.state.events,
+            anki=app.state.anki,
         )
         app.state.pipeline.start()
         try:
             yield
         finally:
             await app.state.pipeline.close()
+            await app.state.anki.close()
             if broker is not None:
                 await broker.aclose()
 

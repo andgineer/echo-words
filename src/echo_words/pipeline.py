@@ -9,8 +9,10 @@ from contextlib import aclosing, suppress
 from dataclasses import asdict, dataclass
 from typing import Protocol
 
+from echo_words.anki import Added, Duplicate
 from echo_words.backend import Cascade
 from echo_words.broker import BackendError
+from echo_words.card import Note, ParsedCard
 from echo_words.events import EventHub
 from echo_words.languages import Language
 from echo_words.prompt import CARD_DELIMITER, build_prompt, extract_card
@@ -18,12 +20,20 @@ from echo_words.sanitizer import sanitize_html
 
 UPDATE_INTERVAL_SECONDS = 0.5
 ERROR_MESSAGE = "Не удалось получить разбор. Попробуйте отправить слово ещё раз."
+ADDED_STATUS = "✅ added to Anki"
+DUPLICATE_STATUS = "📌 already in Anki"
+LOOKUP_ONLY_STATUS = "👁 lookup only"
+CARD_FAILED_STATUS = "⚠️ card failed"
 
 logger = logging.getLogger(__name__)
 
 
 class Clock(Protocol):
     def __call__(self) -> float: ...
+
+
+class CardStore(Protocol):
+    async def add_note(self, note: Note, deck: str) -> Added | Duplicate: ...
 
 
 @dataclass
@@ -37,6 +47,7 @@ class Entry:
     text: str = ""
     status: str = "pending"
     audio_url: str | None = None
+    card_status: str | None = None
     error: str | None = None
 
     def public(self) -> dict[str, object]:
@@ -56,17 +67,19 @@ class Job:
 class WordPipeline:
     """Register immediately, then process all languages through one FIFO worker."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 - dependencies and bounded knobs are explicit.
         self,
         cascade: Cascade | None,
         *,
         target_lang: str,
         events: EventHub | None = None,
+        anki: CardStore | None = None,
         history_size: int = 100,
         clock: Clock = time.monotonic,
     ) -> None:
         self.cascade = cascade
         self.events = events or EventHub()
+        self.anki = anki
         self.target_lang = target_lang
         self._clock = clock
         self._queue: asyncio.Queue[Job] = asyncio.Queue()
@@ -113,6 +126,7 @@ class WordPipeline:
             entry.text = ""
             entry.status = "pending"
             entry.audio_url = None
+            entry.card_status = None
             entry.error = None
             await self.events.publish("reset", {"entry_id": entry.entry_id})
         else:
@@ -204,7 +218,24 @@ class WordPipeline:
 
         if self._is_current(job):
             suggestion = _suggestion_from(parsed)
-            await self._finish_entry(entry, raw, last_published, suggestion)
+            card_status = await self._store_card(job, parsed)
+            await self._finish_entry(entry, raw, last_published, suggestion, card_status)
+
+    async def _store_card(self, job: Job, parsed: ParsedCard | None) -> str:
+        if job.lookup_only:
+            return LOOKUP_ONLY_STATUS
+        if parsed is None or self.anki is None:
+            return CARD_FAILED_STATUS
+        try:
+            result = await self.anki.add_note(parsed[0], job.language.deck)
+        except Exception as exc:  # noqa: BLE001 - the text answer must always survive.
+            logger.exception("could not add %r to Anki", job.word)
+            return f"⚠️ {exc}" if str(exc) else CARD_FAILED_STATUS
+        if isinstance(result, Added):
+            return ADDED_STATUS
+        if isinstance(result, Duplicate):
+            return DUPLICATE_STATUS
+        return CARD_FAILED_STATUS
 
     async def _handle_backend_error(
         self,
@@ -239,15 +270,22 @@ class WordPipeline:
         raw: str,
         last_published: str,
         suggestion: str | None,
+        card_status: str,
     ) -> None:
         final = sanitize_html(visible_analysis(raw))
         entry.text = final
         if final != last_published:
             await self._publish_update(entry)
         entry.status = "done"
+        entry.card_status = card_status
         await self.events.publish(
             "done",
-            {"entry_id": entry.entry_id, "text": final, "suggestion": suggestion},
+            {
+                "entry_id": entry.entry_id,
+                "text": final,
+                "suggestion": suggestion,
+                "card_status": card_status,
+            },
         )
         self._trim_history()
 
@@ -301,5 +339,5 @@ def visible_analysis(raw: str) -> str:
     return raw
 
 
-def _suggestion_from(parsed: tuple[object, str | None] | None) -> str | None:
+def _suggestion_from(parsed: ParsedCard | None) -> str | None:
     return parsed[1] if parsed is not None else None
