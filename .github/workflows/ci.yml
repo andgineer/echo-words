@@ -98,7 +98,7 @@ jobs:
       run: npm --prefix webapp test
 
     - name: Test with pytest and Allure report
-      run: "${{ env.PYTEST_CMD }} --alluredir=./allure-results"
+      run: ${{ env.PYTEST_CMD }} --alluredir=./allure-results
 
     - name: Lint with ruff
       run: uv run ruff check
