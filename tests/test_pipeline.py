@@ -10,6 +10,7 @@ from echo_words.pipeline import (
     DUPLICATE_STATUS,
     ERROR_MESSAGE,
     LOOKUP_ONLY_STATUS,
+    NO_AUDIO_STATUS,
     WordPipeline,
 )
 
@@ -115,7 +116,8 @@ async def test_deltas_are_throttled_cut_sanitized_and_finished(languages):
                 "entry_id": entry.entry_id,
                 "text": "<b>Word</b> &amp; meaning",
                 "suggestion": None,
-                "card_status": CARD_FAILED_STATUS,
+                "card_status": f"{CARD_FAILED_STATUS} · {NO_AUDIO_STATUS}",
+                "audio_url": None,
             },
         )
     finally:
@@ -167,7 +169,8 @@ async def test_card_parse_quality_and_suggestion_are_published_after_completion(
                 "entry_id": entry.entry_id,
                 "text": "analysis",
                 "suggestion": "receive",
-                "card_status": CARD_FAILED_STATUS,
+                "card_status": f"{CARD_FAILED_STATUS} · {NO_AUDIO_STATUS}",
+                "audio_url": None,
             },
         )
     finally:
@@ -199,7 +202,8 @@ async def test_card_without_examples_is_rated_as_a_failure_without_losing_analys
                 "entry_id": entry.entry_id,
                 "text": "analysis",
                 "suggestion": None,
-                "card_status": CARD_FAILED_STATUS,
+                "card_status": f"{CARD_FAILED_STATUS} · {NO_AUDIO_STATUS}",
+                "audio_url": None,
             },
         )
     finally:
@@ -211,8 +215,8 @@ class RecordingAnki:
         self.result = result
         self.calls = []
 
-    async def add_note(self, note, deck):
-        self.calls.append((note, deck))
+    async def add_note(self, note, deck, audio_path=None):
+        self.calls.append((note, deck, audio_path))
         return self.result
 
 
@@ -240,8 +244,9 @@ async def test_lookup_only_skips_anki_and_reports_it_in_done(languages):
             await pipeline.join()
             events = drain(subscriber)
         assert anki.calls == []
-        assert entry.card_status == LOOKUP_ONLY_STATUS
-        assert events[-1].data["card_status"] == LOOKUP_ONLY_STATUS
+        expected = f"{LOOKUP_ONLY_STATUS} · {NO_AUDIO_STATUS}"
+        assert entry.card_status == expected
+        assert events[-1].data["card_status"] == expected
     finally:
         await pipeline.close()
 
@@ -264,15 +269,103 @@ async def test_added_and_duplicate_results_become_done_statuses(languages):
                 events = drain(subscriber)
             assert len(anki.calls) == 1
             assert anki.calls[0][1] == "English::Vocabulary"
-            assert entry.card_status == expected
-            assert events[-1].data["card_status"] == expected
+            expected_with_audio = f"{expected} · {NO_AUDIO_STATUS}"
+            assert entry.card_status == expected_with_audio
+            assert events[-1].data["card_status"] == expected_with_audio
         finally:
             await pipeline.close()
 
 
+async def test_audio_is_speculative_used_once_and_attached_to_the_note(languages, tmp_path):
+    release_completion = asyncio.Event()
+    completion_started = asyncio.Event()
+    audio_started = asyncio.Event()
+    audio_calls = []
+    audio_path = tmp_path / "pronunciation-aabbccddeeff00112233.mp3"
+    audio_path.write_bytes(b"audio")
+
+    async def fetch_audio(word, language):
+        audio_calls.append((word, language.code))
+        audio_started.set()
+        return audio_path
+
+    anki = RecordingAnki(Added(10, "media.mp3"))
+    hub = EventHub()
+    pipeline = WordPipeline(
+        ScriptedCascade(
+            [
+                Completion(
+                    [valid_card("word")],
+                    gate=release_completion,
+                    started=completion_started,
+                ),
+            ],
+        ),
+        target_lang="ru",
+        events=hub,
+        anki=anki,
+        audio=fetch_audio,
+    )
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(languages["en"], "word", False)
+        await completion_started.wait()
+        await audio_started.wait()
+        release_completion.set()
+        await pipeline.join()
+
+        assert audio_calls == [("word", "en")]
+        assert anki.calls[0][2] == audio_path
+        assert entry.audio_url == f"/api/audio/{audio_path.name}"
+        assert entry.card_status == ADDED_STATUS
+    finally:
+        await pipeline.close()
+
+
+async def test_audio_deadline_cancels_a_wedged_task_and_does_not_stall_done(languages):
+    cancelled = asyncio.Event()
+    release = asyncio.Event()
+    exited = asyncio.Event()
+
+    async def wedged_audio(_word, _language):
+        try:
+            while not release.is_set():
+                try:
+                    await release.wait()
+                except asyncio.CancelledError:
+                    cancelled.set()
+        finally:
+            exited.set()
+
+    hub = EventHub()
+    pipeline = WordPipeline(
+        ScriptedCascade([Completion([valid_card("word")])]),
+        target_lang="ru",
+        events=hub,
+        audio=wedged_audio,
+        audio_timeout=0.01,
+    )
+    pipeline.start()
+    try:
+        async with hub.subscribe() as subscriber:
+            entry = await pipeline.enqueue(languages["en"], "word", False)
+            await asyncio.wait_for(pipeline.join(), timeout=0.2)
+            events = drain(subscriber)
+
+        assert cancelled.is_set()
+        assert entry.status == "done"
+        assert entry.audio_url is None
+        assert entry.card_status == f"{CARD_FAILED_STATUS} · {NO_AUDIO_STATUS}"
+        assert events[-1].data["audio_url"] is None
+    finally:
+        release.set()
+        await asyncio.wait_for(exited.wait(), timeout=0.2)
+        await pipeline.close()
+
+
 async def test_a_misconfigured_note_type_is_a_clear_done_status_not_a_lost_answer(languages):
     class MisconfiguredAnki:
-        async def add_note(self, _note, _deck):
+        async def add_note(self, _note, _deck, _audio_path=None):
             raise MisconfiguredNoteTypeError
 
     hub = EventHub()
@@ -291,8 +384,9 @@ async def test_a_misconfigured_note_type_is_a_clear_done_status_not_a_lost_answe
         expected = "⚠️ note type EchoWords is misconfigured — fix or delete it in Anki"
         assert entry.status == "done"
         assert entry.text == "analysis"
-        assert entry.card_status == expected
-        assert events[-1].data["card_status"] == expected
+        expected_with_audio = f"{expected} · {NO_AUDIO_STATUS}"
+        assert entry.card_status == expected_with_audio
+        assert events[-1].data["card_status"] == expected_with_audio
     finally:
         await pipeline.close()
 

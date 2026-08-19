@@ -16,6 +16,7 @@ _PLATFORM = "Application platform"
 
 _DEFAULT_BEHAVIOR_BY_FILE: dict[str, tuple[str, str, str | None]] = {
     "test_anki.py": (_VOCABULARY, "Anki cards", "Headless collection"),
+    "test_audio.py": (_VOCABULARY, "Pronunciation audio", None),
     "test_api.py": (_VOCABULARY, "Input and languages", None),
     "test_api_backend.py": (_VOCABULARY, "LLM cascade", "Paid attempt"),
     "test_backend.py": (_VOCABULARY, "LLM cascade", None),
@@ -199,6 +200,14 @@ def _allure_behavior(request: pytest.FixtureRequest) -> None:
 def _no_real_broker(monkeypatch: pytest.MonkeyPatch) -> None:
     # A real AsyncBroker would refresh llmbroker's curated pool over the network.
     monkeypatch.setattr("llmbroker.AsyncBroker", FakeBroker)
+
+
+@pytest.fixture(autouse=True)
+def _no_real_voice_downloads(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def skip_voice_downloads(*_args: object, **_kwargs: object) -> None:
+        return None
+
+    monkeypatch.setattr("echo_words.api.prepare_configured_voices", skip_voice_downloads)
 
 
 @pytest.fixture(autouse=True)

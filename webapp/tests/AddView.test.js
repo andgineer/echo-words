@@ -123,6 +123,26 @@ describe("AddView", () => {
     expect(wrapper.find(".entry-card-status").text()).toBe("✅ added to Anki");
   });
 
+  it("attaches a replayable pronunciation to a completed answer", async () => {
+    await labelBehavior(EPIC.PRONUNCIATION, FEATURE.AUDIO_DELIVERY, "Playback");
+    entries.value = [{
+      entry_id: "entry-1",
+      word: "Word",
+      language: "English",
+      lookup_only: false,
+      status: "done",
+      text: "<b>Word</b> — meaning",
+      audio_url: "/api/audio/pronunciation-aabbccddeeff00112233.mp3",
+    }];
+    const wrapper = mount(AddView);
+    await flushPromises();
+
+    const player = wrapper.find("audio.entry-audio");
+    expect(player.attributes("src")).toBe(entries.value[0].audio_url);
+    expect(player.attributes()).toHaveProperty("controls");
+    expect(player.attributes()).toHaveProperty("autoplay");
+  });
+
   it("documents both lookup shortcuts and the reversible correction control", async () => {
     const wrapper = mount(AddView);
     await flushPromises();

@@ -5,9 +5,11 @@ import logging
 import time
 import uuid
 from collections import deque
+from collections.abc import Callable, Coroutine
 from contextlib import aclosing, suppress
 from dataclasses import asdict, dataclass
-from typing import Protocol
+from pathlib import Path
+from typing import Any, Protocol
 
 from echo_words.anki import Added, Duplicate
 from echo_words.backend import Cascade
@@ -24,6 +26,7 @@ ADDED_STATUS = "✅ added to Anki"
 DUPLICATE_STATUS = "📌 already in Anki"
 LOOKUP_ONLY_STATUS = "👁 lookup only"
 CARD_FAILED_STATUS = "⚠️ card failed"
+NO_AUDIO_STATUS = "🔇 no audio"
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +36,19 @@ class Clock(Protocol):
 
 
 class CardStore(Protocol):
-    async def add_note(self, note: Note, deck: str) -> Added | Duplicate: ...
+    async def add_note(
+        self,
+        note: Note,
+        deck: str,
+        audio_path: Path | None = None,
+    ) -> Added | Duplicate: ...
+
+
+AudioFetcher = Callable[[str, Language], Coroutine[Any, Any, Path | None]]
+
+
+async def _no_audio(_word: str, _language: Language) -> Path | None:
+    return None
 
 
 @dataclass
@@ -74,12 +89,16 @@ class WordPipeline:
         target_lang: str,
         events: EventHub | None = None,
         anki: CardStore | None = None,
+        audio: AudioFetcher = _no_audio,
+        audio_timeout: float = 20,
         history_size: int = 100,
         clock: Clock = time.monotonic,
     ) -> None:
         self.cascade = cascade
         self.events = events or EventHub()
         self.anki = anki
+        self.audio = audio
+        self.audio_timeout = audio_timeout
         self.target_lang = target_lang
         self._clock = clock
         self._queue: asyncio.Queue[Job] = asyncio.Queue()
@@ -170,6 +189,11 @@ class WordPipeline:
         if not self._is_current(job):
             return
         entry = self._entries[job.entry_id]
+        audio_task = asyncio.create_task(
+            self.audio(job.word, job.language),
+            name=f"echo-words-audio-{job.entry_id}",
+        )
+        audio_consumed = False
         raw = ""
         last_published = ""
         last_update_at: float | None = None
@@ -184,50 +208,86 @@ class WordPipeline:
             entry.text = ""
             await self.events.publish("reset", {"entry_id": entry.entry_id})
 
-        if self.cascade is None:
-            await self._fail(job)
-            return
-
-        prompt = build_prompt(job.language, job.word, self.target_lang, context=job.context)
-        completion = self.cascade.stream_completion(
-            prompt,
-            job.language,
-            trace_id=job.entry_id,
-            on_reset=reset,
-        )
-        parsed = None
         try:
-            async with aclosing(completion):
-                async for delta in completion:
-                    if not self._is_current(job):
-                        return
-                    raw += delta
-                    visible = sanitize_html(visible_analysis(raw))
-                    entry.text = visible
-                    last_published, last_update_at = await self._publish_progress(
-                        entry,
-                        visible,
-                        last_published,
-                        last_update_at,
-                    )
-                parsed = extract_card(raw, job.word, job.language)
-                await completion.record_quality(1.0 if parsed is not None else 0.0)
-        except BackendError:
-            await self._handle_backend_error(job, entry, last_published)
-            return
+            if self.cascade is None:
+                await self._fail(job)
+                return
 
-        if self._is_current(job):
-            suggestion = _suggestion_from(parsed)
-            card_status = await self._store_card(job, parsed)
-            await self._finish_entry(entry, raw, last_published, suggestion, card_status)
+            prompt = build_prompt(job.language, job.word, self.target_lang, context=job.context)
+            completion = self.cascade.stream_completion(
+                prompt,
+                job.language,
+                trace_id=job.entry_id,
+                on_reset=reset,
+            )
+            parsed = None
+            try:
+                async with aclosing(completion):
+                    async for delta in completion:
+                        if not self._is_current(job):
+                            return
+                        raw += delta
+                        visible = sanitize_html(visible_analysis(raw))
+                        entry.text = visible
+                        last_published, last_update_at = await self._publish_progress(
+                            entry,
+                            visible,
+                            last_published,
+                            last_update_at,
+                        )
+                    parsed = extract_card(raw, job.word, job.language)
+                    await completion.record_quality(1.0 if parsed is not None else 0.0)
+            except BackendError:
+                await self._handle_backend_error(job, entry, last_published)
+                return
 
-    async def _store_card(self, job: Job, parsed: ParsedCard | None) -> str:
+            if self._is_current(job):
+                suggestion = _suggestion_from(parsed)
+                audio_path = await self._await_audio(audio_task, job)
+                audio_consumed = True
+                card_status = await self._store_card(job, parsed, audio_path)
+                card_status, entry.audio_url = _audio_result(card_status, audio_path)
+                await self._finish_entry(
+                    entry,
+                    raw,
+                    last_published,
+                    suggestion,
+                    card_status,
+                )
+        finally:
+            if not audio_consumed:
+                _cancel_task(audio_task)
+
+    async def _await_audio(self, task: asyncio.Task[Path | None], job: Job) -> Path | None:
+        done, _ = await asyncio.wait({task}, timeout=self.audio_timeout)
+        if not done:
+            logger.warning("pronunciation timed out for %s/%r", job.language.code, job.word)
+            _cancel_task(task)
+            return None
+        try:
+            return task.result()
+        except asyncio.CancelledError:
+            worker = asyncio.current_task()
+            if worker is not None and worker.cancelling():
+                raise
+            logger.warning("pronunciation was cancelled for %s/%r", job.language.code, job.word)
+            return None
+        except Exception:  # noqa: BLE001 - an injected/custom audio source must degrade too.
+            logger.exception("pronunciation failed for %s/%r", job.language.code, job.word)
+            return None
+
+    async def _store_card(
+        self,
+        job: Job,
+        parsed: ParsedCard | None,
+        audio_path: Path | None,
+    ) -> str:
         if job.lookup_only:
             return LOOKUP_ONLY_STATUS
         if parsed is None or self.anki is None:
             return CARD_FAILED_STATUS
         try:
-            result = await self.anki.add_note(parsed[0], job.language.deck)
+            result = await self.anki.add_note(parsed[0], job.language.deck, audio_path)
         except Exception as exc:  # noqa: BLE001 - the text answer must always survive.
             logger.exception("could not add %r to Anki", job.word)
             return f"⚠️ {exc}" if str(exc) else CARD_FAILED_STATUS
@@ -285,6 +345,7 @@ class WordPipeline:
                 "text": final,
                 "suggestion": suggestion,
                 "card_status": card_status,
+                "audio_url": entry.audio_url,
             },
         )
         self._trim_history()
@@ -341,3 +402,24 @@ def visible_analysis(raw: str) -> str:
 
 def _suggestion_from(parsed: ParsedCard | None) -> str | None:
     return parsed[1] if parsed is not None else None
+
+
+def _audio_result(card_status: str, audio_path: Path | None) -> tuple[str, str | None]:
+    if audio_path is None:
+        return f"{card_status} · {NO_AUDIO_STATUS}", None
+    return card_status, f"/api/audio/{audio_path.name}"
+
+
+def _cancel_task(task: asyncio.Task[Path | None]) -> None:
+    """Request cancellation without letting uncooperative cleanup stall the FIFO."""
+    task.add_done_callback(_consume_audio_task)
+    if not task.done():
+        task.cancel()
+
+
+def _consume_audio_task(task: asyncio.Task[Path | None]) -> None:
+    with suppress(asyncio.CancelledError):
+        try:
+            task.result()
+        except Exception:  # noqa: BLE001 - an abandoned audio task is best-effort.
+            logger.exception("abandoned pronunciation task failed")

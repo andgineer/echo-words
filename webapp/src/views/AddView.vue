@@ -107,6 +107,14 @@ async function submit() {
         ⏳ <b>{{ entry.word }}</b> …
       </p>
       <div v-if="entry.text" class="entry-text" v-html="entry.text"></div>
+      <audio
+        v-if="entry.audio_url"
+        class="entry-audio"
+        :src="entry.audio_url"
+        controls
+        autoplay
+        preload="none"
+      ></audio>
       <p v-if="entry.card_status" class="entry-card-status">{{ entry.card_status }}</p>
       <p v-if="entry.error" class="entry-error">{{ entry.error }}</p>
       <p class="entry-meta">
@@ -176,6 +184,12 @@ async function submit() {
 .entry-card-status {
   margin-top: 0.5rem;
   font-size: 0.85rem;
+}
+
+.entry-audio {
+  display: block;
+  width: 100%;
+  margin-top: 0.75rem;
 }
 
 .entry-meta {

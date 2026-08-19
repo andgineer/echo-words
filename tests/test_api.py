@@ -174,6 +174,24 @@ def test_built_page_is_served_at_the_root(client: TestClient):
     assert "echo-words" in response.text
 
 
+def test_audio_endpoint_serves_only_generated_bare_filenames(
+    client: TestClient,
+    settings: Settings,
+):
+    audio_dir = settings.data_dir / "audio"
+    audio_dir.mkdir(parents=True)
+    name = "pronunciation-aabbccddeeff00112233.mp3"
+    (audio_dir / name).write_bytes(b"mp3")
+
+    response = client.get(f"/api/audio/{name}")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "audio/mpeg"
+    assert response.content == b"mp3"
+    assert client.get("/api/audio/not-generated.mp3").status_code == 404
+    assert client.get("/api/audio/%2E%2E%2Fsecret").status_code == 404
+
+
 def test_app_starts_without_a_built_page(settings: Settings, tmp_path: Path):
     app = create_app(settings.model_copy(update={"static_dir": tmp_path / "never-built"}))
     with TestClient(app) as client:
@@ -185,6 +203,22 @@ def test_missing_languages_config_stops_the_startup(tmp_path: Path):
     app = create_app(Settings(_env_file=None, languages_config=tmp_path / "absent.toml"))
     with pytest.raises(LanguagesConfigError), TestClient(app):
         pass  # pragma: no cover
+
+
+def test_unexpected_voice_provisioning_failure_never_breaks_shutdown(
+    monkeypatch: pytest.MonkeyPatch,
+    settings: Settings,
+    caplog: pytest.LogCaptureFixture,
+):
+    async def fail_voice_provisioning(*_args, **_kwargs):
+        raise RuntimeError("unexpected provisioning fault")
+
+    monkeypatch.setattr("echo_words.api.prepare_configured_voices", fail_voice_provisioning)
+
+    with TestClient(create_app(settings)) as live_client:
+        assert live_client.get("/api/health").status_code == 200
+
+    assert "Piper voice provisioning failed unexpectedly" in caplog.text
 
 
 @pytest.mark.anyio
