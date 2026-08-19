@@ -34,7 +34,7 @@ async def test_the_named_alias_is_the_model_asked_for():
     assert broker.client.calls == [{"prompt": "prompt", "timeout": API_TIMEOUT_SECONDS}]
 
 
-def test_the_paid_answer_uses_the_same_complete_answer_budget_as_the_pool():
+def test_the_paid_attempt_gets_a_fresh_full_budget_equal_to_the_pool_attempt():
     assert API_TIMEOUT_SECONDS == POOL_WAIT_SECONDS
 
 

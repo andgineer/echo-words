@@ -50,6 +50,17 @@ jobs:
     - name: Install dependencies
       run: uv sync --frozen --all-extras
 
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 22
+
+    - name: Install JS dependencies
+      run: npm --prefix webapp ci
+
+    - name: Run JS tests
+      run: npm --prefix webapp test
+
     - name: Test with pytest
       run: ${{ env.PYTEST_CMD }}
 
@@ -74,6 +85,17 @@ jobs:
 
     - name: Install dependencies
       run: uv sync --frozen --all-extras
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 22
+
+    - name: Install JS dependencies
+      run: npm --prefix webapp ci
+
+    - name: Run JS tests with Allure
+      run: npm --prefix webapp test
 
     - name: Test with pytest and Allure report
       run: "${{ env.PYTEST_CMD }} --alluredir=./allure-results"

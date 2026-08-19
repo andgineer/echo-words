@@ -70,9 +70,9 @@ The four requirements every design decision is weighed against:
   **free-tier model pool** (many free, rate-limited models with
   automatic failover) takes every request, and a **paid frontier model**
   via llmbroker's *direct client* stands behind it. The paid step is
-  reached on latency — the pool did not finish the answer inside the
-  budget — and on the two things the user asks the better model for by
-  name: a deeper analysis, and rebuilding a card. The free pool is un-metered
+  reached on latency — the pool did not finish the answer inside its
+  attempt budget — and on the two things the user asks the better model
+  for by name: a deeper analysis, and rebuilding a card. The free pool is un-metered
   and the paid step is capped and optional, so **no metered API is ever
   required**. How good each step is per language was settled by a
   benchmark that ran *before* the build (implementation plan, M0).
@@ -128,6 +128,13 @@ The four requirements every design decision is weighed against:
    discarded and replaced by the paid model's. Which model answered is
    visible on the entry; nothing else about the two paths differs, and
    the card is built from whichever answer arrived.
+   The step-up is failure recovery, not part of the normal latency path.
+   The paid model starts a new attempt with the same full complete-answer
+   budget as the pool; time already lost waiting for the failed pool does
+   not make the paid model capable of answering faster. A recovered request
+   may therefore take two complete-answer windows end to end. This is the
+   explicit emergency exception to the normal latency target, not a shared
+   deadline split between the two models.
    **How fast the first token arrives is not a criterion and is never
    measured.** It is the easiest number in the system to look good on and
    the least related to what the user waits for: a model that emits one
@@ -376,9 +383,14 @@ to be last.
 
 ## Non-functional requirements
 
-- **Latency**: **complete answer within ~20–30 s** — the one budget, and
-  the only one worth stating; card added within ~5 s after generation
-  ends. Audio is fetched concurrently and must not extend these budgets.
+- **Latency**: on the normal path, **complete answer within ~20–30 s**.
+  This is the complete-answer budget of one model attempt, and the only
+  latency number worth stating. The emergency pool → paid recovery gives
+  the paid attempt a fresh budget of the same size, so a recovered request
+  may take ~40–60 s end to end; requiring the paid model to consume only
+  whatever time the failed pool left behind would not make it answer faster.
+  The card is added within ~5 s after generation ends. Audio is fetched
+  concurrently and must not extend any of these budgets.
   Time to the first token is deliberately not a requirement: it measures
   how quickly a model starts talking, not how long the user waits, and
   bounding it would prefer a model that trickles for a minute over one
@@ -386,8 +398,8 @@ to be last.
 - **Cost**: **no metered API is ever required.** Every answer starts on
   the free-tier `llmbroker` model pool, which is un-metered. A paid
   per-token model is reached in exactly two situations, both bounded by a
-  daily cap (`ECHOWORDS_API_DAILY_CAP`): when the pool fails to start an
-  answer within the latency budget, and when the user explicitly asks for
+  daily cap (`ECHOWORDS_API_DAILY_CAP`): when the pool fails to complete an
+  answer within its attempt budget, and when the user explicitly asks for
   a deeper analysis. With no paid key configured, or with the cap spent,
   both simply do not happen — the pool timing out then reports a failure
   instead, and the deeper analysis says it is unavailable. The design

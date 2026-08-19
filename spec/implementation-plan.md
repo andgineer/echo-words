@@ -98,7 +98,8 @@ executing agent must:
 2. Implement exactly the milestone's scope — code and its tests in the
    same commit(s). Do not pull in later milestones' work; the "Word
    pipeline" step numbers say which step belongs to which milestone.
-3. Finish only when `uv run pytest` and `ruff check` are green.
+3. Finish only when `uv run pytest`, `ruff check`, and — from M1 onward —
+   `npm --prefix webapp test` are green.
 4. Where this plan and the functional description disagree, the
    functional description wins — and the plan is corrected in the same
    commit.
@@ -108,15 +109,16 @@ Prompt template for the operator (one per milestone):
 > Execute milestone M\<N\> from `spec/implementation-plan.md`, following
 > its "Execution protocol" section: read the sections it lists, then
 > implement exactly M\<N\>'s scope with its tests. On any conflict,
-> `spec/functional-description.md` wins. Finish with `uv run pytest`
-> and `ruff check` green, then commit.
+> `spec/functional-description.md` wins. Finish with `uv run pytest`,
+> `ruff check`, and, from M1 onward, `npm --prefix webapp test` green,
+> then commit.
 
 ## Technology choices (fixed)
 
 | Concern | Choice |
 |---|---|
 | Web framework | **FastAPI + uvicorn**: JSON API, server-sent events (a `StreamingResponse` with `media_type="text/event-stream"` — no extra SSE dependency), and static files (`StaticFiles`) from one process. Binds `ECHOWORDS_HOST:ECHOWORDS_PORT` (default `127.0.0.1:8080`); **`tailscale serve` publishes that port as HTTPS inside the tailnet** — the backend itself never handles TLS or auth (decision record: `spec/decision-interface.md`) |
-| Frontend | **Vue 3 + Vite + `vite-plugin-pwa`**, sources in `webapp/`, built into `_static/` (gitignored) and served by the backend — the same stack, layout and build wiring as `dinary`, whose PWA this one is modelled on (see "Reuse from dinary"). **No Pinia**: the whole client state is the selected language, the entry list and the resend queue, which plain `ref`/`reactive` in a few composables hold without ceremony — dinary needs a store layer for its catalog/review/queue cross-talk, this app does not. Its `vite.config.js` PWA strategy is copied rather than re-derived: `registerType: "autoUpdate"` + `skipWaiting` + `clientsClaim` so a deploy reaches the phone on the next reload, `globPatterns` precaching the hashed output, `navigateFallback: "index.html"` with `navigateFallbackDenylist: [/^\/api\//]`, and `runtimeCaching` pinning `/api/*` to `NetworkOnly` so an API response is never served from cache. Vitest for the non-trivial client logic (resend queue, SSE reconnect); markup is checked by hand |
+| Frontend | **Vue 3 + Vite + `vite-plugin-pwa`**, sources in `webapp/`, built into `_static/` (gitignored) and served by the backend — the same stack, layout and build wiring as `dinary`, whose PWA this one is modelled on (see "Reuse from dinary"). **No Pinia**: the whole client state is the selected language, the entry list and the resend queue, which plain `ref`/`reactive` in a few composables hold without ceremony — dinary needs a store layer for its catalog/review/queue cross-talk, this app does not. Its `vite.config.js` PWA strategy is copied rather than re-derived: `registerType: "autoUpdate"` + `skipWaiting` + `clientsClaim` so a deploy reaches the phone on the next reload, `globPatterns` precaching the hashed output, `navigateFallback: "index.html"` with `navigateFallbackDenylist: [/^\/api\//]`, and `runtimeCaching` pinning `/api/*` to `NetworkOnly` so an API response is never served from cache. Frontend tests use dinary's established stack: Vitest + Vue Test Utils + happy-dom, reported through Allure and run in CI. Test non-trivial client logic and user-visible component behavior; static markup alone may be checked by hand |
 | HTTP client (dictionary pronunciation) | `httpx` (async) |
 | Anki integration | **`anki` pylib, headless** (the non-GUI core of Anki as a PyPI package; manylinux x86_64 + aarch64 wheels). The backend maintains its own collection in `ECHOWORDS_DATA_DIR/anki/` and syncs to AnkiWeb via pylib's `sync_login` / `sync_collection` / `sync_media`. Pin the version (`anki==26.8.1`, verified on VM2) and upgrade deliberately — the API this project uses has been stable for years, but pylib is versioned with the app. The wheels need **glibc ≥ 2.35**, which VM2 meets exactly; an older base image would rule the package out entirely. No AnkiConnect, no Anki desktop, no GUI anywhere. Decision record: `spec/decision-spaced-repetition.md` |
 | TTS (local) | Piper (`piper-tts`, ONNX voices, MIT) — local neural TTS with per-language voices, ~60–100 MB per voice, real time on Raspberry-Pi-class CPUs, so it runs on the 1 GB micro instance. English `en_US-lessac-medium`, German `de_DE-thorsten-medium`. **Serbian is settled: Piper has NO usable Serbian voice** — the only `sr_RS` dataset (`serbski_institut`) is actually **Lower Sorbian** (Sorbian Institute recordings miscatalogued under the Serbian locale) and must never be configured; Serbian's engine is edge-tts (decision record: `spec/decision-tts.md`). Configured voices downloaded at startup, pinned-URL + checksum mechanism (M6). Piper phonemizes via `espeak-ng` — an optional system dependency, documented in the README (M8) |
@@ -825,7 +827,8 @@ functional description requires. Tests (in-process test client): the
 languages loader (code lookup, missing file), per-language validation
 incl. the `?` prefix and Cyrillic-vs-Latin per language, unknown
 language code → hint, the stub flow, `/api/health` answering, and static
-page serving.
+page serving. Vitest + Vue Test Utils tests cover the HTTP helper, persisted
+language selection and the `AddView` submission/help behavior in happy-dom.
 
 ### M2 — LLM backend runner (the pool → paid cascade)
 
@@ -835,10 +838,11 @@ One seam, one cascade, both steps shipped here. The pipeline calls
 text deltas, carrying `llm_name`, `record_quality()` and `aclose()`, the same
 shape llmbroker's own handle has — and which always starts at the pool and steps up to the
 paid model on **one** trigger, latency and not a per-language choice: **the pool
-did not deliver a complete answer within the budget.** llmbroker's `wait` covers
-the whole answer in provider time, so that one budget is the whole rule — it
-does not matter whether the pool never started or started at once and kept
-going, and echo-words keeps no clock of its own.
+did not deliver a complete answer within its attempt budget.** llmbroker's
+`wait` covers the whole answer in provider time, so that one budget is the
+whole rule for the pool attempt — it does not matter whether the pool never
+started or started at once and kept going, and echo-words keeps no clock of
+its own.
 
 Where the budget ran out decides only what the user sees. Before any text was
 published the step-up is invisible beyond a status line; once text is on the
@@ -906,8 +910,9 @@ a `BackendError` carrying that refusal reason.
   and llmbroker reads it at call time. Map those and the call's own errors
   (`AuthError`, `RateLimitError`, `LLMTimeoutError`, `ProviderError`,
   `InvalidProviderResponseError`) onto the same `BackendError`, so the error
-  path stays uniform. Its timeout is the same complete-answer budget as the
-  pool's; the faster paid model gets no separate minute-long allowance. Note
+  path stays uniform. Its timeout is a fresh complete-answer budget of the same
+  size as the pool's; an emergency step-up can therefore consume two windows
+  end to end. The failed pool does not shorten the paid model's allowance. Note
   the direct client is **not journaled**, so it has
   no `llm_name`, no quality feedback and needs none — a declared model is
   never routed, there is nothing for a score to inform, and `/api/status`
