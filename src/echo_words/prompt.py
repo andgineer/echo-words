@@ -79,6 +79,40 @@ explain that sense — do not substitute the nearest dictionary meaning.
 
 """
 
+_EXTENDED_PROMPT = """You are a lexicographer. The word below is in {source_lang}. Analyse this
+word or short phrase in depth: {word}
+
+WRITE YOUR ENTIRE ANSWER IN {target_lang}, and in no other language. These
+instructions are in English; that says nothing about the answer language.
+Only the headword and the example sentences stay in {source_lang}, and
+every example is followed by its {target_lang} translation.
+
+{context_note}The reader has already seen the short entry, so do not skimp
+on detail — but stay on the point in every section.
+
+1. First line: the word being analysed, in bold.
+2. EVERY sense, not only the frequent ones: figurative, domain-specific,
+   archaic, regional and slang alike. For each, the part of speech, the
+   register mark, and the field it belongs to. If a sense lives only in a
+   particular domain (law, medicine, sport, jargon), name that domain.
+3. Origin, in depth: the source language, the original form and meaning,
+   the route the word travelled, when it entered the language, related
+   words within the language and cognates elsewhere. For a native word,
+   the root and how it developed. Where the etymology is disputed, give
+   the competing accounts.
+4. Usage: set phrases, government, register, what it is confused with,
+   false friends, the mistakes learners typically make.
+5. Shades and near-synonyms: how it differs from them and which is apt
+   where.
+6. Examples: one or two per sense from section 2, each followed by its
+   translation.
+
+For emphasis use ONLY the HTML tags <b> and <i>: the headword in bold, the
+{source_lang} examples in italics. No markdown, no other tags. Give no
+phonetic transcription. No JSON and no delimiters of any kind — this is
+reading matter only.
+"""
+
 
 def build_prompt(language: Language, word: str, target_lang: str, *, context: str = "") -> str:
     """Build the compact analysis prompt."""
@@ -87,6 +121,23 @@ def build_prompt(language: Language, word: str, target_lang: str, *, context: st
         source_lang=language.name,
         target_lang=target_lang,
         source_hints=language.prompt_hints or "",
+        word=word,
+        context_note=context_note,
+    )
+
+
+def build_extended_prompt(
+    language: Language,
+    word: str,
+    target_lang: str,
+    *,
+    context: str = "",
+) -> str:
+    """Build the card-free, paid deeper-analysis prompt."""
+    context_note = _CONTEXT_NOTE.format(context=context) if context else ""
+    return _EXTENDED_PROMPT.format(
+        source_lang=language.name,
+        target_lang=target_lang,
         word=word,
         context_note=context_note,
     )

@@ -13,9 +13,11 @@ const lookupOnly = ref(false);
 const hint = ref("");
 const busy = ref(false);
 const helpOpen = ref(false);
+const picker = ref(null);
 
-watch([word, selected], () => {
+watch([word, selected, lookupOnly], () => {
   hint.value = "";
+  picker.value = null;
 });
 
 onMounted(async () => {
@@ -29,26 +31,56 @@ onMounted(async () => {
 
 onUnmounted(stopEventStream);
 
+function splitPhrase(value) {
+  const lookup = lookupOnly.value || value.startsWith("?");
+  const phrase = value.replace(/^\?\s*/, "").trim();
+  const tokens = phrase
+    .split(/\s+/)
+    .map((token) => token.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, ""))
+    .filter(Boolean);
+  return { phrase, tokens, lookup };
+}
+
 async function submit() {
   if (busy.value || !word.value.trim() || !selected.value) return;
+  const submittedWord = word.value.trim();
+  const choice = splitPhrase(submittedWord);
+  if (choice.tokens.length > 1) {
+    picker.value = choice;
+    hint.value = "";
+    return;
+  }
+  await sendWord(choice.phrase, choice.lookup);
+}
+
+async function chooseWord(token) {
+  if (busy.value) return;
+  const choice = picker.value;
+  if (!choice) return;
+  await sendWord(token, choice.lookup, choice.phrase);
+}
+
+async function sendWord(submittedWord, submittedLookupOnly, context = "") {
   busy.value = true;
   hint.value = "";
-  const submittedWord = word.value.trim();
-  const submittedLookupOnly = lookupOnly.value || submittedWord.startsWith("?");
   try {
+    const body = {
+      word: submittedWord,
+      lang: selected.value,
+      lookup_only: submittedLookupOnly,
+    };
+    if (context) body.context = context;
     const accepted = await apiRequest("/api/words", {
       method: "POST",
-      body: { word: word.value, lang: selected.value, lookup_only: lookupOnly.value },
+      body,
     });
-    const displayWord = submittedWord.startsWith("?")
-      ? submittedWord.slice(1).trim()
-      : submittedWord;
     const metadata = {
       entry_id: accepted.entry_id,
-      word: displayWord,
+      word: submittedWord,
       lang: selected.value,
       language: languages.value.find((item) => item.code === selected.value)?.name || "",
       lookup_only: submittedLookupOnly,
+      context,
     };
     const alreadyStreaming = entries.value.some((entry) => entry.entry_id === accepted.entry_id);
     upsertEntry(
@@ -57,10 +89,31 @@ async function submit() {
     );
     word.value = "";
     lookupOnly.value = false;
+    picker.value = null;
   } catch (e) {
     hint.value = e.message;
   } finally {
     busy.value = false;
+  }
+}
+
+async function entryAction(entry, action) {
+  hint.value = "";
+  upsertEntry({ entry_id: entry.entry_id, control_error: null });
+  try {
+    await apiRequest(`/api/words/${entry.entry_id}/${action}`, { method: "POST" });
+  } catch (e) {
+    hint.value = e.message;
+  }
+}
+
+async function undo() {
+  if (!selected.value) return;
+  try {
+    const result = await apiRequest(`/api/languages/${selected.value}/undo`, { method: "POST" });
+    hint.value = result.undone ? `Удалено: ${result.word}` : "Нечего отменять";
+  } catch (e) {
+    hint.value = e.message;
   }
 }
 </script>
@@ -97,6 +150,21 @@ async function submit() {
 
     <button class="btn btn-primary" :disabled="busy" @click="submit">Разобрать</button>
 
+    <div v-if="picker" class="picker">
+      <p>Какое слово разобрать?</p>
+      <button
+        v-for="(token, index) in picker.tokens"
+        :key="`${token}-${index}`"
+        class="btn-inline picker-choice"
+        :disabled="busy"
+        @click="chooseWord(token)"
+      >
+        {{ token }}
+      </button>
+    </div>
+
+    <button class="btn-inline undo" @click="undo">Отменить последнее</button>
+
     <p v-if="hint" class="hint">{{ hint }}</p>
   </section>
 
@@ -107,6 +175,11 @@ async function submit() {
         ⏳ <b>{{ entry.word }}</b> …
       </p>
       <div v-if="entry.text" class="entry-text" v-html="entry.text"></div>
+      <div
+        v-if="entry.detail_html"
+        class="entry-detail"
+        v-html="entry.detail_html"
+      ></div>
       <audio
         v-if="entry.audio_url"
         class="entry-audio"
@@ -117,14 +190,36 @@ async function submit() {
       ></audio>
       <p v-if="entry.card_status" class="entry-card-status">{{ entry.card_status }}</p>
       <p v-if="entry.error" class="entry-error">{{ entry.error }}</p>
+      <p v-if="entry.detail_error" class="entry-error">{{ entry.detail_error }}</p>
+      <p v-if="entry.control_error" class="entry-error">{{ entry.control_error }}</p>
+      <div v-if="entry.status === 'done'" class="entry-actions">
+        <button
+          v-if="entry.suggestion"
+          class="btn-inline correction"
+          @click="entryAction(entry, 'switch')"
+        >
+          {{ entry.correction_reversed ? "↩︎ Вернуть" : "✏️ Исправить на" }}
+          «{{ entry.suggestion }}»
+        </button>
+        <button class="btn-inline rebuild" @click="entryAction(entry, 'rebuild')">
+          Пересобрать карточку
+        </button>
+        <button
+          class="btn-inline detail"
+          :disabled="!entry.detail_available || !!entry.detail_html"
+          @click="entryAction(entry, 'detail')"
+        >
+          {{ entry.detail_html ? "Подробный разбор готов" : "Подробнее" }}
+        </button>
+      </div>
       <p class="entry-meta">
-        {{ entry.language }}<span v-if="entry.lookup_only"> · без карточки</span>
+        {{ entry.language }}<span v-if="entry.model"> · {{ entry.model }}</span><span v-if="entry.lookup_only"> · без карточки</span>
       </p>
     </article>
   </section>
 
   <section class="about">
-    <button class="btn-inline" @click="helpOpen = !helpOpen">
+    <button class="btn-inline about-toggle" @click="helpOpen = !helpOpen">
       {{ helpOpen ? "Свернуть" : "Что это и как пользоваться" }}
     </button>
     <div v-if="helpOpen" class="about-text">
@@ -166,6 +261,20 @@ async function submit() {
   color: var(--warning);
 }
 
+.picker {
+  margin-top: 0.75rem;
+  color: var(--text-muted);
+}
+
+.picker-choice {
+  margin: 0.4rem 0.4rem 0 0;
+  font-size: 0.85rem;
+}
+
+.undo {
+  margin-top: 0.75rem;
+}
+
 .answers {
   margin-top: 1rem;
 }
@@ -201,6 +310,25 @@ async function submit() {
 .entry-text {
   line-height: 1.5;
   white-space: pre-wrap;
+}
+
+.entry-detail {
+  border-top: 1px solid var(--border);
+  margin-top: 1rem;
+  padding-top: 1rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.entry-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.75rem;
+}
+
+.entry-actions .btn-inline:disabled {
+  opacity: 0.45;
 }
 
 .entry-error {

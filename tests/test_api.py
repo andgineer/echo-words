@@ -1,15 +1,19 @@
 import asyncio
 import threading
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 from fakes import FakeBroker
 from fastapi.testclient import TestClient
 
 from echo_words import __version__
+from echo_words.anki import SyncState
 from echo_words.api import create_app
+from echo_words.backend import CallRecord
 from echo_words.config import Settings
 from echo_words.events import EventHub
 from echo_words.languages import MAX_CONTEXT_LENGTH, MAX_WORD_LENGTH, LanguagesConfigError
@@ -131,6 +135,140 @@ def test_context_is_capped(client: TestClient):
         "entry_id"
     ]
     assert len(recent_entry(client, entry_id)["context"]) == MAX_CONTEXT_LENGTH
+
+
+def test_unknown_control_entries_are_expired(client: TestClient):
+    for action in ("switch", "rebuild", "detail"):
+        response = client.post(f"/api/words/unknown/{action}")
+        assert response.status_code == 410
+        assert response.json()["detail"] == "request expired"
+
+
+def test_stats_keep_collection_windows_separate_from_startup_counters(
+    settings: Settings,
+):
+    with TestClient(create_app(settings)) as live_client:
+
+        async def counts(_decks):
+            return {
+                "en": {"today": 2, "last_7_days": 5, "all_time": 10},
+                "de": {"today": 0, "last_7_days": 1, "all_time": 3},
+                "sr": {"today": 1, "last_7_days": 1, "all_time": 1},
+            }
+
+        live_client.app.state.anki.note_counts = counts
+        live_client.app.state.pipeline.history.bump("en", "duplicate")
+        live_client.app.state.pipeline.history.bump("en", "lookup")
+        response = live_client.get("/api/stats")
+
+    assert response.status_code == 200
+    assert response.json()["languages"]["en"] == {
+        "name": "English",
+        "today": 2,
+        "last_7_days": 5,
+        "all_time": 10,
+        "duplicates": 1,
+        "lookup_only": 1,
+    }
+    assert response.json()["session_counters_since"] == "startup"
+
+
+def test_status_reports_pool_keys_cap_memory_journal_and_anki_state(
+    monkeypatch: pytest.MonkeyPatch,
+    settings: Settings,
+):
+    missing = SimpleNamespace(api_key_ref="FREE_KEY", help="get a free key", entry_names=("free",))
+    direct = SimpleNamespace(
+        api_key_ref="PAID_KEY",
+        help="get a paid key",
+        entry_names=("gpt-fast",),
+    )
+    snapshot = SimpleNamespace(
+        providers_usable=1,
+        providers_total=2,
+        degraded=True,
+        missing_keys=(missing,),
+        direct_missing_keys=(direct,),
+    )
+    fallback_at = datetime(2026, 8, 18, tzinfo=UTC)
+    journal_stat = SimpleNamespace(
+        total=3,
+        last_at=fallback_at,
+        last_status=SimpleNamespace(value="ok"),
+    )
+    broker = FakeBroker(snapshot=snapshot, stats={"vocab-de": {"journal-model": journal_stat}})
+    monkeypatch.setattr("echo_words.api.create_broker", lambda *_args: broker)
+
+    with TestClient(create_app(settings.model_copy(update={"api_daily_cap": 4}))) as live_client:
+        live_client.app.state.cascade.last_calls["en"] = CallRecord(
+            "memory-model",
+            False,
+            True,
+            datetime(2026, 8, 19, tzinfo=UTC),
+        )
+        live_client.app.state.cascade._paid_calls = 4  # noqa: SLF001
+        live_client.app.state.anki.sync_error = "Anki requires a one-way full sync"
+        live_client.app.state.anki.status = AsyncMock(
+            return_value=SyncState(
+                enabled=True,
+                last_result="full-sync-required",
+                last_sync_at=datetime(2026, 8, 19, tzinfo=UTC),
+                unsynced_changes=True,
+                full_sync_required=True,
+            ),
+        )
+        response = live_client.get("/api/status")
+
+    body = response.json()
+    assert body["pool"] == {
+        "available": True,
+        "providers_usable": 1,
+        "providers_total": 2,
+        "degraded": True,
+        "missing_keys": [
+            {"api_key_ref": "FREE_KEY", "help": "get a free key", "entry_names": ["free"]},
+        ],
+        "direct_missing_keys": [
+            {
+                "api_key_ref": "PAID_KEY",
+                "help": "get a paid key",
+                "entry_names": ["gpt-fast"],
+            },
+        ],
+    }
+    assert body["paid_calls"] == {"today": 4, "daily_cap": 4}
+    assert body["languages"]["en"]["paid_available_today"] is False
+    assert body["languages"]["en"]["last_call"]["model"] == "memory-model"
+    assert body["languages"]["de"]["last_call"] == {
+        "model": "journal-model",
+        "paid": False,
+        "ok": True,
+        "at": fallback_at.isoformat(),
+        "error": None,
+        "source": "journal",
+    }
+    assert body["anki"]["unsynced_changes"] is True
+    assert body["anki"]["full_sync_required"] is True
+
+
+def test_status_reports_a_healthy_pool(monkeypatch: pytest.MonkeyPatch, settings: Settings):
+    snapshot = SimpleNamespace(
+        providers_usable=3,
+        providers_total=3,
+        degraded=False,
+        missing_keys=(),
+        direct_missing_keys=(),
+    )
+    monkeypatch.setattr(
+        "echo_words.api.create_broker",
+        lambda *_args: FakeBroker(snapshot=snapshot),
+    )
+    with TestClient(create_app(settings)) as live_client:
+        pool = live_client.get("/api/status").json()["pool"]
+
+    assert pool["providers_usable"] == 3
+    assert pool["providers_total"] == 3
+    assert pool["degraded"] is False
 
 
 def test_unknown_language_gets_a_hint_and_no_processing(client: TestClient):

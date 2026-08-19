@@ -5,6 +5,8 @@ import json
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from dataclasses import asdict
+from datetime import datetime
 from functools import partial
 
 from fastapi import FastAPI, HTTPException, Query, Request
@@ -16,7 +18,7 @@ from echo_words import __version__
 from echo_words.anki import AnkiStore
 from echo_words.audio import fetch_pronunciation, is_audio_filename, prepare_configured_voices
 from echo_words.backend import Cascade
-from echo_words.broker import create_broker
+from echo_words.broker import BackendError, create_broker
 from echo_words.config import Settings
 from echo_words.config import settings as default_settings
 from echo_words.events import EventHub
@@ -104,6 +106,7 @@ def _lifespan(settings: Settings):
             anki=app.state.anki,
             audio=partial(fetch_pronunciation, settings=settings),
             audio_timeout=settings.audio_timeout,
+            audio_dir=settings.data_dir / "audio",
         )
         app.state.pipeline.start()
         try:
@@ -135,7 +138,7 @@ class LanguageOption(BaseModel):
     name: str
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(settings: Settings | None = None) -> FastAPI:  # noqa: C901
     settings = settings or default_settings
     app = FastAPI(title="echo-words", version=__version__, lifespan=_lifespan(settings))
 
@@ -173,6 +176,65 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ) -> list[dict[str, object]]:
         return request.app.state.pipeline.recent(limit)
 
+    @app.post("/api/words/{entry_id}/switch")
+    async def switch_word(request: Request, entry_id: str) -> dict[str, object]:
+        try:
+            entry = await request.app.state.pipeline.request_switch(entry_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=410, detail="request expired") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return {"entry_id": entry.entry_id, "queued": True}
+
+    @app.post("/api/words/{entry_id}/rebuild")
+    async def rebuild_word(request: Request, entry_id: str) -> dict[str, object]:
+        try:
+            entry = await request.app.state.pipeline.request_rebuild(entry_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=410, detail="request expired") from exc
+        except BackendError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return {"entry_id": entry.entry_id, "queued": True}
+
+    @app.post("/api/words/{entry_id}/detail")
+    async def detail_word(request: Request, entry_id: str) -> dict[str, object]:
+        try:
+            return await request.app.state.pipeline.request_detail(entry_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=410, detail="request expired") from exc
+        except BackendError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.post("/api/languages/{code}/undo")
+    async def undo_word(request: Request, code: str) -> dict[str, object]:
+        language = _resolve_language(request.app.state.languages, code)
+        word = await request.app.state.pipeline.undo(language)
+        if word is None:
+            return {"undone": False, "message": "nothing to undo"}
+        return {"undone": True, "word": word}
+
+    @app.get("/api/stats")
+    async def stats(request: Request) -> dict[str, object]:
+        languages = request.app.state.languages
+        counts = await request.app.state.anki.note_counts(
+            {code: language.deck for code, language in languages.items()},
+        )
+        return {
+            "languages": {
+                code: {
+                    "name": language.name,
+                    **counts[code],
+                    **request.app.state.pipeline.counters(code),
+                }
+                for code, language in languages.items()
+            },
+            "session_counters_since": "startup",
+        }
+
+    @app.get("/api/status")
+    async def status(request: Request) -> dict[str, object]:
+        return await _status_payload(request, settings)
+
     @app.get("/api/events")
     async def event_stream(request: Request) -> StreamingResponse:
         return StreamingResponse(
@@ -196,6 +258,121 @@ def _resolve_language(languages: dict[str, Language], code: str) -> Language:
     if language is None:
         raise HTTPException(status_code=400, detail=unknown_language_hint(code))
     return language
+
+
+async def _status_payload(request: Request, settings: Settings) -> dict[str, object]:
+    cascade = request.app.state.cascade
+    languages = request.app.state.languages
+    pool: dict[str, object]
+    journal: dict[str, object] = {}
+    if cascade is None:
+        pool = {"available": False, "error": "no LLM backend"}
+    else:
+        try:
+            snapshot = await cascade.broker.snapshot()
+        except Exception as exc:  # noqa: BLE001 - status must surface a broken backend.
+            pool = {"available": False, "error": f"{type(exc).__name__}: {exc}"}
+        else:
+            cascade.note_snapshot(snapshot)
+            pool = {
+                "available": True,
+                "providers_usable": snapshot.providers_usable,
+                "providers_total": snapshot.providers_total,
+                "degraded": snapshot.degraded,
+                "missing_keys": [_pending_key(value) for value in snapshot.missing_keys],
+                "direct_missing_keys": [
+                    _pending_key(value) for value in snapshot.direct_missing_keys
+                ],
+            }
+        for code in languages:
+            try:
+                journal[code] = await cascade.broker.stats(
+                    operation=f"{settings.llmbroker_operation}-{code}",
+                )
+            except Exception:  # noqa: BLE001 - memory status remains useful without a journal.
+                journal[code] = {}
+    language_status = {}
+    for code, language in languages.items():
+        alias = cascade.paid_alias(language) if cascade is not None else ""
+        last = cascade.last_calls.get(code) if cascade is not None else None
+        fallback = _journal_last(journal.get(code, {}))
+        paid_refusal = cascade.paid_refusal(language) if cascade is not None else "no LLM backend"
+        language_status[code] = {
+            "name": language.name,
+            "deck": language.deck,
+            "paid_alias": alias or None,
+            "paid_available_today": paid_refusal is None,
+            "paid_refusal": paid_refusal,
+            "last_call": _call_record(last) if last is not None else fallback,
+            "journal": _journal_counts(journal.get(code, {})),
+        }
+    sync = await request.app.state.anki.status()
+    return {
+        "pool": pool,
+        "paid_calls": {
+            "today": cascade.calls_today if cascade is not None else 0,
+            "daily_cap": settings.api_daily_cap,
+        },
+        "languages": language_status,
+        "anki": {
+            **asdict(sync),
+            "last_sync_at": sync.last_sync_at.isoformat() if sync.last_sync_at else None,
+            "error": request.app.state.anki.sync_error,
+        },
+    }
+
+
+def _pending_key(value: object) -> dict[str, object]:
+    return {
+        "api_key_ref": getattr(value, "api_key_ref", ""),
+        "help": getattr(value, "help", ""),
+        "entry_names": list(getattr(value, "entry_names", ())),
+    }
+
+
+def _call_record(value: object) -> dict[str, object]:
+    at = getattr(value, "at", None)
+    return {
+        "model": getattr(value, "llm_name", None),
+        "paid": getattr(value, "paid", False),
+        "ok": getattr(value, "ok", False),
+        "at": at.isoformat() if at is not None else None,
+        "error": getattr(value, "error", None),
+        "source": "memory",
+    }
+
+
+def _journal_last(stats: object) -> dict[str, object] | None:
+    items = getattr(stats, "items", lambda: ())()
+    latest = max(
+        items,
+        key=lambda item: _last_timestamp(item[1]),
+        default=None,
+    )
+    if latest is None:
+        return None
+    model, value = latest
+    at = getattr(value, "last_at", None)
+    status = getattr(value, "last_status", None)
+    return {
+        "model": model,
+        "paid": False,
+        "ok": getattr(status, "value", status) == "ok",
+        "at": at.isoformat() if at is not None else None,
+        "error": None,
+        "source": "journal",
+    }
+
+
+def _journal_counts(stats: object) -> dict[str, int]:
+    return {
+        model: getattr(value, "total", 0) for model, value in getattr(stats, "items", lambda: ())()
+    }
+
+
+def _last_timestamp(value: object) -> float:
+    last_at = getattr(value, "last_at", None)
+    return last_at.timestamp() if isinstance(last_at, datetime) else 0
 
 
 app = create_app()

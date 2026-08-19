@@ -1,4 +1,4 @@
-from echo_words.prompt import build_prompt, extract_card
+from echo_words.prompt import build_extended_prompt, build_prompt, extract_card
 
 
 def test_prompt_carries_the_language_word_target_context_and_hints(languages):
@@ -40,3 +40,17 @@ def test_missing_delimiter_has_no_card(languages):
 
 def test_malformed_json_after_the_delimiter_has_no_card(languages):
     assert extract_card("analysis===CARD==={broken", "word", languages["en"]) is None
+
+
+def test_extended_prompt_carries_context_but_has_no_card_contract(languages):
+    prompt = build_extended_prompt(
+        languages["en"],
+        "bucket",
+        "Russian",
+        context="kick the bucket",
+    )
+    assert "lexicographer" in prompt
+    assert "kick the bucket" in prompt
+    assert "EVERY sense" in prompt
+    assert "No JSON and no delimiters" in prompt
+    assert "===CARD===" not in prompt

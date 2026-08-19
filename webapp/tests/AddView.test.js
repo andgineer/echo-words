@@ -147,10 +147,180 @@ describe("AddView", () => {
     const wrapper = mount(AddView);
     await flushPromises();
 
-    await wrapper.find(".btn-inline").trigger("click");
+    await wrapper.find(".about-toggle").trigger("click");
 
     expect(wrapper.find(".about-text").text()).toContain("? слово");
     expect(wrapper.find(".about-text").text()).toContain("✏️ Исправить");
     expect(wrapper.find(".about-text").text()).toContain("вернуться обратно");
+  });
+
+  it("offers every word in a phrase and posts only after a choice", async () => {
+    apiRequest.mockImplementation(async (path) => {
+      if (path === "/api/languages") return OPTIONS;
+      if (path === "/api/words") return { entry_id: "picked" };
+      throw new Error(`Unexpected request: ${path}`);
+    });
+    const wrapper = mount(AddView);
+    await flushPromises();
+    await wrapper.find("#word").setValue("He kicked the bucket.");
+
+    await wrapper.find(".btn-primary").trigger("click");
+
+    expect(wrapper.findAll(".picker-choice").map((button) => button.text())).toEqual([
+      "He",
+      "kicked",
+      "the",
+      "bucket",
+    ]);
+    expect(apiRequest).toHaveBeenCalledTimes(1);
+
+    await wrapper.findAll(".picker-choice")[3].trigger("click");
+    await flushPromises();
+    expect(apiRequest).toHaveBeenCalledWith("/api/words", {
+      method: "POST",
+      body: {
+        word: "bucket",
+        lang: "en",
+        lookup_only: false,
+        context: "He kicked the bucket.",
+      },
+    });
+  });
+
+  it("strips a leading lookup shortcut before building phrase choices", async () => {
+    apiRequest.mockImplementation(async (path) => {
+      if (path === "/api/languages") return OPTIONS;
+      if (path === "/api/words") return { entry_id: "picked" };
+      throw new Error(`Unexpected request: ${path}`);
+    });
+    const wrapper = mount(AddView);
+    await flushPromises();
+    await wrapper.find("#word").setValue("? kick the bucket");
+    await wrapper.find(".btn-primary").trigger("click");
+
+    expect(wrapper.findAll(".picker-choice").map((button) => button.text())).toEqual([
+      "kick",
+      "the",
+      "bucket",
+    ]);
+    expect(wrapper.text()).not.toContain("? kick");
+
+    await wrapper.find(".picker-choice").trigger("click");
+    await flushPromises();
+    expect(apiRequest).toHaveBeenCalledWith("/api/words", {
+      method: "POST",
+      body: {
+        word: "kick",
+        lang: "en",
+        lookup_only: true,
+        context: "kick the bucket",
+      },
+    });
+  });
+
+  it("passes punctuation on a direct single-word submission to server validation", async () => {
+    apiRequest.mockImplementation(async (path) => {
+      if (path === "/api/languages") return OPTIONS;
+      if (path === "/api/words") throw new Error("Недопустимая пунктуация.");
+      throw new Error(`Unexpected request: ${path}`);
+    });
+    const wrapper = mount(AddView);
+    await flushPromises();
+    await wrapper.find("#word").setValue("hello!");
+
+    await wrapper.find(".btn-primary").trigger("click");
+    await flushPromises();
+
+    expect(apiRequest).toHaveBeenCalledWith("/api/words", {
+      method: "POST",
+      body: { word: "hello!", lang: "en", lookup_only: false },
+    });
+    expect(wrapper.find(".hint").text()).toBe("Недопустимая пунктуация.");
+  });
+
+  it("clears phrase choices when input, language or lookup-only changes", async () => {
+    apiRequest.mockImplementation(async (path) => {
+      if (path === "/api/languages") return OPTIONS;
+      if (path === "/api/words") return { entry_id: "picked" };
+      throw new Error(`Unexpected request: ${path}`);
+    });
+    const wrapper = mount(AddView);
+    await flushPromises();
+    await wrapper.find("#word").setValue("kick the bucket");
+    await wrapper.find(".btn-primary").trigger("click");
+    expect(wrapper.find(".picker").exists()).toBe(true);
+
+    await wrapper.find("#word").setValue("changed phrase");
+    expect(wrapper.find(".picker").exists()).toBe(false);
+
+    await wrapper.find(".btn-primary").trigger("click");
+    expect(wrapper.find(".picker").exists()).toBe(true);
+    await wrapper.find("#lang").setValue("de");
+    expect(wrapper.find(".picker").exists()).toBe(false);
+
+    await wrapper.find("#lang").setValue("en");
+    await wrapper.find(".btn-primary").trigger("click");
+    expect(wrapper.find(".picker").exists()).toBe(true);
+    await wrapper.find('.lookup input[type="checkbox"]').setValue(true);
+    expect(wrapper.find(".picker").exists()).toBe(false);
+
+    await wrapper.find(".btn-primary").trigger("click");
+    await wrapper.find(".picker-choice").trigger("click");
+    await flushPromises();
+    expect(apiRequest).toHaveBeenLastCalledWith("/api/words", {
+      method: "POST",
+      body: {
+        word: "changed",
+        lang: "en",
+        lookup_only: true,
+        context: "changed phrase",
+      },
+    });
+  });
+
+  it("renders correction, rebuild and detail controls on a finished history entry", async () => {
+    entries.value = [{
+      entry_id: "entry-1",
+      word: "recieve",
+      language: "English",
+      lookup_only: false,
+      status: "done",
+      text: "analysis",
+      suggestion: "receive",
+      correction_reversed: false,
+      detail_available: true,
+      model: "free-flash",
+    }];
+    const wrapper = mount(AddView);
+    await flushPromises();
+
+    expect(wrapper.find(".correction").text()).toContain("✏️ Исправить на «receive»");
+    expect(wrapper.find(".rebuild").exists()).toBe(true);
+    expect(wrapper.find(".detail").element.disabled).toBe(false);
+    expect(wrapper.find(".entry-meta").text()).toContain("English · free-flash");
+  });
+
+  it("disables phrase choices while their POST is pending", async () => {
+    let resolveWord;
+    apiRequest.mockImplementation(async (path) => {
+      if (path === "/api/languages") return OPTIONS;
+      if (path === "/api/words") {
+        return new Promise((resolve) => { resolveWord = resolve; });
+      }
+      throw new Error(`Unexpected request: ${path}`);
+    });
+    const wrapper = mount(AddView);
+    await flushPromises();
+    await wrapper.find("#word").setValue("kick the bucket");
+    await wrapper.find(".btn-primary").trigger("click");
+
+    const choice = wrapper.find(".picker-choice");
+    await choice.trigger("click");
+    expect(choice.element.disabled).toBe(true);
+    await choice.trigger("click");
+    expect(apiRequest.mock.calls.filter(([path]) => path === "/api/words")).toHaveLength(1);
+
+    resolveWord({ entry_id: "picked" });
+    await flushPromises();
   });
 });

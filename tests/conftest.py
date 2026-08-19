@@ -27,6 +27,7 @@ _DEFAULT_BEHAVIOR_BY_FILE: dict[str, tuple[str, str, str | None]] = {
     "test_languages.py": (_VOCABULARY, "Input and languages", None),
     "test_llm_backend.py": (_VOCABULARY, "LLM cascade", "Free pool attempt"),
     "test_events.py": (_PLATFORM, "Answer delivery", "Event fan-out"),
+    "test_history.py": (_PLATFORM, "Answer delivery", "History"),
     "test_pipeline.py": (_VOCABULARY, "Answer delivery", "Streaming pipeline"),
     "test_prompt.py": (_VOCABULARY, "Answer delivery", "Prompt construction"),
     "test_sanitizer.py": (_PLATFORM, "Answer delivery", "Safe answer HTML"),

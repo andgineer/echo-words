@@ -1,4 +1,5 @@
 from datetime import date
+from types import SimpleNamespace
 
 import pytest
 from fakes import FakeDirectClient, FakeHandle, fake_cascade
@@ -199,6 +200,30 @@ async def test_without_a_paid_alias_a_deeper_analysis_is_refused(settings, langu
     cascade = fake_cascade(settings.model_copy(update={"api_model": ""}))
     with pytest.raises(BackendError, match="no paid model"):
         cascade.stream_paid("prompt", languages["en"])
+
+
+async def test_direct_missing_key_refuses_explicit_paid_work_before_it_is_queued(
+    settings,
+    languages,
+):
+    cascade = fake_cascade(settings)
+    cascade.broker.snapshot_value = SimpleNamespace(
+        providers_usable=1,
+        providers_total=1,
+        degraded=False,
+        missing_keys=(),
+        direct_missing_keys=(
+            SimpleNamespace(
+                api_key_ref="PAID_KEY",
+                help="configure it here",
+                entry_names=("gpt-fast",),
+            ),
+        ),
+    )
+
+    refusal = await cascade.refresh_paid_availability(languages["en"])
+
+    assert refusal == "the paid model is missing PAID_KEY: configure it here"
 
 
 async def test_the_deeper_analysis_goes_straight_to_the_paid_model(settings, languages):

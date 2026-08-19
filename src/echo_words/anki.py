@@ -11,13 +11,15 @@ import time
 from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Protocol
 
 from anki.collection import Collection
 from anki.errors import SyncError, SyncErrorKind
+from anki.notes import NoteId
 from anki.sync import SyncAuth
-from anki.sync_pb2 import SyncCollectionResponse
+from anki.sync_pb2 import SyncCollectionResponse, SyncStatusResponse
 
 from echo_words.card import Meaning, Note
 from echo_words.config import Settings
@@ -64,6 +66,15 @@ class Duplicate:
 AddResult = Added | Duplicate
 
 
+@dataclass(frozen=True)
+class SyncState:
+    enabled: bool
+    last_result: str | None
+    last_sync_at: datetime | None
+    unsynced_changes: bool
+    full_sync_required: bool
+
+
 class Clock(Protocol):
     def __call__(self) -> float: ...
 
@@ -88,6 +99,12 @@ class SyncBackend(Protocol):
         collection: Collection,
         auth: SyncAuth,
     ) -> SyncCollectionResponse: ...
+
+    def sync_status(
+        self,
+        collection: Collection,
+        auth: SyncAuth,
+    ) -> SyncStatusResponse: ...
 
     def full_download(
         self,
@@ -115,6 +132,13 @@ class PylibSyncBackend:
         auth: SyncAuth,
     ) -> SyncCollectionResponse:
         return collection.sync_collection(auth, sync_media=True)
+
+    def sync_status(
+        self,
+        collection: Collection,
+        auth: SyncAuth,
+    ) -> SyncStatusResponse:
+        return collection.sync_status(auth)
 
     def full_download(
         self,
@@ -159,6 +183,8 @@ class AnkiStore:
         self._sync_generation = 0
         self._synced_generation = 0
         self._last_sync_at: float | None = None
+        self._last_sync_wall: datetime | None = None
+        self._last_sync_result: str | None = None
         self._auth: SyncAuth | None = None
 
     async def open(self) -> None:
@@ -186,6 +212,8 @@ class AnkiStore:
                 async with self._lock:
                     await self._sync_with_auth_retry(bootstrap=True)
                 self._last_sync_at = self.clock()
+                self._last_sync_wall = datetime.now(tz=UTC)
+                self._last_sync_result = "ok"
                 self.bootstrap_path.unlink(missing_ok=True)
         except (Exception, asyncio.CancelledError):
             collection = self._require_collection()
@@ -225,6 +253,33 @@ class AnkiStore:
             self.schedule_sync()
         return result
 
+    async def replace_note(
+        self,
+        note_id: int,
+        note: Note,
+        deck: str,
+        audio_path: Path | None = None,
+        old_media_filename: str | None = None,
+    ) -> AddResult:
+        """Replace a note, removing the old result when the target is a duplicate."""
+        async with self._lock:
+            result = await _to_thread_uncancellable(
+                self._replace_note_blocking,
+                note_id,
+                note,
+                deck,
+                audio_path,
+                old_media_filename,
+            )
+        if isinstance(result, Added):
+            self.last_added_by_deck[deck] = result
+        elif (
+            last_added := self.last_added_by_deck.get(deck)
+        ) is not None and last_added.note_id == note_id:
+            self.last_added_by_deck.pop(deck, None)
+        self.schedule_sync()
+        return result
+
     def schedule_sync(self) -> None:
         """Request a sync; repeated requests are coalesced into five-minute ticks."""
         if not self.settings.anki_sync:
@@ -255,15 +310,107 @@ class AnkiStore:
                         self._synced_generation = target_generation
                 except FullSyncRequiredError as exc:
                     self.sync_error = str(exc)
+                    self._last_sync_result = "full-sync-required"
                     logger.error("Anki sync requires manual resolution: %s", exc)
                 except Exception as exc:  # noqa: BLE001 - sync never affects card delivery.
                     self.sync_error = str(exc)
+                    self._last_sync_result = "error"
                     logger.warning("Anki sync failed: %s", exc)
                 else:
                     self.sync_error = None
+                    self._last_sync_result = "ok"
                 self._last_sync_at = self.clock()
+                self._last_sync_wall = datetime.now(tz=UTC)
         finally:
             self._sync_task = None
+
+    async def remove_note(self, note_id: int, media_filename: str | None = None) -> None:
+        """Remove one note and its collection media, then schedule delivery of the change."""
+        async with self._lock:
+            await _to_thread_uncancellable(
+                self._remove_note_blocking,
+                note_id,
+                media_filename,
+            )
+        self.schedule_sync()
+
+    def _remove_note_blocking(self, note_id: int, media_filename: str | None) -> None:
+        collection = self._require_collection()
+        collection.remove_notes([NoteId(note_id)])
+        if media_filename:
+            collection.media.trash_files([media_filename])
+
+    async def note_counts(
+        self,
+        decks: dict[str, str],
+        *,
+        now: datetime | None = None,
+    ) -> dict[str, dict[str, int]]:
+        """Count EchoWords note ids in creation-time windows, grouped by language."""
+        current = now or datetime.now().astimezone()
+        if current.tzinfo is None:
+            current = current.replace(tzinfo=UTC)
+        start_today = current.replace(hour=0, minute=0, second=0, microsecond=0)
+        start_week = start_today - timedelta(days=6)
+        async with self._lock:
+            return await _to_thread_uncancellable(
+                self._note_counts_blocking,
+                decks,
+                int(start_today.timestamp() * 1000),
+                int(start_week.timestamp() * 1000),
+            )
+
+    def _note_counts_blocking(
+        self,
+        decks: dict[str, str],
+        today_cutoff: int,
+        week_cutoff: int,
+    ) -> dict[str, dict[str, int]]:
+        collection = self._require_collection()
+        result: dict[str, dict[str, int]] = {}
+        for code, deck in decks.items():
+            query = f'deck:"{_query_value(deck)}" note:{NOTE_TYPE_NAME}'
+            note_ids = collection.find_notes(query)
+            result[code] = {
+                "today": sum(note_id >= today_cutoff for note_id in note_ids),
+                "last_7_days": sum(note_id >= week_cutoff for note_id in note_ids),
+                "all_time": len(note_ids),
+            }
+        return result
+
+    async def status(self) -> SyncState:
+        """Return sync state, including durable collection changes after a restart."""
+        required = SyncCollectionResponse.NO_CHANGES
+        if self.settings.anki_sync:
+            try:
+                async with self._lock:
+                    required = await _to_thread_uncancellable(self._sync_status_blocking)
+            except Exception as exc:  # noqa: BLE001 - status still reports its cached state.
+                logger.warning("could not read Anki sync status: %s", exc)
+                required = (
+                    SyncCollectionResponse.NORMAL_SYNC
+                    if self._synced_generation < self._sync_generation
+                    else SyncCollectionResponse.NO_CHANGES
+                )
+        full_sync_required = required in (
+            SyncCollectionResponse.FULL_SYNC,
+            SyncCollectionResponse.FULL_DOWNLOAD,
+            SyncCollectionResponse.FULL_UPLOAD,
+        )
+        return SyncState(
+            enabled=self.settings.anki_sync,
+            last_result=self._last_sync_result,
+            last_sync_at=self._last_sync_wall,
+            unsynced_changes=required != SyncCollectionResponse.NO_CHANGES,
+            full_sync_required=full_sync_required
+            or bool(self.sync_error and "one-way full sync" in self.sync_error),
+        )
+
+    def _sync_status_blocking(self) -> int:
+        collection = self._require_collection()
+        auth = self._get_auth(collection)
+        response = self.sync_backend.sync_status(collection, auth)
+        return response.required
 
     async def _sync_with_auth_retry(self, *, bootstrap: bool) -> None:
         try:
@@ -379,6 +526,56 @@ class AnkiStore:
         collection.add_note(note, deck_id)
         return Added(note.id, media_filename)
 
+    def _replace_note_blocking(
+        self,
+        note_id: int,
+        note_data: Note,
+        deck: str,
+        audio_path: Path | None,
+        old_media_filename: str | None,
+    ) -> AddResult:
+        collection = self._require_collection()
+        model = _ensure_note_type(collection)
+        deck_id = collection.decks.id(deck)
+        if deck_id is None:
+            raise AnkiError(f"could not create Anki deck {deck!r}")
+        query = (
+            f'deck:"{_query_value(deck)}" note:{NOTE_TYPE_NAME} '
+            f'"Word:{_query_value(note_data.word)}"'
+        )
+        if any(int(found) != note_id for found in collection.find_notes(query)):
+            collection.remove_notes([NoteId(note_id)])
+            if old_media_filename:
+                _trash_replaced_media(collection, old_media_filename)
+            return Duplicate()
+
+        media_filename = None
+        undo_entry = collection.add_custom_undo_entry("Replace EchoWords note")
+        try:
+            # The product contract deliberately resets note/card identity and review
+            # scheduling. Group delete + add in Anki's own undo transaction so an
+            # add failure restores the old note, cards and scheduling exactly.
+            collection.remove_notes([NoteId(note_id)])
+            media_filename = _add_media(collection, note_data.word, audio_path)
+            note = collection.new_note(model)
+            note["Word"] = note_data.word
+            note["Translations"] = render_translations(note_data)
+            note["Meanings"] = render_meanings(note_data)
+            note["Audio"] = f"[sound:{media_filename}]" if media_filename else ""
+            collection.add_note(note, deck_id)
+            collection.merge_undo_entries(undo_entry)
+        except Exception:
+            _rollback_note_replacement(
+                collection,
+                undo_entry,
+                media_filename,
+                old_media_filename,
+            )
+            raise
+        if old_media_filename and old_media_filename != media_filename:
+            _trash_replaced_media(collection, old_media_filename)
+        return Added(note.id, media_filename)
+
     def _require_collection(self) -> Collection:
         if self.collection is None:
             raise RuntimeError("Anki collection is not open")
@@ -489,6 +686,33 @@ def _add_media(collection: Collection, word: str, audio_path: Path | None) -> st
         return collection.media.add_file(str(staged))
     finally:
         staged.unlink(missing_ok=True)
+
+
+def _rollback_note_replacement(
+    collection: Collection,
+    undo_entry: int,
+    media_filename: str | None,
+    old_media_filename: str | None,
+) -> None:
+    try:
+        collection.merge_undo_entries(undo_entry)
+        collection.undo()
+    except Exception as exc:
+        raise AnkiError(
+            "replacement failed and the old Anki note could not be restored",
+        ) from exc
+    if media_filename and media_filename != old_media_filename:
+        try:
+            collection.media.trash_files([media_filename])
+        except Exception as exc:  # noqa: BLE001 - the note rollback already succeeded.
+            logger.warning("could not trash rolled-back Anki media %r: %s", media_filename, exc)
+
+
+def _trash_replaced_media(collection: Collection, media_filename: str) -> None:
+    try:
+        collection.media.trash_files([media_filename])
+    except Exception as exc:  # noqa: BLE001 - the replacement itself is already durable.
+        logger.warning("could not trash replaced Anki media %r: %s", media_filename, exc)
 
 
 def _query_value(value: str) -> str:

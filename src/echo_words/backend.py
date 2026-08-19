@@ -1,5 +1,6 @@
 """The dispatcher: every answer starts on the pool and steps up to the paid model."""
 
+import logging
 from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable
 from contextlib import aclosing
 from dataclasses import dataclass
@@ -166,6 +167,7 @@ class Cascade:
         self.settings = settings
         self._paid_calls = 0
         self.last_calls: dict[str, CallRecord] = {}
+        self._direct_refusals: dict[str, str] = {}
         self._day = utc_today()
 
     @property
@@ -203,13 +205,41 @@ class Cascade:
 
     def paid_refusal(self, language: Language) -> str | None:
         """Why the paid step cannot happen, or ``None`` when it can."""
-        if not self.paid_alias(language):
+        alias = self.paid_alias(language)
+        if not alias:
             return "no paid model is configured"
+        if refusal := self._direct_refusals.get(alias):
+            return refusal
         self._roll_over()
         cap = self.settings.api_daily_cap
         if cap and self.calls_today >= cap:
             return f"the daily paid-call cap ({cap}) is spent"
         return None
+
+    async def refresh_paid_availability(self, language: Language) -> str | None:
+        """Refresh local key diagnostics before accepting an explicit paid job."""
+        try:
+            snapshot = await self.broker.snapshot()
+        except Exception as exc:  # noqa: BLE001 - the direct call is the final authority.
+            # snapshot() is local, but a corrupt journal should not prevent a
+            # direct client from reporting its own more precise error.
+            logging.getLogger(__name__).debug("paid availability snapshot failed: %s", exc)
+        else:
+            self.note_snapshot(snapshot)
+        return self.paid_refusal(language)
+
+    def note_snapshot(self, snapshot: object) -> None:
+        """Cache direct-key refusals from llmbroker's local snapshot."""
+        refusals: dict[str, str] = {}
+        for missing in getattr(snapshot, "direct_missing_keys", ()):
+            key = getattr(missing, "api_key_ref", "")
+            help_text = getattr(missing, "help", "")
+            reason = f"the paid model is missing {key}" if key else "the paid model key is missing"
+            if help_text:
+                reason = f"{reason}: {help_text}"
+            for alias in getattr(missing, "entry_names", ()):
+                refusals[str(alias)] = reason
+        self._direct_refusals = refusals
 
     def spend_paid_call(self, language: Language) -> None:
         refusal = self.paid_refusal(language)

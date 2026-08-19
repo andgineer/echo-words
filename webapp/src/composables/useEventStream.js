@@ -37,9 +37,23 @@ export function useEventStream({
       const text = data.text ?? data.content ?? "";
       upsertEntry({ entry_id: data.entry_id, text });
     } else if (name === "reset") {
-      upsertEntry({ entry_id: data.entry_id, text: "", status: "pending", error: null });
+      upsertEntry({
+        entry_id: data.entry_id,
+        text: "",
+        status: "pending",
+        error: null,
+        ...(Object.hasOwn(data, "detail_html") ? { detail_html: data.detail_html } : {}),
+      });
     } else if (name === "done") {
       upsertEntry({ ...data, status: "done" });
+    } else if (name === "detail") {
+      upsertEntry({
+        entry_id: data.entry_id,
+        detail_html: data.text,
+        detail_error: data.error,
+      });
+    } else if (name === "control_error") {
+      upsertEntry({ entry_id: data.entry_id, control_error: data.message });
     } else if (name === "error") {
       upsertEntry({ entry_id: data.entry_id, status: "error", error: data.message });
     }
@@ -58,7 +72,15 @@ export function useEventStream({
     source.addEventListener("open", () => {
       void refresh().catch(() => {});
     });
-    for (const name of ["accepted", "update", "reset", "done", "error"]) {
+    for (const name of [
+      "accepted",
+      "update",
+      "reset",
+      "done",
+      "detail",
+      "control_error",
+      "error",
+    ]) {
       source.addEventListener(name, (event) => apply(name, event));
     }
     return source;

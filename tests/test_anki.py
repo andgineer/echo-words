@@ -3,6 +3,7 @@ import hashlib
 import logging
 import threading
 from collections import deque
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -109,6 +110,98 @@ async def test_decks_are_created_and_duplicates_are_scoped_to_each_deck(tmp_path
         assert store.collection.note_count() == 2
         deck_names = {deck.name for deck in store.collection.decks.all_names_and_ids()}
         assert {"English::Vocabulary", "German::Vocabulary"} <= deck_names
+    finally:
+        await store.close()
+
+
+async def test_replacement_deletes_then_adds_a_fresh_note(tmp_path):
+    store = AnkiStore(local_settings(tmp_path))
+    await store.open()
+    try:
+        original = await store.add_note(make_note("recieve"), "English::Vocabulary")
+        assert isinstance(original, Added)
+
+        replaced = await store.replace_note(
+            original.note_id,
+            make_note("receive"),
+            "English::Vocabulary",
+            old_media_filename=original.media_filename,
+        )
+
+        assert isinstance(replaced, Added)
+        assert replaced.note_id != original.note_id
+        assert store.collection.note_count() == 1
+        assert store.collection.get_note(replaced.note_id)["Word"] == "receive"
+        assert store.collection.find_notes(f"nid:{original.note_id}") == []
+    finally:
+        await store.close()
+
+
+async def test_replacement_removes_its_old_note_when_target_spelling_already_exists(tmp_path):
+    store = AnkiStore(local_settings(tmp_path))
+    await store.open()
+    try:
+        target = await store.add_note(make_note("receive"), "English::Vocabulary")
+        typo = await store.add_note(make_note("recieve"), "English::Vocabulary")
+        assert isinstance(target, Added)
+        assert isinstance(typo, Added)
+
+        replaced = await store.replace_note(
+            typo.note_id,
+            make_note("receive"),
+            "English::Vocabulary",
+            old_media_filename=typo.media_filename,
+        )
+
+        assert isinstance(replaced, Duplicate)
+        assert store.collection.note_count() == 1
+        assert store.collection.get_note(target.note_id)["Word"] == "receive"
+        assert store.collection.find_notes('"Word:recieve"') == []
+        assert "English::Vocabulary" not in store.last_added_by_deck
+    finally:
+        await store.close()
+
+
+async def test_failed_replacement_leaves_the_existing_note_intact(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    store = AnkiStore(local_settings(tmp_path))
+    await store.open()
+    try:
+        old_audio = tmp_path / "old.mp3"
+        old_audio.write_bytes(b"old audio")
+        original = await store.add_note(
+            make_note("recieve"),
+            "English::Vocabulary",
+            old_audio,
+        )
+        assert isinstance(original, Added)
+        assert original.media_filename is not None
+        old_media = Path(store.collection.media.dir()) / original.media_filename
+        old_cards = list(store.collection.find_cards(f"nid:{original.note_id}"))
+        new_audio = tmp_path / "new.mp3"
+        new_audio.write_bytes(b"new audio")
+
+        def fail_add(_note, _deck_id):
+            raise RuntimeError("write failed")
+
+        monkeypatch.setattr(store.collection, "add_note", fail_add)
+        with pytest.raises(RuntimeError, match="write failed"):
+            await store.replace_note(
+                original.note_id,
+                make_note("receive"),
+                "English::Vocabulary",
+                new_audio,
+                old_media_filename=original.media_filename,
+            )
+
+        assert store.collection.note_count() == 1
+        assert store.collection.get_note(original.note_id)["Word"] == "recieve"
+        assert list(store.collection.find_cards(f"nid:{original.note_id}")) == old_cards
+        assert old_media.read_bytes() == b"old audio"
+        media_files = {path.name for path in Path(store.collection.media.dir()).iterdir()}
+        assert media_files == {original.media_filename}
     finally:
         await store.close()
 
@@ -232,6 +325,52 @@ async def test_media_name_uses_slug_hash_and_the_name_returned_by_anki(tmp_path)
         await store.close()
 
 
+async def test_remove_note_trashes_its_collection_media(tmp_path):
+    store = AnkiStore(local_settings(tmp_path))
+    await store.open()
+    audio = tmp_path / "audio.mp3"
+    audio.write_bytes(b"audio")
+    try:
+        added = await store.add_note(make_note(), "English::Vocabulary", audio)
+        assert isinstance(added, Added)
+        assert added.media_filename is not None
+        media = Path(store.collection.media.dir()) / added.media_filename
+        assert media.exists()
+
+        await store.remove_note(added.note_id, added.media_filename)
+
+        assert store.collection.note_count() == 0
+        assert not media.exists()
+    finally:
+        await store.close()
+
+
+async def test_note_counts_are_broken_down_by_deck_and_creation_window(tmp_path, monkeypatch):
+    store = AnkiStore(local_settings(tmp_path))
+    await store.open()
+    now = datetime(2026, 8, 19, 12, tzinfo=UTC)
+    today = int((now - timedelta(hours=1)).timestamp() * 1000)
+    this_week = int((now - timedelta(days=3)).timestamp() * 1000)
+    old = int((now - timedelta(days=20)).timestamp() * 1000)
+    try:
+
+        def note_ids(query):
+            return [today, this_week, old] if "English" in query else [today]
+
+        monkeypatch.setattr(store.collection, "find_notes", note_ids)
+        counts = await store.note_counts(
+            {"en": "English::Vocabulary", "de": "German::Vocabulary"},
+            now=now,
+        )
+
+        assert counts == {
+            "en": {"today": 1, "last_7_days": 2, "all_time": 3},
+            "de": {"today": 1, "last_7_days": 1, "all_time": 1},
+        }
+    finally:
+        await store.close()
+
+
 async def test_equal_slugs_get_distinct_hashes_in_their_media_names(tmp_path):
     store = AnkiStore(local_settings(tmp_path))
     await store.open()
@@ -269,9 +408,11 @@ class FakeSyncBackend:
         required: list[int | Exception],
         *,
         full_download_error: Exception | None = None,
+        status_required: int = SyncCollectionResponse.NO_CHANGES,
     ) -> None:
         self.required = deque(required)
         self.full_download_error = full_download_error
+        self.status_required = status_required
         self.login_calls: list[tuple[str, str, str | None]] = []
         self.auths: list[SyncAuth] = []
         self.full_downloads: list[tuple[str, int]] = []
@@ -290,6 +431,9 @@ class FakeSyncBackend:
             new_endpoint="https://shard/",
             server_media_usn=42,
         )
+
+    def sync_status(self, _collection, _auth):
+        return SyncCollectionResponse(required=self.status_required)
 
     def full_download(self, _collection, auth, server_usn):
         self.full_downloads.append((auth.endpoint, server_usn))
@@ -503,6 +647,34 @@ async def test_sync_off_never_calls_the_sync_boundary(tmp_path):
         await store.add_note(make_note(), "English::Vocabulary")
         assert backend.login_calls == []
         assert backend.auths == []
+    finally:
+        await store.close()
+
+
+async def test_local_sync_status_distinguishes_ok_unsynced_and_full_sync(tmp_path):
+    store = AnkiStore(local_settings(tmp_path))
+    assert (await store.status()).unsynced_changes is False
+    assert (await store.status()).full_sync_required is False
+
+    store._sync_generation = 2  # noqa: SLF001
+    store._synced_generation = 1  # noqa: SLF001
+    assert (await store.status()).unsynced_changes is False
+
+    store.sync_error = "Anki requires a one-way full sync — resolve it manually"
+    assert (await store.status()).full_sync_required is True
+
+
+async def test_sync_status_reads_collection_state_after_a_restart(tmp_path):
+    backend = FakeSyncBackend(
+        [],
+        status_required=SyncCollectionResponse.NORMAL_SYNC,
+    )
+    store = AnkiStore(synced_settings(tmp_path), sync_backend=backend)
+    await store.open()
+    try:
+        store._sync_generation = 0  # noqa: SLF001 - simulates fresh process memory.
+        store._synced_generation = 0  # noqa: SLF001
+        assert (await store.status()).unsynced_changes is True
     finally:
         await store.close()
 

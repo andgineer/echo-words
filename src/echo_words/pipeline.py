@@ -1,23 +1,23 @@
-"""The single FIFO word worker and its in-memory, restart-ephemeral registry."""
+"""The single FIFO worker for submissions and every M7 entry control."""
 
 import asyncio
 import logging
 import time
 import uuid
-from collections import deque
 from collections.abc import Callable, Coroutine
 from contextlib import aclosing, suppress
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 from echo_words.anki import Added, Duplicate
 from echo_words.backend import Cascade
 from echo_words.broker import BackendError
 from echo_words.card import Note, ParsedCard
 from echo_words.events import EventHub
+from echo_words.history import Entry, History, UndoState
 from echo_words.languages import Language
-from echo_words.prompt import CARD_DELIMITER, build_prompt, extract_card
+from echo_words.prompt import CARD_DELIMITER, build_extended_prompt, build_prompt, extract_card
 from echo_words.sanitizer import sanitize_html
 
 UPDATE_INTERVAL_SECONDS = 0.5
@@ -27,6 +27,7 @@ DUPLICATE_STATUS = "📌 already in Anki"
 LOOKUP_ONLY_STATUS = "👁 lookup only"
 CARD_FAILED_STATUS = "⚠️ card failed"
 NO_AUDIO_STATUS = "🔇 no audio"
+REQUEST_EXPIRED = "request expired"
 
 logger = logging.getLogger(__name__)
 
@@ -43,30 +44,24 @@ class CardStore(Protocol):
         audio_path: Path | None = None,
     ) -> Added | Duplicate: ...
 
+    async def remove_note(self, note_id: int, media_filename: str | None = None) -> None: ...
+
+    async def replace_note(
+        self,
+        note_id: int,
+        note: Note,
+        deck: str,
+        audio_path: Path | None = None,
+        old_media_filename: str | None = None,
+    ) -> Added | Duplicate: ...
+
 
 AudioFetcher = Callable[[str, Language], Coroutine[Any, Any, Path | None]]
+JobKind = Literal["submit", "rebuild", "switch"]
 
 
 async def _no_audio(_word: str, _language: Language) -> Path | None:
     return None
-
-
-@dataclass
-class Entry:
-    entry_id: str
-    word: str
-    lang: str
-    language: str
-    lookup_only: bool
-    context: str
-    text: str = ""
-    status: str = "pending"
-    audio_url: str | None = None
-    card_status: str | None = None
-    error: str | None = None
-
-    def public(self) -> dict[str, object]:
-        return asdict(self)
 
 
 @dataclass(frozen=True)
@@ -77,10 +72,49 @@ class Job:
     word: str
     lookup_only: bool
     context: str
+    kind: JobKind = "submit"
+    paid_only: bool = False
+    kept_audio: Path | None = None
+    replace_note_id: int | None = None
+    replace_media: str | None = None
+    replaced_audio: Path | None = None
+
+
+@dataclass(frozen=True)
+class DetailJob:
+    entry_id: str
+    revision: int
+    language: Language
+    word: str
+    context: str
+
+
+@dataclass
+class ControlState:
+    input_word: str
+    suggestion: str | None
+    language: Language
+    lookup_only: bool
+    shown_spelling: str
+    context: str
+    note_id: int | None = None
+    media_filename: str | None = None
+    audio_path: Path | None = None
+
+
+@dataclass(frozen=True)
+class StoreResult:
+    status: str
+    action: str
+    note_id: int | None = None
+    media_filename: str | None = None
+
+
+QueueJob = Job | DetailJob
 
 
 class WordPipeline:
-    """Register immediately, then process all languages through one FIFO worker."""
+    """Register immediately, then process all entry work through one FIFO worker."""
 
     def __init__(  # noqa: PLR0913 - dependencies and bounded knobs are explicit.
         self,
@@ -91,7 +125,8 @@ class WordPipeline:
         anki: CardStore | None = None,
         audio: AudioFetcher = _no_audio,
         audio_timeout: float = 20,
-        history_size: int = 100,
+        audio_dir: Path | None = None,
+        history_size: int = 50,
         clock: Clock = time.monotonic,
     ) -> None:
         self.cascade = cascade
@@ -99,13 +134,18 @@ class WordPipeline:
         self.anki = anki
         self.audio = audio
         self.audio_timeout = audio_timeout
+        self.audio_dir = audio_dir
         self.target_lang = target_lang
         self._clock = clock
-        self._queue: asyncio.Queue[Job] = asyncio.Queue()
-        self._entries: dict[str, Entry] = {}
+        self._queue: asyncio.Queue[QueueJob] = asyncio.Queue()
+        self.history = History(history_size)
+        self._entries = self.history.entries
+        self._order = self.history.order
         self._revisions: dict[str, int] = {}
-        self._order: deque[str] = deque()
-        self._history_size = history_size
+        self._detail_revisions: dict[str, int] = {}
+        self._latest_submissions: dict[str, str] = {}
+        self._controls: dict[str, ControlState] = {}
+        self._details_pending: set[str] = set()
         self._worker: asyncio.Task[None] | None = None
 
     def start(self) -> None:
@@ -132,22 +172,31 @@ class WordPipeline:
         context: str = "",
         entry_id: str | None = None,
         reuse_entry: str | None = None,
+        kind: JobKind = "submit",
+        paid_only: bool = False,
+        kept_audio: Path | None = None,
+        replace_note_id: int | None = None,
+        replace_media: str | None = None,
+        replaced_audio: Path | None = None,
     ) -> Entry:
         if reuse_entry is not None:
             entry = self._entries[reuse_entry]
             revision = self._revisions[reuse_entry] + 1
             self._revisions[reuse_entry] = revision
-            entry.word = word
-            entry.lang = language.code
-            entry.language = language.name
-            entry.lookup_only = lookup_only
-            entry.context = context
-            entry.text = ""
-            entry.status = "pending"
-            entry.audio_url = None
-            entry.card_status = None
-            entry.error = None
-            await self.events.publish("reset", {"entry_id": entry.entry_id})
+            if kind == "switch":
+                self._detail_revisions[reuse_entry] += 1
+            # A paid rebuild stays completely unchanged until its queued call has
+            # actually been admitted. Another paid job can spend the last daily
+            # slot while this one waits, and a refusal must not blank the entry.
+            if kind != "rebuild":
+                self._reset_reused_entry(entry, language, word, lookup_only, context, kind)
+                await self.events.publish(
+                    "reset",
+                    {
+                        "entry_id": entry.entry_id,
+                        **({"detail_html": ""} if kind == "switch" else {}),
+                    },
+                )
         else:
             entry = Entry(
                 entry_id=entry_id or uuid.uuid4().hex,
@@ -157,46 +206,148 @@ class WordPipeline:
                 lookup_only=lookup_only,
                 context=context,
             )
-            self._entries[entry.entry_id] = entry
+            self.history.add(entry)
             revision = 0
             self._revisions[entry.entry_id] = revision
-            self._order.append(entry.entry_id)
-            self._trim_history()
+            self._detail_revisions[entry.entry_id] = 0
+            if kind == "submit":
+                # Undo always follows the latest send, not the latest job to
+                # finish. Invalidate it before queueing so a pending duplicate,
+                # lookup, or failure can never expose the previous card.
+                self._latest_submissions[language.code] = entry.entry_id
+                self.history.undo.pop(language.code, None)
+            self._drop_evicted_state()
         await self._queue.put(
-            Job(entry.entry_id, revision, language, word, lookup_only, context),
+            Job(
+                entry.entry_id,
+                revision,
+                language,
+                word,
+                lookup_only,
+                context,
+                kind,
+                paid_only,
+                kept_audio,
+                replace_note_id,
+                replace_media,
+                replaced_audio,
+            ),
         )
         await self.events.publish("accepted", entry.public())
         return entry
 
     def recent(self, limit: int = 20) -> list[dict[str, object]]:
-        ids = list(reversed(self._order))[:limit]
-        return [self._entries[entry_id].public() for entry_id in ids]
+        return self.history.recent(limit)
+
+    def counters(self, lang: str) -> dict[str, int]:
+        return self.history.counts(lang)
+
+    async def request_rebuild(self, entry_id: str) -> Entry:
+        entry, state = self._active_control(entry_id)
+        refusal = await self._paid_refusal_fresh(state.language)
+        if refusal is not None:
+            raise BackendError(refusal)
+        return await self.enqueue(
+            state.language,
+            state.shown_spelling,
+            state.lookup_only,
+            context=state.context,
+            reuse_entry=entry.entry_id,
+            kind="rebuild",
+            paid_only=True,
+            kept_audio=state.audio_path,
+            replace_note_id=state.note_id,
+            replace_media=state.media_filename,
+        )
+
+    async def request_switch(self, entry_id: str) -> Entry:
+        entry, state = self._active_control(entry_id)
+        if not state.suggestion:
+            raise ValueError("no correction is available")
+        target = (
+            state.input_word
+            if state.shown_spelling.casefold() != state.input_word.casefold()
+            else state.suggestion
+        )
+        return await self.enqueue(
+            state.language,
+            target,
+            state.lookup_only,
+            context=state.context,
+            reuse_entry=entry.entry_id,
+            kind="switch",
+            replace_note_id=state.note_id,
+            replace_media=state.media_filename,
+            replaced_audio=state.audio_path,
+        )
+
+    async def request_detail(self, entry_id: str) -> dict[str, object]:
+        entry, state = self._active_control(entry_id)
+        if entry.detail_html:
+            return {"entry_id": entry_id, "detail_html": entry.detail_html, "cached": True}
+        if entry_id in self._details_pending:
+            return {"entry_id": entry_id, "queued": True}
+        refusal = await self._paid_refusal_fresh(state.language)
+        if refusal is not None:
+            raise BackendError(refusal)
+        self._details_pending.add(entry_id)
+        await self._queue.put(
+            DetailJob(
+                entry_id,
+                self._detail_revisions[entry_id],
+                state.language,
+                state.shown_spelling,
+                state.context,
+            ),
+        )
+        return {"entry_id": entry_id, "queued": True}
+
+    async def undo(self, language: Language) -> str | None:
+        state = self.history.undo.get(language.code)
+        if state is None or state.action != "added" or state.note_id is None:
+            return None
+        if self.anki is None:
+            return None
+        await self.anki.remove_note(state.note_id, state.media_filename)
+        self._delete_audio(self._audio_path(state.audio_file))
+        self.history.undo.pop(language.code, None)
+        for control in self._controls.values():
+            if control.note_id == state.note_id:
+                control.note_id = None
+                control.media_filename = None
+        return state.word
 
     async def _work(self) -> None:
         while True:
             job = await self._queue.get()
             try:
-                await self.process_word(job)
+                if isinstance(job, DetailJob):
+                    await self._process_detail(job)
+                else:
+                    await self.process_word(job)
             except Exception:  # noqa: BLE001
-                # A programming or dependency fault must not kill the sole worker and
-                # strand every word behind it. BackendError gets the same user-safe text.
                 logger.exception("word processing failed unexpectedly")
-                await self._fail(job)
+                if isinstance(job, DetailJob):
+                    self._details_pending.discard(job.entry_id)
+                else:
+                    await self._fail(job)
             finally:
                 self._queue.task_done()
 
-    async def process_word(self, job: Job) -> None:
+    async def process_word(self, job: Job) -> None:  # noqa: C901, PLR0912, PLR0915
         if not self._is_current(job):
             return
         entry = self._entries[job.entry_id]
-        audio_task = asyncio.create_task(
-            self.audio(job.word, job.language),
-            name=f"echo-words-audio-{job.entry_id}",
-        )
-        audio_consumed = False
+        audio_task = None
+        if job.kind != "rebuild":
+            audio_task = asyncio.create_task(
+                self.audio(job.word, job.language),
+                name=f"echo-words-audio-{job.entry_id}",
+            )
         raw = ""
         last_published = ""
         last_update_at: float | None = None
+        entry_reset = job.kind != "rebuild"
 
         async def reset() -> None:
             nonlocal raw, last_published, last_update_at
@@ -212,20 +363,37 @@ class WordPipeline:
             if self.cascade is None:
                 await self._fail(job)
                 return
-
             prompt = build_prompt(job.language, job.word, self.target_lang, context=job.context)
-            completion = self.cascade.stream_completion(
-                prompt,
-                job.language,
-                trace_id=job.entry_id,
-                on_reset=reset,
-            )
             parsed = None
             try:
+                if job.paid_only:
+                    completion = self.cascade.stream_paid(
+                        prompt,
+                        job.language,
+                        trace_id=job.entry_id,
+                    )
+                else:
+                    completion = self.cascade.stream_completion(
+                        prompt,
+                        job.language,
+                        trace_id=job.entry_id,
+                        on_reset=reset,
+                    )
                 async with aclosing(completion):
                     async for delta in completion:
                         if not self._is_current(job):
                             return
+                        if not entry_reset:
+                            self._reset_reused_entry(
+                                entry,
+                                job.language,
+                                job.word,
+                                job.lookup_only,
+                                job.context,
+                                job.kind,
+                            )
+                            await self.events.publish("reset", {"entry_id": entry.entry_id})
+                            entry_reset = True
                         raw += delta
                         visible = sanitize_html(visible_analysis(raw))
                         entry.text = visible
@@ -237,26 +405,76 @@ class WordPipeline:
                         )
                     parsed = extract_card(raw, job.word, job.language)
                     await completion.record_quality(1.0 if parsed is not None else 0.0)
-            except BackendError:
+            except BackendError as exc:
+                if job.kind == "rebuild" and not entry_reset:
+                    await self.events.publish(
+                        "control_error",
+                        {"entry_id": entry.entry_id, "message": str(exc)},
+                    )
+                    return
                 await self._handle_backend_error(job, entry, last_published)
                 return
-
-            if self._is_current(job):
-                suggestion = _suggestion_from(parsed)
+            if not self._is_current(job):
+                return
+            if audio_task is None:
+                audio_path = job.kept_audio
+            else:
                 audio_path = await self._await_audio(audio_task, job)
-                audio_consumed = True
-                card_status = await self._store_card(job, parsed, audio_path)
-                card_status, entry.audio_url = _audio_result(card_status, audio_path)
-                await self._finish_entry(
-                    entry,
-                    raw,
-                    last_published,
-                    suggestion,
-                    card_status,
-                )
+                audio_task = None
+            stored = await self._store_card(job, parsed, audio_path)
+            if job.kind == "switch" and stored.action != "failed":
+                self._delete_audio(job.replaced_audio)
+            elif job.kind == "switch" and stored.action == "failed":
+                self._delete_audio(audio_path)
+                audio_path = job.replaced_audio
+            card_status, entry.audio_file = _audio_result(stored.status, audio_path)
+            suggestion = self._correction_target(job, parsed)
+            entry.model = getattr(completion, "llm_name", None)
+            entry.detail_available = await self._paid_refusal_fresh(job.language) is None
+            self._update_state(job, parsed, stored, audio_path)
+            await self._finish_entry(entry, raw, last_published, suggestion, card_status, stored)
         finally:
-            if not audio_consumed:
+            if audio_task is not None:
                 _cancel_task(audio_task)
+
+    async def _process_detail(self, job: DetailJob) -> None:
+        entry = self._entries.get(job.entry_id)
+        if entry is None or self.cascade is None or not self._is_detail_current(job):
+            self._details_pending.discard(job.entry_id)
+            return
+        raw = ""
+        prompt = build_extended_prompt(
+            job.language,
+            job.word,
+            self.target_lang,
+            context=job.context,
+        )
+        try:
+            completion = self.cascade.stream_paid(
+                prompt,
+                job.language,
+                trace_id=f"{job.entry_id}-detail",
+            )
+            async with aclosing(completion):
+                async for delta in completion:
+                    if not self._is_detail_current(job):
+                        return
+                    raw += delta
+                    entry.detail_html = sanitize_html(visible_analysis(raw))
+                    await self.events.publish(
+                        "detail",
+                        {"entry_id": entry.entry_id, "text": entry.detail_html},
+                    )
+        except BackendError as exc:
+            if not self._is_detail_current(job):
+                return
+            entry.detail_html = ""
+            await self.events.publish(
+                "detail",
+                {"entry_id": entry.entry_id, "error": str(exc)},
+            )
+        finally:
+            self._details_pending.discard(job.entry_id)
 
     async def _await_audio(self, task: asyncio.Task[Path | None], job: Job) -> Path | None:
         done, _ = await asyncio.wait({task}, timeout=self.audio_timeout)
@@ -270,9 +488,8 @@ class WordPipeline:
             worker = asyncio.current_task()
             if worker is not None and worker.cancelling():
                 raise
-            logger.warning("pronunciation was cancelled for %s/%r", job.language.code, job.word)
             return None
-        except Exception:  # noqa: BLE001 - an injected/custom audio source must degrade too.
+        except Exception:  # noqa: BLE001
             logger.exception("pronunciation failed for %s/%r", job.language.code, job.word)
             return None
 
@@ -281,28 +498,142 @@ class WordPipeline:
         job: Job,
         parsed: ParsedCard | None,
         audio_path: Path | None,
-    ) -> str:
+    ) -> StoreResult:
         if job.lookup_only:
-            return LOOKUP_ONLY_STATUS
+            return StoreResult(LOOKUP_ONLY_STATUS, "lookup")
         if parsed is None or self.anki is None:
-            return CARD_FAILED_STATUS
+            return StoreResult(CARD_FAILED_STATUS, "failed")
         try:
-            result = await self.anki.add_note(parsed[0], job.language.deck, audio_path)
-        except Exception as exc:  # noqa: BLE001 - the text answer must always survive.
+            if job.replace_note_id is not None:
+                result = await self.anki.replace_note(
+                    job.replace_note_id,
+                    parsed[0],
+                    job.language.deck,
+                    audio_path,
+                    job.replace_media,
+                )
+            else:
+                result = await self.anki.add_note(parsed[0], job.language.deck, audio_path)
+        except Exception as exc:  # noqa: BLE001
             logger.exception("could not add %r to Anki", job.word)
-            return f"⚠️ {exc}" if str(exc) else CARD_FAILED_STATUS
+            status = f"⚠️ {exc}" if str(exc) else CARD_FAILED_STATUS
+            return StoreResult(status, "failed")
         if isinstance(result, Added):
-            return ADDED_STATUS
+            return StoreResult(ADDED_STATUS, "added", result.note_id, result.media_filename)
         if isinstance(result, Duplicate):
-            return DUPLICATE_STATUS
-        return CARD_FAILED_STATUS
+            return StoreResult(DUPLICATE_STATUS, "duplicate")
+        return StoreResult(CARD_FAILED_STATUS, "failed")
 
-    async def _handle_backend_error(
+    async def _finish_entry(  # noqa: PLR0913, PLR0917
+        self,
+        entry: Entry,
+        raw: str,
+        last_published: str,
+        suggestion: str | None,
+        card_status: str,
+        stored: StoreResult,
+    ) -> None:
+        final = sanitize_html(visible_analysis(raw))
+        entry.text = final
+        if final != last_published:
+            await self._publish_update(entry)
+        entry.action = stored.action
+        entry.card_status = card_status
+        entry.suggestion = suggestion
+        entry.shown_spelling = entry.word
+        control = self._controls.get(entry.entry_id)
+        entry.correction_reversed = bool(
+            control
+            and control.suggestion
+            and control.shown_spelling.casefold() != control.input_word.casefold(),
+        )
+        await self.events.publish(
+            "done",
+            {
+                "entry_id": entry.entry_id,
+                "text": final,
+                "suggestion": suggestion,
+                "shown_spelling": entry.shown_spelling,
+                "card_status": card_status,
+                "audio_url": entry.audio_url,
+                "model": entry.model,
+                "detail_available": entry.detail_available,
+                "correction_reversed": entry.correction_reversed,
+            },
+        )
+        self.history.trim()
+        self._drop_evicted_state()
+
+    def _update_state(
         self,
         job: Job,
-        entry: Entry,
-        last_published: str,
+        parsed: ParsedCard | None,
+        stored: StoreResult,
+        audio_path: Path | None,
     ) -> None:
+        parsed_suggestion = _suggestion_from(parsed)
+        existing = self._controls.get(job.entry_id)
+        if existing is None:
+            existing = ControlState(
+                input_word=job.word,
+                suggestion=parsed_suggestion,
+                language=job.language,
+                lookup_only=job.lookup_only,
+                shown_spelling=job.word,
+                context=job.context,
+            )
+            self._controls[job.entry_id] = existing
+        elif job.kind == "submit":
+            existing.input_word = job.word
+            existing.suggestion = parsed_suggestion
+        existing.shown_spelling = job.word
+        replacement_failed = job.replace_note_id is not None and stored.action == "failed"
+        if not replacement_failed:
+            existing.note_id = stored.note_id
+            existing.media_filename = stored.media_filename
+            existing.audio_path = audio_path
+        if job.kind == "submit":
+            self.history.bump(job.language.code, stored.action)
+            if self._latest_submissions.get(job.language.code) == job.entry_id:
+                self.history.undo[job.language.code] = UndoState(
+                    word=job.word,
+                    action=stored.action,
+                    note_id=stored.note_id,
+                    media_filename=stored.media_filename,
+                    audio_file=audio_path.name if audio_path else None,
+                    lookup_only=job.lookup_only,
+                )
+        elif job.replace_note_id is not None and not replacement_failed:
+            undo = self.history.undo.get(job.language.code)
+            if undo is not None and undo.note_id == job.replace_note_id:
+                self.history.undo[job.language.code] = UndoState(
+                    word=job.word,
+                    action=stored.action,
+                    note_id=stored.note_id,
+                    media_filename=stored.media_filename,
+                    audio_file=audio_path.name if audio_path else None,
+                    lookup_only=job.lookup_only,
+                )
+
+    def _correction_target(self, job: Job, parsed: ParsedCard | None) -> str | None:
+        if job.kind == "switch":
+            state = self._controls.get(job.entry_id)
+            if state is None or not state.suggestion:
+                return None
+            if job.word.casefold() == state.input_word.casefold():
+                return state.suggestion
+            return state.input_word
+        if job.kind == "rebuild":
+            state = self._controls.get(job.entry_id)
+            if state is not None and state.suggestion:
+                return (
+                    state.input_word
+                    if job.word.casefold() != state.input_word.casefold()
+                    else state.suggestion
+                )
+        return _suggestion_from(parsed)
+
+    async def _handle_backend_error(self, job: Job, entry: Entry, last_published: str) -> None:
         if not self._is_current(job):
             return
         if entry.text != last_published:
@@ -324,32 +655,6 @@ class WordPipeline:
         await self._publish_update(entry)
         return visible, now
 
-    async def _finish_entry(
-        self,
-        entry: Entry,
-        raw: str,
-        last_published: str,
-        suggestion: str | None,
-        card_status: str,
-    ) -> None:
-        final = sanitize_html(visible_analysis(raw))
-        entry.text = final
-        if final != last_published:
-            await self._publish_update(entry)
-        entry.status = "done"
-        entry.card_status = card_status
-        await self.events.publish(
-            "done",
-            {
-                "entry_id": entry.entry_id,
-                "text": final,
-                "suggestion": suggestion,
-                "card_status": card_status,
-                "audio_url": entry.audio_url,
-            },
-        )
-        self._trim_history()
-
     async def _publish_update(self, entry: Entry) -> None:
         await self.events.publish("update", {"entry_id": entry.entry_id, "text": entry.text})
 
@@ -358,35 +663,81 @@ class WordPipeline:
             return
         entry = self._entries.get(job.entry_id)
         if entry is None:
-            logger.error("cannot mark missing history entry %s as failed", job.entry_id)
             return
-        entry.status = "error"
+        entry.action = "failed"
         entry.error = ERROR_MESSAGE
-        await self.events.publish(
-            "error",
-            {"entry_id": entry.entry_id, "message": ERROR_MESSAGE},
-        )
-        self._trim_history()
+        await self.events.publish("error", {"entry_id": entry.entry_id, "message": ERROR_MESSAGE})
+        self.history.trim()
+        self._drop_evicted_state()
 
-    def _trim_history(self) -> None:
-        """Evict only terminal entries; queued work must remain addressable."""
-        while len(self._order) > self._history_size:
-            expired = next(
-                (
-                    entry_id
-                    for entry_id in self._order
-                    if self._entries[entry_id].status != "pending"
-                ),
-                None,
-            )
-            if expired is None:
-                return
-            self._order.remove(expired)
-            self._entries.pop(expired)
-            self._revisions.pop(expired)
+    def _active_control(self, entry_id: str) -> tuple[Entry, ControlState]:
+        entry = self._entries.get(entry_id)
+        state = self._controls.get(entry_id)
+        if entry is None or state is None or entry.action == "pending":
+            raise KeyError(REQUEST_EXPIRED)
+        return entry, state
+
+    def _paid_refusal(self, language: Language) -> str | None:
+        if self.cascade is None:
+            return "no paid model is configured"
+        refusal = getattr(self.cascade, "paid_refusal", None)
+        return refusal(language) if refusal is not None else None
+
+    async def _paid_refusal_fresh(self, language: Language) -> str | None:
+        if self.cascade is None:
+            return "no paid model is configured"
+        refresh = getattr(self.cascade, "refresh_paid_availability", None)
+        if refresh is not None:
+            return await refresh(language)
+        return self._paid_refusal(language)
+
+    @staticmethod
+    def _reset_reused_entry(  # noqa: PLR0913, PLR0917 - complete entry reset is explicit.
+        entry: Entry,
+        language: Language,
+        word: str,
+        lookup_only: bool,
+        context: str,
+        kind: JobKind,
+    ) -> None:
+        entry.word = word
+        entry.lang = language.code
+        entry.language = language.name
+        entry.lookup_only = lookup_only
+        entry.context = context
+        entry.text = ""
+        entry.action = "pending"
+        entry.card_status = None
+        entry.error = None
+        entry.model = None
+        if kind != "rebuild":
+            entry.audio_file = None
+        if kind == "switch":
+            entry.detail_html = ""
+
+    def _drop_evicted_state(self) -> None:
+        live = set(self._entries)
+        for entry_id in set(self._revisions) - live:
+            self._revisions.pop(entry_id, None)
+            self._detail_revisions.pop(entry_id, None)
+            self._controls.pop(entry_id, None)
+            self._details_pending.discard(entry_id)
 
     def _is_current(self, job: Job) -> bool:
         return self._revisions.get(job.entry_id) == job.revision
+
+    def _is_detail_current(self, job: DetailJob) -> bool:
+        return self._detail_revisions.get(job.entry_id) == job.revision
+
+    def _audio_path(self, audio_file: str | None) -> Path | None:
+        if not audio_file or self.audio_dir is None:
+            return None
+        return self.audio_dir / audio_file
+
+    @staticmethod
+    def _delete_audio(path: Path | None) -> None:
+        if path is not None:
+            path.unlink(missing_ok=True)
 
 
 def visible_analysis(raw: str) -> str:
@@ -407,11 +758,10 @@ def _suggestion_from(parsed: ParsedCard | None) -> str | None:
 def _audio_result(card_status: str, audio_path: Path | None) -> tuple[str, str | None]:
     if audio_path is None:
         return f"{card_status} · {NO_AUDIO_STATUS}", None
-    return card_status, f"/api/audio/{audio_path.name}"
+    return card_status, audio_path.name
 
 
 def _cancel_task(task: asyncio.Task[Path | None]) -> None:
-    """Request cancellation without letting uncooperative cleanup stall the FIFO."""
     task.add_done_callback(_consume_audio_task)
     if not task.done():
         task.cancel()
@@ -421,5 +771,5 @@ def _consume_audio_task(task: asyncio.Task[Path | None]) -> None:
     with suppress(asyncio.CancelledError):
         try:
             task.result()
-        except Exception:  # noqa: BLE001 - an abandoned audio task is best-effort.
+        except Exception:  # noqa: BLE001
             logger.exception("abandoned pronunciation task failed")

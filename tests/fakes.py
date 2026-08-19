@@ -1,6 +1,7 @@
 """Fakes for the LLM boundary: no pool, no provider, no network."""
 
 from collections.abc import AsyncIterator, Iterable
+from types import SimpleNamespace
 
 from llmbroker import InvalidProviderResponseError
 
@@ -80,7 +81,7 @@ class FakeDirectClient:
 class FakeBroker:
     """Stands in for the one ``AsyncBroker``: hands out prepared handles and clients."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         home=None,
         direct: Iterable[str] = (),
@@ -88,6 +89,8 @@ class FakeBroker:
         handles: Iterable[FakeHandle] = (),
         client: FakeDirectClient | None = None,
         direct_error: Exception | None = None,
+        snapshot: object | None = None,
+        stats: dict[str, object] | None = None,
     ) -> None:
         self.home = home
         self.direct_aliases = list(direct)
@@ -97,6 +100,14 @@ class FakeBroker:
         self.stream_calls: list[dict] = []
         self.direct_calls: list[str] = []
         self.closed = False
+        self.snapshot_value = snapshot or SimpleNamespace(
+            providers_usable=0,
+            providers_total=0,
+            degraded=False,
+            missing_keys=(),
+            direct_missing_keys=(),
+        )
+        self.stats_values = stats or {}
 
     def stream(
         self,
@@ -123,6 +134,12 @@ class FakeBroker:
 
     async def aclose(self) -> None:
         self.closed = True
+
+    async def snapshot(self):
+        return self.snapshot_value
+
+    async def stats(self, *, operation=None, **_kwargs):
+        return self.stats_values.get(operation, {})
 
 
 def fake_cascade(settings: Settings, **broker: object) -> Cascade:
