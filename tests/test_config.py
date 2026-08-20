@@ -26,14 +26,28 @@ def test_the_deployment_secrets_file_is_never_read_by_the_app():
     assert ENV_FILE == REPO_ROOT / ".env"
 
 
-def test_llmbroker_home_follows_the_data_dir(tmp_path: Path):
+def test_the_data_dir_carries_its_children(tmp_path: Path):
     settings = Settings(_env_file=None, data_dir=tmp_path)
     assert settings.llmbroker_home == tmp_path / "llmbroker"
+    assert settings.languages_config == tmp_path / "languages.toml"
 
 
-def test_llmbroker_home_can_be_set_apart(tmp_path: Path):
-    settings = Settings(_env_file=None, data_dir=tmp_path, llmbroker_home=tmp_path / "broker")
+def test_the_data_dir_children_can_be_set_apart(tmp_path: Path):
+    settings = Settings(
+        _env_file=None,
+        data_dir=tmp_path,
+        llmbroker_home=tmp_path / "broker",
+        languages_config=tmp_path / "elsewhere.toml",
+    )
     assert settings.llmbroker_home == tmp_path / "broker"
+    assert settings.languages_config == tmp_path / "elsewhere.toml"
+
+
+def test_the_data_dir_env_var_alone_moves_its_children(monkeypatch, tmp_path: Path):
+    monkeypatch.setenv("ECHOWORDS_DATA_DIR", str(tmp_path))
+    settings = Settings(_env_file=None)
+    assert settings.languages_config == tmp_path / "languages.toml"
+    assert settings.llmbroker_home == tmp_path / "llmbroker"
 
 
 @pytest.mark.parametrize(

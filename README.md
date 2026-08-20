@@ -19,6 +19,10 @@ inv build-static
 inv dev
 ```
 
+`languages.toml` lives in `ECHOWORDS_DATA_DIR` and moves with it; `ECHOWORDS_LANGUAGES_CONFIG`
+overrides that path, and so does `ECHOWORDS_LLMBROKER_HOME` for llmbroker's state. Setting the
+data dir alone is enough on the server.
+
 `languages.toml` is the source of truth for source languages. Each `[languages.<code>]` table
 names its display name, its own Anki `deck`, accepted `script`, dictionary code where available,
 and its pronunciation engine/voice. `languages.example.toml` contains complete English, German,
@@ -60,13 +64,16 @@ so allowing only `sync.ankiweb.net` will fail intermittently.
 Create the production secrets file and choose the SSH host:
 
 ```sh
+mkdir -p .deploy
 cp .deploy.example/.env .deploy/.env
 chmod 600 .deploy/.env
-export ECHOWORDS_DEPLOY_HOST=ubuntu@<vm-public-ip>
 ```
 
-`ECHOWORDS_DEPLOY_HOST` is an ssh destination, and it is the VM's public address — administration
-rides public ssh, only the app is tailnet-only.
+Set `ECHOWORDS_DEPLOY_HOST` in that file to the VM's ssh destination — its public address, as
+`ubuntu@203.0.113.10`: administration rides public ssh, only the app is tailnet-only. The tasks
+read it from `.deploy/.env`; an environment variable of the same name overrides it for a one-off
+target. The deploy resolves the host before building anything, so a missing or unedited value
+fails immediately rather than after a frontend build.
 
 The llmbroker free pool needs provider credentials. Fill at least one of `GROQ_API_KEY`,
 `OPENROUTER_API_KEY`, `GEMINI_API_KEY`, or `ZAI_API_KEY`; filling all four gives the pool its full

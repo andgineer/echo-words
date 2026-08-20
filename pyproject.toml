@@ -88,6 +88,7 @@ dev = [
     "allure-pytest>=2.14.2",
     "ruff>=0.16.0",
     "invoke>=2.2.0",
+    "python-dotenv>=1.2.3",
     "tomli-w>=1.2.0",
     "mkdocs-awesome-pages-plugin>=2.10.1",
     "zensical>=0.0.41",

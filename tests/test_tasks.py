@@ -221,16 +221,65 @@ def test_remote_deploy_fails_closed_without_deleting_data_or_secrets():
     assert f"{tasks.REMOTE_ROOT}/.deploy" not in script
 
 
-def test_deploy_stops_if_source_changes_during_the_frontend_build(monkeypatch):
+def test_deploy_stops_if_source_changes_during_the_frontend_build(monkeypatch, tmp_path):
     before = "a" * 40
     after = "b" * 40
     context = _Context([])
+    _write_deploy_env(monkeypatch, tmp_path, "ECHOWORDS_DEPLOY_HOST=ubuntu@203.0.113.10\n")
     monkeypatch.setattr(tasks, "_deploy_commit", lambda _context, _ref: checkouts.pop(0))
     monkeypatch.setattr(tasks, "_run_build", lambda _context: None)
     checkouts = [before, after]
 
     with pytest.raises(RuntimeError, match="changed during the frontend build"):
         tasks.deploy.body(context, ref="main")
+
+
+def _write_deploy_env(monkeypatch, tmp_path, content: str) -> Path:
+    monkeypatch.delenv("ECHOWORDS_DEPLOY_HOST", raising=False)
+    env_file = tmp_path / ".env"
+    env_file.write_text(content)
+    monkeypatch.setattr(tasks, "DEPLOY_ENV", env_file)
+    return env_file
+
+
+def test_deploy_host_comes_from_the_deploy_env_file(monkeypatch, tmp_path):
+    _write_deploy_env(
+        monkeypatch, tmp_path, "ECHOWORDS_DEPLOY_HOST=ubuntu@203.0.113.10 # VM2\n"
+    )
+
+    assert tasks._deploy_host() == "ubuntu@203.0.113.10"
+
+
+def test_deploy_host_env_var_overrides_the_file(monkeypatch, tmp_path):
+    _write_deploy_env(monkeypatch, tmp_path, "ECHOWORDS_DEPLOY_HOST=ubuntu@203.0.113.10\n")
+    monkeypatch.setenv("ECHOWORDS_DEPLOY_HOST", "ubuntu@198.51.100.7")
+
+    assert tasks._deploy_host() == "ubuntu@198.51.100.7"
+
+
+def test_deploy_host_rejects_a_missing_file_and_an_unedited_placeholder(monkeypatch, tmp_path):
+    monkeypatch.delenv("ECHOWORDS_DEPLOY_HOST", raising=False)
+    monkeypatch.setattr(tasks, "DEPLOY_ENV", tmp_path / "absent" / ".env")
+    with pytest.raises(RuntimeError, match="Copy"):
+        tasks._deploy_host()
+
+    _write_deploy_env(monkeypatch, tmp_path, "ECHOWORDS_DEPLOY_HOST=ubuntu@<PUBLIC_IP>\n")
+    with pytest.raises(RuntimeError, match="ssh destination"):
+        tasks._deploy_host()
+
+
+def test_deploy_resolves_the_target_before_the_frontend_build(monkeypatch, tmp_path):
+    """A missing target must not cost a full frontend build first."""
+    builds = []
+    monkeypatch.delenv("ECHOWORDS_DEPLOY_HOST", raising=False)
+    monkeypatch.setattr(tasks, "DEPLOY_ENV", tmp_path / "absent" / ".env")
+    monkeypatch.setattr(tasks, "_run_build", lambda _context: builds.append(True))
+    monkeypatch.setattr(tasks, "_deploy_commit", lambda _context, _ref: "a" * 40)
+
+    with pytest.raises(RuntimeError, match="Copy"):
+        tasks.deploy.body(_Context([]), ref="main")
+
+    assert builds == []
 
 
 def test_setup_does_not_move_or_restart_an_existing_deployment(monkeypatch):

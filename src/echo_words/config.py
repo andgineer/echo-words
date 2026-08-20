@@ -19,6 +19,10 @@ ENV_FILE = REPO_ROOT / ".env"
 
 _DEFAULT_EDGE_TTS_VOICE = {"us": "en-US-AriaNeural", "uk": "en-GB-SoniaNeural"}
 
+# Settings that live inside the data dir unless pointed elsewhere, so moving the
+# data dir moves them with it. Declared after ``data_dir`` so it is validated first.
+_DATA_DIR_CHILDREN = {"languages_config": "languages.toml", "llmbroker_home": "llmbroker"}
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -32,8 +36,8 @@ class Settings(BaseSettings):
     port: int = 8080
 
     target_lang: str = Field(default="ru", validate_default=True)
-    languages_config: Path = Path.home() / ".echo-words" / "languages.toml"
     data_dir: Path = Path.home() / ".echo-words"
+    languages_config: Path = Field(default=None, validate_default=True)
     static_dir: Path = REPO_ROOT / "_static"
 
     llmbroker_home: Path = Field(default=None, validate_default=True)
@@ -57,10 +61,10 @@ class Settings(BaseSettings):
         # a display name. Other target languages may be configured by display name.
         return "Russian" if value == "ru" else value
 
-    @field_validator("llmbroker_home", mode="before")
+    @field_validator("languages_config", "llmbroker_home", mode="before")
     @classmethod
     def _under_the_data_dir(cls, value: object, info: ValidationInfo) -> object:
-        return value or info.data["data_dir"] / "llmbroker"
+        return value or info.data["data_dir"] / _DATA_DIR_CHILDREN[info.field_name]
 
     @model_validator(mode="after")
     def _derive_defaults(self) -> Self:

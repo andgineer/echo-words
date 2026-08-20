@@ -7,7 +7,10 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 
+from dotenv import dotenv_values
 from invoke import Collection, Context, task
+
+from echo_words.config import Settings
 
 
 DOCS_PATH = Path("docs")
@@ -15,8 +18,8 @@ DOCS_SRC_PATH = DOCS_PATH / 'src'
 WEBAPP_PATH = Path("webapp")
 STATIC_PATH = Path("_static")
 LANGUAGES_EXAMPLE = Path("languages.example.toml")
-DEFAULT_LANGUAGES_CONFIG = Path.home() / ".echo-words" / "languages.toml"
 DEPLOY_ENV = Path(".deploy/.env")
+DEPLOY_ENV_EXAMPLE = Path(".deploy.example/.env")
 REPO_URL = "https://github.com/andgineer/echo-words.git"
 REMOTE_ROOT = "/home/ubuntu/echo-words"
 REMOTE_DATA = f"{REMOTE_ROOT}/data"
@@ -191,9 +194,22 @@ def build_static(c: Context):
 
 
 def _deploy_host() -> str:
-    host = os.environ.get("ECHOWORDS_DEPLOY_HOST", "").strip()
-    if not host:
-        raise RuntimeError("Set ECHOWORDS_DEPLOY_HOST to the VM's SSH host before deploying.")
+    """Read the ssh destination from `.deploy/.env`, as dinary does; env overrides it."""
+    override = os.environ.get("ECHOWORDS_DEPLOY_HOST", "").strip()
+    if override:
+        return override
+    if not DEPLOY_ENV.is_file():
+        raise RuntimeError(
+            f"Missing {DEPLOY_ENV}. Copy {DEPLOY_ENV_EXAMPLE} to it and set "
+            "ECHOWORDS_DEPLOY_HOST to the VM's ssh destination, for example "
+            "ubuntu@203.0.113.10."
+        )
+    host = (dotenv_values(DEPLOY_ENV).get("ECHOWORDS_DEPLOY_HOST") or "").strip()
+    if not host or "<" in host:
+        raise RuntimeError(
+            f"Set ECHOWORDS_DEPLOY_HOST in {DEPLOY_ENV} to the VM's ssh destination, "
+            "for example ubuntu@203.0.113.10."
+        )
     return host
 
 
@@ -214,7 +230,7 @@ def _upload_service(c: Context) -> None:
 
 def _sync_deploy_env(c: Context) -> None:
     if not DEPLOY_ENV.is_file():
-        raise RuntimeError("Create .deploy/.env from .deploy.example/.env before deploying.")
+        raise RuntimeError(f"Create {DEPLOY_ENV} from {DEPLOY_ENV_EXAMPLE} before deploying.")
     _ssh(c, f"mkdir -p {REMOTE_ROOT}/.deploy")
     c.run(f"scp {DEPLOY_ENV} {_deploy_host()}:{REMOTE_ROOT}/.deploy/.env")
     _ssh(c, f"chmod 600 {REMOTE_ROOT}/.deploy/.env")
@@ -424,6 +440,10 @@ def deploy(c: Context, ref=""):
     """Build locally, deploy an exact git ref, restart, and gate on liveness."""
     if not ref:
         raise RuntimeError("--ref is required, for example: inv deploy --ref=main")
+    # Resolve the target and its secrets before the minutes-long frontend build.
+    _deploy_host()
+    if not DEPLOY_ENV.is_file():
+        raise RuntimeError(f"Create {DEPLOY_ENV} from {DEPLOY_ENV_EXAMPLE} before deploying.")
     commit = _deploy_commit(c, ref)
     _run_build(c)
     if _deploy_commit(c, ref) != commit:
@@ -477,8 +497,7 @@ def logs(c: Context, follow=False, lines=100):
 
 def _ensure_languages_config():
     """Bootstrap the languages table so a fresh checkout can start the app."""
-    configured = os.environ.get("ECHOWORDS_LANGUAGES_CONFIG") or DEFAULT_LANGUAGES_CONFIG
-    target = Path(configured).expanduser()
+    target = Settings().languages_config.expanduser()
     if target.exists():
         return
     target.parent.mkdir(parents=True, exist_ok=True)
