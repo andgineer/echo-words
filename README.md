@@ -12,7 +12,7 @@
 | src/echo\_words/backend.py       |      155 |        3 |     98% |223-226, 247 |
 | src/echo\_words/broker.py        |       28 |        0 |    100% |           |
 | src/echo\_words/card.py          |       72 |        2 |     97% |  117, 131 |
-| src/echo\_words/config.py        |       40 |        0 |    100% |           |
+| src/echo\_words/config.py        |       41 |        0 |    100% |           |
 | src/echo\_words/events.py        |       34 |        0 |    100% |           |
 | src/echo\_words/history.py       |       85 |        1 |     99% |        93 |
 | src/echo\_words/languages.py     |       89 |        1 |     99% |        72 |
@@ -21,7 +21,7 @@
 | src/echo\_words/pipeline.py      |      441 |       36 |     92% |157, 266, 289, 310, 331, 355, 364-365, 385, 428-429, 443-444, 470, 487-494, 525, 622, 629, 638, 663, 666, 681-684, 688, 692, 734, 775 |
 | src/echo\_words/prompt.py        |       21 |        0 |    100% |           |
 | src/echo\_words/sanitizer.py     |       24 |        1 |     96% |        34 |
-| **TOTAL**                        | **1920** |  **119** | **94%** |           |
+| **TOTAL**                        | **1921** |  **119** | **94%** |           |
 
 
 ## Setup coverage badge
