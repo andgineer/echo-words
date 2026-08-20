@@ -89,15 +89,15 @@ exit 99
         "FAKE_CALL_LOG": str(call_log),
         "FAKE_PROC_SWAPS": str(proc_swaps),
     }
-    script = "set -euo pipefail\n" + tasks._swap_prep_script(  # noqa: SLF001
+    script = "set -euo pipefail\n" + tasks._swap_prep_script(
         str(swapfile),
         str(fstab),
         str(proc_swaps),
     )
 
     def run(**extra_env):
-        return subprocess.run(  # noqa: S603 - fixed local script under a fake PATH.
-            ["bash", "-c", script],  # noqa: S607
+        return subprocess.run(
+            ["bash", "-c", script],
             check=False,
             capture_output=True,
             text=True,

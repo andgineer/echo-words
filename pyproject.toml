@@ -76,9 +76,15 @@ select = [
     "W",    # warnings
 ]
 ignore = ["B019", "S101", "G004", "TRY003", "TRY300", "TRY301", "TRY400"]
+
+[tool.ruff.lint.per-file-ignores]
 # A test asserts against literal status codes and configuration defaults:
 # naming them as constants would only restate the value being checked.
-per-file-ignores = { "tests/*" = ["PLR2004"] }
+"tests/*" = ["PLR2004"]
+# These two drive tasks.py's script builders by name and run real git/bash from
+# PATH against them; both are the subject under test, not an oversight.
+"tests/test_tasks.py" = ["SLF001", "S603", "S607"]
+"tests/test_swap_prep.py" = ["SLF001", "S603", "S607"]
 
 [tool.hatch.version]
 path = "src/echo_words/__about__.py"

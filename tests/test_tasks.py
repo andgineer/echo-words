@@ -5,8 +5,10 @@ from pathlib import Path
 
 import pytest
 
-
-_SPEC = importlib.util.spec_from_file_location("project_tasks", Path(__file__).parents[1] / "tasks.py")
+_SPEC = importlib.util.spec_from_file_location(
+    "project_tasks",
+    Path(__file__).parents[1] / "tasks.py",
+)
 assert _SPEC and _SPEC.loader
 tasks = importlib.util.module_from_spec(_SPEC)
 sys.modules[_SPEC.name] = tasks
@@ -36,8 +38,8 @@ def test_systemd_unit_has_the_required_network_gate_and_sandbox():
 def test_host_prep_provisions_swap_hardening_and_bounded_journal():
     script = tasks._host_prep_script()
 
-    assert "sudo fallocate -l 2G \"$SWAP_PATH\"" in script
-    assert "sudo swapon \"$SWAP_PATH\"" in script
+    assert 'sudo fallocate -l 2G "$SWAP_PATH"' in script
+    assert 'sudo swapon "$SWAP_PATH"' in script
     assert "minimum_active_kib=" in script
     assert "|| true\nsudo swapon" not in script
     assert "disable --now rpcbind rpcbind.socket" in script
@@ -70,7 +72,7 @@ def test_host_prep_enables_an_explicit_systemd_sshd_jail_without_banning_tailnet
     assert "findtime = 10m" in script
     assert "maxretry = 3" in script
     assert script.index("/etc/fail2ban/jail.local") < script.index(
-        "systemctl enable --now fail2ban"
+        "systemctl enable --now fail2ban",
     )
 
 
@@ -215,7 +217,7 @@ def test_deploy_checks_out_the_same_commit_used_for_the_local_build(monkeypatch,
     assert "git clean" not in checkout
     assert "git reset" not in checkout
     assert context.commands == [
-        "rsync -az --delete _static/ echo-words:/home/ubuntu/echo-words/_static/"
+        "rsync -az --delete _static/ echo-words:/home/ubuntu/echo-words/_static/",
     ]
 
 
@@ -251,7 +253,9 @@ def _write_deploy_env(monkeypatch, tmp_path, content: str) -> Path:
 
 def test_deploy_host_comes_from_the_deploy_env_file(monkeypatch, tmp_path):
     _write_deploy_env(
-        monkeypatch, tmp_path, "ECHOWORDS_DEPLOY_HOST=ubuntu@203.0.113.10 # VM2\n"
+        monkeypatch,
+        tmp_path,
+        "ECHOWORDS_DEPLOY_HOST=ubuntu@203.0.113.10 # VM2\n",
     )
 
     assert tasks._deploy_host() == "ubuntu@203.0.113.10"
@@ -273,7 +277,7 @@ def test_deploy_host_rejects_a_missing_file_and_an_unedited_placeholder(monkeypa
         tasks._deploy_host()
 
 
-def test_deploy_resolves_the_target_before_the_frontend_build(monkeypatch, tmp_path):
+def test_deploy_resolves_the_target_before_the_frontend_build(monkeypatch):
     """A missing target must not cost a full frontend build first."""
     builds = []
     monkeypatch.setattr(tasks, "_run_build", lambda _context: builds.append(True))
@@ -316,12 +320,14 @@ def test_status_separates_process_and_cgroup_memory_measurements():
     assert "-p MemoryPeak" not in script
     assert "ProcessVmRSSBytes=" in script
     assert "ProcessVmHWMBytes=" in script
-    assert 'VmRSS:' in script
-    assert 'VmHWM:' in script
+    assert "VmRSS:" in script
+    assert "VmHWM:" in script
     assert "--value -p ControlGroup" in script
     guard = 'if [ -z "$control_group" ] || [ "$control_group" = / ]'
     assert guard in script
-    assert script.index(guard) < script.index("peak_file=/sys/fs/cgroup${control_group}/memory.peak")
+    assert script.index(guard) < script.index(
+        "peak_file=/sys/fs/cgroup${control_group}/memory.peak",
+    )
     assert "/sys/fs/cgroup${control_group}/memory.peak" in script
     assert "CGroupMemoryPeak=" in script
     assert "CGroupMemoryPeak=unsupported" in script
