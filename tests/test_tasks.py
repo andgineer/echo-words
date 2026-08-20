@@ -13,6 +13,13 @@ sys.modules[_SPEC.name] = tasks
 _SPEC.loader.exec_module(tasks)
 
 
+@pytest.fixture(autouse=True)
+def _never_read_the_operator_own_deploy_env(monkeypatch, tmp_path):
+    """A developer machine has .deploy/.env and CI does not: pin every test to neither."""
+    monkeypatch.delenv("ECHOWORDS_DEPLOY_HOST", raising=False)
+    monkeypatch.setattr(tasks, "DEPLOY_ENV", tmp_path / "unset" / ".env")
+
+
 def test_systemd_unit_has_the_required_network_gate_and_sandbox():
     unit = tasks.SYSTEMD_UNIT
 
@@ -176,11 +183,12 @@ def test_setup_runtime_data_is_the_only_root_data_ignored_by_deploy_guard(tmp_pa
     assert unexpected.stdout == "?? fixtures/\n?? unexpected.txt\n"
 
 
-def test_deploy_checks_out_the_same_commit_used_for_the_local_build(monkeypatch):
+def test_deploy_checks_out_the_same_commit_used_for_the_local_build(monkeypatch, tmp_path):
     commit = "a" * 40
     remote_scripts = []
     context = _Context([""])
     deploy_commits = []
+    _write_deploy_env(monkeypatch, tmp_path, "ECHOWORDS_DEPLOY_HOST=ubuntu@203.0.113.10\n")
 
     def check_commit(_context, _ref):
         deploy_commits.append(commit)
@@ -235,7 +243,6 @@ def test_deploy_stops_if_source_changes_during_the_frontend_build(monkeypatch, t
 
 
 def _write_deploy_env(monkeypatch, tmp_path, content: str) -> Path:
-    monkeypatch.delenv("ECHOWORDS_DEPLOY_HOST", raising=False)
     env_file = tmp_path / ".env"
     env_file.write_text(content)
     monkeypatch.setattr(tasks, "DEPLOY_ENV", env_file)
@@ -258,8 +265,6 @@ def test_deploy_host_env_var_overrides_the_file(monkeypatch, tmp_path):
 
 
 def test_deploy_host_rejects_a_missing_file_and_an_unedited_placeholder(monkeypatch, tmp_path):
-    monkeypatch.delenv("ECHOWORDS_DEPLOY_HOST", raising=False)
-    monkeypatch.setattr(tasks, "DEPLOY_ENV", tmp_path / "absent" / ".env")
     with pytest.raises(RuntimeError, match="Copy"):
         tasks._deploy_host()
 
@@ -271,8 +276,6 @@ def test_deploy_host_rejects_a_missing_file_and_an_unedited_placeholder(monkeypa
 def test_deploy_resolves_the_target_before_the_frontend_build(monkeypatch, tmp_path):
     """A missing target must not cost a full frontend build first."""
     builds = []
-    monkeypatch.delenv("ECHOWORDS_DEPLOY_HOST", raising=False)
-    monkeypatch.setattr(tasks, "DEPLOY_ENV", tmp_path / "absent" / ".env")
     monkeypatch.setattr(tasks, "_run_build", lambda _context: builds.append(True))
     monkeypatch.setattr(tasks, "_deploy_commit", lambda _context, _ref: "a" * 40)
 
