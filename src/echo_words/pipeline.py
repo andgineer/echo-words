@@ -1,4 +1,4 @@
-"""The single FIFO worker for submissions and every M7 entry control."""
+"""The single FIFO worker for submissions and every entry control."""
 
 import asyncio
 import logging
