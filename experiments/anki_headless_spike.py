@@ -16,9 +16,10 @@ Run:
     uv run --no-project --python 3.12 --with anki==26.8.1 \\
         python experiments/anki_headless_spike.py ankiweb [--bootstrap] [--add-note] [--verify]
 
-``--cleanup`` removes the spike's deck, notes and note type from the account
-again. The only automatic full transfer is the first-run download; a full
-upload is refused, so the spike can never clobber the user's other decks.
+``--cleanup`` removes the spike's deck and notes from the account again; the
+note type stays behind, which is why it carries a name of its own. The only
+automatic full transfer is the first-run download; a full upload is refused,
+so the spike can never clobber the user's other decks.
 """
 
 import argparse
@@ -41,7 +42,9 @@ from anki.collection import Collection
 from anki.sync import SyncAuth
 from anki.sync_pb2 import SyncCollectionResponse, SyncStatusResponse
 
-NOTE_TYPE = "EchoWords"
+# Never the app's own "EchoWords": cleanup cannot remove a note type, so a shared name
+# would leave the app facing a leftover it reads as misconfigured.
+NOTE_TYPE = "EchoWordsSpike"
 FIELDS = ["Word", "IPA", "Translations", "Meanings", "Audio"]
 DECK = "echo-words spike"
 WORD = "заглушка"
@@ -317,8 +320,8 @@ def phase_cleanup(col: Collection, auth: SyncAuth) -> None:
     if deck_id is not None:
         col.decks.remove([deck_id])
         log(f"  removed deck {DECK!r}")
-    # The note type is left behind on purpose: removing one is a schema change,
-    # after which AnkiWeb demands a one-way full sync — which this spike refuses.
+    # The note type is left behind: removing one is a schema change, after which
+    # AnkiWeb demands a one-way full sync — which this spike refuses.
     sync_up(col, auth, allow_full_upload=False)
 
 
