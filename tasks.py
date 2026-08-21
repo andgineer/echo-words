@@ -246,29 +246,13 @@ def _health_check(c: Context) -> None:
     )
 
 
-def _deploy_commit(c: Context, ref: str) -> str:
-    """Resolve a ref to the clean working tree's commit for an exact deploy."""
-    dirty = c.run(
-        "git status --porcelain --untracked-files=normal",
-        hide=True,
-    ).stdout.strip()
-    if dirty:
-        raise RuntimeError(
-            "Refusing to deploy a dirty working tree: commit or remove local changes first."
-        )
-
+def _resolve_commit(c: Context, ref: str) -> str:
+    """Pin the ref to one commit so the server cannot race a moving branch."""
     revision = shlex.quote(f"{ref}^{{commit}}")
-    target = c.run(
+    return c.run(
         f"git rev-parse --verify --end-of-options {revision}",
         hide=True,
     ).stdout.strip()
-    head = c.run("git rev-parse --verify HEAD", hide=True).stdout.strip()
-    if target != head:
-        raise RuntimeError(
-            f"Refusing to deploy {ref!r}: it resolves to {target}, but the local "
-            f"frontend source is {head}. Check out {ref!r} first."
-        )
-    return target
 
 
 def _remote_deploy_script(commit: str) -> str:
@@ -286,6 +270,7 @@ def _remote_deploy_script(commit: str) -> str:
         f'test "$(git rev-parse HEAD)" = {commit}; '
         f"{dirty_check}; "
         "source /home/ubuntu/.local/bin/env; uv sync --no-dev; "
+        "uv run --no-dev inv build-static; "
         f"install -d -m 700 {REMOTE_DATA}"
     )
 
@@ -416,6 +401,10 @@ def setup_app(c: Context, with_host_prep=False):
         "sudo apt-get update; "
         "sudo apt-get install -y ca-certificates curl git python3 rsync; "
         "command -v uv >/dev/null || curl -LsSf https://astral.sh/uv/install.sh | sh; "
+        "node_major=$(node -v 2>/dev/null | sed -e 's/^v//' -e 's/\\..*//' || true); "
+        'if [ -z "$node_major" ] || [ "$node_major" -lt 22 ]; then '
+        "curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && "
+        "sudo apt-get install -y nodejs; fi; node -v; npm -v; "
         f"test -d {REMOTE_ROOT}/.git || git clone {REPO_URL} {REMOTE_ROOT}; "
         f"cd {REMOTE_ROOT}; "
         "source /home/ubuntu/.local/bin/env; uv sync --no-dev; "
@@ -437,20 +426,15 @@ def setup_app(c: Context, with_host_prep=False):
 
 @task(help={"ref": "Git branch, tag, or commit to deploy (required)."})
 def deploy(c: Context, ref=""):
-    """Build locally, deploy an exact git ref, restart, and gate on liveness."""
+    """Deploy an exact git ref, built on the server, and gate on liveness."""
     if not ref:
         raise RuntimeError("--ref is required, for example: inv deploy --ref=main")
-    # Resolve the target and its secrets before the minutes-long frontend build.
     _deploy_host()
     if not DEPLOY_ENV.is_file():
         raise RuntimeError(f"Create {DEPLOY_ENV} from {DEPLOY_ENV_EXAMPLE} before deploying.")
-    commit = _deploy_commit(c, ref)
-    _run_build(c)
-    if _deploy_commit(c, ref) != commit:
-        raise RuntimeError(f"Refusing to deploy {ref!r}: it changed during the frontend build.")
+    commit = _resolve_commit(c, ref)
     _ssh(c, _remote_deploy_script(commit))
     _sync_deploy_env(c)
-    c.run(f"rsync -az --delete {STATIC_PATH}/ {_deploy_host()}:{REMOTE_ROOT}/_static/")
     _upload_service(c)
     _ssh(c, f"sudo systemctl restart {SERVICE_NAME}")
     _health_check(c)

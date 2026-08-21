@@ -167,14 +167,18 @@ A milestone is done only when both are green.
   `inv status`, `inv logs`. The host, the rules it imposes, and what each
   task does are in the plan's "Deployment" section and
   `spec/decision-deployment.md`.
-- **Deploy an exact ref from a clean tree.** `inv deploy` refuses a dirty
-  working tree and a ref that is not the checked-out HEAD, because the
-  frontend it uploads is built from the local source.
+- **Deploy an exact ref.** `inv deploy --ref=…` pins the ref to a single
+  commit; the server checks that commit out and builds it there, so the
+  local branch and any uncommitted work take no part in what ships. The
+  ref only has to exist locally, and it must be pushed to the origin the
+  VM clones from.
 - **Never edit files on the server.** The remote checkout is a deploy
   target, not a working copy — fix it in the repo and deploy again.
   `deploy` refuses to run over remote working-tree changes.
-- **Never build the frontend on the VM** (1 GB RAM): `inv deploy` builds
-  `_static/` locally and rsyncs the result. No Node is installed there.
+- **The frontend is built on the VM**, by the deploy itself: after
+  `uv sync --no-dev` the server runs `uv run --no-dev inv build-static`,
+  so `_static/` can only come from the deployed commit. `inv setup-app`
+  installs Node 22, and `invoke` is a runtime dependency because of it.
 - **Secrets live in the gitignored `.deploy/.env`**, documented variable
   by variable in the committed `.deploy.example/.env`. Provider API keys
   and AnkiWeb credentials never enter the repo, a test fixture, or a log

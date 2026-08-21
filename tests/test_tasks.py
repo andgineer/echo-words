@@ -104,34 +104,22 @@ class _Context:
         return _Result(next(self.outputs))
 
 
-def test_deploy_commit_accepts_only_a_clean_matching_checkout():
+def test_resolve_commit_pins_the_ref_without_reading_the_local_checkout():
     commit = "a" * 40
-    context = _Context(["", f"{commit}\n", f"{commit}\n"])
+    context = _Context([f"{commit}\n"])
 
-    assert tasks._deploy_commit(context, "v0.1.0") == commit
-    assert context.commands == [
-        "git status --porcelain --untracked-files=normal",
-        "git rev-parse --verify --end-of-options 'v0.1.0^{commit}'",
-        "git rev-parse --verify HEAD",
-    ]
+    assert tasks._resolve_commit(context, "v0.1.0") == commit
+    assert context.commands == ["git rev-parse --verify --end-of-options 'v0.1.0^{commit}'"]
 
 
-def test_deploy_commit_rejects_dirty_source_before_resolving_ref():
-    context = _Context([" M webapp/src/App.vue\n"])
+def test_resolve_commit_deploys_a_ref_the_working_tree_is_neither_on_nor_clean_for():
+    """Nothing local reaches the server, so a dirty tree on another branch is deployable."""
+    commit = "a" * 40
+    context = _Context([f"{commit}\n"])
 
-    with pytest.raises(RuntimeError, match="dirty working tree"):
-        tasks._deploy_commit(context, "main")
-
-    assert context.commands == ["git status --porcelain --untracked-files=normal"]
-
-
-def test_deploy_commit_rejects_ref_that_does_not_match_frontend_source():
-    target = "a" * 40
-    head = "b" * 40
-    context = _Context(["", f"{target}\n", f"{head}\n"])
-
-    with pytest.raises(RuntimeError, match="frontend source"):
-        tasks._deploy_commit(context, "main")
+    assert tasks._resolve_commit(context, "v0.1.0") == commit
+    assert not any("git status" in command for command in context.commands)
+    assert not any("rev-parse --verify HEAD" in command for command in context.commands)
 
 
 def test_setup_runtime_data_is_the_only_root_data_ignored_by_deploy_guard(tmp_path):
@@ -162,6 +150,12 @@ def test_setup_runtime_data_is_the_only_root_data_ignored_by_deploy_guard(tmp_pa
     (tmp_path / ".venv" / "pyvenv.cfg").write_text("setup-created environment")
     (tmp_path / ".deploy").mkdir()
     (tmp_path / ".deploy" / ".env").write_text("setup-synced secrets")
+    static = tmp_path / "_static"
+    static.mkdir()
+    (static / "index.html").write_text("server-side build output")
+    node_modules = tmp_path / "webapp" / "node_modules"
+    node_modules.mkdir(parents=True)
+    (node_modules / ".package-lock.json").write_text("npm ci output")
     clean = subprocess.run(
         ["git", "status", "--porcelain", "--untracked-files=normal"],
         cwd=tmp_path,
@@ -185,19 +179,17 @@ def test_setup_runtime_data_is_the_only_root_data_ignored_by_deploy_guard(tmp_pa
     assert unexpected.stdout == "?? fixtures/\n?? unexpected.txt\n"
 
 
-def test_deploy_checks_out_the_same_commit_used_for_the_local_build(monkeypatch, tmp_path):
+def test_deploy_builds_the_checked_out_commit_on_the_server(monkeypatch, tmp_path):
     commit = "a" * 40
     remote_scripts = []
-    context = _Context([""])
-    deploy_commits = []
+    context = _Context([f"{commit}\n"])
     _write_deploy_env(monkeypatch, tmp_path, "ECHOWORDS_DEPLOY_HOST=ubuntu@203.0.113.10\n")
 
-    def check_commit(_context, _ref):
-        deploy_commits.append(commit)
-        return commit
-
-    monkeypatch.setattr(tasks, "_deploy_commit", check_commit)
-    monkeypatch.setattr(tasks, "_run_build", lambda _context: None)
+    monkeypatch.setattr(
+        tasks,
+        "_run_build",
+        lambda _context: pytest.fail("deploy must not build the frontend locally"),
+    )
     monkeypatch.setattr(tasks, "_ssh", lambda _context, script: remote_scripts.append(script))
     monkeypatch.setattr(tasks, "_sync_deploy_env", lambda _context: None)
     monkeypatch.setattr(tasks, "_upload_service", lambda _context: None)
@@ -206,19 +198,17 @@ def test_deploy_checks_out_the_same_commit_used_for_the_local_build(monkeypatch,
 
     tasks.deploy.body(context, ref="main")
 
-    assert deploy_commits == [commit, commit]
     checkout = remote_scripts[0]
     dirty_check = "git status --porcelain --untracked-files=normal"
     assert checkout.count(dirty_check) == 2
     assert checkout.index(dirty_check) < checkout.index(f"git fetch origin {commit}")
     assert checkout.index(f"git checkout --detach {commit}") < checkout.rindex(dirty_check)
     assert checkout.rindex(dirty_check) < checkout.index("uv sync --no-dev")
+    assert checkout.index("uv sync --no-dev") < checkout.index("uv run --no-dev inv build-static")
     assert f'test "$(git rev-parse HEAD)" = {commit}' in checkout
     assert "git clean" not in checkout
     assert "git reset" not in checkout
-    assert context.commands == [
-        "rsync -az --delete _static/ echo-words:/home/ubuntu/echo-words/_static/",
-    ]
+    assert context.commands == ["git rev-parse --verify --end-of-options 'main^{commit}'"]
 
 
 def test_remote_deploy_fails_closed_without_deleting_data_or_secrets():
@@ -229,19 +219,6 @@ def test_remote_deploy_fails_closed_without_deleting_data_or_secrets():
     assert "rm " not in script
     assert "git clean" not in script
     assert f"{tasks.REMOTE_ROOT}/.deploy" not in script
-
-
-def test_deploy_stops_if_source_changes_during_the_frontend_build(monkeypatch, tmp_path):
-    before = "a" * 40
-    after = "b" * 40
-    context = _Context([])
-    _write_deploy_env(monkeypatch, tmp_path, "ECHOWORDS_DEPLOY_HOST=ubuntu@203.0.113.10\n")
-    monkeypatch.setattr(tasks, "_deploy_commit", lambda _context, _ref: checkouts.pop(0))
-    monkeypatch.setattr(tasks, "_run_build", lambda _context: None)
-    checkouts = [before, after]
-
-    with pytest.raises(RuntimeError, match="changed during the frontend build"):
-        tasks.deploy.body(context, ref="main")
 
 
 def _write_deploy_env(monkeypatch, tmp_path, content: str) -> Path:
@@ -277,16 +254,16 @@ def test_deploy_host_rejects_a_missing_file_and_an_unedited_placeholder(monkeypa
         tasks._deploy_host()
 
 
-def test_deploy_resolves_the_target_before_the_frontend_build(monkeypatch):
-    """A missing target must not cost a full frontend build first."""
-    builds = []
-    monkeypatch.setattr(tasks, "_run_build", lambda _context: builds.append(True))
-    monkeypatch.setattr(tasks, "_deploy_commit", lambda _context, _ref: "a" * 40)
+def test_deploy_checks_the_local_secrets_before_touching_the_server(monkeypatch):
+    """A missing .deploy/.env must fail before any remote command runs."""
+    remote_scripts = []
+    monkeypatch.setattr(tasks, "_ssh", lambda _context, script: remote_scripts.append(script))
+    monkeypatch.setattr(tasks, "_resolve_commit", lambda _context, _ref: "a" * 40)
 
     with pytest.raises(RuntimeError, match="Copy"):
         tasks.deploy.body(_Context([]), ref="main")
 
-    assert builds == []
+    assert remote_scripts == []
 
 
 def test_setup_does_not_move_or_restart_an_existing_deployment(monkeypatch):
@@ -304,12 +281,29 @@ def test_setup_does_not_move_or_restart_an_existing_deployment(monkeypatch):
     tasks.setup_app.body(context)
 
     script = " ".join(remote_scripts)
+    assert "deb.nodesource.com/setup_22.x" in script
     assert "git clone" in script
     assert "git fetch origin main" not in script
     assert "git checkout" not in script
     assert "systemctl enable echo-words" in script
     assert "systemctl enable --now echo-words" not in script
     assert "systemctl restart echo-words" not in script
+
+
+def test_setup_installs_the_node_toolchain_the_server_side_build_needs(monkeypatch):
+    remote_scripts = []
+    monkeypatch.setattr(tasks, "_ssh", lambda _context, script: remote_scripts.append(script))
+    monkeypatch.setattr(tasks, "_sync_deploy_env", lambda _context: None)
+    monkeypatch.setattr(tasks, "_upload_service", lambda _context: None)
+
+    tasks.setup_app.body(_Context([]))
+
+    script = " ".join(remote_scripts)
+    assert "node_major=$(node -v 2>/dev/null" in script
+    assert "|| true)" in script
+    assert 'if [ -z "$node_major" ] || [ "$node_major" -lt 22 ]' in script
+    assert "sudo apt-get install -y nodejs" in script
+    assert script.index("node_major=") < script.index("git clone")
 
 
 def test_status_separates_process_and_cgroup_memory_measurements():

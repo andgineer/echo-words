@@ -236,10 +236,12 @@ What follows is what M6 and M8 must actually do.
   `sync.ankiweb.net` and is redirected to a numbered shard whose name
   varies, so an egress rule pinned to one host would break syncing at
   a random moment. The Anki manual documents the wildcard.
-- **Do not build the frontend on the server.** A Rollup build peaks in
-  the hundreds of MB; on a 1 GB box that is a needless risk even
-  without a co-tenant. Build `_static/` locally or in CI and rsync the
-  output — so no Node is installed on VM2 at all.
+- **The frontend is built on the server**, from the commit the deploy
+  just checked out, so `_static/` and the backend can never come from
+  two different revisions and no operator's working tree reaches the
+  VM. VM1 runs the same Rollup build for dinary's heavier PWA (4 prod +
+  9 dev dependencies against this app's 1 + 8) on identical hardware,
+  next to a live uvicorn; echo-words builds 23 modules into 82 KB.
 - **If VM1 ever dies**, the documented recovery is to restore dinary
   onto VM2, where the two would then share a box — an emergency
   arrangement, and the reason the memory limits above stay in the unit.
@@ -249,32 +251,36 @@ What follows is what M6 and M8 must actually do.
 
 Deployment is `invoke` tasks in `tasks/`, ported from dinary and reduced
 to what this app needs: `setup-app` (one-time, idempotent),
-`deploy --ref=…`, `status`, `logs`, `build-static` (local). Ansible and
+`deploy --ref=…`, `status`, `logs`, `build-static` (local development,
+and the step the deploy runs on the server). Ansible and
 Chef were considered and rejected — the argument is in
 `spec/decision-deployment.md`.
 
 **What the tasks do**, ported with the dinary-specific parts dropped:
 
-- `setup-app` — repo clone, `uv sync --no-dev`, `data/` at 0700, the
-  systemd unit, and `tailscale serve --bg 8080`. No Node is installed.
+- `setup-app` — repo clone, `uv sync --no-dev`, Node 22 from
+  nodesource, `data/` at 0700, the systemd unit, and `tailscale serve
+  --bg 8080`.
   `--with-host-prep` adds the host-level pass (packages, swap, sshd
   hardening, fail2ban, the `rpcbind`/iptables step) and is **required
   on the target VM**, which never received dinary's hardening — see
   "Rules the host imposes".
-- `deploy --ref=…` — build `_static/` **locally** (`inv build-static`),
-  `git checkout` the ref on the server, `uv sync --no-dev`, rsync the
-  built `_static/`, sync `.deploy/.env`, re-render the unit, restart,
-  then **poll `GET /api/health` until it answers (up to 30 s)** so a
-  failed start fails the deploy instead of passing on a fixed sleep.
+- `deploy --ref=…` — resolve the ref to one commit locally, `git
+  checkout --detach` it on the server, `uv sync --no-dev`, build
+  `_static/` **there** (`uv run --no-dev inv build-static`), sync
+  `.deploy/.env`, re-render the unit, restart, then **poll `GET
+  /api/health` until it answers (up to 30 s)** so a failed start fails
+  the deploy instead of passing on a fixed sleep. The operator's branch
+  and working tree are never read, so a dirty tree is deployable; the
+  commit must be reachable from the origin the VM fetches.
 - Secrets live in a gitignored `.deploy/.env` with a committed
   `.deploy.example/.env` documenting every variable; the deploy syncs
   the real one to the server, where the systemd unit reads it as
   `EnvironmentFile`. API keys (the paid llmbroker alias's provider key,
   AnkiWeb credentials) never enter the repo.
-- `invoke` is a **dev-only** dependency: every deploy task runs from the
-  operator's machine over ssh, the server has no admin task of its own
-  (no migrations, and the frontend is never built there), so `uv sync
-  --no-dev` on the VM is complete without it.
+- `invoke` and `python-dotenv` are **runtime** dependencies: the deploy
+  drives the server's own `build-static` task over ssh, so `uv sync
+  --no-dev` on the VM has to produce a working `inv`.
 
 **The systemd unit** is dinary's, renamed: `After=/Wants=
 network-online.target tailscaled.service`, the `ExecStartPre` wait loop
