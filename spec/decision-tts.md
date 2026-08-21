@@ -45,11 +45,24 @@ of the South Slavic languages only Slovenian is genuinely covered. So
 if Croatian is ever added as a source language, it lands in the same
 bucket as Serbian below.
 
+### The `sr-RS` voices pronounce Cyrillic, not Gaj's Latin
+
+Microsoft's Serbian voices carry a Cyrillic locale, and the Latin script
+is not a second input they accept: handed `haljina`, `sr-RS-SophieNeural`
+returns audio whose mel-spectrogram is *closer* to an English voice
+reading the same letters (DTW 1.5) than to the same Serbian voice reading
+`хаљина` (DTW 2.6) — a foreign grapheme-to-phoneme pass, which is exactly
+what a learner hears. Serbian text is therefore transliterated to Cyrillic
+on its way to the voice. The conversion belongs to speech alone: the word
+the user typed is what the answer shows and what the card stores, and the
+mapping is Gaj's own one-to-one table, digraphs (`lj`, `nj`, `dž`)
+included.
+
 ### Engine comparison
 
 | | Kokoro-82M | Piper | edge-tts | Meta MMS-TTS | XTTS-v2 / Coqui |
 |---|---|---|---|---|---|
-| Serbian | no | **no** (see trap above) | **yes** — `sr-RS-SophieNeural` / `sr-RS-NicholasNeural`, both scripts | yes (`mms-tts-srp`) | no |
+| Serbian | no | **no** (see trap above) | **yes** — `sr-RS-SophieNeural` / `sr-RS-NicholasNeural`, Cyrillic input (see below) | yes (`mms-tts-srp`) | no |
 | German | no | yes (`de_DE-thorsten-medium`) | yes | yes | yes / yes |
 | English | **best in the lightweight class** | yes (many voices) | yes | weak | yes |
 | Quality for learning | near-natural (en) | good | near-commercial neural | flat 16 kHz prosody (trained largely on Bible readings) | mediocre / heavy |
@@ -88,7 +101,7 @@ the one deployment target — the 1 GB (+ swap) micro instance:
 |---|---|
 | English | Piper (e.g. `en_US-lessac-medium`) or edge-tts |
 | German | Piper `de_DE-thorsten-medium` |
-| Serbian | edge-tts `sr-RS-SophieNeural` |
+| Serbian | edge-tts `sr-RS-SophieNeural`, fed Cyrillic |
 
 - Kokoro — the best lightweight English engine in the comparison — is
   **not configured at all**: on a 1 GB host the model + runtime does

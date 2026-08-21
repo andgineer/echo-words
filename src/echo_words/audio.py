@@ -27,6 +27,22 @@ _DICTIONARY_URL = "https://api.dictionaryapi.dev/api/v2/entries/{lang}/{word}"
 _VOICE_BASE_URL = "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0"
 _AUDIO_NAME_PATTERN = re.compile(r"pronunciation-[0-9a-f]{20}\.mp3")
 
+_SERBIAN_DIGRAPHS = (
+    ("dž", "џ"),
+    ("Dž", "Џ"),
+    ("DŽ", "Џ"),
+    ("lj", "љ"),
+    ("Lj", "Љ"),
+    ("LJ", "Љ"),
+    ("nj", "њ"),
+    ("Nj", "Њ"),
+    ("NJ", "Њ"),
+)
+_SERBIAN_LETTERS = str.maketrans(
+    "abcčćdđefghijklmnoprsštuvzžABCČĆDĐEFGHIJKLMNOPRSŠTUVZŽ",
+    "абцчћдђефгхијклмнопрсштувзжАБЦЧЋДЂЕФГХИЈКЛМНОПРСШТУВЗЖ",
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -257,11 +273,27 @@ async def _edge_audio(word: str, lang: Language, output: Path, settings: Setting
     voice = lang.edge_tts_voice or settings.edge_tts_voice
     temporary = _temporary_path(output)
     try:
-        await edge_tts.Communicate(word, voice).save(str(temporary))
+        await edge_tts.Communicate(_speech_text(word, voice), voice).save(str(temporary))
         _raise_if_cancelling()
         os.replace(temporary, output)
     finally:
         temporary.unlink(missing_ok=True)
+
+
+def _serbian_cyrillic(text: str) -> str:
+    for latin, cyrillic in _SERBIAN_DIGRAPHS:
+        text = text.replace(latin, cyrillic)
+    return text.translate(_SERBIAN_LETTERS)
+
+
+# A voice keyed by the locale whose script it actually pronounces: Microsoft's sr-RS voices
+# are Serbian Cyrillic, and given Gaj's Latin they read the word as if it were English.
+_CYRILLIC_LOCALE_VOICES = {"sr-RS": _serbian_cyrillic}
+
+
+def _speech_text(word: str, voice: str) -> str:
+    convert = _CYRILLIC_LOCALE_VOICES.get(voice.rsplit("-", 1)[0])
+    return convert(word) if convert is not None else word
 
 
 async def _install_voice_file(

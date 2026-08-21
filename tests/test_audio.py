@@ -227,7 +227,7 @@ async def test_edge_tts_uses_language_voice_and_returns_none_on_failure(
             calls.append((word, voice))
 
         async def save(self, path):
-            if calls[-1][0] == "failure":
+            if calls[-1][0] == "провал":
                 raise RuntimeError("offline")
             Path(path).write_bytes(b"edge mp3")
 
@@ -240,7 +240,7 @@ async def test_edge_tts_uses_language_voice_and_returns_none_on_failure(
             client=client,
         )
         failure = await audio.fetch_pronunciation(
-            "failure",
+            "провал",
             languages["sr"],
             settings=settings,
             client=client,
@@ -250,7 +250,47 @@ async def test_edge_tts_uses_language_voice_and_returns_none_on_failure(
     assert failure is None
     assert calls == [
         ("успех", "sr-RS-SophieNeural"),
-        ("failure", "sr-RS-SophieNeural"),
+        ("провал", "sr-RS-SophieNeural"),
+    ]
+
+
+async def test_a_cyrillic_locale_voice_is_never_handed_latin(
+    languages,
+    settings,
+    monkeypatch,
+):
+    calls = []
+
+    class FakeCommunicate:
+        def __init__(self, word, voice):
+            calls.append((word, voice))
+
+        async def save(self, path):
+            Path(path).write_bytes(b"edge mp3")
+
+    monkeypatch.setattr(audio.edge_tts, "Communicate", FakeCommunicate)
+    async with mock_client(lambda _request: httpx.Response(500)) as client:
+        for word in ("haljina", "хаљина", "džemper", "Njiva", "kuća đak žena šest"):
+            assert await audio.fetch_pronunciation(
+                word,
+                languages["sr"],
+                settings=settings,
+                client=client,
+            )
+        assert await audio.fetch_pronunciation(
+            "wardrobe",
+            replace(languages["en"], tts="edge", dict_api=None),
+            settings=settings,
+            client=client,
+        )
+
+    assert calls == [
+        ("хаљина", "sr-RS-SophieNeural"),
+        ("хаљина", "sr-RS-SophieNeural"),
+        ("џемпер", "sr-RS-SophieNeural"),
+        ("Њива", "sr-RS-SophieNeural"),
+        ("кућа ђак жена шест", "sr-RS-SophieNeural"),
+        ("wardrobe", "en-US-AriaNeural"),
     ]
 
 
