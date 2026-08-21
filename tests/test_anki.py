@@ -2,6 +2,7 @@ import asyncio
 import hashlib
 import logging
 import threading
+import time
 from collections import deque
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -21,6 +22,7 @@ from echo_words.anki import (
     Duplicate,
     MisconfiguredNoteTypeError,
     PylibSyncBackend,
+    _wait_past_millisecond,
     render_meanings,
     render_translations,
 )
@@ -102,6 +104,18 @@ async def test_a_preexisting_incompatible_note_type_fails_without_adding(
         assert "Wrong" in caplog.text and "expected" in caplog.text
     finally:
         await store.close()
+
+
+def test_a_replacement_never_reuses_the_millisecond_of_the_note_it_buried():
+    buried = int(time.time() * 1000)
+    _wait_past_millisecond(buried)
+    assert int(time.time() * 1000) > buried
+
+
+def test_an_unreachable_millisecond_gives_up_instead_of_hanging():
+    started = time.monotonic()
+    _wait_past_millisecond(int(time.time() * 1000) + 60_000)
+    assert time.monotonic() - started < 1
 
 
 async def test_decks_are_created_and_duplicates_are_scoped_to_each_deck(tmp_path):

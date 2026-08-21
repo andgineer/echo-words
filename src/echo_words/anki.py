@@ -562,6 +562,7 @@ class AnkiStore:
             note["Translations"] = render_translations(note_data)
             note["Meanings"] = render_meanings(note_data)
             note["Audio"] = f"[sound:{media_filename}]" if media_filename else ""
+            _wait_past_millisecond(note_id)
             collection.add_note(note, deck_id)
             collection.merge_undo_entries(undo_entry)
         except Exception:
@@ -587,6 +588,14 @@ class AnkiStore:
                 "ECHOWORDS_ANKIWEB_USER and ECHOWORDS_ANKIWEB_PASSWORD are required "
                 "when Anki sync is enabled",
             )
+
+
+def _wait_past_millisecond(note_id: int) -> None:
+    """Anki mints a note id from the millisecond clock, so a replacement that lands inside
+    the same millisecond would resurrect the id it has just written to the graves table."""
+    deadline = time.monotonic() + 0.1
+    while int(time.time() * 1000) <= note_id and time.monotonic() < deadline:
+        time.sleep(0.001)
 
 
 def _ensure_note_type(collection: Collection) -> dict:
