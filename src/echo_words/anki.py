@@ -596,6 +596,14 @@ def _ensure_note_type(collection: Collection) -> dict:
         fields = tuple(field["name"] for field in existing["flds"])
         templates = tuple(template["name"] for template in existing["tmpls"])
         if fields != FIELD_NAMES or templates != TEMPLATE_NAMES:
+            logger.warning(
+                "note type %s has fields %s and templates %s; expected %s and %s",
+                NOTE_TYPE_NAME,
+                fields,
+                templates,
+                FIELD_NAMES,
+                TEMPLATE_NAMES,
+            )
             raise MisconfiguredNoteTypeError
         return existing
 

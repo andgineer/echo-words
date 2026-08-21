@@ -72,7 +72,11 @@ async def test_note_type_bootstrap_creates_the_fields_and_both_card_templates(tm
 
 
 @pytest.mark.parametrize("wrong_part", ["fields", "templates"])
-async def test_a_preexisting_incompatible_note_type_fails_without_adding(tmp_path, wrong_part):
+async def test_a_preexisting_incompatible_note_type_fails_without_adding(
+    tmp_path,
+    wrong_part,
+    caplog,
+):
     store = AnkiStore(local_settings(tmp_path))
     await store.open()
     try:
@@ -89,9 +93,13 @@ async def test_a_preexisting_incompatible_note_type_fails_without_adding(tmp_pat
             models.add_template(model, template)
         models.add(model)
 
-        with pytest.raises(MisconfiguredNoteTypeError, match="fix or delete it in Anki"):
+        with (
+            caplog.at_level(logging.WARNING, logger="echo_words.anki"),
+            pytest.raises(MisconfiguredNoteTypeError, match="fix or delete it in Anki"),
+        ):
             await store.add_note(make_note(), "English::Vocabulary")
         assert store.collection.note_count() == 0
+        assert "Wrong" in caplog.text and "expected" in caplog.text
     finally:
         await store.close()
 
