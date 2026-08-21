@@ -308,8 +308,8 @@ both in the answer entry and on the flashcard.
   speech instead — the front never carries an unmasked example. Each word
   is therefore reviewed in both directions, from the same single note.
 - **One deck per source language**, set in the languages configuration
-  (e.g. `English::Vocabulary`, `German::Vocabulary`,
-  `Serbian::Vocabulary`). The language selected at submission determines
+  (e.g. `EchoWords: English`, `EchoWords: German`,
+  `EchoWords: Serbian`). The language selected at submission determines
   the deck — there is no per-word deck switching, and the deck is never
   guessed from the word itself.
 - **Duplicates**: keyed by the pair (source language, canonical word),

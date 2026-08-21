@@ -325,7 +325,7 @@ for everything that varies by language — deck, audio, validation:
 ```toml
 [languages.en]
 name       = "English"
-deck       = "English::Vocabulary"
+deck       = "EchoWords: English"
 dict_api   = "en"              # dictionaryapi.dev code; omit if unsupported
 tts        = "piper"           # piper | edge
 tts_voice  = "en_US-lessac-medium"
@@ -334,7 +334,7 @@ script     = "latin"           # latin | cyrillic | latin+cyrillic (input valida
 
 [languages.de]
 name      = "Deutsch"
-deck      = "German::Vocabulary"
+deck      = "EchoWords: German"
 dict_api  = "de"
 tts       = "piper"
 tts_voice = "de_DE-thorsten-medium"
@@ -342,7 +342,7 @@ script    = "latin"
 
 [languages.sr]
 name      = "Српски"
-deck      = "Serbian::Vocabulary"
+deck      = "EchoWords: Serbian"
 api_model = "gpt-fast"             # paid-catalog alias for this language's step-up;
                                # omit -> ECHOWORDS_API_MODEL
 # dict_api omitted — dictionaryapi.dev has no Serbian

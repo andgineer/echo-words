@@ -7,7 +7,7 @@
 
 [languages.en]
 name       = "English"
-deck       = "English::Vocabulary"
+deck       = "EchoWords: English"
 dict_api   = "en"              # dictionaryapi.dev code; omit if unsupported
 tts        = "piper"           # piper | edge
 tts_voice  = "en_US-lessac-medium"
@@ -16,7 +16,7 @@ script     = "latin"
 
 [languages.de]
 name      = "Deutsch"
-deck      = "German::Vocabulary"
+deck      = "EchoWords: German"
 dict_api  = "de"
 tts       = "piper"
 tts_voice = "de_DE-thorsten-medium"
@@ -24,7 +24,7 @@ script    = "latin"
 
 [languages.sr]
 name      = "Српски"
-deck      = "Serbian::Vocabulary"
+deck      = "EchoWords: Serbian"
 # dict_api omitted — dictionaryapi.dev has no Serbian
 tts       = "edge"             # no usable local voice: Piper's lone sr_RS model
                                # ("serbski_institut") is actually Lower Sorbian —

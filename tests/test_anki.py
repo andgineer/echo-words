@@ -136,6 +136,24 @@ async def test_decks_are_created_and_duplicates_are_scoped_to_each_deck(tmp_path
         await store.close()
 
 
+async def test_a_colon_in_a_deck_name_keeps_dedup_and_counts_deck_scoped(tmp_path):
+    # ":" is Anki search syntax, and the shipped deck names ("EchoWords: Serbian") carry one.
+    store = AnkiStore(local_settings(tmp_path))
+    await store.open()
+    try:
+        serbian = await store.add_note(make_note("kuća"), "EchoWords: Serbian")
+        duplicate = await store.add_note(make_note("Kuća"), "EchoWords: Serbian")
+        german = await store.add_note(make_note("kuća"), "EchoWords: German")
+        counts = await store.note_counts({"sr": "EchoWords: Serbian"})
+
+        assert isinstance(serbian, Added)
+        assert isinstance(duplicate, Duplicate)
+        assert isinstance(german, Added)
+        assert counts["sr"]["all_time"] == 1
+    finally:
+        await store.close()
+
+
 async def test_replacement_deletes_then_adds_a_fresh_note(tmp_path):
     store = AnkiStore(local_settings(tmp_path))
     await store.open()
