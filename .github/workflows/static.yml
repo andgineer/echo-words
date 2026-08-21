@@ -1,18 +1,9 @@
 
-# build docs from docstrings and markdown-file in folder docs
-# publish them as github pages
-#
-#note for myself
-#
-# Do not forget to set git branch `gh-pages` as source for github pages.
-# This branch auto-updated by `mkdocs gh-deploy`
-#
 name: static source code checks
+# Called by the CI workflow so a build cannot go green — or publish — past a
+# failing pre-commit hook. Not triggered on its own to avoid a duplicate run.
 on:
-  push:
-    branches: [ master, main ]
-  pull_request:
-    branches: [ master, main ]
+  workflow_call:
 
 jobs:
   static:

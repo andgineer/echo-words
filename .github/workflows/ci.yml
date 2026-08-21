@@ -1,5 +1,5 @@
 
-# This workflow will install Python dependencies, run tests and lint with a variety of Python versions
+# This workflow will install Python dependencies and run tests with a variety of Python versions
 # For more information see: https://help.github.com/actions/language-and-framework-guides/using-python-with-github-actions
 #
 name: CI
@@ -25,8 +25,14 @@ permissions:
   contents: write
 
 jobs:
+  # Ruff, ruff-format, pyrefly and the file-hygiene hooks, with the same
+  # pre-commit configuration the developer runs locally.
+  static:
+    uses: ./.github/workflows/static.yml
+
   # Test compatibility with the matrix of Python versions and platforms
   matrix-build:
+    needs: static
     strategy:
       matrix:
         python-version: [3.12, 3.13]
@@ -66,6 +72,7 @@ jobs:
 
 # Build with publishing Allure report, coverage report
   primary-build:
+    needs: static
     runs-on: ubuntu-latest
     concurrency:
       group: github-pages
@@ -99,9 +106,6 @@ jobs:
 
     - name: Test with pytest and Allure report
       run: ${{ env.PYTEST_CMD }} --alluredir=./allure-results
-
-    - name: Lint with ruff
-      run: uv run ruff check
 
     - name: Load Allure test report history
       uses: actions/checkout@v4
