@@ -9,7 +9,6 @@ export default {
   "add.wordPlaceholder": "word",
   "add.lookupOnly": "Look up only — no Anki card",
   "add.submit": "Analyse",
-  "add.pick": "Which word should I analyse?",
   "add.undo": "Undo the last one",
   "add.undone": "Removed: {word}",
   "add.nothingToUndo": "Nothing to undo",
@@ -21,12 +20,20 @@ export default {
   "add.detailReady": "Full analysis ready",
   "add.detail": "More detail",
   "add.noCard": "no card",
+  "add.textNoCard": "text — no card",
+  "add.segments": "Worth looking up on their own:",
   "add.aboutHide": "Hide",
   "add.aboutShow": "What this is and how to use it",
   "add.aboutIntro":
-    "echo-words analyses a word or a phrase in the language you pick: translation, senses, " +
-    "usage, origin and examples — and adds a compact card to Anki by itself, so the word " +
-    "enters your reviews.",
+    "echo-words analyses a word or a whole expression in the language you pick: translation, " +
+    "senses, usage, origin and examples — and adds a compact card to Anki by itself, so the " +
+    "word enters your reviews. An expression is analysed as one thing: you are never asked " +
+    "which of its words you meant.",
+  "add.aboutText":
+    "<b>A sentence or a longer text</b> gets a different answer: it is translated and its hard " +
+    "parts are explained, and it makes no card — a whole sentence is not reviewable. Under the " +
+    "answer come the units worth looking up on their own; one tap analyses such a unit as an " +
+    "ordinary word, with the text kept as its context.",
   "add.aboutLookup":
     "<b>Look up only.</b> The checkbox next to the input gives you the analysis and the " +
     "pronunciation without creating a card. A leading <b>?</b> does the same: “? word”.",

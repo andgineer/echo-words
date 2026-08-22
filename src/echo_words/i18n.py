@@ -6,6 +6,9 @@ MESSAGES: dict[str, dict[str, str]] = {
     "en": {
         "word.empty": "Enter a word.",
         "word.too_long": "Too long: no more than {limit} characters.",
+        "text.too_long": "This text is too long: no more than {limit} characters.",
+        "text.no_rebuild": "Running text makes no card, so there is nothing to rebuild.",
+        "text.no_detail": "A deeper analysis is for a word, not for running text.",
         "word.non_letter": "Letters, spaces, hyphens and apostrophes only.",
         "word.mixed_scripts": "Do not mix Latin and Cyrillic in one word.",
         "word.script": "“{language}” needs {script}.",
@@ -17,6 +20,9 @@ MESSAGES: dict[str, dict[str, str]] = {
     "ru": {
         "word.empty": "Введите слово.",
         "word.too_long": "Слишком длинно: не больше {limit} символов.",
+        "text.too_long": "Текст слишком длинный: не больше {limit} символов.",
+        "text.no_rebuild": "Текст не создаёт карточку — пересобирать нечего.",
+        "text.no_detail": "Подробный разбор бывает у слова, а не у текста.",
         "word.non_letter": "Только буквы, пробел, дефис и апостроф.",
         "word.mixed_scripts": "Не смешивайте латиницу и кириллицу в одном слове.",
         "word.script": "Для «{language}» нужна {script}.",

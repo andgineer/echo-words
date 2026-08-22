@@ -4,13 +4,17 @@ import pytest
 
 from echo_words.languages import (
     MAX_CONTEXT_LENGTH,
+    MAX_TEXT_LENGTH,
     MAX_WORD_LENGTH,
     Language,
     LanguagesConfigError,
     load_languages,
     normalize_submission,
+    plain_text,
+    plain_unit,
     sanitize_context,
     unknown_language_hint,
+    validate_text,
     validate_word,
 )
 
@@ -100,6 +104,20 @@ def test_normalize_submission_composes_accents():
     assert normalize_submission("café")[0] == "café"
 
 
+def test_plain_unit_drops_the_punctuation_a_shared_selection_carries():
+    assert plain_unit("Straße.") == "Straße"
+    assert plain_unit("Како?") == "Како"
+    assert plain_unit("«Rad fahren»") == "Rad fahren"
+    assert plain_unit("'(go-over)'") == "go-over"
+    assert plain_unit("...") == ""
+
+
+def test_plain_unit_keeps_the_punctuation_that_belongs_to_the_unit():
+    assert plain_unit("don’t") == "don’t"
+    assert plain_unit("ein- und aussteigen") == "ein- und aussteigen"
+    assert plain_unit("word42") == "word42"
+
+
 def test_sanitize_context_collapses_whitespace_and_control_chars():
     assert sanitize_context("  a\tphrase\nwith\x00junk  ") == "a phrase with junk"
 
@@ -182,4 +200,61 @@ def test_every_hint_has_a_russian_wording(languages):
     )
     assert validate_word("a" * (MAX_WORD_LENGTH + 1), languages["en"], "ru") == (
         f"Слишком длинно: не больше {MAX_WORD_LENGTH} символов."
+    )
+
+
+@pytest.mark.parametrize(
+    ("code", "text"),
+    [
+        ("de", "Er steht jeden Morgen um sechs auf."),
+        ("de", "Der Zug kommt um 7:15 an, sagt sie — hoffentlich!"),
+        ("sr", "Он се синоћ вратио кући веома касно."),
+        ("sr", "Sve mi se čini da nešto nije u redu."),
+        ("en", "“Don’t,” he said, and left."),
+    ],
+)
+def test_running_text_keeps_its_punctuation_and_digits(languages, code, text):
+    assert validate_text(text, languages[code]) is None
+
+
+def test_a_word_of_another_script_is_refused_inside_a_text(languages):
+    hint = validate_text("Der Zug ist сегодня spät.", languages["de"])
+    assert hint == "“Deutsch” needs the Latin script."
+
+
+def test_a_hybrid_word_is_refused_inside_a_text(languages):
+    # Serbian writes either script, so the rule stays per word: возiti is the real
+    # hybrid the benchmark produced.
+    assert validate_text("Он воли возiti bicikl.", languages["sr"]) == (
+        "Do not mix Latin and Cyrillic in one word."
+    )
+    assert validate_text("Voli da vozi bicikl. Он воли бицикл.", languages["sr"]) is None
+
+
+def test_an_over_long_text_is_refused(languages):
+    hint = validate_text("wort " * (MAX_TEXT_LENGTH // 5 + 1), languages["de"])
+    assert hint == f"This text is too long: no more than {MAX_TEXT_LENGTH} characters."
+    assert validate_text("a" * MAX_TEXT_LENGTH, languages["de"]) is None
+
+
+def test_plain_text_cleans_a_paste_without_hiding_an_over_long_one(languages):
+    assert plain_text("Der Zug\u202e kommt\n\n heute  an.") == "Der Zug kommt heute an."
+    too_long = plain_text("wort " * (MAX_TEXT_LENGTH // 5 + 1))
+    assert validate_text(too_long, languages["de"]) == (
+        f"This text is too long: no more than {MAX_TEXT_LENGTH} characters."
+    )
+
+
+def test_an_empty_text_is_refused(languages):
+    assert validate_text("", languages["en"]) == "Enter a word."
+    assert validate_text("— …", languages["en"]) == "Enter a word."
+
+
+def test_the_text_hints_have_a_russian_wording(languages):
+    assert validate_text("", languages["en"], "ru") == "Введите слово."
+    assert validate_text("Der Zug ist сегодня spät.", languages["de"], "ru") == (
+        "Для «Deutsch» нужна латиница."
+    )
+    assert validate_text("a" * (MAX_TEXT_LENGTH + 1), languages["de"], "ru") == (
+        f"Текст слишком длинный: не больше {MAX_TEXT_LENGTH} символов."
     )

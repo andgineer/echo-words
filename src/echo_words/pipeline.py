@@ -6,7 +6,7 @@ import time
 import uuid
 from collections.abc import Callable, Coroutine
 from contextlib import aclosing, suppress
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Literal, Protocol
 
@@ -16,15 +16,25 @@ from echo_words.broker import BackendError
 from echo_words.card import Note, ParsedCard
 from echo_words.events import EventHub
 from echo_words.history import Entry, History, UndoState
+from echo_words.i18n import DEFAULT_LOCALE, message
 from echo_words.languages import Language
-from echo_words.prompt import CARD_DELIMITER, build_extended_prompt, build_prompt, extract_card
+from echo_words.prompt import (
+    CARD_DELIMITER,
+    build_extended_prompt,
+    build_prompt,
+    build_text_prompt,
+    extract_card,
+    extract_segments,
+)
 from echo_words.sanitizer import sanitize_html
+from echo_words.shape import Shape
 
 UPDATE_INTERVAL_SECONDS = 0.5
 ERROR_MESSAGE = "Не удалось получить разбор. Попробуйте отправить слово ещё раз."
 ADDED_STATUS = "✅ added to Anki"
 DUPLICATE_STATUS = "📌 already in Anki"
 LOOKUP_ONLY_STATUS = "👁 lookup only"
+TEXT_STATUS = "👁 text — no card"
 CARD_FAILED_STATUS = "⚠️ card failed"
 NO_AUDIO_STATUS = "🔇 no audio"
 REQUEST_EXPIRED = "request expired"
@@ -72,6 +82,7 @@ class Job:
     word: str
     lookup_only: bool
     context: str
+    shape: Shape = "unit"
     kind: JobKind = "submit"
     paid_only: bool = False
     kept_audio: Path | None = None
@@ -169,6 +180,7 @@ class WordPipeline:
         word: str,
         lookup_only: bool,
         *,
+        shape: Shape = "unit",
         context: str = "",
         entry_id: str | None = None,
         reuse_entry: str | None = None,
@@ -179,6 +191,8 @@ class WordPipeline:
         replace_media: str | None = None,
         replaced_audio: Path | None = None,
     ) -> Entry:
+        if shape == "text":
+            lookup_only = True
         if reuse_entry is not None:
             entry = self._entries[reuse_entry]
             revision = self._revisions[reuse_entry] + 1
@@ -204,6 +218,7 @@ class WordPipeline:
                 lang=language.code,
                 language=language.name,
                 lookup_only=lookup_only,
+                shape=shape,
                 context=context,
             )
             self.history.add(entry)
@@ -225,6 +240,7 @@ class WordPipeline:
                 word,
                 lookup_only,
                 context,
+                shape,
                 kind,
                 paid_only,
                 kept_audio,
@@ -242,8 +258,10 @@ class WordPipeline:
     def counters(self, lang: str) -> dict[str, int]:
         return self.history.counts(lang)
 
-    async def request_rebuild(self, entry_id: str) -> Entry:
+    async def request_rebuild(self, entry_id: str, *, locale: str = DEFAULT_LOCALE) -> Entry:
         entry, state = self._active_control(entry_id)
+        if entry.shape == "text":
+            raise BackendError(message("text.no_rebuild", locale))
         refusal = await self._paid_refusal_fresh(state.language)
         if refusal is not None:
             raise BackendError(refusal)
@@ -281,8 +299,15 @@ class WordPipeline:
             replaced_audio=state.audio_path,
         )
 
-    async def request_detail(self, entry_id: str) -> dict[str, object]:
+    async def request_detail(
+        self,
+        entry_id: str,
+        *,
+        locale: str = DEFAULT_LOCALE,
+    ) -> dict[str, object]:
         entry, state = self._active_control(entry_id)
+        if entry.shape == "text":
+            raise BackendError(message("text.no_detail", locale))
         if entry.detail_html:
             return {"entry_id": entry_id, "detail_html": entry.detail_html, "cached": True}
         if entry_id in self._details_pending:
@@ -339,7 +364,8 @@ class WordPipeline:
             return
         entry = self._entries[job.entry_id]
         audio_task = None
-        if job.kind != "rebuild":
+        # Audio is word-and-phrase only: running text has nothing to attach it to.
+        if job.kind != "rebuild" and job.shape != "text":
             audio_task = asyncio.create_task(
                 self.audio(job.word, job.language),
                 name=f"echo-words-audio-{job.entry_id}",
@@ -363,8 +389,13 @@ class WordPipeline:
             if self.cascade is None:
                 await self._fail(job)
                 return
-            prompt = build_prompt(job.language, job.word, self.target_lang, context=job.context)
+            prompt = (
+                build_text_prompt(job.language, job.word, self.target_lang)
+                if job.shape == "text"
+                else build_prompt(job.language, job.word, self.target_lang, context=job.context)
+            )
             parsed = None
+            segments = None
             try:
                 if job.paid_only:
                     completion = self.cascade.stream_paid(
@@ -403,8 +434,13 @@ class WordPipeline:
                             last_published,
                             last_update_at,
                         )
-                    parsed = extract_card(raw, job.word, job.language)
-                    await completion.record_quality(1.0 if parsed is not None else 0.0)
+                    if job.shape == "text":
+                        segments = extract_segments(raw, job.language)
+                        answered = segments is not None
+                    else:
+                        parsed = extract_card(raw, job.word, job.language)
+                        answered = parsed is not None
+                    await completion.record_quality(1.0 if answered else 0.0)
             except BackendError as exc:
                 if job.kind == "rebuild" and not entry_reset:
                     await self.events.publish(
@@ -427,10 +463,13 @@ class WordPipeline:
             elif job.kind == "switch" and stored.action == "failed":
                 self._delete_audio(audio_path)
                 audio_path = job.replaced_audio
-            card_status, entry.audio_file = _audio_result(stored.status, audio_path)
+            card_status, entry.audio_file = _audio_result(stored.status, audio_path, job.shape)
             suggestion = self._correction_target(job, parsed)
+            entry.segments = [asdict(segment) for segment in segments or []]
             entry.model = getattr(completion, "llm_name", None)
-            entry.detail_available = await self._paid_refusal_fresh(job.language) is None
+            entry.detail_available = (
+                job.shape != "text" and await self._paid_refusal_fresh(job.language) is None
+            )
             self._update_state(job, parsed, stored, audio_path)
             await self._finish_entry(entry, raw, last_published, suggestion, card_status, stored)
         finally:
@@ -499,8 +538,11 @@ class WordPipeline:
         parsed: ParsedCard | None,
         audio_path: Path | None,
     ) -> StoreResult:
-        if job.lookup_only:
-            return StoreResult(LOOKUP_ONLY_STATUS, "lookup")
+        if job.shape == "text" or job.lookup_only:
+            # Action "lookup" keeps the existing counters and lets undo answer
+            # "nothing to undo" with no branch of its own.
+            status = TEXT_STATUS if job.shape == "text" else LOOKUP_ONLY_STATUS
+            return StoreResult(status, "lookup")
         if parsed is None or self.anki is None:
             return StoreResult(CARD_FAILED_STATUS, "failed")
         try:
@@ -555,6 +597,7 @@ class WordPipeline:
                 "suggestion": suggestion,
                 "shown_spelling": entry.shown_spelling,
                 "card_status": card_status,
+                "segments": entry.segments,
                 "audio_url": entry.audio_url,
                 "model": entry.model,
                 "detail_available": entry.detail_available,
@@ -755,7 +798,13 @@ def _suggestion_from(parsed: ParsedCard | None) -> str | None:
     return parsed[1] if parsed is not None else None
 
 
-def _audio_result(card_status: str, audio_path: Path | None) -> tuple[str, str | None]:
+def _audio_result(
+    card_status: str,
+    audio_path: Path | None,
+    shape: Shape,
+) -> tuple[str, str | None]:
+    if shape == "text":
+        return card_status, None
     if audio_path is None:
         return f"{card_status} · {NO_AUDIO_STATUS}", None
     return card_status, audio_path.name

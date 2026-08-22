@@ -20,11 +20,9 @@ const lookupOnly = ref(false);
 const hint = ref("");
 const busy = ref(false);
 const helpOpen = ref(false);
-const picker = ref(null);
 
 watch([word, selected, lookupOnly], () => {
   hint.value = "";
-  picker.value = null;
 });
 
 onMounted(async () => {
@@ -38,44 +36,33 @@ onMounted(async () => {
 
 onUnmounted(stopEventStream);
 
-function splitPhrase(value) {
-  const lookup = lookupOnly.value || value.startsWith("?");
-  const phrase = value.replace(/^\?\s*/, "").trim();
-  const tokens = phrase
-    .split(/\s+/)
-    .map((token) => token.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, ""))
-    .filter(Boolean);
-  return { phrase, tokens, lookup };
-}
-
 async function submit() {
   if (busy.value || !word.value.trim() || !selected.value) return;
-  const submittedWord = word.value.trim();
-  const choice = splitPhrase(submittedWord);
-  if (choice.tokens.length > 1) {
-    picker.value = choice;
-    hint.value = "";
-    return;
-  }
-  await sendWord(choice.phrase, choice.lookup);
+  await sendWord(word.value.trim(), lookupOnly.value);
 }
 
-async function chooseWord(token) {
+async function analyseSegment(entry, segment) {
   if (busy.value) return;
-  const choice = picker.value;
-  if (!choice) return;
-  await sendWord(token, choice.lookup, choice.phrase);
+  // The unit belongs to the text it was found in, whatever the selector shows now.
+  await sendWord(segment.label, lookupOnly.value, entry.word, "unit", entry.lang);
 }
 
-async function sendWord(submittedWord, submittedLookupOnly, context = "") {
+async function sendWord(
+  submittedWord,
+  submittedLookupOnly,
+  context = "",
+  shape = null,
+  lang = selected.value,
+) {
   busy.value = true;
   hint.value = "";
   const body = withRequestId({
     word: submittedWord,
-    lang: selected.value,
+    lang,
     lookup_only: submittedLookupOnly,
   });
   if (context) body.context = context;
+  if (shape) body.shape = shape;
   try {
     const accepted = await apiRequest("/api/words", {
       method: "POST",
@@ -84,8 +71,8 @@ async function sendWord(submittedWord, submittedLookupOnly, context = "") {
     const metadata = {
       entry_id: accepted.entry_id,
       word: submittedWord,
-      lang: selected.value,
-      language: languages.value.find((item) => item.code === selected.value)?.name || "",
+      lang,
+      language: languages.value.find((item) => item.code === lang)?.name || "",
       lookup_only: submittedLookupOnly,
       context,
     };
@@ -96,13 +83,11 @@ async function sendWord(submittedWord, submittedLookupOnly, context = "") {
     );
     word.value = "";
     lookupOnly.value = false;
-    picker.value = null;
   } catch (e) {
     if (isRetryableWordError(e)) {
       enqueueWord(body);
       word.value = "";
       lookupOnly.value = false;
-      picker.value = null;
       await nextTick();
       hint.value = t("add.queued");
     } else {
@@ -166,19 +151,6 @@ async function undo() {
 
     <button class="btn btn-primary" :disabled="busy" @click="submit">{{ t("add.submit") }}</button>
 
-    <div v-if="picker" class="picker">
-      <p>{{ t("add.pick") }}</p>
-      <button
-        v-for="(token, index) in picker.tokens"
-        :key="`${token}-${index}`"
-        class="btn-inline picker-choice"
-        :disabled="busy"
-        @click="chooseWord(token)"
-      >
-        {{ token }}
-      </button>
-    </div>
-
     <button class="btn-inline undo" @click="undo">{{ t("add.undo") }}</button>
 
     <p v-if="hint" class="hint">{{ hint }}</p>
@@ -204,6 +176,20 @@ async function undo() {
         autoplay
         preload="none"
       ></audio>
+      <div v-if="entry.segments?.length" class="segments">
+        <p class="segments-title">{{ t("add.segments") }}</p>
+        <div v-for="segment in entry.segments" :key="segment.label" class="segment">
+          <button
+            class="btn-inline segment-label"
+            :disabled="busy"
+            @click="analyseSegment(entry, segment)"
+          >
+            {{ segment.label }}
+          </button>
+          <span v-if="segment.surface" class="segment-surface">{{ segment.surface }}</span>
+          <p v-if="segment.reason" class="segment-reason">{{ segment.reason }}</p>
+        </div>
+      </div>
       <p v-if="entry.card_status" class="entry-card-status">{{ entry.card_status }}</p>
       <p v-if="entry.error" class="entry-error">{{ entry.error }}</p>
       <p v-if="entry.detail_error" class="entry-error">{{ entry.detail_error }}</p>
@@ -220,10 +206,15 @@ async function undo() {
               : t("add.correct", { word: entry.suggestion })
           }}
         </button>
-        <button class="btn-inline rebuild" @click="entryAction(entry, 'rebuild')">
+        <button
+          v-if="entry.shape !== 'text'"
+          class="btn-inline rebuild"
+          @click="entryAction(entry, 'rebuild')"
+        >
           {{ t("add.rebuild") }}
         </button>
         <button
+          v-if="entry.shape !== 'text'"
           class="btn-inline detail"
           :disabled="!entry.detail_available || !!entry.detail_html"
           @click="entryAction(entry, 'detail')"
@@ -232,7 +223,7 @@ async function undo() {
         </button>
       </div>
       <p class="entry-meta">
-        {{ entry.language }}<span v-if="entry.model"> · {{ entry.model }}</span><span v-if="entry.lookup_only"> · {{ t("add.noCard") }}</span>
+        {{ entry.language }}<span v-if="entry.model"> · {{ entry.model }}</span><span v-if="entry.shape === 'text'"> · {{ t("add.textNoCard") }}</span><span v-else-if="entry.lookup_only"> · {{ t("add.noCard") }}</span>
       </p>
     </article>
   </section>
@@ -243,6 +234,7 @@ async function undo() {
     </button>
     <div v-if="helpOpen" class="about-text">
       <p v-html="t('add.aboutIntro')"></p>
+      <p v-html="t('add.aboutText')"></p>
       <p v-html="t('add.aboutLookup')"></p>
       <p v-html="t('add.aboutCorrection')"></p>
     </div>
@@ -267,14 +259,29 @@ async function undo() {
   color: var(--warning);
 }
 
-.picker {
+.segments {
   margin-top: 0.75rem;
+}
+
+.segments-title {
+  font-size: 0.85rem;
   color: var(--text-muted);
 }
 
-.picker-choice {
-  margin: 0.4rem 0.4rem 0 0;
+.segment {
+  margin-top: 0.4rem;
+}
+
+.segment-surface {
+  margin-left: 0.5rem;
   font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.segment-reason {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  line-height: 1.4;
 }
 
 .undo {

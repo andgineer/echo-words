@@ -1,8 +1,10 @@
 """Restart-ephemeral word history, counters, and per-language undo state."""
 
 from collections import Counter, deque
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
+
+from echo_words.shape import Shape
 
 
 @dataclass
@@ -22,6 +24,8 @@ class Entry:
     created_at: datetime | None = None
     language: str = ""
     lookup_only: bool = False
+    shape: Shape = "unit"
+    segments: list[dict] = field(default_factory=list)
     card_status: str | None = None
     error: str | None = None
     model: str | None = None

@@ -93,26 +93,43 @@ The four requirements every design decision is weighed against:
    created — is made with the lookup-only control next to the input;
    prefixing the text with `?` ("? word") does the same as a typed
    shortcut.
-   **A phrase instead of a word means context.** When the submitted text
-   holds more than one word, the app does not guess which one is being
-   asked about: it shows the phrase's words as tappable choices and the
-   tapped one becomes the word. The whole phrase travels with it as
-   context, and the analysis answers for *the sense used there* — which
-   is the only way to reach a meaning that no dictionary lists, because
-   it is a term of art, a joke, a regionalism, or simply rare. This is
-   also what the iOS share-sheet path delivers: text shared from
-   whatever the user was reading arrives as a phrase.
+   **A multi-word input is analysed whole.** A collocation, an idiom or a
+   phrasal verb is one unit whose parts cannot be looked up separately,
+   so the app never asks which of its words was meant.
+   **Running text is a second shape.** A sentence or a longer passage is
+   translated and explained instead, and produces **no note**; alongside
+   the answer come the units of that text worth looking up on their own.
+   **Which of the two an input is, is decided by the backend**, from
+   punctuation and length alone and identically for every language, so
+   the iOS share-sheet path — which posts straight to the API — behaves
+   exactly like the app without a second copy of the rule. The boundary,
+   and the measured cost of placing it wrong, are in
+   `decision-phrases-and-sentences.md`.
+   **A suggested unit is one tap from an ordinary submission** of that
+   unit, carrying the text it came from as its context, so the analysis
+   answers for *the sense used there* — which is the only way to reach a
+   meaning that no dictionary lists, because it is a term of art, a joke,
+   a regionalism, or simply rare. Because a suggested unit can become the
+   front of a card, it is held to exactly the rule a typed word is held
+   to, and one that would have been refused had the user typed it is
+   never offered.
    Context never changes what the card is *about*: the canonical word is
-   still the tapped word exactly as written, so deduplication, audio,
+   still the submitted unit exactly as written, so deduplication, audio,
    statistics and the deck are unaffected by it.
 2. The backend validates the input against the selected language's
    allowed script (Latin with accented letters — café, naïve, Straße —
    for English and German; Latin or Cyrillic for Serbian) and length
-   within a small limit. Anything else — including a language code not
-   present in the configuration — gets a short hint instead of an LLM
-   call. The language is always the user's explicit selection, never
-   guessed from the word (auto-detecting the language of a single word
-   is not reliable enough to trust with deck placement).
+   within a small limit. Punctuation clinging to the edges of a unit is
+   dropped before it is judged, because a shared selection carries it:
+   “Straße.” is the word Straße. Running text is held to the same
+   script rule word by word — so it keeps its commas, digits and
+   quotation marks — and to a longer length bound, the same one that
+   caps the context a suggested unit is submitted with. Anything else —
+   including a language code not present in the configuration — gets a
+   short hint instead of an LLM call. The language is always the user's
+   explicit selection, never guessed from the word (auto-detecting the
+   language of a single word is not reliable enough to trust with deck
+   placement).
 3. The word immediately appears in the answer area as a pending entry
    ("⏳ *word* …"), so the user sees the request was accepted.
 4. The LLM runs in streaming mode; the entry's text builds up live in
@@ -203,6 +220,17 @@ Additional behavior:
 - The answer stays compact (~3,500 characters at most) — it is a
   lookup, not an essay.
 
+**A running-text answer** is a different shape: the text rendered whole
+in the target language, then a short list of what is hard *in this
+particular text* — a construction, the word order, a case or a mood, a
+set expression, a word that is not what it looks like. It is never a
+word-by-word walk-through. Alongside it come the units worth learning
+whole, most useful first and few in number; each carries the form a
+dictionary would list, how it actually appears in the text (with the
+pieces shown apart when they stand apart), and one line on why it is
+worth a look. A text with nothing hard in it comes back with no
+suggested units rather than with a padded list.
+
 ## Autocorrection: advisory only
 
 The system never silently rewrites a word. Auto-applying a correction is
@@ -245,9 +273,10 @@ Behavior — fixed, not configurable (there is no on/off setting):
 Audio is a core feature, not an add-on: every word gets pronunciation
 both in the answer entry and on the flashcard.
 
-- **Scope**: only the word/phrase itself is voiced. Example sentences
-  are never voiced — a final decision, not a deferral: cards must stay
-  light and generation fast.
+- **Scope**: only the word/phrase itself is voiced. Neither example
+  sentences nor running text are ever voiced — a final decision, not a
+  deferral: cards must stay light and generation fast, and a text answer
+  has nothing to attach the audio to.
 - **Source priority**: a real native-speaker recording from free
   dictionary sources when one exists (for the languages those sources
   cover — English, German; Serbian has none). When no recording exists
@@ -280,6 +309,11 @@ both in the answer entry and on the flashcard.
 
 ## Anki cards
 
+- **Running text never produces a note.** A whole clause on the front of
+  a card is unreviewable, duplicate detection over it is meaningless — a
+  paraphrase is a new card — and the reverse card would have to mask the
+  entire sentence. The deck stays a dictionary; the units suggested under
+  a text answer are how it grows from one.
 - **One note per word.** Usually the back carries a single meaning, but
   when meanings are genuinely unrelated (bank «банк» / bank «берег») the
   LLM splits the back into numbered meaning blocks — at most three —
@@ -331,8 +365,12 @@ both in the answer entry and on the flashcard.
 
 Kept minimal — everything beyond typing a word:
 
-- **About/help note** — what the app does, the lookup-only control and
-  `?` shortcut, and the ✏️ correction button for a suspected typo.
+- **About/help note** — what the app does, the two input shapes, the
+  lookup-only control and `?` shortcut, and the ✏️ correction button for
+  a suspected typo.
+- **Suggested units** — under a running-text answer, the units worth
+  looking up on their own, each one tap from an ordinary submission that
+  carries the text as its context.
 - **History** — the answer area shows recent words with their finished
   analyses, pronunciation, and status; in-progress entries appear with
   their text accumulated so far. History is served by the backend, so
@@ -340,7 +378,7 @@ Kept minimal — everything beyond typing a word:
   switching devices — but it is held **in memory only** and starts
   empty after a restart. The cards it produced are unaffected; a word
   whose analysis scrolled away can always be looked up again.
-- **Deeper analysis** — on a finished answer, a control that asks the
+- **Deeper analysis** — on a finished word answer, a control that asks the
   same word again from the paid model with a fuller brief: every sense
   the word has rather than the card-worthy few, a real etymology, more
   usage and register detail, more examples. **It never touches the
@@ -352,6 +390,8 @@ Kept minimal — everything beyond typing a word:
   with the history entry and shown again. When no paid model is
   configured or the daily cap is spent, the control says so instead of
   quietly answering from the pool: the user asked for the better model.
+  It does not apply to running text, which has no single word to go
+  deeper on.
 - **Rebuild the card** — on any entry in the history, ask the paid model
   to build the note again: for a weak or plainly wrong card, and for the
   case the context was only understood afterwards. It uses the entry's
@@ -360,7 +400,8 @@ Kept minimal — everything beyond typing a word:
   Unlike the deeper analysis, this one *is* about the deck — it is the
   only control that rewrites a card, and it never fires on its own.
   Bounded by the same daily cap, and refused with a reason when the cap
-  is spent or no paid model is configured.
+  is spent or no paid model is configured. It does not apply to running
+  text, which produced no card to rebuild.
 - **Status view** — backend health, AnkiWeb sync state (last result,
   whether unsynced changes are waiting).
 - **Stats view** — how many words were added today, over the last

@@ -11,6 +11,7 @@ from echo_words.pipeline import (
     ERROR_MESSAGE,
     LOOKUP_ONLY_STATUS,
     NO_AUDIO_STATUS,
+    TEXT_STATUS,
     WordPipeline,
 )
 
@@ -137,6 +138,7 @@ async def test_deltas_are_throttled_cut_sanitized_and_finished(languages):
                 "suggestion": None,
                 "shown_spelling": "Word",
                 "card_status": f"{CARD_FAILED_STATUS} · {NO_AUDIO_STATUS}",
+                "segments": [],
                 "audio_url": None,
                 "model": None,
                 "detail_available": True,
@@ -194,6 +196,7 @@ async def test_card_parse_quality_and_suggestion_are_published_after_completion(
                 "suggestion": "receive",
                 "shown_spelling": "recieve",
                 "card_status": f"{CARD_FAILED_STATUS} · {NO_AUDIO_STATUS}",
+                "segments": [],
                 "audio_url": None,
                 "model": None,
                 "detail_available": True,
@@ -231,6 +234,7 @@ async def test_card_without_examples_is_rated_as_a_failure_without_losing_analys
                 "suggestion": None,
                 "shown_spelling": "word",
                 "card_status": f"{CARD_FAILED_STATUS} · {NO_AUDIO_STATUS}",
+                "segments": [],
                 "audio_url": None,
                 "model": None,
                 "detail_available": True,
@@ -1032,3 +1036,149 @@ async def test_unknown_or_expired_entry_refuses_all_controls():
     ):
         with pytest.raises(KeyError, match="request expired"):
             await request("unknown")
+
+
+SENTENCE = "Er steht jeden Morgen um sechs auf."
+
+
+def text_answer(*segments: str) -> str:
+    return "Он встаёт каждое утро в шесть.===CARD===" + '{"segments":[' + ",".join(segments) + "]}"
+
+
+AUFSTEHEN = '{"label":"aufstehen","surface":"steht … auf","why":"Trennbares Verb."}'
+
+
+async def test_running_text_is_explained_without_a_card_or_audio(languages):
+    audio_calls = []
+
+    async def fetch_audio(word, language):
+        audio_calls.append((word, language.code))
+
+    anki = RecordingAnki(Added(1, None))
+    pipeline = WordPipeline(
+        ScriptedCascade([Completion([text_answer(AUFSTEHEN)])]),
+        target_lang="ru",
+        anki=anki,
+        audio=fetch_audio,
+    )
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(languages["de"], SENTENCE, False, shape="text")
+        await pipeline.join()
+
+        assert audio_calls == []
+        assert anki.calls == []
+        assert entry.card_status == TEXT_STATUS
+        assert NO_AUDIO_STATUS not in entry.card_status
+        assert entry.audio_url is None
+        assert entry.lookup_only is True
+        assert entry.detail_available is False
+        assert entry.suggestion is None
+    finally:
+        await pipeline.close()
+
+
+async def test_segments_reach_the_done_event_and_the_history(languages):
+    hub = EventHub()
+    pipeline = WordPipeline(
+        ScriptedCascade([Completion([text_answer(AUFSTEHEN)])]),
+        target_lang="ru",
+        events=hub,
+    )
+    pipeline.start()
+    try:
+        async with hub.subscribe() as subscriber:
+            entry = await pipeline.enqueue(languages["de"], SENTENCE, False, shape="text")
+            await pipeline.join()
+            events = drain(subscriber)
+        suggested = [
+            {"label": "aufstehen", "surface": "steht … auf", "reason": "Trennbares Verb."},
+        ]
+        assert entry.segments == suggested
+        assert events[-1].data["segments"] == suggested
+        assert entry.public()["segments"] == suggested
+    finally:
+        await pipeline.close()
+
+
+async def test_a_trap_free_text_finishes_with_no_segments_and_still_rates_as_good(languages):
+    completion = Completion([text_answer()])
+    pipeline = WordPipeline(ScriptedCascade([completion]), target_lang="ru")
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(
+            languages["de"],
+            "Heute ist das Wetter schön.",
+            False,
+            shape="text",
+        )
+        await pipeline.join()
+
+        assert entry.segments == []
+        assert entry.card_status == TEXT_STATUS
+        assert completion.scores == [1.0]
+    finally:
+        await pipeline.close()
+
+
+async def test_an_unparsable_text_payload_rates_as_a_failure_without_losing_the_answer(languages):
+    completion = Completion(["<b>Разбор</b> текста.===CARD==={broken"])
+    pipeline = WordPipeline(ScriptedCascade([completion]), target_lang="ru")
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(languages["de"], SENTENCE, False, shape="text")
+        await pipeline.join()
+
+        assert entry.text == "<b>Разбор</b> текста."
+        assert entry.segments == []
+        assert completion.scores == [0.0]
+    finally:
+        await pipeline.close()
+
+
+async def test_a_label_that_would_be_refused_as_input_never_becomes_a_segment(languages):
+    completion = Completion(
+        [
+            text_answer(
+                '{"label":"vratiti се","surface":"се … вратио","why":"Повратна речца."}',
+                '{"label":"јавити се","surface":"ми се … јавио","why":"Повратни глагол."}',
+            ),
+        ],
+    )
+    pipeline = WordPipeline(ScriptedCascade([completion]), target_lang="ru")
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(
+            languages["sr"],
+            "Он ми се јуче јавио телефоном.",
+            False,
+            shape="text",
+        )
+        await pipeline.join()
+
+        assert [segment["label"] for segment in entry.segments] == ["јавити се"]
+    finally:
+        await pipeline.close()
+
+
+async def test_rebuild_and_detail_are_refused_on_a_text_entry(languages):
+    pipeline = WordPipeline(
+        ScriptedCascade([Completion([text_answer(AUFSTEHEN)])]),
+        target_lang="ru",
+    )
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(languages["de"], SENTENCE, False, shape="text")
+        await pipeline.join()
+
+        with pytest.raises(BackendError, match="nothing to rebuild"):
+            await pipeline.request_rebuild(entry.entry_id)
+        with pytest.raises(BackendError, match="not for running text"):
+            await pipeline.request_detail(entry.entry_id)
+        with pytest.raises(BackendError, match="пересобирать нечего"):
+            await pipeline.request_rebuild(entry.entry_id, locale="ru")
+        with pytest.raises(BackendError, match="а не у текста"):
+            await pipeline.request_detail(entry.entry_id, locale="ru")
+        assert entry.card_status == TEXT_STATUS
+    finally:
+        await pipeline.close()

@@ -16,9 +16,10 @@ tool looks for.
   on any conflict with this file or any other document, it wins.
 - `spec/decision-*.md` — background for settled decisions: the guard list
   of product decisions (`decision-product.md`), the user interface
-  (`decision-interface.md`, `decision-chat-interface.md`), spaced
-  repetition, TTS, the LLM backend, and the deployment host, its rules
-  and its tooling (`decision-deployment.md`). They hold the reasoning
+  (`decision-interface.md`, `decision-chat-interface.md`), the two input
+  shapes (`decision-phrases-and-sentences.md`), spaced repetition, TTS,
+  the LLM backend, and the deployment host, its rules and its tooling
+  (`decision-deployment.md`). They hold the reasoning
   and the measurements behind the choices. Do not re-open them.
 - There is no implementation plan any more: M0–M8 have all landed, so
   the plan was deleted and what outlived it moved into the specs above.

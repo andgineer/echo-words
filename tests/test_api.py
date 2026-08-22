@@ -17,7 +17,12 @@ from echo_words.api import SubmissionRegistry, create_app
 from echo_words.backend import CallRecord
 from echo_words.config import Settings
 from echo_words.events import EventHub
-from echo_words.languages import MAX_CONTEXT_LENGTH, MAX_WORD_LENGTH, LanguagesConfigError
+from echo_words.languages import (
+    MAX_CONTEXT_LENGTH,
+    MAX_TEXT_LENGTH,
+    MAX_WORD_LENGTH,
+    LanguagesConfigError,
+)
 
 
 class BlockingHandle:
@@ -392,7 +397,7 @@ def test_serbian_takes_cyrillic(client: TestClient):
 
 
 def test_an_absurd_body_is_refused_before_the_hints(client: TestClient):
-    response = submit(client, word="x" * (MAX_WORD_LENGTH * 4 + 1))
+    response = submit(client, word="x" * (MAX_TEXT_LENGTH * 4 + 1))
     assert response.status_code == 422
     huge_context = submit(client, word="bucket", context="x" * (MAX_CONTEXT_LENGTH * 4 + 1))
     assert huge_context.status_code == 422
@@ -500,3 +505,101 @@ async def test_sse_endpoint_frames_events_keeps_alive_and_cleans_up_subscribers(
 
     await stream.aclose()
     assert hub.subscriber_count == 0
+
+
+def test_a_sentence_is_accepted_and_routed_without_a_card(client: TestClient):
+    entry_id = submit(client, word="Er steht jeden Morgen um sechs auf.", lang="de").json()[
+        "entry_id"
+    ]
+    entry = recent_entry(client, entry_id)
+    assert entry["word"] == "Er steht jeden Morgen um sechs auf."
+    assert entry["shape"] == "text"
+    assert entry["lookup_only"] is True
+
+
+def test_a_shared_word_survives_the_punctuation_that_came_with_it(client: TestClient):
+    entry_id = submit(client, word="Straße.", lang="de").json()["entry_id"]
+    entry = recent_entry(client, entry_id)
+    assert entry["word"] == "Straße"
+    assert entry["shape"] == "unit"
+
+    quoted = submit(client, word="«Како?»", lang="sr").json()["entry_id"]
+    assert recent_entry(client, quoted)["word"] == "Како"
+
+
+def test_punctuation_alone_is_refused_as_empty(client: TestClient):
+    response = submit(client, word="...", lang="de")
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Enter a word."
+
+
+def test_a_collocation_is_accepted_whole(client: TestClient):
+    pipeline = client.app.state.pipeline
+    pipeline.enqueue = AsyncMock(wraps=pipeline.enqueue)
+
+    entry_id = submit(client, word="Rad fahren", lang="de").json()["entry_id"]
+
+    assert pipeline.enqueue.await_args.args[1] == "Rad fahren"
+    assert pipeline.enqueue.await_args.kwargs["shape"] == "unit"
+    assert recent_entry(client, entry_id)["lookup_only"] is False
+
+
+def test_an_explicit_shape_overrides_the_classifier(client: TestClient):
+    accepted = submit(client, word="не пада ми на памет", lang="sr", shape="unit")
+    assert accepted.status_code == 200
+    assert recent_entry(client, accepted.json()["entry_id"])["shape"] == "unit"
+
+    classified = submit(client, word="не пада ми на памет", lang="sr")
+    assert recent_entry(client, classified.json()["entry_id"])["shape"] == "text"
+
+
+def test_a_five_word_label_is_validated_as_a_word_when_the_tap_says_so(client: TestClient):
+    response = submit(client, word="a" * (MAX_WORD_LENGTH + 1) + " word", lang="en", shape="unit")
+    assert response.status_code == 400
+    assert response.json()["detail"].startswith("Too long")
+
+
+def test_an_over_long_text_is_refused_with_a_hint_not_a_422(client: TestClient):
+    response = submit(client, word="Der Zug, " * 60, lang="de")
+    assert response.status_code == 400
+    assert response.json()["detail"] == (
+        f"This text is too long: no more than {MAX_TEXT_LENGTH} characters."
+    )
+
+
+def test_running_text_is_cleaned_before_it_is_validated_and_stored(client: TestClient):
+    entry_id = submit(
+        client,
+        word="Der Zug\u202e kommt\n\n heute  an, sagt sie.",
+        lang="de",
+    ).json()["entry_id"]
+    assert recent_entry(client, entry_id)["word"] == "Der Zug kommt heute an, sagt sie."
+
+
+def test_the_control_endpoints_pass_the_interface_language_down(client: TestClient):
+    russian = {"Accept-Language": "ru-RU,ru;q=0.9"}
+    pipeline = client.app.state.pipeline
+    pipeline.request_rebuild = AsyncMock(side_effect=KeyError("request expired"))
+    pipeline.request_detail = AsyncMock(side_effect=KeyError("request expired"))
+
+    client.post("/api/words/entry/rebuild", headers=russian)
+    client.post("/api/words/entry/detail", headers=russian)
+
+    assert pipeline.request_rebuild.await_args.kwargs["locale"] == "ru"
+    assert pipeline.request_detail.await_args.kwargs["locale"] == "ru"
+
+
+def test_a_retried_request_id_with_a_different_shape_conflicts(client: TestClient):
+    request_id = "a7237d5b-2b51-443d-bdb7-1b6e4259d10a"
+    first = submit(client, word="не пада ми на памет", lang="sr", request_id=request_id)
+    conflict = submit(
+        client,
+        word="не пада ми на памет",
+        lang="sr",
+        shape="unit",
+        request_id=request_id,
+    )
+
+    assert first.status_code == 200
+    assert conflict.status_code == 409
+    assert conflict.json() == {"detail": "request_id was already used for another submission"}

@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
-import { readFileSync } from "node:fs";
 
 vi.mock("../src/api/_request.js", () => ({ apiRequest: vi.fn() }));
 
@@ -33,23 +32,26 @@ afterEach(() => {
   localStorage.clear();
 });
 
+function textEntry(segments = [
+  { label: "aufstehen", surface: "steht … auf", reason: "Trennbares Verb." },
+  { label: "ausfallen", surface: "fällt … aus", reason: "Trennbares Verb." },
+]) {
+  return {
+    entry_id: "entry-1",
+    word: "Er steht jeden Morgen um sechs auf.",
+    lang: "de",
+    language: "Deutsch",
+    lookup_only: true,
+    shape: "text",
+    status: "done",
+    text: "Он встаёт каждое утро в шесть.",
+    card_status: "👁 text — no card",
+    detail_available: false,
+    segments,
+  };
+}
+
 describe("AddView", () => {
-  it.each(["en", "ru"])("documents a Shortcut matcher that trims token-edge punctuation (%s)", (locale) => {
-    const page = readFileSync(`../docs/src/${locale}/pwa-install.md`, "utf8");
-    const documentedPattern = page.match(/\*\*Match Text\*\*[^`]*```\n\s*(.+?)\n\s*```/su)?.[1];
-    expect(documentedPattern).toBe(String.raw`\p{L}(?:[\p{L}\p{N}'’-]*[\p{L}\p{N}])?`);
-
-    const shortcutMatcher = new RegExp(documentedPattern, "gu");
-    const sharedText = "“don’t,” word' word’ go-over- '(Straße)'";
-    expect([...sharedText.matchAll(shortcutMatcher)].map(([token]) => token)).toEqual([
-      "don’t",
-      "word",
-      "word",
-      "go-over",
-      "Straße",
-    ]);
-  });
-
   it("renders the configured language selector and M1 controls", async () => {
     const wrapper = mount(AddView);
     await flushPromises();
@@ -201,72 +203,6 @@ describe("AddView", () => {
     expect(wrapper.find(".about-text").text()).toContain("brings the original back");
   });
 
-  it("offers every word in a phrase and posts only after a choice", async () => {
-    apiRequest.mockImplementation(async (path) => {
-      if (path === "/api/languages") return OPTIONS;
-      if (path === "/api/words") return { entry_id: "picked" };
-      throw new Error(`Unexpected request: ${path}`);
-    });
-    const wrapper = mount(AddView);
-    await flushPromises();
-    await wrapper.find("#word").setValue("He kicked the bucket.");
-
-    await wrapper.find(".btn-primary").trigger("click");
-
-    expect(wrapper.findAll(".picker-choice").map((button) => button.text())).toEqual([
-      "He",
-      "kicked",
-      "the",
-      "bucket",
-    ]);
-    expect(apiRequest).toHaveBeenCalledTimes(1);
-
-    await wrapper.findAll(".picker-choice")[3].trigger("click");
-    await flushPromises();
-    expect(apiRequest).toHaveBeenCalledWith("/api/words", {
-      method: "POST",
-      body: {
-        word: "bucket",
-        lang: "en",
-        lookup_only: false,
-        context: "He kicked the bucket.",
-        request_id: expect.any(String),
-      },
-    });
-  });
-
-  it("strips a leading lookup shortcut before building phrase choices", async () => {
-    apiRequest.mockImplementation(async (path) => {
-      if (path === "/api/languages") return OPTIONS;
-      if (path === "/api/words") return { entry_id: "picked" };
-      throw new Error(`Unexpected request: ${path}`);
-    });
-    const wrapper = mount(AddView);
-    await flushPromises();
-    await wrapper.find("#word").setValue("? kick the bucket");
-    await wrapper.find(".btn-primary").trigger("click");
-
-    expect(wrapper.findAll(".picker-choice").map((button) => button.text())).toEqual([
-      "kick",
-      "the",
-      "bucket",
-    ]);
-    expect(wrapper.text()).not.toContain("? kick");
-
-    await wrapper.find(".picker-choice").trigger("click");
-    await flushPromises();
-    expect(apiRequest).toHaveBeenCalledWith("/api/words", {
-      method: "POST",
-      body: {
-        word: "kick",
-        lang: "en",
-        lookup_only: true,
-        context: "kick the bucket",
-        request_id: expect.any(String),
-      },
-    });
-  });
-
   it("passes punctuation on a direct single-word submission to server validation", async () => {
     apiRequest.mockImplementation(async (path) => {
       if (path === "/api/languages") return OPTIONS;
@@ -292,47 +228,6 @@ describe("AddView", () => {
     expect(wrapper.find(".hint").text()).toBe("Letters, spaces, hyphens and apostrophes only.");
   });
 
-  it("clears phrase choices when input, language or lookup-only changes", async () => {
-    apiRequest.mockImplementation(async (path) => {
-      if (path === "/api/languages") return OPTIONS;
-      if (path === "/api/words") return { entry_id: "picked" };
-      throw new Error(`Unexpected request: ${path}`);
-    });
-    const wrapper = mount(AddView);
-    await flushPromises();
-    await wrapper.find("#word").setValue("kick the bucket");
-    await wrapper.find(".btn-primary").trigger("click");
-    expect(wrapper.find(".picker").exists()).toBe(true);
-
-    await wrapper.find("#word").setValue("changed phrase");
-    expect(wrapper.find(".picker").exists()).toBe(false);
-
-    await wrapper.find(".btn-primary").trigger("click");
-    expect(wrapper.find(".picker").exists()).toBe(true);
-    await wrapper.find("#lang").setValue("de");
-    expect(wrapper.find(".picker").exists()).toBe(false);
-
-    await wrapper.find("#lang").setValue("en");
-    await wrapper.find(".btn-primary").trigger("click");
-    expect(wrapper.find(".picker").exists()).toBe(true);
-    await wrapper.find('.lookup input[type="checkbox"]').setValue(true);
-    expect(wrapper.find(".picker").exists()).toBe(false);
-
-    await wrapper.find(".btn-primary").trigger("click");
-    await wrapper.find(".picker-choice").trigger("click");
-    await flushPromises();
-    expect(apiRequest).toHaveBeenLastCalledWith("/api/words", {
-      method: "POST",
-      body: {
-        word: "changed",
-        lang: "en",
-        lookup_only: true,
-        context: "changed phrase",
-        request_id: expect.any(String),
-      },
-    });
-  });
-
   it("renders correction, rebuild and detail controls on a finished history entry", async () => {
     entries.value = [{
       entry_id: "entry-1",
@@ -355,27 +250,144 @@ describe("AddView", () => {
     expect(wrapper.find(".entry-meta").text()).toContain("English · free-flash");
   });
 
-  it("disables phrase choices while their POST is pending", async () => {
-    let resolveWord;
+  it("posts a multi-word input whole and never asks which word was meant", async () => {
     apiRequest.mockImplementation(async (path) => {
       if (path === "/api/languages") return OPTIONS;
-      if (path === "/api/words") {
-        return new Promise((resolve) => { resolveWord = resolve; });
-      }
+      if (path === "/api/words") return { entry_id: "entry-1" };
       throw new Error(`Unexpected request: ${path}`);
     });
     const wrapper = mount(AddView);
     await flushPromises();
-    await wrapper.find("#word").setValue("kick the bucket");
+    await wrapper.find("#lang").setValue("de");
+    await wrapper.find("#word").setValue("Rad fahren");
+
     await wrapper.find(".btn-primary").trigger("click");
-
-    const choice = wrapper.find(".picker-choice");
-    await choice.trigger("click");
-    expect(choice.element.disabled).toBe(true);
-    await choice.trigger("click");
-    expect(apiRequest.mock.calls.filter(([path]) => path === "/api/words")).toHaveLength(1);
-
-    resolveWord({ entry_id: "picked" });
     await flushPromises();
+
+    expect(apiRequest).toHaveBeenCalledWith("/api/words", {
+      method: "POST",
+      body: {
+        word: "Rad fahren",
+        lang: "de",
+        lookup_only: false,
+        request_id: expect.any(String),
+      },
+    });
+    expect(wrapper.find(".picker").exists()).toBe(false);
+  });
+
+  it("leaves a leading lookup shortcut to the backend", async () => {
+    apiRequest.mockImplementation(async (path) => {
+      if (path === "/api/languages") return OPTIONS;
+      if (path === "/api/words") return { entry_id: "entry-1" };
+      throw new Error(`Unexpected request: ${path}`);
+    });
+    const wrapper = mount(AddView);
+    await flushPromises();
+    await wrapper.find("#word").setValue("? kick the bucket");
+
+    await wrapper.find(".btn-primary").trigger("click");
+    await flushPromises();
+
+    expect(apiRequest.mock.calls.find(([path]) => path === "/api/words")[1].body.word).toBe(
+      "? kick the bucket",
+    );
+  });
+
+  it("offers the suggested units of a running text as buttons", async () => {
+    await labelBehavior(EPIC.VOCABULARY_ANALYSIS, FEATURE.ANSWER_DELIVERY, "Suggested units");
+    entries.value = [textEntry()];
+    const wrapper = mount(AddView);
+    await flushPromises();
+
+    expect(wrapper.findAll(".segment-label").map((button) => button.text())).toEqual([
+      "aufstehen",
+      "ausfallen",
+    ]);
+    expect(wrapper.find(".segments").text()).toContain("Worth looking up on their own");
+    expect(wrapper.find(".segment-surface").text()).toBe("steht … auf");
+    expect(wrapper.find(".segment-reason").text()).toBe("Trennbares Verb.");
+    expect(wrapper.find(".entry-meta").text()).toContain("Deutsch · text — no card");
+  });
+
+  it("posts a tapped unit in the language of its own text, carrying that text as context", async () => {
+    await labelBehavior(EPIC.VOCABULARY_ANALYSIS, FEATURE.INPUT_AND_LANGUAGES, "Word submission");
+    apiRequest.mockImplementation(async (path) => {
+      if (path === "/api/languages") return OPTIONS;
+      if (path === "/api/words") return { entry_id: "entry-2" };
+      throw new Error(`Unexpected request: ${path}`);
+    });
+    entries.value = [textEntry()];
+    const wrapper = mount(AddView);
+    await flushPromises();
+    expect(wrapper.find("#lang").element.value).toBe("en");
+
+    await wrapper.find(".segment-label").trigger("click");
+    await flushPromises();
+
+    expect(apiRequest).toHaveBeenCalledWith("/api/words", {
+      method: "POST",
+      body: {
+        word: "aufstehen",
+        lang: "de",
+        lookup_only: false,
+        context: "Er steht jeden Morgen um sechs auf.",
+        shape: "unit",
+        request_id: expect.any(String),
+      },
+    });
+    expect(entries.value.find((entry) => entry.entry_id === "entry-2").language).toBe("Deutsch");
+  });
+
+  it("keeps the lookup-only choice when a suggested unit is tapped", async () => {
+    await labelBehavior(EPIC.VOCABULARY_ANALYSIS, FEATURE.INPUT_AND_LANGUAGES, "Word submission");
+    apiRequest.mockImplementation(async (path) => {
+      if (path === "/api/languages") return OPTIONS;
+      if (path === "/api/words") return { entry_id: "entry-2" };
+      throw new Error(`Unexpected request: ${path}`);
+    });
+    entries.value = [textEntry()];
+    const wrapper = mount(AddView);
+    await flushPromises();
+    await wrapper.find('.lookup input[type="checkbox"]').setValue(true);
+
+    await wrapper.find(".segment-label").trigger("click");
+    await flushPromises();
+
+    expect(
+      apiRequest.mock.calls.find(([path]) => path === "/api/words")[1].body.lookup_only,
+    ).toBe(true);
+  });
+
+  it("renders a suggested unit as text, so model markup can never become markup", async () => {
+    await labelBehavior(EPIC.VOCABULARY_ANALYSIS, FEATURE.ANSWER_DELIVERY, "Suggested units");
+    entries.value = [
+      textEntry([
+        {
+          label: "<img src=x onerror=alert(1)>",
+          surface: "<b>steht</b>",
+          reason: "<script>alert(2)</script>",
+        },
+      ]),
+    ];
+    const wrapper = mount(AddView);
+    await flushPromises();
+
+    const segment = wrapper.find(".segment");
+    expect(segment.find(".segment-label").text()).toBe("<img src=x onerror=alert(1)>");
+    expect(segment.html()).toContain("&lt;img src=x onerror=alert(1)&gt;");
+    expect(segment.find("img").exists()).toBe(false);
+    expect(segment.find("b").exists()).toBe(false);
+    expect(segment.find("script").exists()).toBe(false);
+  });
+
+  it("offers neither rebuild nor deeper analysis on a running-text entry", async () => {
+    await labelBehavior(EPIC.VOCABULARY_ANALYSIS, FEATURE.ANSWER_DELIVERY, "Suggested units");
+    entries.value = [textEntry()];
+    const wrapper = mount(AddView);
+    await flushPromises();
+
+    expect(wrapper.find(".rebuild").exists()).toBe(false);
+    expect(wrapper.find(".detail").exists()).toBe(false);
   });
 });

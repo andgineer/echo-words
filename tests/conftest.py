@@ -33,6 +33,8 @@ _DEFAULT_BEHAVIOR_BY_FILE: dict[str, tuple[str, str, str | None]] = {
     "test_prompt.py": (_VOCABULARY, "Answer delivery", "Prompt construction"),
     "test_release_workflows.py": (_PLATFORM, "Health and deployment", "Release pipeline"),
     "test_sanitizer.py": (_PLATFORM, "Answer delivery", "Safe answer HTML"),
+    "test_segments.py": (_VOCABULARY, "Answer delivery", "Suggested units"),
+    "test_shape.py": (_VOCABULARY, "Input and languages", "Input shape"),
     "test_swap_prep.py": (_PLATFORM, "Health and deployment", "Production deployment"),
     "test_tasks.py": (_PLATFORM, "Health and deployment", "Production deployment"),
 }
@@ -134,6 +136,8 @@ _NORMALIZATION_TESTS = frozenset(
     {
         "test_normalize_submission_strips_the_lookup_shortcut",
         "test_normalize_submission_composes_accents",
+        "test_plain_unit_drops_the_punctuation_a_shared_selection_carries",
+        "test_plain_unit_keeps_the_punctuation_that_belongs_to_the_unit",
         "test_sanitize_context_collapses_whitespace_and_control_chars",
         "test_sanitize_context_is_capped",
     },
