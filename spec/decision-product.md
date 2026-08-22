@@ -1,11 +1,10 @@
 # Decision: the settled product decisions
 
-The guard list. Every question below is answered; the answers are
-implemented by `implementation-plan.md` and described as behaviour by
-`functional-description.md`, which stays the source of truth on any
-conflict. This file exists so an executing session can check that a
-question is already closed without carrying the argument through the
-plan. **Do not re-open any of it.**
+The guard list. Every question below is answered, and the answers are
+described as behaviour by `functional-description.md`, which stays the
+source of truth on any conflict. This file exists so a session can check
+that a question is already closed without carrying the argument through
+the work again. **Do not re-open any of it.**
 
 ## Product decisions (all questions resolved — do not re-open)
 
@@ -34,7 +33,7 @@ plan. **Do not re-open any of it.**
   visible on the first review. There is deliberately no on/off setting;
   this behavior is the design, not an option.
 - Every note produces two cards: recognition (source→target) and recall
-  (target→source) — see M5. Still one note per word. The recall front
+  (target→source). Still one note per word. The recall front
   carries, per meaning, a **gapped example** — that meaning's first
   example with the word replaced by `___` — because a bare translation
   often fits several source words and the reviewer cannot tell which one
@@ -73,13 +72,13 @@ plan. **Do not re-open any of it.**
 - Answer formatting IS in v0.1: HTML `<b>`/`<i>` only, enforced by the
   server-side sanitizer — the only HTML the client ever renders.
 - Word/phrase audio only — example sentences are never voiced (final).
-- **TTS engines are settled by research, not deferred to M6**
+- **TTS engines are settled by research, not deferred**
   (`spec/decision-tts.md`): Serbian → edge-tts (Piper's lone `sr_RS`
   model is Lower Sorbian, not Serbian — never use it; no other usable
   free local voice exists); English and German → Piper. One deployment
   target (Oracle E2.1.Micro, 1 GB + swap); Kokoro left the design with
   the laptop profile. Model downloads follow the config.
-- Stats and status ARE in v0.1 (see M7).
+- Stats and status ARE in v0.1.
 - v0.1 ships **two LLM backend kinds** behind one seam, both through
   llmbroker: the free-tier model pool (fast, streaming, un-metered; the
   default) and `api` — a paid, **opt-in, never-required** single frontier
@@ -87,7 +86,7 @@ plan. **Do not re-open any of it.**
   curated catalog alias. Metered spend is bounded by
   `ECHOWORDS_API_DAILY_CAP` with automatic fallback to the free pool, so
   no metered API is ever required. Which backend is the default, and
-  which languages route to which, was fixed by the **M0 spike**
+  which languages route to which, was fixed by the **backend benchmark**
   (`spec/decision-llm-backend.md`): every v0.1 language starts on the free
   pool — measured, not guessed. A CLI coding agent is not one of the
   backends: it would need the laptop, which is not a deployment target
@@ -103,13 +102,13 @@ plan. **Do not re-open any of it.**
   counters, undo and correction state reset on restart. Losing any
   of it costs nothing, because every word that mattered is already a
   card — so there is no schema, no migrations, and nothing to back up
-  or replicate. See the "Durable state" technology row.
+  or replicate.
 - **It runs on the tenancy's second free-tier VM**, the otherwise idle
   box that holds dinary's Litestream replica — not on dinary's own VM.
   More headroom, and its own Tailscale node, so the app owns a
   hostname's root instead of negotiating an origin with a neighbouring
-  PWA. Measured comparison: `decision-deployment.md`; the rules that
-  follow: the plan's "Rules the host imposes".
+  PWA. Measured comparison, and the rules that box imposes:
+  `decision-deployment.md`.
 - **llmbroker state is its own directory, not dinary's database.**
   `home=` is already the plain-files option and is explicitly a
   disposable cache; sharing a SQLite store across processes is not
@@ -129,8 +128,10 @@ plan. **Do not re-open any of it.**
   expensive to re-derive by hand. **Ansible/Chef were considered and
   rejected** — their value is idempotency, inventory and roles, and the
   ported tasks are already idempotent while a single instance has no
-  fleet to inventory. The exclusion list is the plan's "Reuse from
-  dinary"; the rejection argument is `decision-deployment.md`.
+  fleet to inventory. What was deliberately left behind: dinary's
+  Litestream backup apparatus (there is no database to replicate), its
+  Pinia store layer, and its receipt/catalog domain. The rejection
+  argument is `decision-deployment.md`.
 - **The PWA over Tailscale is the user interface — final.** A Telegram bot
   is rejected: Tailscale gives the same zero-ops ingress, and Telegram's
   24 h buffering rescues only the card, never the answer that was wanted

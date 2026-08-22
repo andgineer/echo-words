@@ -3,7 +3,7 @@
 # `inv dev` copies it for you when that file does not exist yet.
 #
 # Required per language: name, deck, script (latin | cyrillic | latin+cyrillic).
-# Everything else is optional and documented in spec/implementation-plan.md.
+# Everything else is optional and documented in docs/src/en/configuration.md.
 
 [languages.en]
 name       = "English"

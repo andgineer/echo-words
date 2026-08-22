@@ -14,17 +14,16 @@ tool looks for.
 
 - `spec/functional-description.md` — WHAT to build. The source of truth:
   on any conflict with this file or any other document, it wins.
-- `spec/implementation-plan.md` — HOW to build it: milestones M0–M8.
-  Work is driven by its "Execution protocol" section — one milestone per
-  session, strictly in order, implementing exactly that milestone's
-  scope.
 - `spec/decision-*.md` — background for settled decisions: the guard list
   of product decisions (`decision-product.md`), the user interface
   (`decision-interface.md`, `decision-chat-interface.md`), spaced
-  repetition, TTS, the LLM backend, and the deployment host and tooling
-  (`decision-deployment.md`). They hold the reasoning and the
-  measurements so the plan can stay instructions only. Do not re-open
-  them.
+  repetition, TTS, the LLM backend, and the deployment host, its rules
+  and its tooling (`decision-deployment.md`). They hold the reasoning
+  and the measurements behind the choices. Do not re-open them.
+- There is no implementation plan any more: M0–M8 have all landed, so
+  the plan was deleted and what outlived it moved into the specs above.
+  Write a new plan file only for work that needs one, and delete it once
+  that work has landed — a plan is not an archive.
 
 ---
 
@@ -155,7 +154,7 @@ A milestone is done only when both are green.
   signatures, exact patterns, snippets, verification commands. When a
   plan's work has fully landed, its spec-worthy content moves into a spec
   file; a plan is not an archive.
-- Where the plan and the functional description disagree, the functional
+- Where a plan and the functional description disagree, the functional
   description wins, and the plan is corrected in the same commit.
 
 ---
@@ -164,9 +163,9 @@ A milestone is done only when both are green.
 
 - Deployment is `invoke` tasks run over ssh from the operator's machine:
   `inv setup-app` (one-time, idempotent), `inv deploy --ref=…`,
-  `inv status`, `inv logs`. The host, the rules it imposes, and what each
-  task does are in the plan's "Deployment" section and
-  `spec/decision-deployment.md`.
+  `inv status`, `inv logs`. The host and the rules it imposes are in
+  `spec/decision-deployment.md`; what each task does is `tasks.py`, with
+  the operator walkthrough in `docs/src/en/deploy-oracle.md`.
 - **Deploy an exact ref.** `inv deploy --ref=…` pins the ref to a single
   commit; the server checks that commit out and builds it there, so the
   local branch and any uncommitted work take no part in what ships. The

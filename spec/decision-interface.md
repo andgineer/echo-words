@@ -71,9 +71,8 @@ headless Anki integration, and the audio chain are interface-agnostic.
 - A small frontend to write and maintain. Cheaper than it looks: the
   author's `dinary` is an already-working PWA on the same Oracle shape,
   reached the same way over Tailscale, so its design system, PWA build
-  wiring and client composables are ported rather than invented (see
-  the implementation plan's "Reuse from dinary"). Streaming is the one
-  part with no precedent there.
+  wiring and client composables were ported rather than invented.
+  Streaming is the one part with no precedent there.
 - **Tailscale becomes a system dependency** on the phone, the computer,
   and the server. Its client must be connected for the app to work.
 - **iOS share sheet:** Safari does not implement Web Share Target, so

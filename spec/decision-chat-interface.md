@@ -50,8 +50,8 @@ What breaks or degrades:
 ## Operational cost
 
 Mattermost does not remove integration code (the WebSocket listener,
-channel routing, post/edit, attachments are the same volume of work as
-M1–M3 target for Telegram). What it adds is an operated stack:
+channel routing, post/edit, attachments are the same volume of work a
+Telegram integration takes). What it adds is an operated stack:
 Mattermost server + PostgreSQL upgrades/backups/migrations, a domain, a
 TLS certificate, a public login page on the internet (today the backend
 has **zero** inbound ports), and availability as our problem — "laptop

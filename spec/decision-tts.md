@@ -2,8 +2,8 @@
 
 Status: **decided 2026-07-18 — the per-language engine matrix below; do
 not re-open without new voice models appearing.** This document records
-the research behind the TTS choices in the implementation plan: which
-engine serves which language. The backend has one home, the always-on
+the research behind the TTS choices: which engine serves which
+language. The backend has one home, the always-on
 micro instance (`decision-interface.md`), so the matrix has one column
 and every engine in it must fit that host.
 
@@ -75,8 +75,8 @@ MMS-TTS (intelligible but monotone; heavy dependency tail for a backup
 role), SpeechT5-hr / Coqui `hr-cv` VITS community models (quality well
 below edge-tts), eSpeak-NG (robotic), gTTS (quality, unofficial).
 A single "universal" model does not beat a per-language pick of the
-best lightweight engine — which is the architecture the plan already
-has (`tts` per language in `languages.toml`).
+best lightweight engine — which is the architecture in place (`tts`
+per language in `languages.toml`).
 
 ### Why edge-tts is acceptable as a *primary* engine for Serbian
 
@@ -112,7 +112,7 @@ the one deployment target — the 1 GB (+ swap) micro instance:
   only covers genuine runtime errors. English pronunciation mostly comes
   from real dictionary recordings anyway, so an engine-quality gap shows
   only on words the dictionary lacks.
-- Model downloads are config-driven (M6): only engines and voices
+- Model downloads are config-driven: only engines and voices
   actually referenced by `languages.toml` are fetched — with no
   `kokoro` entry possible, the ~300 MB Kokoro model is never
   downloaded.
@@ -126,7 +126,8 @@ the one deployment target — the 1 GB (+ swap) micro instance:
   worst case is temporary "no audio" for Serbian words.
 - **1 GB is tight even without Kokoro** — the web backend + Anki pylib
   + a Piper inference peak coexist only with a swap file (1–2 GB);
-  documented as a hard setup requirement (M8 README).
+  documented as a hard setup requirement (`decision-deployment.md`,
+  the README).
 - **Future local Serbian voice** — Piper supports training custom
   voices (Common Voice has Serbian data), and community models may
   appear; if a genuine `sr_RS` voice ships, flipping Serbian to Piper

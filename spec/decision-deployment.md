@@ -1,11 +1,10 @@
 # Decision: where echo-words runs and how it gets there
 
 Background for three settled deployment decisions — which host, which
-deploy tooling, and where llmbroker keeps its state. The rules that
-follow from them live in `implementation-plan.md`'s "Deployment"
-section, which is what M6 and M8 execute; this file holds the reasoning
-and the measurements, so the plan can stay instructions only. Settled —
-do not re-open.
+deploy tooling, and where llmbroker keeps its state — and the rules
+that host imposes on whatever runs on it. What the deploy actually
+executes is `tasks.py`, with the operator's walkthrough in `docs/`.
+Settled — do not re-open.
 
 ## Which host: the second free-tier VM, not dinary's
 
@@ -37,8 +36,52 @@ explain to the browser or to iOS.
 Litestream is **not a service on VM2** — VM1 pushes files there over
 SFTP — so nothing but the OS, tailscaled and fail2ban is resident. The
 replica role costs disk, not RAM, and echo-words adds no replication
-concern of its own because it has no database (the plan's "Durable
-state" technology row).
+concern of its own because it has no database at all.
+
+## Rules the host imposes
+
+Every constraint below follows from the box rather than from a
+preference: VM2 is a 1 GB `VM.Standard.E2.1.Micro`. (The Arm `A1.Flex`
+shape — 2 OCPU / 12 GB for Always Free tenancies — is frequently
+unobtainable per region and is not assumed; where it is available it
+removes the memory constraints.)
+
+- **A swap file is a hard setup requirement.** The web backend, the
+  Anki pylib collection and a Piper inference peak coexist in 1 GB only
+  with 1–2 GB of swap behind them, and with 41 GB free the insurance is
+  cheap. Capping the journal (`SystemMaxUse=200M`) is worth doing on
+  both VMs.
+- **The unit stays memory-bounded anyway** — `MemoryHigh=400M` /
+  `MemoryMax=500M`. Not to protect a neighbour, there is none, but so a
+  runaway is killed as itself instead of taking the box down and
+  stranding dinary's replica target. The budget is ~70 MB uvicorn plus
+  the collection plus a Piper peak, and the pylib term is measured:
+  103 MB peak on this box with the real collection.
+- **Tailscale is the front door.** The backend binds `127.0.0.1:8080`
+  and `tailscale serve --bg 8080` publishes that port at the node's
+  tailnet root, so the backend itself never handles TLS or auth and
+  tailnet membership is the access control.
+- **The node keeps its `dinary-replica` tailnet name**, so the app is
+  published at `https://dinary-replica.<tailnet>.ts.net/` and dinary's
+  runbook keeps working unchanged. The odd-looking URL is seen once, at
+  install, since the PWA lives on the home screen afterwards.
+- **The host-level hardening pass belongs to this repo.** VM2 never
+  received dinary's — `rpcbind` was still running there — so setup runs
+  the host-prep pass on this box: packages, sshd hardening, fail2ban,
+  swap, and the `rpcbind`/iptables step, all ported from dinary.
+- **Outbound HTTPS to `*.ankiweb.net` must stay open.** Sync starts at
+  `sync.ankiweb.net` and is redirected to a numbered shard whose name
+  varies, so an egress rule pinned to one host would break syncing at a
+  random moment. The Anki manual documents the wildcard.
+- **The frontend is built on the server**, from the commit the deploy
+  just checked out, so `_static/` and the backend can never come from
+  two different revisions and no operator's working tree reaches the
+  VM. VM1 runs the same Rollup build for dinary's heavier PWA on
+  identical hardware next to a live uvicorn; echo-words builds 23
+  modules into 82 KB.
+- **If VM1 ever dies**, the documented recovery is to restore dinary
+  onto VM2, where the two would then share a box — an emergency
+  arrangement, and the reason the memory limits above stay in the unit.
 
 ## llmbroker state: its own directory, not dinary's database
 
@@ -72,9 +115,9 @@ files; that is fine, each process reads its own.
 
 ## Deploy tooling: invoke tasks over ssh, not Ansible/Chef
 
-Deployment is `invoke` tasks in `tasks/`, ported from dinary (the task
-set is listed in the plan's "Deploy tasks"). **Configuration management
-(Ansible, Chef, Salt) was considered and rejected** for this project:
+Deployment is `invoke` tasks in `tasks.py`, ported from dinary.
+**Configuration management (Ansible, Chef, Salt) was considered and
+rejected** for this project:
 
 - The value those tools add over shell is **idempotency, inventory and
   roles**. dinary's tasks are already idempotent by construction

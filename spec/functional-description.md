@@ -1,7 +1,7 @@
 # echo-words — Functional Description
 
-The source of truth for *what* to build. Together with
-`implementation-plan.md` this is the complete specification for the
+The source of truth for *what* to build. Together with the
+`decision-*.md` records it is the complete specification for the
 project.
 
 ## Purpose
@@ -32,8 +32,8 @@ The four requirements every design decision is weighed against:
 3. **Rich, dictionary-beating explanations from an LLM.** A plain
    dictionary answer is not enough — that is the reason this project
    exists. Free models often struggle with Serbian; which model tier
-   each language needs is settled by experiment (the M0 spike), not by
-   assumption.
+   each language needs is settled by experiment
+   (`spec/decision-llm-backend.md`), not by assumption.
 4. **LLM access goes through the author's own `llmbroker`** — its
    free-tier model pool for every answer, its paid direct client behind
    it for the times the pool is too slow and for what the user
@@ -75,7 +75,7 @@ The four requirements every design decision is weighed against:
   for by name: a deeper analysis, and rebuilding a card. The free pool is un-metered
   and the paid step is capped and optional, so **no metered API is ever
   required**. How good each step is per language was settled by a
-  benchmark that ran *before* the build (implementation plan, M0).
+  benchmark that ran *before* the build (`spec/decision-llm-backend.md`).
 - **Anki** — a server-side Anki collection maintained by the backend
   itself through the headless Anki Python library (pylib) — no Anki
   application and no AnkiConnect run next to the backend. The backend

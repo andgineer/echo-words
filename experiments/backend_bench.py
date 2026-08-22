@@ -1,8 +1,8 @@
 """M0 backend spike — which LLM backend each source language needs.
 
-Measures the two backend kinds echo-words ships (spec/implementation-plan.md,
-"M0 — LLM backend spike"): the free llmbroker pool and the paid direct client,
-over a fixed item set per source language, with the production prompt.
+Measures the two backend kinds echo-words ships (spec/decision-llm-backend.md):
+the free llmbroker pool and the paid direct client, over a fixed item set per
+source language, with the production prompt.
 
 Outside the package and outside CI: it deliberately calls real models, and the
 paid phase spends real money.
@@ -55,7 +55,7 @@ from llmbroker.direct import AsyncDirectClient  # noqa: E402
 from llmbroker.standalone.secrets import parse_env_file  # noqa: E402
 
 REPO = Path(__file__).resolve().parent.parent
-PLAN = REPO / "spec" / "implementation-plan.md"
+PROMPT_SOURCE = REPO / "src" / "echo_words" / "prompt.py"
 ENV_FILE = REPO / ".deploy" / ".env"
 PRESETS = Path(llmbroker.__file__).parent / "presets"
 
@@ -76,7 +76,7 @@ PROMPT_FILE = ""
 SLOW_ANSWER = 30.0
 
 # Display names and prompt hints exactly as the shipped languages.toml carries them
-# (spec/implementation-plan.md, "Languages configuration").
+# (languages.example.toml).
 LANGS = {
     "en": ("English", ""),
     "de": ("Deutsch", ""),
@@ -90,15 +90,15 @@ def log(msg: str) -> None:
 
 @functools.cache
 def load_template() -> str:
-    """The production prompt, read from the plan's own block — the spike must compare
-    backends, not prompts, and prompt.py itself only lands in M2. ``--prompt-file``
+    """The production prompt, read out of the shipped module as text — the spike
+    runs with --no-project and cannot import the package. ``--prompt-file``
     overrides it, which is how one prompt is measured against another."""
     if PROMPT_FILE:
         return Path(PROMPT_FILE).read_text(encoding="utf-8")
-    plan = PLAN.read_text(encoding="utf-8")
-    block = re.search(r"^```text\n(.*?)^```\n", plan, re.DOTALL | re.MULTILINE)
+    source = PROMPT_SOURCE.read_text(encoding="utf-8")
+    block = re.search(r'^_PROMPT = """(.*?)"""$', source, re.DOTALL | re.MULTILINE)
     if block is None:
-        raise RuntimeError(f"prompt template block not found in {PLAN}")
+        raise RuntimeError(f"prompt template not found in {PROMPT_SOURCE}")
     return block.group(1)
 
 

@@ -1,4 +1,4 @@
-"""Headless Anki spike — the M5 sync spike from spec/decision-spaced-repetition.md.
+"""Headless Anki spike — the sync spike from spec/decision-spaced-repetition.md.
 
 Proves that a server can maintain an Anki collection and push cards to the
 user's devices with no Anki application running anywhere: no Qt, no GUI, no

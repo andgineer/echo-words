@@ -73,7 +73,7 @@ reports are published in
 
 ## Specifications
 
-`spec/` holds the functional description, the implementation plan, and the
-decision records behind the settled choices — spaced repetition, TTS, the LLM
-backend, the interface, and the deployment host. They are not published to this
+`spec/` holds the functional description and the decision records behind the
+settled choices — spaced repetition, TTS, the LLM backend, the interface, and
+the deployment host. They are not published to this
 site. Where `spec/` and the code disagree, **the code wins**.

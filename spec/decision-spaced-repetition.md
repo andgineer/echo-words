@@ -2,15 +2,12 @@
 
 Status: **decided 2026-07-17 — adopted. AnkiConnect is replaced with
 the headless Anki Python library (pylib) syncing to AnkiWeb; the user
-keeps reviewing in AnkiDroid/AnkiMobile/desktop unchanged.** The
-functional description and the implementation plan (M5, M7) have been
-amended accordingly — see "Impact on the plan" at the end for the
-summary of what changed. **Verified end to end on 2026-08-17** on the
-target instance itself, against the real AnkiWeb account and the real
-collection: the card added by the server arrived on the phone with its
-audio. The measurements and the operating rules the verification
-produced live in the implementation plan (M5); the harness is
-`experiments/anki_headless_spike.py`.
+keeps reviewing in AnkiDroid/AnkiMobile/desktop unchanged.**
+**Verified end to end on 2026-08-17** on the target instance itself,
+against the real AnkiWeb account and the real collection: the card
+added by the server arrived on the phone with its audio. The operating
+rules that verification produced are in `decision-deployment.md`; the
+harness is `experiments/anki_headless_spike.py`.
 
 ## Why AnkiConnect is not the integration
 
@@ -56,7 +53,7 @@ Anki's own non-GUI core ships as a standalone PyPI package `anki`
 - **Runs headless.** No Qt, no display. Precedent: `apy`
   (github.com/lervag/apy) manipulates collections with pylib alone,
   no Anki installation, no running app.
-- **Full programmatic surface** — everything M5 needs from
+- **Full programmatic surface** — everything the backend needs from
   AnkiConnect exists as direct in-process calls on
   `anki.collection.Collection`: create decks and note types, add/find/
   delete notes, add media files, and **sync**:
@@ -74,7 +71,7 @@ Anki's own non-GUI core ships as a standalone PyPI package `anki`
 - **UX is fully preserved — this is the decisive property.** The
   backend maintains its own collection server-side and syncs it to
   **AnkiWeb**; the user's AnkiDroid / AnkiMobile / desktop sync from
-  AnkiWeb (M5's debounced `sync` is what carries it there). Reviews stay in the Anki apps
+  AnkiWeb (the debounced sync is what carries it there). Reviews stay in the Anki apps
   the user already knows: offline, FSRS scheduling, statistics, audio
   on the card. Nothing the user touches changes at all; only the
   invisible integration side changes.
@@ -89,9 +86,9 @@ What changes in the backend, compared to AnkiConnect:
   running" is not a state that exists: the collection is always
   available in-process, so adding a note cannot fail on connectivity.
   Only the AnkiWeb sync can fail transiently, and
-  it is already debounced and non-blocking in the plan. M7's
-  `pending_notes` machinery (queue, drain task, queued-vs-added
-  statuses) collapses; `word_log`, `/undo`, `/redo` survive unchanged
+  it is already debounced and non-blocking. The `pending_notes`
+  machinery AnkiConnect would have needed (queue, drain task,
+  queued-vs-added statuses) collapses; the word log and undo survive
   but simpler (a note is always either in the collection or not).
 
 Risks, honestly:
@@ -142,7 +139,7 @@ The scheduling itself is a solved problem — **`py-fsrs`**
 implementation, `pip install fsrs`) gives the same modern algorithm
 Anki itself now uses: `Scheduler.review_card(card, rating)` with
 Again/Hard/Good/Easy, card state serialization to dict — a natural fit
-for one SQLite table next to the ones M7 already creates. Reviews
+for one SQLite table — which the app as built does not have. Reviews
 happen **in the app's own interface**: it shows the card front (word +
 pronunciation audio), a "show answer" control, then four grading
 buttons; a daily note says how many cards are due per language. With
@@ -200,8 +197,8 @@ discussion: it is AnkiConnect's flaw made heavier.)
 
 ## Effect on pronunciation audio
 
-Leaving AnkiConnect does **not** disturb the audio pipeline — M6's
-chain (dictionary recording → local Kokoro/Piper → edge-tts) is
+Leaving AnkiConnect does **not** disturb the audio pipeline — its
+chain (dictionary recording → local Piper → edge-tts) is
 independent of the card store:
 
 - **Option B:** the mp3 goes into the server collection's media via
@@ -248,29 +245,18 @@ independent of the card store:
 pylib used headless: the backend owns a server-side collection, adds
 notes and media in-process, and syncs to AnkiWeb; the user's devices
 are untouched. This removes the GUI anchor (the original complaint),
-*reduces* net code (M7's pending queue collapses into the existing
+*reduces* net code (the pending queue collapses into the existing
 debounced sync retry), keeps every card/audio/review behavior of the
 current spec, and runs on Oracle Free Tier ARM today. Gate it with a
-half-day spike (auth + add-note-with-audio + AnkiDroid arrival), like
-M0 gates the LLM choice. Keep the self-hosted Anki sync server as the
+half-day spike (auth + add-note-with-audio + AnkiDroid arrival), the
+way the backend benchmark gates the LLM choice. Keep the self-hosted Anki sync server as the
 documented fallback if AnkiWeb auth proves fragile, and Option C as
 the deliberate product pivot to revisit only if chat-native review
 becomes a goal in itself — not as a way to avoid this integration,
 which is now cheap.
 
-## Impact on the plan (applied 2026-07-17)
+## What this decision does not settle
 
-- **Functional description:** "Backend — a single service on the
-  user's laptop, the same machine that runs Anki" becomes "a single
-  headless service (laptop or a small cloud instance)"; "Anki desktop
-  with AnkiConnect on localhost" becomes "a server-side Anki
-  collection (Anki pylib) synced to AnkiWeb"; the "Anki is not
-  running" status/queue wording reduces to a sync-pending note.
-- **Implementation plan:** M5 rewrites `anki.py` against pylib (same
-  tests, mock the collection instead of httpx); M7 drops
-  `pending_notes` (keeps `word_log`); config drops `ECHOWORDS_ANKI_URL`
-  and gains `ECHOWORDS_ANKIWEB_USER` / password (or a stored sync key)
-  — `ECHOWORDS_ANKI_SYNC` semantics survive as-is.
 - **Not decided here:** actually moving the backend off the laptop.
   B makes the backend location-independent; where it is hosted is settled
   by `decision-interface.md` — the always-on OCI micro instance, which

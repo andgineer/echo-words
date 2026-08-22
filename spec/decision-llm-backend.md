@@ -3,8 +3,8 @@
 Status: **decided 2026-08-17 — the free `llmbroker` pool is the default
 for all three v0.1 languages, including Serbian; the paid direct client
 ships as the opt-in quality tier it was designed to be, and web
-grounding is dropped from v0.1.** This document records the M0 spike
-behind those defaults. It is an input to M2.
+grounding is dropped from v0.1.** This document records the benchmark
+behind those defaults; its harness is `experiments/backend_bench.py`.
 
 ## What was measured
 
@@ -13,8 +13,8 @@ behind those defaults. It is an input to M2.
   and phrasal/separable verbs, borrowed words with a real etymology,
   misspellings that must not be silently corrected, and homonyms with
   unrelated meanings. The Serbian set mixes Cyrillic and Latin.
-- The production prompt, taken verbatim from the implementation plan,
-  with the language slots filled per item; the target language Russian.
+- The production prompt verbatim, with the language slots filled per
+  item; the target language Russian.
   Backends were compared against each other with the prompt held fixed.
 - Two load profiles, because they give opposite answers: a **burst**
   (four requests in flight, 120 answers in seven minutes) and a
@@ -117,8 +117,8 @@ demonstrating a wrong answer.
 
 ## Hypothesis 3 — web grounding: dropped from v0.1
 
-Never tested, and deliberately: the plan makes it conditional on a
-hard-language gap that grounding would be the cheapest way to close.
+Never tested, and deliberately: it was conditional on a hard-language
+gap that grounding would be the cheapest way to close.
 No such gap was found. The pool's Serbian weaknesses are morphology and
 tone-mark transcription — knowledge a search tool does not supply — and
 the paid path already covers "who wants top quality" at one config
@@ -221,8 +221,8 @@ model generation on its own.
 
 ## Decisions for v0.1
 
-- **Fallback backend kind: the free `llmbroker` pool.** Unchanged from
-  the plan's default; the spike confirms it rather than assuming it.
+- **Fallback backend kind: the free `llmbroker` pool.** The spike
+  confirms it rather than assuming it.
 - **English: the pool.** No reservation.
 - **German: the pool.** The morphology score is the weakest of the
   three languages' contract-clean results; the per-language morphology
