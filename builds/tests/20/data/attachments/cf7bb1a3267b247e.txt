@@ -1,0 +1,1 @@
+ERROR    echo_words.anki:anki.py:314 Anki sync requires manual resolution: Anki requires a one-way full sync — resolve it manually

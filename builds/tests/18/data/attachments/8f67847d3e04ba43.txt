@@ -1,0 +1,1 @@
+ERROR    echo_words.api:api.py:97 no LLM backend: BackendError: llmbroker is not usable: no module named 'llmbroker'

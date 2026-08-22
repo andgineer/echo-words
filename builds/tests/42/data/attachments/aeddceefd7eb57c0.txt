@@ -1,0 +1,2 @@
+WARNING  echo_words.audio:audio.py:119 Piper audio failed for en/'import': import of piper halted; None in sys.modules
+WARNING  echo_words.audio:audio.py:119 Piper audio failed for en/'inference': # channels not specified

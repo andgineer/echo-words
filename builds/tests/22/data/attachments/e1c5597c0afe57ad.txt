@@ -1,0 +1,1 @@
+WARNING  echo_words.audio:audio.py:145 could not prepare Piper voices: [Errno 20] Not a directory: '/tmp/pytest-of-runner/pytest-0/test_voice_preparation_degrade0/not-a-directory/models'

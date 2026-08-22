@@ -1,0 +1,1 @@
+ERROR    echo_words.api:api.py:160 no LLM backend: OSError: home is unreadable
