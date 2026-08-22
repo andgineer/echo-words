@@ -1,9 +1,6 @@
-# Anchored: an unanchored `tasks.py` also matches tests/test_tasks.py, which
-# silently dropped that file from every hook while CI still linted it.
 exclude: |
     (?x)(
       ^\.venv/|
-      ^tasks\.py$|
       ^resources/|
       ^experiments/
     )

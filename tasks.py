@@ -3,7 +3,6 @@ import os
 import shlex
 import shutil
 import sys
-import time
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -12,9 +11,8 @@ from invoke import Collection, Context, task
 
 from echo_words.config import Settings
 
-
 DOCS_PATH = Path("docs")
-DOCS_SRC_PATH = DOCS_PATH / 'src'
+DOCS_SRC_PATH = DOCS_PATH / "src"
 WEBAPP_PATH = Path("webapp")
 STATIC_PATH = Path("_static")
 LANGUAGES_EXAMPLE = Path("languages.example.toml")
@@ -24,6 +22,11 @@ REPO_URL = "https://github.com/andgineer/echo-words.git"
 REMOTE_ROOT = "/home/ubuntu/echo-words"
 REMOTE_DATA = f"{REMOTE_ROOT}/data"
 SERVICE_NAME = "echo-words"
+
+TAILSCALE_WAIT = (
+    "/bin/sh -c 'for i in $(seq 1 30); do tailscale ip -4 >/dev/null 2>&1 "
+    "&& exit 0; sleep 1; done; exit 1'"
+)
 
 SYSTEMD_UNIT = f"""\
 [Unit]
@@ -36,7 +39,7 @@ Type=simple
 User=ubuntu
 WorkingDirectory={REMOTE_ROOT}
 EnvironmentFile={REMOTE_ROOT}/.deploy/.env
-ExecStartPre=/bin/sh -c 'for i in $(seq 1 30); do tailscale ip -4 >/dev/null 2>&1 && exit 0; sleep 1; done; exit 1'
+ExecStartPre={TAILSCALE_WAIT}
 ExecStart={REMOTE_ROOT}/.venv/bin/uvicorn echo_words.api:app --host 127.0.0.1 --port 8080
 Restart=always
 RestartSec=5
@@ -70,18 +73,17 @@ def get_allowed_doc_languages():
 
     Ensure `en` is always first.
     """
-    return ['en'] + [f.name for f in DOCS_SRC_PATH.iterdir() if f.is_dir() and f.name != "en"]
+    return ["en"] + [f.name for f in DOCS_SRC_PATH.iterdir() if f.is_dir() and f.name != "en"]
 
 
 ALLOWED_DOC_LANGUAGES = get_allowed_doc_languages()
 ALLOWED_VERSION_TYPES = ["release", "bug", "feature"]
 
 
-
 @task
 def version(_c: Context):
     """Show the current version."""
-    with open("src/echo_words/__about__.py", "r") as f:
+    with open("src/echo_words/__about__.py") as f:
         version_line = f.readline()
         version_num = version_line.split('"')[1]
         print(version_num)
@@ -102,7 +104,7 @@ def reqs(c: Context):
     """Upgrade requirements including pre-commit."""
     c.run("pre-commit autoupdate")
     c.run("uv lock --upgrade")
-    
+
 
 @contextmanager
 def docs_rendered(language: str):
@@ -117,7 +119,7 @@ def docs_rendered(language: str):
     common_path = DOCS_PATH / "common"
     src_path = DOCS_SRC_PATH / language
 
-    build_docs_path = Path('build') / "docs"
+    build_docs_path = Path("build") / "docs"
     build_config_path = build_docs_path / "mkdocs.yml"
     build_src_path = build_docs_path / "src" / language
     site_dir = Path("site") if language == "en" else Path("site") / language
@@ -143,6 +145,7 @@ def docs_task_factory(language: str):
             port = 8001
             c.run(f"open -a 'Google Chrome' http://127.0.0.1:{port}")
             c.run(f"zensical serve --config-file {config_copy_path} --dev-addr localhost:{port}")
+
     return docs
 
 
@@ -202,13 +205,13 @@ def _deploy_host() -> str:
         raise RuntimeError(
             f"Missing {DEPLOY_ENV}. Copy {DEPLOY_ENV_EXAMPLE} to it and set "
             "ECHOWORDS_DEPLOY_HOST to the VM's ssh destination, for example "
-            "ubuntu@203.0.113.10."
+            "ubuntu@203.0.113.10.",
         )
     host = (dotenv_values(DEPLOY_ENV).get("ECHOWORDS_DEPLOY_HOST") or "").strip()
     if not host or "<" in host:
         raise RuntimeError(
             f"Set ECHOWORDS_DEPLOY_HOST in {DEPLOY_ENV} to the VM's ssh destination, "
-            "for example ubuntu@203.0.113.10."
+            "for example ubuntu@203.0.113.10.",
         )
     return host
 
@@ -447,18 +450,18 @@ def _status_script() -> str:
         "tailscale serve status; "
         f"systemctl show {SERVICE_NAME} -p MemoryCurrent -p MemoryHigh -p MemoryMax; "
         f"main_pid=$(systemctl show {SERVICE_NAME} --value -p MainPID); "
-        "if [ \"$main_pid\" -gt 0 ] && [ -r \"/proc/$main_pid/status\" ]; then "
-        "awk '$1 == \"VmRSS:\" { print \"ProcessVmRSSBytes=\" $2 * 1024 } "
-        "$1 == \"VmHWM:\" { print \"ProcessVmHWMBytes=\" $2 * 1024 }' "
-        "\"/proc/$main_pid/status\"; "
+        'if [ "$main_pid" -gt 0 ] && [ -r "/proc/$main_pid/status" ]; then '
+        'awk \'$1 == "VmRSS:" { print "ProcessVmRSSBytes=" $2 * 1024 } '
+        '$1 == "VmHWM:" { print "ProcessVmHWMBytes=" $2 * 1024 }\' '
+        '"/proc/$main_pid/status"; '
         "else echo ProcessVmRSSBytes=unavailable; echo ProcessVmHWMBytes=unavailable; fi; "
         f"control_group=$(systemctl show {SERVICE_NAME} --value -p ControlGroup); "
-        "if [ -z \"$control_group\" ] || [ \"$control_group\" = / ]; then "
+        'if [ -z "$control_group" ] || [ "$control_group" = / ]; then '
         "echo 'Service control group unavailable; refusing to read root memory.peak' >&2; "
         "exit 1; fi; "
         "peak_file=/sys/fs/cgroup${control_group}/memory.peak; "
         "if sudo test -r \"$peak_file\"; then printf 'CGroupMemoryPeak='; "
-        "sudo cat \"$peak_file\"; else echo CGroupMemoryPeak=unsupported; fi; "
+        'sudo cat "$peak_file"; else echo CGroupMemoryPeak=unsupported; fi; '
         "echo 'Recent dinary replica files:'; "
         "if sudo test -d /var/lib/litestream; then "
         "sudo find /var/lib/litestream -type f -printf '%TY-%Tm-%Td %TH:%TM %p\\n' "
@@ -489,8 +492,12 @@ def _ensure_languages_config():
     print(f"Created {target} from {LANGUAGES_EXAMPLE} — edit it to taste.")
 
 
-@task(help={"port": "TCP port to listen on (default 8080).",
-            "rebuild": "Rebuild _static/ from webapp/ before starting."})
+@task(
+    help={
+        "port": "TCP port to listen on (default 8080).",
+        "rebuild": "Rebuild _static/ from webapp/ before starting.",
+    },
+)
 def dev(c: Context, port=8080, rebuild=False):
     """Run the web app locally with uvicorn --reload (http://127.0.0.1:<port>).
 
@@ -515,8 +522,10 @@ def test(c: Context):
     if (WEBAPP_PATH / "node_modules").is_dir():
         c.run(f"npm --prefix {WEBAPP_PATH} run test")
     else:
-        print(f"Skipped the frontend tests: {WEBAPP_PATH}/node_modules is missing "
-              f"(inv build-static installs it).")
+        print(
+            f"Skipped the frontend tests: {WEBAPP_PATH}/node_modules is missing "
+            f"(inv build-static installs it).",
+        )
 
 
 namespace = Collection.from_module(sys.modules[__name__])

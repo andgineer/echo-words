@@ -47,9 +47,9 @@ include = [ "README.md", "LICENSE",]
 
 [tool.ruff]
 line-length = 100
-# tasks.py and the experiments/ spikes are outside the product: the harnesses
-# deliberately import non-dependencies and are never shipped or CI-tested.
-exclude = ["tasks.py", "resources", "experiments"]
+# The experiments/ spikes are outside the product: they deliberately import
+# non-dependencies and are never shipped or CI-tested.
+exclude = ["resources", "experiments"]
 
 [tool.ruff.lint]
 select = [
