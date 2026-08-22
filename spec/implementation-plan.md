@@ -1496,7 +1496,11 @@ submission goes straight through with no picker.
   reality. Also confirm **dinary's replication still lands** on this
   box after the host-prep pass — it is the same machine that receives
   its Litestream files.
-- **README**: the deploy flow above; the **Tailscale setup** (join,
+- **User documentation** lives in `docs/` (mkdocs, English and Russian
+  side by side) and is published to GitHub Pages; the README is a landing
+  page — pitch, screenshots, a link to the site, and a collapsed
+  developer section. The documentation covers: the deploy flow above; the
+  **Tailscale setup** (join,
   `tailscale serve --bg 8080`; the app is tailnet-only by design), "Add to
   Home Screen" on iOS, the optional iOS Shortcut that POSTs share-sheet
   text to `/api/words` (recipe, one paragraph), the `languages.toml`

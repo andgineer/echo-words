@@ -14,11 +14,6 @@ plugins:
   - awesome-pages
   - search:
       lang: LANGUAGE
-  - mkdocstrings:
-        handlers:
-          python:
-            options:
-              show_root_heading: true
 
 markdown_extensions:
   - abbr
@@ -43,3 +38,8 @@ extra:
 nav:
   - index.md
   - installation.md
+  - configuration.md
+  - pwa-install.md
+  - deploy-oracle.md
+  - operations.md
+  - development.md

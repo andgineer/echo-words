@@ -26,6 +26,7 @@ from echo_words.config import Settings
 from echo_words.config import settings as default_settings
 from echo_words.events import EventHub
 from echo_words.history import Entry
+from echo_words.i18n import pick_locale
 from echo_words.languages import (
     MAX_CONTEXT_LENGTH,
     MAX_WORD_LENGTH,
@@ -39,7 +40,7 @@ from echo_words.languages import (
 from echo_words.pipeline import WordPipeline
 
 # Transport guards only, kept far above the real limits so that the short
-# Russian hints stay the rejection a user actually meets.
+# localized hints stay the rejection a user actually meets.
 _MAX_WORD_INPUT = MAX_WORD_LENGTH * 4
 _MAX_CONTEXT_INPUT = MAX_CONTEXT_LENGTH * 4
 _MAX_LANG_INPUT = 32
@@ -218,9 +219,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:  # noqa: C901, PLR0
 
     @app.post("/api/words")
     async def submit_word(request: Request, submission: WordSubmission) -> SubmissionAccepted:
-        language = _resolve_language(request.app.state.languages, submission.lang)
+        locale = pick_locale(request.headers.get("accept-language"))
+        language = _resolve_language(request.app.state.languages, submission.lang, locale)
         word, lookup_only = normalize_submission(submission.word, submission.lookup_only)
-        hint = validate_word(word, language)
+        hint = validate_word(word, language, locale)
         if hint:
             raise HTTPException(status_code=400, detail=hint)
         context = sanitize_context(submission.context)
@@ -279,7 +281,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:  # noqa: C901, PLR0
 
     @app.post("/api/languages/{code}/undo")
     async def undo_word(request: Request, code: str) -> dict[str, object]:
-        language = _resolve_language(request.app.state.languages, code)
+        locale = pick_locale(request.headers.get("accept-language"))
+        language = _resolve_language(request.app.state.languages, code, locale)
         word = await request.app.state.pipeline.undo(language)
         if word is None:
             return {"undone": False, "message": "nothing to undo"}
@@ -325,10 +328,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:  # noqa: C901, PLR0
     return app
 
 
-def _resolve_language(languages: dict[str, Language], code: str) -> Language:
+def _resolve_language(languages: dict[str, Language], code: str, locale: str) -> Language:
     language = languages.get(code)
     if language is None:
-        raise HTTPException(status_code=400, detail=unknown_language_hint(code))
+        raise HTTPException(status_code=400, detail=unknown_language_hint(code, locale))
     return language
 
 

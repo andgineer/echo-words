@@ -378,13 +378,13 @@ def test_status_reports_a_healthy_pool(monkeypatch: pytest.MonkeyPatch, settings
 def test_unknown_language_gets_a_hint_and_no_processing(client: TestClient):
     response = submit(client, word="bonjour", lang="fr")
     assert response.status_code == 400
-    assert response.json()["detail"] == "Неизвестный язык «fr» — выберите язык из списка."
+    assert response.json()["detail"] == "Unknown language “fr” — pick one from the list."
 
 
 def test_the_word_is_validated_for_the_selected_language(client: TestClient):
     response = submit(client, word="слово", lang="en")
     assert response.status_code == 400
-    assert response.json()["detail"] == "Для «English» нужна латиница."
+    assert response.json()["detail"] == "“English” needs the Latin script."
 
 
 def test_serbian_takes_cyrillic(client: TestClient):
@@ -401,13 +401,25 @@ def test_an_absurd_body_is_refused_before_the_hints(client: TestClient):
 def test_a_merely_long_word_still_gets_the_short_hint(client: TestClient):
     response = submit(client, word="a" * (MAX_WORD_LENGTH + 1))
     assert response.status_code == 400
-    assert response.json()["detail"].startswith("Слишком длинно")
+    assert response.json()["detail"].startswith("Too long")
 
 
 def test_empty_word_gets_a_hint(client: TestClient):
     response = submit(client, word="   ")
     assert response.status_code == 400
-    assert response.json()["detail"] == "Введите слово."
+    assert response.json()["detail"] == "Enter a word."
+
+
+def test_hints_follow_the_interface_language(client: TestClient):
+    russian = {"Accept-Language": "ru-RU,ru;q=0.9"}
+    word = client.post("/api/words", json={"lang": "en", "word": "слово"}, headers=russian)
+    assert word.json()["detail"] == "Для «English» нужна латиница."
+
+    language = client.post("/api/words", json={"lang": "fr", "word": "bonjour"}, headers=russian)
+    assert language.json()["detail"] == "Неизвестный язык «fr» — выберите язык из списка."
+
+    undo = client.post("/api/languages/fr/undo", headers=russian)
+    assert undo.json()["detail"] == "Неизвестный язык «fr» — выберите язык из списка."
 
 
 def test_built_page_is_served_at_the_root(client: TestClient):

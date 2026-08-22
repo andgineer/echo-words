@@ -29,8 +29,8 @@ describe("StatsView", () => {
     const wrapper = mount(StatsView);
     await flushPromises();
 
-    expect(wrapper.text()).toContain("Сегодня: 2");
-    expect(wrapper.text()).toContain("Всего: 10");
-    expect(wrapper.text()).toContain("После запуска: дублей 3, без карточки 1");
+    expect(wrapper.text()).toContain("Today: 2");
+    expect(wrapper.text()).toContain("All time: 10");
+    expect(wrapper.text()).toContain("Since startup: 3 duplicates, 1 without a card");
   });
 });

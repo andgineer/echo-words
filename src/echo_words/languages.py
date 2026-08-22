@@ -5,6 +5,8 @@ import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 
+from echo_words.i18n import DEFAULT_LOCALE, message
+
 MAX_WORD_LENGTH = 50
 MAX_CONTEXT_LENGTH = 500
 
@@ -17,16 +19,8 @@ _ALLOWED_SCRIPTS: dict[str, frozenset[str]] = {
     "latin+cyrillic": frozenset({LATIN, CYRILLIC}),
 }
 
-_SCRIPT_HINT = {
-    LATIN: "латиница",
-    CYRILLIC: "кириллица",
-    "latin+cyrillic": "латиница или кириллица",
-}
-
 # Word-internal punctuation the languages in scope actually use.
 _EXTRA_WORD_CHARS = frozenset(" -'’")
-
-_NON_LETTER_HINT = "Только буквы, пробел, дефис и апостроф."
 
 _REQUIRED_FIELDS = ("name", "deck", "script")
 
@@ -99,16 +93,16 @@ def sanitize_context(text: str) -> str:
     return " ".join(unicodedata.normalize("NFC", printable).split())[:MAX_CONTEXT_LENGTH]
 
 
-def validate_word(word: str, language: Language) -> str | None:
+def validate_word(word: str, language: Language, locale: str = DEFAULT_LOCALE) -> str | None:
     """Return a short hint for the user when the word is unusable, or ``None`` when it is fine."""
     if not word:
-        return "Введите слово."
+        return message("word.empty", locale)
     if len(word) > MAX_WORD_LENGTH:
-        return f"Слишком длинно: не больше {MAX_WORD_LENGTH} символов."
-    return _validate_script(word, language)
+        return message("word.too_long", locale, limit=MAX_WORD_LENGTH)
+    return _validate_script(word, language, locale)
 
 
-def _validate_script(word: str, language: Language) -> str | None:
+def _validate_script(word: str, language: Language, locale: str) -> str | None:
     allowed = _ALLOWED_SCRIPTS[language.script]
     seen: set[str] = set()
     for char in word:
@@ -116,14 +110,16 @@ def _validate_script(word: str, language: Language) -> str | None:
         if script is None:
             if char in _EXTRA_WORD_CHARS:
                 continue
-            return _script_hint(language) if char.isalpha() else _NON_LETTER_HINT
+            if char.isalpha():
+                return _script_hint(language, locale)
+            return message("word.non_letter", locale)
         if script not in allowed:
-            return _script_hint(language)
+            return _script_hint(language, locale)
         seen.add(script)
     if not seen:
-        return "Введите слово."
+        return message("word.empty", locale)
     if len(seen) > 1:
-        return "Не смешивайте латиницу и кириллицу в одном слове."
+        return message("word.mixed_scripts", locale)
     return None
 
 
@@ -136,9 +132,14 @@ def _letter_script(char: str) -> str | None:
     return None
 
 
-def _script_hint(language: Language) -> str:
-    return f"Для «{language.name}» нужна {_SCRIPT_HINT[language.script]}."
+def _script_hint(language: Language, locale: str) -> str:
+    return message(
+        "word.script",
+        locale,
+        language=language.name,
+        script=message(f"script.{language.script}", locale),
+    )
 
 
-def unknown_language_hint(code: str) -> str:
-    return f"Неизвестный язык «{code}» — выберите язык из списка."
+def unknown_language_hint(code: str, locale: str = DEFAULT_LOCALE) -> str:
+    return message("language.unknown", locale, code=code)

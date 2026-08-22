@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { apiRequest } from "../src/api/_request.js";
+import { locale } from "../src/i18n/index.js";
 import { EPIC, FEATURE, labelBehavior } from "./allure-taxonomy.js";
 
 beforeEach(async () => {
@@ -12,6 +13,7 @@ beforeEach(async () => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  locale.value = "en";
 });
 
 function mockFetch(status, body, contentLength = null) {
@@ -39,8 +41,20 @@ describe("apiRequest", () => {
 
     expect(fetch).toHaveBeenCalledWith("/api/words", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Accept-Language": "en", "Content-Type": "application/json" },
       body: JSON.stringify({ word: "receive" }),
+    });
+  });
+
+  it("asks the backend for hints in the interface language", async () => {
+    const fetch = mockFetch(200, []);
+    locale.value = "ru";
+
+    await apiRequest("/api/languages");
+
+    expect(fetch).toHaveBeenCalledWith("/api/languages", {
+      method: "GET",
+      headers: { "Accept-Language": "ru" },
     });
   });
 
@@ -54,10 +68,10 @@ describe("apiRequest", () => {
   });
 
   it("uses a string detail from the backend", async () => {
-    mockFetch(400, { detail: "Введите слово." });
+    mockFetch(400, { detail: "Enter a word." });
 
     await expect(apiRequest("/api/words")).rejects.toMatchObject({
-      message: "Введите слово.",
+      message: "Enter a word.",
       status: 400,
     });
   });

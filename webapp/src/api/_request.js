@@ -1,7 +1,9 @@
+import { locale } from "../i18n/index.js";
+
 export async function apiRequest(path, { method = "GET", body } = {}) {
-  const init = { method };
+  const init = { method, headers: { "Accept-Language": locale.value } };
   if (body !== undefined) {
-    init.headers = { "Content-Type": "application/json" };
+    init.headers["Content-Type"] = "application/json";
     init.body = JSON.stringify(body);
   }
   const resp = await fetch(path, init);

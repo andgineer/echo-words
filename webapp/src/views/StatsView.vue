@@ -1,7 +1,9 @@
 <script setup>
 import { onMounted, ref } from "vue";
 import { apiRequest } from "../api/_request.js";
+import { useI18n } from "../i18n/index.js";
 
+const { t } = useI18n();
 const stats = ref(null);
 const error = ref("");
 
@@ -17,14 +19,14 @@ onMounted(async () => {
 <template>
   <p v-if="error" class="error">{{ error }}</p>
   <section v-if="stats" class="card">
-    <h2>Статистика</h2>
+    <h2>{{ t("stats.title") }}</h2>
     <article v-for="(item, code) in stats.languages" :key="code" class="row">
       <h3>{{ item.name }}</h3>
-      <p>Сегодня: {{ item.today }}</p>
-      <p>За 7 дней: {{ item.last_7_days }}</p>
-      <p>Всего: {{ item.all_time }}</p>
+      <p>{{ t("stats.today", { count: item.today }) }}</p>
+      <p>{{ t("stats.last7Days", { count: item.last_7_days }) }}</p>
+      <p>{{ t("stats.allTime", { count: item.all_time }) }}</p>
       <p class="muted">
-        После запуска: дублей {{ item.duplicates }}, без карточки {{ item.lookup_only }}
+        {{ t("stats.sinceStart", { duplicates: item.duplicates, lookupOnly: item.lookup_only }) }}
       </p>
     </article>
   </section>

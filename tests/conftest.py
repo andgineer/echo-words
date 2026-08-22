@@ -24,6 +24,7 @@ _DEFAULT_BEHAVIOR_BY_FILE: dict[str, tuple[str, str, str | None]] = {
     "test_card.py": (_VOCABULARY, "Card extraction", "Card payload validation"),
     "test_config.py": (_PLATFORM, "Configuration and lifecycle", "Settings"),
     "test_echo_words.py": (_PLATFORM, "Configuration and lifecycle", "CLI startup"),
+    "test_i18n.py": (_PLATFORM, "Interface language", None),
     "test_languages.py": (_VOCABULARY, "Input and languages", None),
     "test_llm_backend.py": (_VOCABULARY, "LLM cascade", "Free pool attempt"),
     "test_events.py": (_PLATFORM, "Answer delivery", "Event fan-out"),
@@ -67,6 +68,7 @@ _STORY_BY_FILE_AND_TEST: dict[tuple[str, str], str] = {
     ("test_api.py", "test_context_is_capped"): "Word submission",
     ("test_api.py", "test_question_mark_prefix_means_lookup_only"): "Lookup-only submission",
     ("test_api.py", "test_lookup_only_flag_is_honored"): "Lookup-only submission",
+    ("test_api.py", "test_hints_follow_the_interface_language"): "Interface language",
     ("test_backend.py", "test_a_completed_pool_answer_never_touches_the_paid_client"): (
         "Cascade routing"
     ),

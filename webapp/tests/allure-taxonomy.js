@@ -23,6 +23,7 @@ export const FEATURE = Object.freeze({
   CONFIGURATION_AND_LIFECYCLE: "Configuration and lifecycle",
   API_CLIENT: "API client",
   PWA_RESILIENCE: "PWA resilience",
+  INTERFACE_LANGUAGE: "Interface language",
   HEALTH_AND_DEPLOYMENT: "Health and deployment",
 });
 

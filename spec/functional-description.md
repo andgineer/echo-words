@@ -433,9 +433,13 @@ to be last.
   single **target** language for all explanations and translations
   (Russian by default), both set in configuration. Adding a language is
   a config change (a languages-table entry), not a code change. The
-  target-language setting exists app-wide, but v0.1's UI strings and
-  prompt scaffolding are Russian — changing the target language changes
-  the answer language, not the interface language.
+  **interface language** is a separate, per-device choice between English
+  and Russian, offered in the app's header and defaulting to English. It
+  covers the app's own strings and the input hints the backend returns to
+  that request, and it never changes the target language. Prompt
+  scaffolding and everything the backend streams into the shared history —
+  card statuses and the analysis itself — follow the target language,
+  because that history is broadcast to every client at once.
 - **Accent**: applies to English audio (dictionary recording choice and
   TTS voice), set per language in configuration; American by default.
   Never two recordings per card.

@@ -4,12 +4,14 @@ import { apiRequest } from "../api/_request.js";
 import { upsertEntry } from "../composables/useEntries.js";
 import { useEventStream } from "../composables/useEventStream.js";
 import { useLanguage } from "../composables/useLanguage.js";
+import { useI18n } from "../i18n/index.js";
 import {
   enqueueWord,
   isRetryableWordError,
   withRequestId,
 } from "../composables/useResendQueue.js";
 
+const { t } = useI18n();
 const { languages, selected, loadLanguages } = useLanguage();
 const { entries, start: startEventStream, stop: stopEventStream } = useEventStream();
 
@@ -102,7 +104,7 @@ async function sendWord(submittedWord, submittedLookupOnly, context = "") {
       lookupOnly.value = false;
       picker.value = null;
       await nextTick();
-      hint.value = "Нет связи — слово сохранено и будет отправлено позже.";
+      hint.value = t("add.queued");
     } else {
       hint.value = e.message;
     }
@@ -125,7 +127,7 @@ async function undo() {
   if (!selected.value) return;
   try {
     const result = await apiRequest(`/api/languages/${selected.value}/undo`, { method: "POST" });
-    hint.value = result.undone ? `Удалено: ${result.word}` : "Нечего отменять";
+    hint.value = result.undone ? t("add.undone", { word: result.word }) : t("add.nothingToUndo");
   } catch (e) {
     hint.value = e.message;
   }
@@ -135,7 +137,7 @@ async function undo() {
 <template>
   <section class="card">
     <div class="form-group">
-      <label for="lang">Язык</label>
+      <label for="lang">{{ t("add.language") }}</label>
       <select id="lang" v-model="selected">
         <option v-for="lang in languages" :key="lang.code" :value="lang.code">
           {{ lang.name }}
@@ -144,7 +146,7 @@ async function undo() {
     </div>
 
     <div class="form-group">
-      <label for="word">Слово или выражение</label>
+      <label for="word">{{ t("add.word") }}</label>
       <input
         id="word"
         v-model="word"
@@ -152,20 +154,20 @@ async function undo() {
         autocomplete="off"
         autocapitalize="none"
         spellcheck="false"
-        placeholder="слово"
+        :placeholder="t('add.wordPlaceholder')"
         @keyup.enter="submit"
       />
     </div>
 
     <label class="lookup">
       <input v-model="lookupOnly" type="checkbox" />
-      Только посмотреть — без карточки в Anki
+      {{ t("add.lookupOnly") }}
     </label>
 
-    <button class="btn btn-primary" :disabled="busy" @click="submit">Разобрать</button>
+    <button class="btn btn-primary" :disabled="busy" @click="submit">{{ t("add.submit") }}</button>
 
     <div v-if="picker" class="picker">
-      <p>Какое слово разобрать?</p>
+      <p>{{ t("add.pick") }}</p>
       <button
         v-for="(token, index) in picker.tokens"
         :key="`${token}-${index}`"
@@ -177,13 +179,13 @@ async function undo() {
       </button>
     </div>
 
-    <button class="btn-inline undo" @click="undo">Отменить последнее</button>
+    <button class="btn-inline undo" @click="undo">{{ t("add.undo") }}</button>
 
     <p v-if="hint" class="hint">{{ hint }}</p>
   </section>
 
   <section class="answers">
-    <p v-if="!entries.length" class="empty">Здесь появятся разборы слов.</p>
+    <p v-if="!entries.length" class="empty">{{ t("add.empty") }}</p>
     <article v-for="entry in entries" :key="entry.entry_id" class="card entry">
       <p v-if="entry.status === 'pending' && !entry.text" class="entry-head">
         ⏳ <b>{{ entry.word }}</b> …
@@ -212,47 +214,37 @@ async function undo() {
           class="btn-inline correction"
           @click="entryAction(entry, 'switch')"
         >
-          {{ entry.correction_reversed ? "↩︎ Вернуть" : "✏️ Исправить на" }}
-          «{{ entry.suggestion }}»
+          {{
+            entry.correction_reversed
+              ? t("add.revert", { word: entry.suggestion })
+              : t("add.correct", { word: entry.suggestion })
+          }}
         </button>
         <button class="btn-inline rebuild" @click="entryAction(entry, 'rebuild')">
-          Пересобрать карточку
+          {{ t("add.rebuild") }}
         </button>
         <button
           class="btn-inline detail"
           :disabled="!entry.detail_available || !!entry.detail_html"
           @click="entryAction(entry, 'detail')"
         >
-          {{ entry.detail_html ? "Подробный разбор готов" : "Подробнее" }}
+          {{ entry.detail_html ? t("add.detailReady") : t("add.detail") }}
         </button>
       </div>
       <p class="entry-meta">
-        {{ entry.language }}<span v-if="entry.model"> · {{ entry.model }}</span><span v-if="entry.lookup_only"> · без карточки</span>
+        {{ entry.language }}<span v-if="entry.model"> · {{ entry.model }}</span><span v-if="entry.lookup_only"> · {{ t("add.noCard") }}</span>
       </p>
     </article>
   </section>
 
   <section class="about">
     <button class="btn-inline about-toggle" @click="helpOpen = !helpOpen">
-      {{ helpOpen ? "Свернуть" : "Что это и как пользоваться" }}
+      {{ helpOpen ? t("add.aboutHide") : t("add.aboutShow") }}
     </button>
     <div v-if="helpOpen" class="about-text">
-      <p>
-        echo-words разбирает слово или выражение на выбранном языке: перевод,
-        значения, употребление, происхождение и примеры — и сам добавляет
-        компактную карточку в Anki, чтобы слово попало в повторения.
-      </p>
-      <p>
-        <b>Только посмотреть.</b> Галочка рядом с полем ввода даёт разбор и
-        произношение, но карточку не создаёт. То же самое делает <b>?</b> перед
-        словом: «? слово».
-      </p>
-      <p>
-        <b>✏️ Исправить.</b> Слово всегда разбирается ровно так, как введено, и
-        именно так попадает в карточку. Если оно похоже на опечатку, под разбором
-        появится кнопка ✏️ с исправленным написанием — разбор повторится для
-        него, и вернуться обратно можно одним нажатием.
-      </p>
+      <p v-html="t('add.aboutIntro')"></p>
+      <p v-html="t('add.aboutLookup')"></p>
+      <p v-html="t('add.aboutCorrection')"></p>
     </div>
   </section>
 </template>

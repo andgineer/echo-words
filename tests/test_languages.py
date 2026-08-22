@@ -135,36 +135,51 @@ def test_valid_words_pass(languages, code, word):
 
 def test_cyrillic_is_rejected_for_english(languages):
     hint = validate_word("слово", languages["en"])
-    assert hint == "Для «English» нужна латиница."
+    assert hint == "“English” needs the Latin script."
 
 
 def test_serbian_accepts_both_scripts_but_not_mixed(languages):
     assert validate_word("Beograd", languages["sr"]) is None
     assert validate_word("Београд", languages["sr"]) is None
-    assert validate_word("Beoград", languages["sr"]) == (
-        "Не смешивайте латиницу и кириллицу в одном слове."
-    )
+    assert validate_word("Beoград", languages["sr"]) == "Do not mix Latin and Cyrillic in one word."
 
 
 def test_digits_and_punctuation_are_rejected(languages):
-    assert validate_word("word42", languages["en"]) == "Только буквы, пробел, дефис и апостроф."
-    assert validate_word("word!", languages["en"]) == "Только буквы, пробел, дефис и апостроф."
+    hint = "Letters, spaces, hyphens and apostrophes only."
+    assert validate_word("word42", languages["en"]) == hint
+    assert validate_word("word!", languages["en"]) == hint
 
 
 def test_a_letter_of_another_script_names_the_script(languages):
-    assert validate_word("λόγος", languages["en"]) == "Для «English» нужна латиница."
+    assert validate_word("λόγος", languages["en"]) == "“English” needs the Latin script."
 
 
 def test_empty_input_is_rejected(languages):
-    assert validate_word("", languages["en"]) == "Введите слово."
-    assert validate_word("- -", languages["en"]) == "Введите слово."
+    assert validate_word("", languages["en"]) == "Enter a word."
+    assert validate_word("- -", languages["en"]) == "Enter a word."
 
 
 def test_too_long_input_is_rejected(languages):
     hint = validate_word("a" * (MAX_WORD_LENGTH + 1), languages["en"])
-    assert hint == f"Слишком длинно: не больше {MAX_WORD_LENGTH} символов."
+    assert hint == f"Too long: no more than {MAX_WORD_LENGTH} characters."
     assert validate_word("a" * MAX_WORD_LENGTH, languages["en"]) is None
 
 
 def test_unknown_language_hint_names_the_code():
-    assert "«fr»" in unknown_language_hint("fr")
+    assert "“fr”" in unknown_language_hint("fr")
+    assert "«fr»" in unknown_language_hint("fr", "ru")
+
+
+def test_every_hint_has_a_russian_wording(languages):
+    assert validate_word("", languages["en"], "ru") == "Введите слово."
+    assert validate_word("word!", languages["en"], "ru") == (
+        "Только буквы, пробел, дефис и апостроф."
+    )
+    assert validate_word("λόγος", languages["en"], "ru") == "Для «English» нужна латиница."
+    assert validate_word("сloud", languages["en"], "ru") == "Для «English» нужна латиница."
+    assert validate_word("Beogradу", languages["sr"], "ru") == (
+        "Не смешивайте латиницу и кириллицу в одном слове."
+    )
+    assert validate_word("a" * (MAX_WORD_LENGTH + 1), languages["en"], "ru") == (
+        f"Слишком длинно: не больше {MAX_WORD_LENGTH} символов."
+    )

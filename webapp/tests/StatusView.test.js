@@ -51,16 +51,16 @@ describe("StatusView", () => {
     await flushPromises();
 
     expect(wrapper.text()).toContain("LLM: 1/2");
-    expect(wrapper.text()).toContain("ограниченный резерв");
-    expect(wrapper.text()).toContain("есть несинхронизированные изменения");
-    expect(wrapper.text()).toContain("Нужна ручная односторонняя синхронизация Anki");
+    expect(wrapper.text()).toContain("limited fallback");
+    expect(wrapper.text()).toContain("unsynced changes");
+    expect(wrapper.text()).toContain("A manual one-way Anki sync is required");
     expect(wrapper.text()).toContain("FREE_KEY — get a free key");
     expect(wrapper.text()).toContain("PAID_KEY — get a paid key");
     expect(wrapper.text()).toContain("gpt-fast");
-    expect(wrapper.text()).toContain("недоступна: the paid model is missing PAID_KEY");
-    expect(wrapper.text()).toContain("Последний вызов: ошибка · free-flash");
+    expect(wrapper.text()).toContain("unavailable: the paid model is missing PAID_KEY");
+    expect(wrapper.text()).toContain("Last call: failed · free-flash");
     expect(wrapper.text()).toContain("timeout");
-    expect(wrapper.text()).toContain("Ошибка синхронизации: sync failed");
-    expect(wrapper.text()).toContain("Последняя синхронизация:");
+    expect(wrapper.text()).toContain("Sync error: sync failed");
+    expect(wrapper.text()).toContain("Last sync:");
   });
 });

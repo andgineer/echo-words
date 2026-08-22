@@ -34,9 +34,9 @@ afterEach(() => {
 });
 
 describe("AddView", () => {
-  it("documents a Shortcut matcher that trims token-edge punctuation", () => {
-    const readme = readFileSync("../README.md", "utf8");
-    const documentedPattern = readme.match(/Use \*\*Match Text\*\* with\s+`([^`]+)`/u)?.[1];
+  it.each(["en", "ru"])("documents a Shortcut matcher that trims token-edge punctuation (%s)", (locale) => {
+    const page = readFileSync(`../docs/src/${locale}/pwa-install.md`, "utf8");
+    const documentedPattern = page.match(/\*\*Match Text\*\*[^`]*```\n\s*(.+?)\n\s*```/su)?.[1];
     expect(documentedPattern).toBe(String.raw`\p{L}(?:[\p{L}\p{N}'’-]*[\p{L}\p{N}])?`);
 
     const shortcutMatcher = new RegExp(documentedPattern, "gu");
@@ -60,8 +60,8 @@ describe("AddView", () => {
     ]);
     expect(wrapper.find("#word").exists()).toBe(true);
     expect(wrapper.find('.lookup input[type="checkbox"]').exists()).toBe(true);
-    expect(wrapper.text()).toContain("Только посмотреть");
-    expect(wrapper.text()).toContain("Здесь появятся разборы слов");
+    expect(wrapper.text()).toContain("Look up only");
+    expect(wrapper.text()).toContain("Word analyses will appear here");
   });
 
   it("submits the selected language and lookup-only flag, then renders the pending entry", async () => {
@@ -91,7 +91,7 @@ describe("AddView", () => {
       },
     });
     expect(wrapper.find(".entry-head").text()).toContain("Straße");
-    expect(wrapper.find(".entry-meta").text()).toContain("Deutsch · без карточки");
+    expect(wrapper.find(".entry-meta").text()).toContain("Deutsch · no card");
     expect(wrapper.find("#word").element.value).toBe("");
     expect(wrapper.find('.lookup input[type="checkbox"]').element.checked).toBe(false);
   });
@@ -99,7 +99,7 @@ describe("AddView", () => {
   it("shows a backend validation hint without creating an entry", async () => {
     apiRequest.mockImplementation(async (path) => {
       if (path === "/api/languages") return OPTIONS;
-      throw new Error("Для «English» нужна латиница.");
+      throw new Error("“English” needs the Latin script.");
     });
     const wrapper = mount(AddView);
     await flushPromises();
@@ -108,7 +108,7 @@ describe("AddView", () => {
     await wrapper.find(".btn-primary").trigger("click");
     await flushPromises();
 
-    expect(wrapper.find(".hint").text()).toBe("Для «English» нужна латиница.");
+    expect(wrapper.find(".hint").text()).toBe("“English” needs the Latin script.");
     expect(wrapper.find(".entry").exists()).toBe(false);
   });
 
@@ -133,7 +133,7 @@ describe("AddView", () => {
     });
     const posted = apiRequest.mock.calls.find(([path]) => path === "/api/words")[1].body;
     expect(saved[0].body.request_id).toBe(posted.request_id);
-    expect(wrapper.find(".hint").text()).toContain("будет отправлено позже");
+    expect(wrapper.find(".hint").text()).toContain("will be sent later");
     expect(wrapper.find("#word").element.value).toBe("");
   });
 
@@ -196,9 +196,9 @@ describe("AddView", () => {
 
     await wrapper.find(".about-toggle").trigger("click");
 
-    expect(wrapper.find(".about-text").text()).toContain("? слово");
-    expect(wrapper.find(".about-text").text()).toContain("✏️ Исправить");
-    expect(wrapper.find(".about-text").text()).toContain("вернуться обратно");
+    expect(wrapper.find(".about-text").text()).toContain("“? word”");
+    expect(wrapper.find(".about-text").text()).toContain("✏️ Correct");
+    expect(wrapper.find(".about-text").text()).toContain("brings the original back");
   });
 
   it("offers every word in a phrase and posts only after a choice", async () => {
@@ -270,7 +270,7 @@ describe("AddView", () => {
   it("passes punctuation on a direct single-word submission to server validation", async () => {
     apiRequest.mockImplementation(async (path) => {
       if (path === "/api/languages") return OPTIONS;
-      if (path === "/api/words") throw new Error("Недопустимая пунктуация.");
+      if (path === "/api/words") throw new Error("Letters, spaces, hyphens and apostrophes only.");
       throw new Error(`Unexpected request: ${path}`);
     });
     const wrapper = mount(AddView);
@@ -289,7 +289,7 @@ describe("AddView", () => {
         request_id: expect.any(String),
       },
     });
-    expect(wrapper.find(".hint").text()).toBe("Недопустимая пунктуация.");
+    expect(wrapper.find(".hint").text()).toBe("Letters, spaces, hyphens and apostrophes only.");
   });
 
   it("clears phrase choices when input, language or lookup-only changes", async () => {
@@ -349,7 +349,7 @@ describe("AddView", () => {
     const wrapper = mount(AddView);
     await flushPromises();
 
-    expect(wrapper.find(".correction").text()).toContain("✏️ Исправить на «receive»");
+    expect(wrapper.find(".correction").text()).toContain("✏️ Correct to “receive”");
     expect(wrapper.find(".rebuild").exists()).toBe(true);
     expect(wrapper.find(".detail").element.disabled).toBe(false);
     expect(wrapper.find(".entry-meta").text()).toContain("English · free-flash");
