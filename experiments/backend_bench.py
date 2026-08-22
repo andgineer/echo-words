@@ -43,13 +43,14 @@ import statistics
 import sys
 import time
 import tomllib
+import unicodedata
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
 import llmbroker  # noqa: E402
-from bench_items import ITEMS  # noqa: E402
+from bench_items import COLLOCATIONS, ITEMS, SENTENCES  # noqa: E402
 from llmbroker import AsyncBroker  # noqa: E402
 from llmbroker.direct import AsyncDirectClient  # noqa: E402
 from llmbroker.standalone.secrets import parse_env_file  # noqa: E402
@@ -62,7 +63,15 @@ PRESETS = Path(llmbroker.__file__).parent / "presets"
 CARD_DELIM = "===CARD==="
 MAX_ANALYSIS = 3500
 MAX_MEANINGS = 3
+MAX_SEGMENTS = 5
 ALLOWED_TAGS = {"b", "i"}
+# Shapes whose items are running text and take the sentence prompt, not the card one.
+SENTENCE_SHAPES = {"sentence"}
+# languages.py, ported: a segment label is LLM output that one tap turns into a
+# canonical word, so it is held to the same rule as typed input or it is dropped.
+SCRIPTS = {"en": {"latin"}, "de": {"latin"}, "sr": {"latin", "cyrillic"}}
+EXTRA_WORD_CHARS = frozenset(" -\u2019'")
+MAX_WORD_LENGTH = 50
 # Target language: the code, the display name filling the prompt slot, and the
 # function words that decide whether an answer actually came back in it.
 TARGETS = {
@@ -72,6 +81,8 @@ TARGETS = {
 }
 TARGET = "ru"
 PROMPT_FILE = ""
+SENTENCE_PROMPT_FILE = str(Path(__file__).parent / "prompts" / "sentence-v1.txt")
+AS_SENTENCE = False
 # The functional description's whole-answer budget; past it the answer is late, not lost.
 SLOW_ANSWER = 30.0
 
@@ -89,10 +100,16 @@ def log(msg: str) -> None:
 
 
 @functools.cache
-def load_template() -> str:
+def load_template(kind: str = "vocab") -> str:
     """The production prompt, read out of the shipped module as text — the spike
     runs with --no-project and cannot import the package. ``--prompt-file``
-    overrides it, which is how one prompt is measured against another."""
+    overrides it, which is how one prompt is measured against another.
+
+    Templates are format strings, exactly as the shipped module uses them, so a
+    literal brace in a hand-written one is doubled like everywhere else.
+    """
+    if kind == "sentence":
+        return Path(SENTENCE_PROMPT_FILE).read_text(encoding="utf-8")
     if PROMPT_FILE:
         return Path(PROMPT_FILE).read_text(encoding="utf-8")
     source = PROMPT_SOURCE.read_text(encoding="utf-8")
@@ -102,15 +119,18 @@ def load_template() -> str:
     return block.group(1)
 
 
-def build_prompt(word: str, lang: str) -> str:
+def build_prompt(word: str, lang: str, shape: str = "") -> str:
+    """Render exactly what production renders — ``.format``, not ``.replace``:
+    the template's JSON schema doubles its braces, and a plain replace ships
+    those doubled braces to the model instead of the schema they stand for."""
     source_lang, hints = LANGS[lang]
-    return (
-        load_template()
-        .replace("{source_lang}", source_lang)
-        .replace("{target_lang}", TARGETS[TARGET][0])
-        .replace("{source_hints}", hints)
-        .replace("{context_note}", "")
-        .replace("{word}", word)
+    kind = "sentence" if AS_SENTENCE or shape in SENTENCE_SHAPES else "vocab"
+    return load_template(kind).format(
+        source_lang=source_lang,
+        target_lang=TARGETS[TARGET][0],
+        source_hints=hints,
+        context_note="",
+        word=word,
     )
 
 
@@ -250,6 +270,106 @@ def answer_language(text: str) -> str:
     return best if counts[best] else "?"
 
 
+def normalize_unit(text: str) -> str:
+    return " ".join(unicodedata.normalize("NFC", str(text)).casefold().split()).strip(" .,;:!?\u2026")
+
+
+def same_unit(label: str, variant: str) -> bool:
+    """A chip is right when it names the unit; a dictionary form that carries an extra
+    reflexive or a governed preposition still names it, so containment counts — but only
+    when the shorter side is long enough for containment to mean anything."""
+    a, b = normalize_unit(label), normalize_unit(variant)
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+    short, long_ = (a, b) if len(a) <= len(b) else (b, a)
+    return len(short) >= 4 and short in long_  # noqa: PLR2004
+
+
+def letter_script(char: str) -> str | None:
+    name = unicodedata.name(char, "")
+    if name.startswith("LATIN "):
+        return "latin"
+    if name.startswith("CYRILLIC "):
+        return "cyrillic"
+    return None
+
+
+def word_hint(word: str, lang: str) -> str | None:
+    """languages.validate_word, ported — returns why the input is unusable, or None."""
+    word = unicodedata.normalize("NFC", word).strip()
+    if not word:
+        return "empty"
+    if len(word) > MAX_WORD_LENGTH:
+        return "too long"
+    allowed, seen = SCRIPTS[lang], set()
+    for char in word:
+        script = letter_script(char)
+        if script is None:
+            if char in EXTRA_WORD_CHARS:
+                continue
+            return "script" if char.isalpha() else "non-letter"
+        if script not in allowed:
+            return "script"
+        seen.add(script)
+    if not seen:
+        return "empty"
+    return "mixed scripts" if len(seen) > 1 else None
+
+
+def score_segments(word: str, lang: str, text: str, expected: list) -> dict:
+    """The sentence-mode contract: the chip row the frontend would be able to draw."""
+    analysis, payload = split_answer(text)
+    obj, error = parse_json_object(payload)
+    problems: list[str] = []
+    labels: list[str] = []
+    surfaces: list[str] = []
+    if obj is None:
+        problems.append(error)
+    else:
+        raw = obj.get("segments")
+        if not isinstance(raw, list):
+            problems.append("segments missing or not a list")
+            raw = []
+        if len(raw) > MAX_SEGMENTS:
+            problems.append(f"{len(raw)} segments (max {MAX_SEGMENTS})")
+        for index, segment in enumerate(raw):
+            if not isinstance(segment, dict):
+                problems.append(f"segment {index} is not an object")
+                continue
+            label = segment.get("label")
+            if not isinstance(label, str) or not label.strip():
+                problems.append(f"segment {index}: no label")
+                continue
+            labels.append(label.strip())
+            surfaces.append(str(segment.get("surface", "")))
+    bad = [(lbl, word_hint(lbl, lang)) for lbl in labels]
+    dropped = [lbl for lbl, hint in bad if hint is not None]
+    hits = [
+        next((lbl for lbl in labels if any(same_unit(lbl, v) for v in group)), None)
+        for group in expected
+    ]
+    return {
+        "delimiter": CARD_DELIM in text,
+        "analysis_chars": len(analysis),
+        "over_length": len(analysis) > MAX_ANALYSIS,
+        "format_problems": html_violations(analysis),
+        "answer_lang": answer_language(analysis),
+        "segments_ok": not problems,
+        "segment_problems": problems,
+        "n_segments": len(labels),
+        "labels": labels,
+        "surfaces": surfaces,
+        "split_marked": sum(1 for s in surfaces if "\u2026" in s or "..." in s),
+        "expected_total": len(expected),
+        "expected_found": sum(1 for hit in hits if hit),
+        "first_is_expected": bool(hits) and bool(hits[0]) and labels[:1] == [hits[0]],
+        "labels_valid": len(labels) - len(dropped),
+        "labels_dropped": dropped,
+    }
+
+
 def score_run(word: str, text: str) -> dict:
     analysis, payload = split_answer(text)
     card, error = parse_json_object(payload)
@@ -309,6 +429,9 @@ class Run:
     text: str = ""
     metrics: dict = field(default_factory=dict)
     judge: dict = field(default_factory=dict)
+    expected: list = field(default_factory=list)
+    sentence_mode: bool = False
+    kind: str = ""
 
 
 async def drain(stream, run: Run) -> None:
@@ -329,9 +452,20 @@ async def drain(stream, run: Run) -> None:
 
 
 def finish(run: Run) -> Run:
-    if run.text:
+    if not run.text:
+        return run
+    if run.sentence_mode:
+        run.metrics = score_segments(run.word, run.lang, run.text, run.expected)
+    else:
         run.metrics = score_run(run.word, run.text)
     return run
+
+
+SENTENCE_EXPECTED = {
+    (lang, text): [list(group) for group in expected]
+    for lang, rows in SENTENCES.items()
+    for text, expected, _kind in rows
+}
 
 
 def out_path(out: Path, phase: str) -> Path:
@@ -355,6 +489,11 @@ def read_runs(out: Path, phases: list[str]) -> list[Run]:
                 continue
             run = Run(**json.loads(line))
             # Re-score on read: the metrics move as the harness learns, the text does not.
+            # The expectation is part of what moves — a fixture that named a unit by a
+            # form no dictionary uses is a bug in the fixture, not an answer to re-buy.
+            expected = SENTENCE_EXPECTED.get((run.lang, run.word))
+            if expected is not None:
+                run.expected = expected
             runs.append(finish(run))
     return runs
 
@@ -375,11 +514,29 @@ def stratified(items: list[tuple[str, str]], limit: int) -> list[tuple[str, str]
     return [item for item in items if item in picked]
 
 
-def selected(args) -> list[tuple[str, str, str]]:
-    jobs = []
+Job = tuple[str, str, str, list, bool, str]
+
+
+def selected(args) -> list[Job]:
+    """(lang, text, shape, expected, sentence_mode) for everything the filters admit.
+
+    ``expected`` is the unit list a sentence answer must surface; for an item run
+    through the sentence prompt on purpose (--as-sentence) the expectation is the
+    item itself, which is how the recovery path for a misrouted fixed expression
+    is measured.
+    """
+    wanted = set(args.shapes)
+    jobs: list[Job] = []
     for lang in args.lang:
         for word, shape in stratified(ITEMS[lang], args.limit):
-            jobs.append((lang, word, shape))
+            if shape in wanted:
+                jobs.append((lang, word, shape, [[word]] if AS_SENTENCE else [], AS_SENTENCE, ""))
+        for word, shape in COLLOCATIONS.get(lang, []):
+            if shape in wanted:
+                jobs.append((lang, word, shape, [[word]] if AS_SENTENCE else [], AS_SENTENCE, ""))
+        if "sentence" in wanted:
+            for text, expected, kind in SENTENCES.get(lang, []):
+                jobs.append((lang, text, "sentence", [list(g) for g in expected], True, kind))
     return jobs
 
 
@@ -391,13 +548,18 @@ async def run_pool(args, out: Path) -> None:
     gate = asyncio.Semaphore(args.concurrency)
     pacer = Pacer(args.pace)
 
-    async def one(lang: str, word: str, shape: str) -> None:
-        run = Run(phase=phase, lang=lang, word=word, shape=shape, model="pool")
+    async def one(  # noqa: PLR0913
+        lang: str, word: str, shape: str, expected: list, sentence: bool, kind: str,
+    ) -> None:
+        run = Run(
+            phase=phase, lang=lang, word=word, shape=shape, model="pool",
+            expected=expected, sentence_mode=sentence, kind=kind,
+        )
         await pacer.wait()
         async with gate:
             handle = broker.stream(
-                build_prompt(word, lang),
-                operation=f"vocab-{lang}",
+                build_prompt(word, lang, shape),
+                operation=f"{'sentence' if sentence else 'vocab'}-{lang}",
                 wait=args.wait,
             )
             try:
@@ -419,7 +581,8 @@ async def run_pool(args, out: Path) -> None:
 
 async def stream_direct(client: AsyncDirectClient, run: Run, timeout: float) -> None:
     try:
-        await drain(client.stream(build_prompt(run.word, run.lang), timeout=timeout), run)
+        prompt = build_prompt(run.word, run.lang, run.shape)
+        await drain(client.stream(prompt, timeout=timeout), run)
     except Exception as exc:  # noqa: BLE001 - a dead model is a result, not a crash
         run.error = f"{type(exc).__name__}: {exc}"
 
@@ -432,8 +595,14 @@ async def run_direct(args, out: Path, phase: str, targets: list[tuple[str, dict]
     gate = asyncio.Semaphore(args.concurrency)
     pacer = Pacer(args.pace)
 
-    async def one(name: str, spec: dict, lang: str, word: str, shape: str) -> None:
-        run = Run(phase=phase, lang=lang, word=word, shape=shape, model=name, answered_by=name)
+    async def one(  # noqa: PLR0913
+        name: str, spec: dict, lang: str, word: str, shape: str,
+        expected: list, sentence: bool, kind: str,
+    ) -> None:
+        run = Run(
+            phase=phase, lang=lang, word=word, shape=shape, model=name, answered_by=name,
+            expected=expected, sentence_mode=sentence, kind=kind,
+        )
         await pacer.wait()
         client = AsyncDirectClient(
             base_url=spec["base_url"],
@@ -624,10 +793,75 @@ def group(runs: list[Run], by_answerer: bool = False) -> dict[tuple[str, str, st
     return grouped
 
 
+def summarize_segments(runs: list[Run]) -> dict:
+    ok = [r for r in runs if not r.error and r.text]
+    totals = [r.t_total for r in ok if r.t_total]
+    wanted = [r for r in ok if r.metrics.get("expected_total")]
+    plain = [r for r in ok if r.kind == "plain"]
+    labels = sum(r.metrics.get("n_segments", 0) for r in ok)
+    return {
+        "n": len(runs),
+        "failed": len(runs) - len([r for r in runs if not r.error]),
+        "json_ok": sum(1 for r in ok if r.metrics.get("segments_ok")),
+        "answered": len(ok),
+        "format_ok": sum(1 for r in ok if not r.metrics.get("format_problems")),
+        "on_target": sum(1 for r in ok if r.metrics.get("answer_lang") == TARGET),
+        "labels": labels,
+        "labels_valid": sum(r.metrics.get("labels_valid", 0) for r in ok),
+        "split_marked": sum(r.metrics.get("split_marked", 0) for r in ok),
+        "want": sum(r.metrics["expected_total"] for r in wanted),
+        "found": sum(r.metrics["expected_found"] for r in wanted),
+        "first": sum(1 for r in wanted if r.metrics.get("first_is_expected")),
+        "first_of": len(wanted),
+        "noise": sum(r.metrics.get("n_segments", 0) for r in plain),
+        "noise_of": len(plain),
+        "total_p50": round(statistics.median(totals), 2) if totals else 0,
+        "total_p90": round(quantile(totals, 0.9), 2),
+    }
+
+
+def report_segments(runs: list[Run]) -> None:
+    """The sentence-mode table: the chip row, not the card."""
+    rows = [r for r in runs if r.sentence_mode]
+    if not rows:
+        return
+    grouped: dict[tuple[str, str, str, str], list[Run]] = {}
+    for run in rows:
+        grouped.setdefault((run.phase, run.model, run.lang, run.kind or "-"), []).append(run)
+    header = (
+        f"\n{'phase':22} {'model':16} {'lg':3} {'kind':7} {'n':>3} {'fail':>5} {'json':>6} "
+        f"{'fmt':>6} {'lang':>6} {'valid':>6} {'found':>6} {'first':>6} "
+        f"{'chips':>6} {'split':>6} {'p50':>6} {'p90':>6}"
+    )
+    print(header)
+    print("-" * (len(header) - 1))
+    for (phase, model, lang, kind), group_rows in sorted(grouped.items()):
+        s = summarize_segments(group_rows)
+        chips = f"{s['labels'] / s['answered']:6.1f}" if s["answered"] else "     -"
+        print(
+            f"{phase:22} {model:16} {lang:3} {kind:7} {s['n']:3} {s['failed']:5} "
+            f"{pct(s['json_ok'], s['answered'])} {pct(s['format_ok'], s['answered'])} "
+            f"{pct(s['on_target'], s['answered'])} {pct(s['labels_valid'], s['labels'])} "
+            f"{pct(s['found'], s['want'])} {pct(s['first'], s['first_of'])} "
+            f"{chips} {s['split_marked']:6} {s['total_p50']:6.2f} {s['total_p90']:6.2f}",
+        )
+    print("\njson = valid segments payload, valid = labels passing validate_word,")
+    print("found = expected units surfaced, first = expected unit came back as chip #1,")
+    print("chips = mean segments per answer, split = surfaces marked as torn apart.")
+    noise = [r for r in rows if r.kind == "plain" and not r.error and r.text]
+    if noise:
+        mean = sum(r.metrics.get("n_segments", 0) for r in noise) / len(noise)
+        print(f"negative control: {mean:.1f} chips per trap-free sentence ({len(noise)} runs)")
+
+
 def report(out: Path, phases: list[str], by_answerer: bool = False) -> None:
     runs = read_runs(out, phases)
     if not runs:
         raise SystemExit(f"nothing recorded under {out}")
+    report_segments(runs)
+    runs = [r for r in runs if not r.sentence_mode]
+    if not runs:
+        return
     header = (
         f"{'phase':6} {'model':30} {'lg':3} {'n':>4} {'fail':>5} {'nil':>4} {'card':>6} {'fmt':>6} "
         f"{'word':>6} {'lang':>6} {'typo':>6} {'slow':>6} "
@@ -698,7 +932,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--judge", default="gpt", help="judge: paid alias doing the scoring")
     parser.add_argument("--phases", nargs="+", default=["pool", "free", "paid"])
     parser.add_argument("--sample", type=int, default=0, help="judge: cap the judged runs")
-    parser.add_argument("--shapes", nargs="+", default=list({s for _, s in ITEMS["en"]}))
+    parser.add_argument(
+        "--shapes",
+        nargs="+",
+        default=sorted({s for _, s in ITEMS["en"]} | {"collocation"}),
+        help="item shapes to run; 'sentence' pulls in the SENTENCES fixtures",
+    )
     parser.add_argument("--concurrency", type=int, default=3)
     parser.add_argument(
         "--pace",
@@ -708,6 +947,17 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--tag", default="", help="record under this phase name instead")
     parser.add_argument("--prompt-file", default="", help="use this template instead of the plan's")
+    parser.add_argument(
+        "--sentence-prompt-file",
+        default=SENTENCE_PROMPT_FILE,
+        help="sentence-mode template; swap it with --tag to measure one revision against another",
+    )
+    parser.add_argument(
+        "--as-sentence",
+        action="store_true",
+        help="force the sentence template on ordinary items — measures whether a fixed "
+        "expression misrouted into sentence mode comes back as its own first chip",
+    )
     parser.add_argument(
         "--target",
         default="ru",
@@ -728,9 +978,10 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
-    global TARGET, PROMPT_FILE  # noqa: PLW0603 - one process, one target and one prompt
+    global TARGET, PROMPT_FILE, SENTENCE_PROMPT_FILE, AS_SENTENCE  # noqa: PLW0603
     args = parse_args()
     TARGET, PROMPT_FILE = args.target, args.prompt_file
+    SENTENCE_PROMPT_FILE, AS_SENTENCE = args.sentence_prompt_file, args.as_sentence
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     if args.phase == "report":

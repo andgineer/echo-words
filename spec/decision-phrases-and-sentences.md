@@ -1,0 +1,178 @@
+# Phrases and sentences — decision
+
+Status: **decided 2026-08-22 — a multi-word input is analysed whole, running
+text is translated and explained instead of being carded, and the backend
+decides which of the two an input is.** This document records the benchmark
+behind those defaults; its harness is `experiments/backend_bench.py` and its
+fixtures are `experiments/bench_items.py` and `experiments/route.py`.
+
+## The problem
+
+Words do not always come one at a time. A collocation is a unit whose parts
+cannot be looked up separately, because the mapping between languages is not
+word-for-word: Russian «ездить на велосипеде» takes a preposition, German
+`Rad fahren` and Serbian `voziti bicikl` take a bare object. Asking which of
+those words the user meant has no good answer.
+
+Running text is a second shape again. What the reader wants there is the
+sentence rendered whole and the hard parts named — above all the units whose
+pieces stand apart, which no amount of word-by-word lookup will reach: a German
+separable prefix stranded at the clause end, a Serbian reflexive particle
+sitting in second position far from its verb.
+
+## What was measured
+
+- **Routing**, without any model: 147 labelled inputs over German and Serbian —
+  every benchmark word and collocation, every sentence fixture, plus an
+  adversarial middle of clauses short enough to look like lexemes and fixed
+  expressions long enough to look like clauses.
+- **Sentence mode**, 21 sentences over the two languages, each carrying the
+  units its answer is expected to surface, so the score is objective rather
+  than a judge's opinion. The fixtures are graded: units torn apart in the
+  surface, units merely inflected away from their dictionary form, and
+  trap-free sentences that serve as the negative control.
+- **The recovery path**, 32 fixed expressions pushed through the sentence
+  prompt on purpose — the misroute this design has to survive.
+- **Collocations as notes**, 16 non-idiomatic collocations through the
+  vocabulary prompt.
+- All of it on the free pool, paced as one person, under the production
+  complete-answer budget. The Serbian set mixes both scripts.
+
+## Multi-word input was never the model's problem
+
+160 multi-word runs were already on record from the backend benchmark, all of
+them idioms: the card contract came back clean on the paced pool in every
+language. The 16 non-idiomatic collocations added here scored 16 of 16 usable
+notes, formatting clean, the input echoed unchanged. German `Rad fahren` comes
+back as a unit, with «ездить на велосипеде» as its first translation and the
+compound-spelling trap named.
+
+So the gap was never the model's willingness to treat a phrase as one thing.
+It was that the interface refused to send one.
+
+## Sentence mode: the pool is sufficient
+
+21 sentences, German and Serbian, on the free pool:
+
+| measure | result |
+|---|---|
+| suggested-unit payload valid | 100% |
+| expected unit surfaced | 100% |
+| expected unit offered first | 95% |
+| suggested forms usable as a word | 100% |
+| formatting clean, answer on target | 100% |
+| trap-free sentence | 0 suggestions |
+| whole answer, median / p90 | 1.2 s / 1.6 s |
+
+Every torn-apart unit was found: `aufstehen` out of *steht … auf*, `ausfallen`
+out of *fällt … aus*, `in Frage kommen` out of *kommt … in Frage*, `вратити се`
+out of *се … вратио*, `јавити се` out of *ми се … јавио*. The negative control
+is the result that matters most for the interface: on a sentence with nothing
+hard in it the model returns nothing rather than padding the list, so the
+suggestions are signal instead of decoration.
+
+The one case not offered first was Serbian *Данас ми се уопште не иде на посао*,
+where the model led with `ићи на посао` and put the impersonal reflexive second.
+Both are worth a look; the order is a preference, not an error.
+
+Latency is not a concern: a sentence answer is longer than a word answer and
+still lands an order of magnitude inside the budget.
+
+## Routing: the middle band is irreducible, and that is the finding
+
+A sentence never becomes a note, so the router decides whether the deck is
+touched at all. Its two errors are not symmetric, and the sweep over the
+labelled fixtures separates them:
+
+- Every sentence that arrives **looking like** a sentence — terminal or
+  internal punctuation, or more than a handful of words — routes correctly at
+  every setting. The path is never missed for text that reads as text.
+- Every error in either direction lives in one band: two to five words, no
+  punctuation. There, the two classes are indistinguishable by any surface
+  signal. German `von Zeit zu Zeit` and `Ich habe keine Zeit` are the same
+  length, the same shape, and opposite answers. No threshold separates them,
+  and none is defensible over another on accuracy alone.
+
+What settles it is the measured cost of each error. A fixed expression pushed
+into sentence mode comes back as its own first suggestion in **28 of 29** cases,
+so the recovery is one tap. A short clause pushed into lexeme mode becomes a
+note fronted with something like *Ich habe keine Zeit* or *Не знам* — a
+phrasebook card a learner would want. Neither error is expensive; both grow
+expensive with length, which is the one thing the threshold does control.
+
+So the boundary sits just above the longest fixed expressions that are common
+in practice and just below the length at which a clause stops making a usable
+card. Set lower, it taxes idioms — the app's whole subject — with an extra tap
+each. Set higher, it starts carding throwaway sentences. The rule:
+
+- A single word is always analysed as a word, whatever punctuation trails it.
+- Any sentence punctuation — a terminal mark, or a comma, semicolon, colon or
+  dash inside — makes it running text.
+- Anything longer than the canonical-word limit is running text.
+- More than four words is running text.
+- Everything else is analysed whole, as one unit.
+
+The single miss in the recovery arm is Serbian «не пада ми на памет», returned
+as `не падати на памет`: the model gave the dictionary form rather than the
+inflected one it was handed. As the front of a note that is the better of the
+two.
+
+## What a sentence answer is, and what it is not
+
+- **A sentence never produces a note.** A whole clause on the front of a card
+  is unreviewable, duplicate detection over it is meaningless — a paraphrase is
+  a new card — and the reverse card would have to mask the entire sentence.
+  The deck stays a dictionary.
+- The answer is the text rendered whole in the target language, then a short
+  list of what is hard **in this particular text**: a construction, the word
+  order, a case or a mood, a set expression, a word that is not what it looks
+  like. Not a word-by-word walk-through.
+- Alongside it the backend returns the units worth learning whole, most useful
+  first and few in number. Each carries the form a dictionary would list, how
+  it actually appears in the text — with the pieces shown apart when they stand
+  apart — and one line on why it is worth a look.
+- **A suggested unit is one tap from being a canonical word**, so it is held to
+  exactly the rule a typed word is held to, and one that would have been
+  refused had the user typed it is dropped and never offered. This is the same
+  guard the spelling suggestion already lives under, for the same reason.
+- Tapping one is an ordinary submission of that unit, carrying the sentence as
+  its context. The note it makes is fronted with the dictionary form, not with
+  the sentence.
+
+## The shape of the input is decided by the backend
+
+Not by the app. The share-sheet path posts straight to the API, so a rule that
+lived in the frontend would have to be written twice and would drift; today it
+already is, and the iOS Shortcut carries a hand-built copy of the app's word
+picker. With the decision behind the API that whole apparatus collapses into
+posting the shared text.
+
+The alternative — asking the user which shape they meant before answering — was
+rejected. It charges a tap on every multi-word input, including the long pasted
+prose where choosing from a dozen words is worst, to prevent errors that are
+measurably cheap. Letting the model decide inside a single branching call was
+rejected too: it doubles a prompt that Serbian already strains, it hands the
+deck-safety decision to the model, and the shape stays unknown until the answer
+finishes streaming.
+
+## A Serbian artefact worth knowing about
+
+One Serbian answer in 34 mixed both scripts inside a single word (*возiti*) and
+leaked a Serbian word into the target-language prose. It stayed in the prose:
+no card payload and no suggested unit was affected, and the word rule rejects a
+mixed-script form anyway. It is consistent with the pool's known Serbian
+weaknesses (`decision-llm-backend.md`) and is not a reason to move the language
+to a metered backend.
+
+## What would re-open this
+
+- A revision of either prompt: these numbers are prompt-bound, and the
+  sentence prompt in particular was measured in its first revision because the
+  first revision passed.
+- The pool's primary model changing: the whole sentence arm was answered by it,
+  and the measured fallbacks are not equivalent.
+- Suggested units turning out to be ignored in practice. The negative control
+  says they are not padding, but only use says whether they are tapped.
+
+The harness is outside CI, calls real models, and its paid phase spends real
+money.
