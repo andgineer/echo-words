@@ -20,8 +20,13 @@
   --font: system-ui, -apple-system, sans-serif;
 
   --field: rgba(255, 255, 255, 0.04);
+  --field-deep: rgba(0, 0, 0, 0.18);
   --border: rgba(255, 255, 255, 0.08);
   --border-strong: rgba(255, 255, 255, 0.12);
+
+  --nav-words: var(--accent);
+  --nav-stats: #818cf8;
+  --nav-status: #22d3ee;
 }
 
 * {

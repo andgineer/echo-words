@@ -2,6 +2,7 @@ export default {
   "nav.words": "Words",
   "nav.stats": "Stats",
   "nav.status": "Status",
+  "nav.label": "Navigation",
   "nav.locale": "Interface language",
 
   "add.language": "Language",

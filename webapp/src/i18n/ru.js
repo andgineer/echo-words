@@ -2,6 +2,7 @@ export default {
   "nav.words": "Слова",
   "nav.stats": "Статистика",
   "nav.status": "Состояние",
+  "nav.label": "Навигация",
   "nav.locale": "Язык интерфейса",
 
   "add.language": "Язык",

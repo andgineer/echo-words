@@ -69,13 +69,13 @@ describe("interface language", () => {
   it("switches the whole interface from the header selector", async () => {
     const wrapper = mount(App);
     await flushPromises();
-    expect(wrapper.find("nav").text()).toContain("Words");
+    expect(wrapper.get('[data-testid="nav-add"]').attributes("aria-label")).toBe("Words");
     expect(wrapper.text()).toContain("Analyse");
 
     await wrapper.find("select.locale").setValue("ru");
     await flushPromises();
 
-    expect(wrapper.find("nav").text()).toContain("Слова");
+    expect(wrapper.get('[data-testid="nav-add"]').attributes("aria-label")).toBe("Слова");
     expect(wrapper.text()).toContain("Разобрать");
     expect(wrapper.text()).toContain("Только посмотреть");
     expect(wrapper.text()).not.toContain("Analyse");

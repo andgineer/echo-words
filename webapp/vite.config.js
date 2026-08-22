@@ -1,6 +1,7 @@
 import { defineConfig } from "vite";
 import vue from "@vitejs/plugin-vue";
 import { VitePWA } from "vite-plugin-pwa";
+import { readAppVersion } from "./build-version.js";
 
 // Workbox PWA strategy, taken from dinary:
 //
@@ -53,6 +54,9 @@ export default defineConfig({
       },
     }),
   ],
+  define: {
+    __APP_VERSION__: JSON.stringify(readAppVersion()),
+  },
   build: {
     outDir: "../_static",
     emptyOutDir: true,

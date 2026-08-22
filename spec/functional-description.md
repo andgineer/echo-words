@@ -404,6 +404,10 @@ Kept minimal — everything beyond typing a word:
   text, which produced no card to rebuild.
 - **Status view** — backend health, AnkiWeb sync state (last result,
   whether unsynced changes are waiting).
+- **Version in the header** — the version of the build the page is
+  running, beside the app name. It comes from the package version baked
+  into the bundle at build time, so a page still served from the PWA
+  cache after a deploy can be told apart from the freshly deployed one.
 - **Stats view** — how many words were added today, over the last
   7 days, and in total, broken down by source language; these are
   counted from the Anki collection itself, so they are accurate
