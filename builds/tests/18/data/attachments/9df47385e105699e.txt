@@ -1,2 +1,0 @@
-WARNING  echo_words.audio:audio.py:172 dictionary audio failed for en/'word-503': Server error '503 Service Unavailable' for url 'https://api.dictionaryapi.dev/api/v2/entries/en/word-503'
-For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/503
