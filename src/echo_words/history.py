@@ -17,6 +17,7 @@ class Entry:
     action: str = "pending"
     analysis_html: str = ""
     audio_file: str | None = None
+    context_audio_file: str | None = None
     suggestion: str | None = None
     shown_spelling: str = ""
     context: str = ""
@@ -51,6 +52,10 @@ class Entry:
         return f"/api/audio/{self.audio_file}" if self.audio_file else None
 
     @property
+    def context_audio_url(self) -> str | None:
+        return f"/api/audio/{self.context_audio_file}" if self.context_audio_file else None
+
+    @property
     def status(self) -> str:
         if self.action == "pending":
             return "pending"
@@ -63,6 +68,7 @@ class Entry:
         value["created_at"] = self.created_at.isoformat() if self.created_at else None
         value["text"] = self.analysis_html
         value["audio_url"] = self.audio_url
+        value["context_audio_url"] = self.context_audio_url
         value["status"] = self.status
         return value
 

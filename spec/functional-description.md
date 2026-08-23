@@ -167,7 +167,7 @@ The four requirements every design decision is weighed against:
    formatting (bold for the headword, italics for examples).
 7. In parallel with the LLM call (the input word is known before
    generation starts), the backend obtains pronunciation audio for the
-   word/phrase (see "Pronunciation audio"). The **canonical word** — the
+   submitted text (see "Pronunciation audio"). The **canonical word** — the
    key for the card, deduplication, statistics, and undo — is
    always the **raw input**, never silently replaced. If the input looks
    misspelled the LLM does not swap it: it analyzes the word as typed and
@@ -273,10 +273,15 @@ Behavior — fixed, not configurable (there is no on/off setting):
 Audio is a core feature, not an add-on: every word gets pronunciation
 both in the answer entry and on the flashcard.
 
-- **Scope**: only the word/phrase itself is voiced. Neither example
-  sentences nor running text are ever voiced — a final decision, not a
-  deferral: cards must stay light and generation fast, and a text answer
-  has nothing to attach the audio to.
+- **Scope**: everything the user submits is voiced — a word, a phrase and
+  a running text alike. Example sentences inside an answer are never
+  voiced — a final decision, not a deferral: cards must stay light and
+  generation fast.
+- **The app never voices less than what was submitted.** A note can only
+  carry the audio of what is on it, so when the card holds a unit taken
+  out of a longer text, the entry offers the unit's pronunciation *and*,
+  beside it, the whole text that unit came from. Running text, which
+  makes no note at all, is still voiced whole in the app.
 - **Source priority**: a real native-speaker recording from free
   dictionary sources when one exists (for the languages those sources
   cover — English, German; Serbian has none). When no recording exists
@@ -294,9 +299,11 @@ both in the answer entry and on the flashcard.
   every language.
 - **Delivery**:
   - In the app: the pronunciation is attached to the answer entry —
-    one tap to hear, replayable from the history.
-  - Anki: the audio is attached to the card front, so it plays during
-    review.
+    one tap to hear, replayable from the history. Where the whole text
+    is voiced beside a unit, it is a second player of its own, and only
+    the unit's pronunciation starts by itself.
+  - Anki: the audio of the carded unit is attached to the card front, so
+    it plays during review. The audio of a surrounding text never is.
 - **Resilience**: audio lookup runs in parallel with the LLM call and
   must never delay or fail the text answer. Because the canonical word is
   always the raw input, the speculative audio is always the right one — no

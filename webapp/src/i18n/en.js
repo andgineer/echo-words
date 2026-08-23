@@ -22,6 +22,7 @@ export default {
   "add.detail": "More detail",
   "add.noCard": "no card",
   "add.textNoCard": "text — no card",
+  "add.contextAudio": "The whole text",
   "add.segments": "Worth looking up on their own:",
   "add.aboutHide": "Hide",
   "add.aboutShow": "What this is and how to use it",

@@ -22,6 +22,7 @@ export default {
   "add.detail": "Подробнее",
   "add.noCard": "без карточки",
   "add.textNoCard": "текст — без карточки",
+  "add.contextAudio": "Весь текст",
   "add.segments": "Стоит разобрать отдельно:",
   "add.aboutHide": "Свернуть",
   "add.aboutShow": "Что это и как пользоваться",

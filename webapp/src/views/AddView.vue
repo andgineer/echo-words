@@ -176,6 +176,15 @@ async function undo() {
         autoplay
         preload="none"
       ></audio>
+      <div v-if="entry.context_audio_url" class="context-audio">
+        <p class="context-audio-title">{{ t("add.contextAudio") }}</p>
+        <audio
+          class="entry-audio context-audio-player"
+          :src="entry.context_audio_url"
+          controls
+          preload="none"
+        ></audio>
+      </div>
       <div v-if="entry.segments?.length" class="segments">
         <p class="segments-title">{{ t("add.segments") }}</p>
         <div v-for="segment in entry.segments" :key="segment.label" class="segment">
@@ -312,6 +321,16 @@ async function undo() {
   display: block;
   width: 100%;
   margin-top: 0.75rem;
+}
+
+.context-audio-title {
+  margin-top: 0.75rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.context-audio-player {
+  margin-top: 0.35rem;
 }
 
 .entry-meta {

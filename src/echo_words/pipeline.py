@@ -86,6 +86,7 @@ class Job:
     kind: JobKind = "submit"
     paid_only: bool = False
     kept_audio: Path | None = None
+    kept_context_audio: Path | None = None
     replace_note_id: int | None = None
     replace_media: str | None = None
     replaced_audio: Path | None = None
@@ -111,6 +112,7 @@ class ControlState:
     note_id: int | None = None
     media_filename: str | None = None
     audio_path: Path | None = None
+    context_audio_path: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -187,6 +189,7 @@ class WordPipeline:
         kind: JobKind = "submit",
         paid_only: bool = False,
         kept_audio: Path | None = None,
+        kept_context_audio: Path | None = None,
         replace_note_id: int | None = None,
         replace_media: str | None = None,
         replaced_audio: Path | None = None,
@@ -244,6 +247,7 @@ class WordPipeline:
                 kind,
                 paid_only,
                 kept_audio,
+                kept_context_audio,
                 replace_note_id,
                 replace_media,
                 replaced_audio,
@@ -274,6 +278,7 @@ class WordPipeline:
             kind="rebuild",
             paid_only=True,
             kept_audio=state.audio_path,
+            kept_context_audio=state.context_audio_path,
             replace_note_id=state.note_id,
             replace_media=state.media_filename,
         )
@@ -364,11 +369,18 @@ class WordPipeline:
             return
         entry = self._entries[job.entry_id]
         audio_task = None
-        # Audio is word-and-phrase only: running text has nothing to attach it to.
-        if job.kind != "rebuild" and job.shape != "text":
+        context_audio_task = None
+        if job.kind != "rebuild":
             audio_task = asyncio.create_task(
                 self.audio(job.word, job.language),
                 name=f"echo-words-audio-{job.entry_id}",
+            )
+        # The text a unit was taken from is voiced too: its card can only carry the unit.
+        context = _voiced_context(job)
+        if job.kind != "rebuild" and context:
+            context_audio_task = asyncio.create_task(
+                self.audio(context, job.language),
+                name=f"echo-words-context-audio-{job.entry_id}",
             )
         raw = ""
         last_published = ""
@@ -455,26 +467,37 @@ class WordPipeline:
             if audio_task is None:
                 audio_path = job.kept_audio
             else:
-                audio_path = await self._await_audio(audio_task, job)
+                audio_path = await self._await_audio(audio_task, job.language, job.word)
                 audio_task = None
+            if context_audio_task is None:
+                context_audio_path = job.kept_context_audio
+            else:
+                context_audio_path = await self._await_audio(
+                    context_audio_task,
+                    job.language,
+                    context,
+                )
+                context_audio_task = None
             stored = await self._store_card(job, parsed, audio_path)
             if job.kind == "switch" and stored.action != "failed":
                 self._delete_audio(job.replaced_audio)
             elif job.kind == "switch" and stored.action == "failed":
                 self._delete_audio(audio_path)
                 audio_path = job.replaced_audio
-            card_status, entry.audio_file = _audio_result(stored.status, audio_path, job.shape)
+            card_status, entry.audio_file = _audio_result(stored.status, audio_path)
+            entry.context_audio_file = context_audio_path.name if context_audio_path else None
             suggestion = self._correction_target(job, parsed)
             entry.segments = [asdict(segment) for segment in segments or []]
             entry.model = getattr(completion, "llm_name", None)
             entry.detail_available = (
                 job.shape != "text" and await self._paid_refusal_fresh(job.language) is None
             )
-            self._update_state(job, parsed, stored, audio_path)
+            self._update_state(job, parsed, stored, audio_path, context_audio_path)
             await self._finish_entry(entry, raw, last_published, suggestion, card_status, stored)
         finally:
-            if audio_task is not None:
-                _cancel_task(audio_task)
+            for pending in (audio_task, context_audio_task):
+                if pending is not None:
+                    _cancel_task(pending)
 
     async def _process_detail(self, job: DetailJob) -> None:
         entry = self._entries.get(job.entry_id)
@@ -515,10 +538,15 @@ class WordPipeline:
         finally:
             self._details_pending.discard(job.entry_id)
 
-    async def _await_audio(self, task: asyncio.Task[Path | None], job: Job) -> Path | None:
+    async def _await_audio(
+        self,
+        task: asyncio.Task[Path | None],
+        language: Language,
+        text: str,
+    ) -> Path | None:
         done, _ = await asyncio.wait({task}, timeout=self.audio_timeout)
         if not done:
-            logger.warning("pronunciation timed out for %s/%r", job.language.code, job.word)
+            logger.warning("pronunciation timed out for %s/%r", language.code, text)
             _cancel_task(task)
             return None
         try:
@@ -529,7 +557,7 @@ class WordPipeline:
                 raise
             return None
         except Exception:  # noqa: BLE001
-            logger.exception("pronunciation failed for %s/%r", job.language.code, job.word)
+            logger.exception("pronunciation failed for %s/%r", language.code, text)
             return None
 
     async def _store_card(
@@ -599,6 +627,7 @@ class WordPipeline:
                 "card_status": card_status,
                 "segments": entry.segments,
                 "audio_url": entry.audio_url,
+                "context_audio_url": entry.context_audio_url,
                 "model": entry.model,
                 "detail_available": entry.detail_available,
                 "correction_reversed": entry.correction_reversed,
@@ -607,12 +636,13 @@ class WordPipeline:
         self.history.trim()
         self._drop_evicted_state()
 
-    def _update_state(
+    def _update_state(  # noqa: PLR0913 - the finished job's complete result is explicit.
         self,
         job: Job,
         parsed: ParsedCard | None,
         stored: StoreResult,
         audio_path: Path | None,
+        context_audio_path: Path | None,
     ) -> None:
         parsed_suggestion = _suggestion_from(parsed)
         existing = self._controls.get(job.entry_id)
@@ -630,6 +660,7 @@ class WordPipeline:
             existing.input_word = job.word
             existing.suggestion = parsed_suggestion
         existing.shown_spelling = job.word
+        existing.context_audio_path = context_audio_path
         replacement_failed = job.replace_note_id is not None and stored.action == "failed"
         if not replacement_failed:
             existing.note_id = stored.note_id
@@ -755,6 +786,7 @@ class WordPipeline:
         entry.model = None
         if kind != "rebuild":
             entry.audio_file = None
+            entry.context_audio_file = None
         if kind == "switch":
             entry.detail_html = ""
 
@@ -798,13 +830,12 @@ def _suggestion_from(parsed: ParsedCard | None) -> str | None:
     return parsed[1] if parsed is not None else None
 
 
-def _audio_result(
-    card_status: str,
-    audio_path: Path | None,
-    shape: Shape,
-) -> tuple[str, str | None]:
-    if shape == "text":
-        return card_status, None
+def _voiced_context(job: Job) -> str:
+    """The text a unit came from, when the unit's own audio does not already cover it."""
+    return job.context if job.context and job.context != job.word else ""
+
+
+def _audio_result(card_status: str, audio_path: Path | None) -> tuple[str, str | None]:
     if audio_path is None:
         return f"{card_status} · {NO_AUDIO_STATUS}", None
     return card_status, audio_path.name

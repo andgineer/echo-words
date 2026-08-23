@@ -140,6 +140,7 @@ async def test_deltas_are_throttled_cut_sanitized_and_finished(languages):
                 "card_status": f"{CARD_FAILED_STATUS} · {NO_AUDIO_STATUS}",
                 "segments": [],
                 "audio_url": None,
+                "context_audio_url": None,
                 "model": None,
                 "detail_available": True,
                 "correction_reversed": False,
@@ -198,6 +199,7 @@ async def test_card_parse_quality_and_suggestion_are_published_after_completion(
                 "card_status": f"{CARD_FAILED_STATUS} · {NO_AUDIO_STATUS}",
                 "segments": [],
                 "audio_url": None,
+                "context_audio_url": None,
                 "model": None,
                 "detail_available": True,
                 "correction_reversed": False,
@@ -236,6 +238,7 @@ async def test_card_without_examples_is_rated_as_a_failure_without_losing_analys
                 "card_status": f"{CARD_FAILED_STATUS} · {NO_AUDIO_STATUS}",
                 "segments": [],
                 "audio_url": None,
+                "context_audio_url": None,
                 "model": None,
                 "detail_available": True,
                 "correction_reversed": False,
@@ -664,6 +667,40 @@ def corrected_card(word, suggestion=""):
     )
 
 
+async def test_a_rebuild_keeps_the_audio_of_the_unit_and_of_its_text(languages, tmp_path):
+    audio_calls = []
+    unit_audio = tmp_path / "pronunciation-aabbccddeeff00112233.mp3"
+    text_audio = tmp_path / "pronunciation-1122334455667788990a.mp3"
+    for path in (unit_audio, text_audio):
+        path.write_bytes(b"audio")
+
+    async def fetch(word, _language):
+        audio_calls.append(word)
+        return unit_audio if word == "aufstehen" else text_audio
+
+    cascade = ScriptedCascade(
+        [Completion([valid_card("aufstehen")]), Completion([corrected_card("aufstehen")])],
+    )
+    pipeline = WordPipeline(
+        cascade,
+        target_lang="ru",
+        anki=MutableAnki([Added(1, "old.mp3"), Added(2, "new.mp3")]),
+        audio=fetch,
+    )
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(languages["de"], "aufstehen", False, context=SENTENCE)
+        await pipeline.join()
+        await pipeline.request_rebuild(entry.entry_id)
+        await pipeline.join()
+
+        assert sorted(audio_calls) == sorted(["aufstehen", SENTENCE])
+        assert entry.audio_url == f"/api/audio/{unit_audio.name}"
+        assert entry.context_audio_url == f"/api/audio/{text_audio.name}"
+    finally:
+        await pipeline.close()
+
+
 async def test_rebuild_replaces_the_note_keeps_audio_and_reuses_the_entry(languages, tmp_path):
     audio = tmp_path / "pronunciation-aabbccddeeff00112233.mp3"
     audio.write_bytes(b"audio")
@@ -1048,11 +1085,25 @@ def text_answer(*segments: str) -> str:
 AUFSTEHEN = '{"label":"aufstehen","surface":"steht … auf","why":"Trennbares Verb."}'
 
 
-async def test_running_text_is_explained_without_a_card_or_audio(languages):
+def voiced_by(directory):
+    """An audio fetcher that always succeeds, one cached file per text."""
+    audio = directory / "pronunciation-1122334455667788990a.mp3"
+    audio.write_bytes(b"audio")
+
+    async def fetch_audio(_word, _language):
+        return audio
+
+    return fetch_audio
+
+
+async def test_running_text_is_voiced_whole_and_still_makes_no_card(languages, tmp_path):
     audio_calls = []
+    spoken = tmp_path / "pronunciation-1122334455667788990a.mp3"
+    spoken.write_bytes(b"audio")
 
     async def fetch_audio(word, language):
         audio_calls.append((word, language.code))
+        return spoken
 
     anki = RecordingAnki(Added(1, None))
     pipeline = WordPipeline(
@@ -1066,14 +1117,106 @@ async def test_running_text_is_explained_without_a_card_or_audio(languages):
         entry = await pipeline.enqueue(languages["de"], SENTENCE, False, shape="text")
         await pipeline.join()
 
-        assert audio_calls == []
+        assert audio_calls == [(SENTENCE, "de")]
         assert anki.calls == []
         assert entry.card_status == TEXT_STATUS
         assert NO_AUDIO_STATUS not in entry.card_status
-        assert entry.audio_url is None
+        assert entry.audio_url == f"/api/audio/{spoken.name}"
+        assert entry.context_audio_url is None
         assert entry.lookup_only is True
         assert entry.detail_available is False
         assert entry.suggestion is None
+    finally:
+        await pipeline.close()
+
+
+async def test_a_text_that_cannot_be_voiced_says_so(languages):
+    pipeline = WordPipeline(
+        ScriptedCascade([Completion([text_answer(AUFSTEHEN)])]),
+        target_lang="ru",
+    )
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(languages["de"], SENTENCE, False, shape="text")
+        await pipeline.join()
+
+        assert entry.card_status == f"{TEXT_STATUS} · {NO_AUDIO_STATUS}"
+        assert entry.audio_url is None
+    finally:
+        await pipeline.close()
+
+
+async def test_a_unit_taken_from_a_text_is_voiced_beside_the_whole_text(languages, tmp_path):
+    audio_calls = []
+    unit_audio = tmp_path / "pronunciation-aabbccddeeff00112233.mp3"
+    text_audio = tmp_path / "pronunciation-1122334455667788990a.mp3"
+    for path in (unit_audio, text_audio):
+        path.write_bytes(b"audio")
+
+    async def fetch_audio(word, language):
+        audio_calls.append((word, language.code))
+        return unit_audio if word == "aufstehen" else text_audio
+
+    anki = RecordingAnki(Added(7, "media.mp3"))
+    hub = EventHub()
+    pipeline = WordPipeline(
+        ScriptedCascade([Completion([valid_card("aufstehen")])]),
+        target_lang="ru",
+        events=hub,
+        anki=anki,
+        audio=fetch_audio,
+    )
+    pipeline.start()
+    try:
+        async with hub.subscribe() as subscriber:
+            entry = await pipeline.enqueue(
+                languages["de"],
+                "aufstehen",
+                False,
+                context=SENTENCE,
+            )
+            await pipeline.join()
+            events = drain(subscriber)
+
+        assert sorted(audio_calls) == sorted([("aufstehen", "de"), (SENTENCE, "de")])
+        # Only the unit is carded, so only the unit's audio may reach the note.
+        assert anki.calls[0][2] == unit_audio
+        assert entry.audio_url == f"/api/audio/{unit_audio.name}"
+        assert entry.context_audio_url == f"/api/audio/{text_audio.name}"
+        assert entry.card_status == ADDED_STATUS
+        assert events[-1].data["context_audio_url"] == entry.context_audio_url
+        assert entry.public()["context_audio_url"] == entry.context_audio_url
+    finally:
+        await pipeline.close()
+
+
+async def test_a_context_that_is_the_word_itself_is_not_voiced_twice(languages, tmp_path):
+    audio_calls = []
+    audio = tmp_path / "pronunciation-aabbccddeeff00112233.mp3"
+    audio.write_bytes(b"audio")
+
+    async def fetch_audio(word, language):
+        audio_calls.append((word, language.code))
+        return audio
+
+    pipeline = WordPipeline(
+        ScriptedCascade([Completion([valid_card("aufstehen")])]),
+        target_lang="ru",
+        anki=RecordingAnki(Added(7, "media.mp3")),
+        audio=fetch_audio,
+    )
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(
+            languages["de"],
+            "aufstehen",
+            False,
+            context="aufstehen",
+        )
+        await pipeline.join()
+
+        assert audio_calls == [("aufstehen", "de")]
+        assert entry.context_audio_url is None
     finally:
         await pipeline.close()
 
@@ -1101,9 +1244,16 @@ async def test_segments_reach_the_done_event_and_the_history(languages):
         await pipeline.close()
 
 
-async def test_a_trap_free_text_finishes_with_no_segments_and_still_rates_as_good(languages):
+async def test_a_trap_free_text_finishes_with_no_segments_and_still_rates_as_good(
+    languages,
+    tmp_path,
+):
     completion = Completion([text_answer()])
-    pipeline = WordPipeline(ScriptedCascade([completion]), target_lang="ru")
+    pipeline = WordPipeline(
+        ScriptedCascade([completion]),
+        target_lang="ru",
+        audio=voiced_by(tmp_path),
+    )
     pipeline.start()
     try:
         entry = await pipeline.enqueue(
@@ -1161,10 +1311,11 @@ async def test_a_label_that_would_be_refused_as_input_never_becomes_a_segment(la
         await pipeline.close()
 
 
-async def test_rebuild_and_detail_are_refused_on_a_text_entry(languages):
+async def test_rebuild_and_detail_are_refused_on_a_text_entry(languages, tmp_path):
     pipeline = WordPipeline(
         ScriptedCascade([Completion([text_answer(AUFSTEHEN)])]),
         target_lang="ru",
+        audio=voiced_by(tmp_path),
     )
     pipeline.start()
     try:

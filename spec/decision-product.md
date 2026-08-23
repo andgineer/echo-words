@@ -71,7 +71,9 @@ the work again. **Do not re-open any of it.**
   per-word choice.
 - Answer formatting IS in v0.1: HTML `<b>`/`<i>` only, enforced by the
   server-side sanitizer — the only HTML the client ever renders.
-- Word/phrase audio only — example sentences are never voiced (final).
+- Everything submitted is voiced, a running text included; a card carries
+  only the audio of what is on it, and the surrounding text is offered
+  beside it in the app alone. Example sentences are never voiced (final).
 - **TTS engines are settled by research, not deferred**
   (`spec/decision-tts.md`): Serbian → edge-tts (Piper's lone `sr_RS`
   model is Lower Sorbian, not Serbian — never use it; no other usable

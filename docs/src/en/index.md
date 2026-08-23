@@ -17,7 +17,8 @@ echo-words is a FastAPI backend and a Vue 3 PWA that gives you
   recall, unrelated senses kept apart, a gapped example so the reverse card
   asks a real question, and the pronunciation inside the note
 - **a real voice, not a robot** — natural-sounding audio, locally with Piper or
-  online with edge-tts, in the app and on the card
+  online with edge-tts, in the app and on the card; whatever you send is voiced
+  whole, so a word taken out of a sentence is played beside that sentence
 - **a whole sentence gets a lesson instead** — translated, with what is hard in
   it explained, and the expressions worth learning offered as cards of their own
 - **a deeper entry when you want one** — one tap re-asks the strongest model for

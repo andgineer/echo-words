@@ -192,6 +192,48 @@ describe("AddView", () => {
     expect(player.attributes()).toHaveProperty("autoplay");
   });
 
+  it("plays the whole text beside the pronunciation of the unit taken from it", async () => {
+    await labelBehavior(EPIC.PRONUNCIATION, FEATURE.AUDIO_DELIVERY, "Playback");
+    entries.value = [{
+      entry_id: "entry-1",
+      word: "aufstehen",
+      language: "Deutsch",
+      lookup_only: false,
+      status: "done",
+      text: "<b>aufstehen</b> — вставать",
+      context: "Er steht jeden Morgen um sechs auf.",
+      audio_url: "/api/audio/pronunciation-aabbccddeeff00112233.mp3",
+      context_audio_url: "/api/audio/pronunciation-1122334455667788990a.mp3",
+    }];
+    const wrapper = mount(AddView);
+    await flushPromises();
+
+    const players = wrapper.findAll("audio.entry-audio");
+    expect(players.map((player) => player.attributes("src"))).toEqual([
+      entries.value[0].audio_url,
+      entries.value[0].context_audio_url,
+    ]);
+    // Two players may not talk over each other: only the unit's own audio starts by itself.
+    expect(players[1].attributes()).not.toHaveProperty("autoplay");
+    expect(wrapper.find(".context-audio-title").text()).toBe("The whole text");
+  });
+
+  it("leaves a text answer with the single player that voices it whole", async () => {
+    await labelBehavior(EPIC.PRONUNCIATION, FEATURE.AUDIO_DELIVERY, "Playback");
+    entries.value = [{
+      ...textEntry(),
+      audio_url: "/api/audio/pronunciation-1122334455667788990a.mp3",
+    }];
+    const wrapper = mount(AddView);
+    await flushPromises();
+
+    const players = wrapper.findAll("audio.entry-audio");
+    expect(players).toHaveLength(1);
+    expect(players[0].attributes("src")).toBe(entries.value[0].audio_url);
+    expect(players[0].attributes()).toHaveProperty("autoplay");
+    expect(wrapper.find(".context-audio-title").exists()).toBe(false);
+  });
+
   it("documents both lookup shortcuts and the reversible correction control", async () => {
     const wrapper = mount(AddView);
     await flushPromises();
