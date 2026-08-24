@@ -17,7 +17,8 @@ tool looks for.
 - `spec/decision-*.md` — background for settled decisions: the guard list
   of product decisions (`decision-product.md`), the user interface
   (`decision-interface.md`, `decision-chat-interface.md`), the two input
-  shapes (`decision-phrases-and-sentences.md`), spaced repetition, TTS,
+  shapes (`decision-phrases-and-sentences.md`), what an answer contains
+  and in what order (`decision-answer-shape.md`), spaced repetition, TTS,
   the LLM backend, and the deployment host, its rules and its tooling
   (`decision-deployment.md`). They hold the reasoning
   and the measurements behind the choices. Do not re-open them.

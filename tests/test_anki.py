@@ -43,7 +43,6 @@ def make_note(
         or [
             Meaning(
                 label="",
-                pos="гл.",
                 translations=["получать", "принимать"],
                 examples=[Example("I receive a parcel.", "Я получаю посылку.")],
             ),
@@ -260,8 +259,8 @@ async def test_multiple_meanings_are_labeled_and_recognition_is_numbered():
     note = make_note(
         "bank",
         meanings=[
-            Meaning("финансы", "сущ.", ["банк"], [Example("The bank opens.", "Банк открыт.")]),
-            Meaning("река", "сущ.", ["берег"], [Example("A bank is wet.", "Берег мокрый.")]),
+            Meaning("финансы", ["банк"], [Example("The bank opens.", "Банк открыт.")]),
+            Meaning("река", ["берег"], [Example("A bank is wet.", "Берег мокрый.")]),
         ],
     )
     translations = render_translations(note)
@@ -285,27 +284,27 @@ async def test_multiple_meanings_are_labeled_and_recognition_is_numbered():
 async def test_recall_masks_every_exact_whole_word_occurrence(word, sentence, expected):
     note = make_note(
         word,
-        meanings=[Meaning("", "", ["перевод"], [Example(sentence, "Перевод.")])],
+        meanings=[Meaning("", ["перевод"], [Example(sentence, "Перевод.")])],
     )
     rendered = render_translations(note)
     assert expected in rendered
     assert sentence not in rendered
 
 
-async def test_recall_falls_back_to_pos_when_only_an_inflected_form_occurs():
+async def test_recall_keeps_translations_alone_when_only_an_inflected_form_occurs():
     note = make_note(
         "receive",
-        meanings=[Meaning("", "гл.", ["получать"], [Example("She receives it.", "Она получает.")])],
+        meanings=[Meaning("", ["получать"], [Example("She receives it.", "Она получает.")])],
     )
     rendered = render_translations(note)
-    assert rendered == "получать<br><i>гл.</i>"
+    assert rendered == "получать"
     assert "receives" not in rendered
 
 
 async def test_recall_with_no_match_or_pos_contains_translations_alone():
     note = make_note(
         "receive",
-        meanings=[Meaning("", "", ["получать"], [Example("She gets it.", "Она получает.")])],
+        meanings=[Meaning("", ["получать"], [Example("She gets it.", "Она получает.")])],
     )
     assert render_translations(note) == "получать"
 
@@ -316,13 +315,11 @@ async def test_every_payload_value_is_html_escaped():
         meanings=[
             Meaning(
                 "<sense>",
-                "noun",
                 ["x < y", 'say "yes" & go'],
                 [Example("Use a&b <now>.", "A & B <сейчас>.")],
             ),
             Meaning(
                 "other & sense",
-                "<noun>",
                 ["second & value"],
                 [Example("No exact headword.", "Нет & слова.")],
             ),
@@ -333,7 +330,6 @@ async def test_every_payload_value_is_html_escaped():
     assert "<sense>" not in translations + meanings
     assert "&lt;sense&gt;" in translations + meanings
     assert "other &amp; sense" in translations + meanings
-    assert "&lt;noun&gt;" in translations
     assert "x &lt; y" in translations + meanings
     assert "say &quot;yes&quot; &amp; go" in translations + meanings
     assert "Use ___ &lt;now&gt;." in translations

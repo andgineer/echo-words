@@ -25,9 +25,9 @@ def test_prompt_carries_the_language_word_target_context_and_hints(languages):
     assert "for nouns give gender and plural" in prompt
     assert "===CARD===" in prompt
     assert "label is a\n1-3 word tag in Russian" in prompt
-    assert "pos is that\nsense's part of speech as one short abbreviation in Russian" in prompt
+    assert "part of speech" not in prompt.replace("NEVER name the part of speech", "")
     assert "text is a\nsentence in Српски, translation is its rendering in Russian" in prompt
-    assert "(colloquial, formal, slang, vulgar\n   and so on)" in prompt
+    assert "A register mark (colloquial, formal, slang,\n   vulgar) goes AFTER" in prompt
     assert "If there is no typo, suggestion is an\nempty string." in prompt
     assert "with no punctuation used for emphasis\nanywhere?" in prompt
 
@@ -39,7 +39,7 @@ def test_card_is_extracted_after_the_hidden_delimiter(languages):
 {"text":"I recieve it.","translation":"Я получаю это."}]}]}"""
     parsed = extract_card(raw, "recieve", languages["en"])
     assert parsed is not None
-    note, suggestion = parsed
+    note, suggestion = parsed.note, parsed.suggestion
     assert note.word == "recieve"
     assert suggestion == "receive"
 

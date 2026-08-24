@@ -36,6 +36,7 @@ ADDED_STATUS = "✅ added to Anki"
 DUPLICATE_STATUS = "📌 already in Anki"
 LOOKUP_ONLY_STATUS = "👁 lookup only"
 TEXT_STATUS = "👁 text — no card"
+FRAGMENT_STATUS = "👁 fragment — no card"
 CARD_FAILED_STATUS = "⚠️ card failed"
 NO_AUDIO_STATUS = "🔇 no audio"
 REQUEST_EXPIRED = "request expired"
@@ -492,7 +493,9 @@ class WordPipeline:
             card_status, entry.audio_file = _audio_result(stored.status, audio_path)
             entry.context_audio_file = context_audio_path.name if context_audio_path else None
             suggestion = self._correction_target(job, parsed)
-            entry.segments = [asdict(segment) for segment in segments or []]
+            entry.segments = [
+                asdict(segment) for segment in (segments or _candidate_segments(parsed))
+            ]
             entry.model = getattr(completion, "llm_name", None)
             entry.detail_available = (
                 job.shape != "text" and await self._paid_refusal_fresh(job.language) is None
@@ -571,10 +574,19 @@ class WordPipeline:
         parsed: ParsedCard | None,
         audio_path: Path | None,
     ) -> StoreResult:
-        if job.shape == "text" or job.lookup_only:
+        if (
+            job.shape == "text"
+            or job.lookup_only
+            or (parsed is not None and not parsed.input_is_unit)
+        ):
             # Action "lookup" keeps the existing counters and lets undo answer
             # "nothing to undo" with no branch of its own.
-            status = TEXT_STATUS if job.shape == "text" else LOOKUP_ONLY_STATUS
+            if job.shape == "text":
+                status = TEXT_STATUS
+            elif job.lookup_only:
+                status = LOOKUP_ONLY_STATUS
+            else:
+                status = FRAGMENT_STATUS
             return StoreResult(status, "lookup")
         if parsed is None or self.anki is None:
             return StoreResult(CARD_FAILED_STATUS, "failed")
@@ -582,13 +594,13 @@ class WordPipeline:
             if job.replace_note_id is not None:
                 result = await self.anki.replace_note(
                     job.replace_note_id,
-                    parsed[0],
+                    parsed.note,
                     job.language.deck,
                     audio_path,
                     job.replace_media,
                 )
             else:
-                result = await self.anki.add_note(parsed[0], job.language.deck, audio_path)
+                result = await self.anki.add_note(parsed.note, job.language.deck, audio_path)
         except Exception as exc:  # noqa: BLE001
             logger.exception("could not add %r to Anki", job.word)
             status = f"⚠️ {exc}" if str(exc) else CARD_FAILED_STATUS
@@ -831,8 +843,18 @@ def visible_analysis(raw: str) -> str:
     return raw
 
 
+def _candidate_segments(parsed: ParsedCard | None) -> list[Segment]:
+    """The units a vocabulary answer offers, in the shape the chip row already renders."""
+    if parsed is None or parsed.input_is_unit:
+        return []
+    return [
+        Segment(label=label, surface="", reason="")
+        for label in [parsed.analysed, *parsed.candidates]
+    ]
+
+
 def _suggestion_from(parsed: ParsedCard | None) -> str | None:
-    return parsed[1] if parsed is not None else None
+    return parsed.suggestion if parsed is not None else None
 
 
 def _voiced_context(job: Job) -> str:

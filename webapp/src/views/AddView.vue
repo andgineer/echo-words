@@ -344,6 +344,30 @@ async function undo() {
   white-space: pre-wrap;
 }
 
+/* The forms table is the one place the answer is not flowing prose, so it opts
+   out of pre-wrap and scrolls on its own rather than widening the page. */
+.entry-text :deep(table),
+.entry-detail :deep(table) {
+  white-space: normal;
+  border-collapse: collapse;
+  display: block;
+  overflow-x: auto;
+  max-width: 100%;
+  margin: 0.5rem 0;
+}
+
+.entry-text :deep(td),
+.entry-detail :deep(td) {
+  border-top: 1px solid var(--border);
+  padding: 0.25rem 0.75rem 0.25rem 0;
+  vertical-align: top;
+}
+
+.entry-text :deep(tr:first-child td),
+.entry-detail :deep(tr:first-child td) {
+  border-top: 0;
+}
+
 .entry-detail {
   border-top: 1px solid var(--border);
   margin-top: 1rem;

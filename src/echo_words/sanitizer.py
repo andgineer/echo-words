@@ -2,13 +2,16 @@
 
 from html import escape
 
-_OPEN_TAGS = {"<b>": "b", "<i>": "i"}
-_CLOSE_TAGS = {"</b>": "b", "</i>": "i"}
+# Matched as whole literals, so no tag can ever carry an attribute — the answer
+# has no way to express one, and the frontend renders this straight into v-html.
+_ALLOWED = ("b", "i", "table", "tr", "td")
+_OPEN_TAGS = {f"<{name}>": name for name in _ALLOWED}
+_CLOSE_TAGS = {f"</{name}>": name for name in _ALLOWED}
 _TAGS = (*_OPEN_TAGS, *_CLOSE_TAGS)
 
 
 def sanitize_html(text: str) -> str:
-    """Escape all markup except balanced ``b`` and ``i`` tags.
+    """Escape all markup except the balanced tags the answer is allowed to use.
 
     The function always receives the complete text accumulated so far. This is
     important during streaming: a ``<b>`` split between deltas is escaped while

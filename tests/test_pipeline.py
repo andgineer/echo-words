@@ -11,6 +11,7 @@ from echo_words.pipeline import (
     CARD_FAILED_STATUS,
     DUPLICATE_STATUS,
     ERROR_MESSAGE,
+    FRAGMENT_STATUS,
     LOOKUP_ONLY_STATUS,
     NO_AUDIO_STATUS,
     TEXT_STATUS,
@@ -271,6 +272,51 @@ def valid_card(word):
         '"label":"","translations":["перевод"],"examples":'
         f'[{{"text":"Use {word} now.","translation":"Перевод."}}]}}]}}'
     )
+
+
+async def test_a_fragment_makes_no_note_and_offers_the_unit_it_is_about(languages):
+    # The submitted text was a use of a unit, so its front would be unreviewable;
+    # the unit is offered instead and one tap on it makes the note.
+    anki = RecordingAnki(Added(1, None))
+    hub = EventHub()
+    answer = (
+        'analysis===CARD==={"word":"allein","candidates":["allein","einsam"],"meanings":[{'
+        '"label":"","translations":["один"],"examples":'
+        '[{"text":"Er ist allein.","translation":"Он один."}]}]}'
+    )
+    pipeline = WordPipeline(
+        ScriptedCascade([Completion([answer])]),
+        target_lang="ru",
+        events=hub,
+        anki=anki,
+    )
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(languages["de"], "ist allein im Restaurant", False)
+        await pipeline.join()
+        assert anki.calls == []
+        assert entry.card_status.startswith(FRAGMENT_STATUS)
+        assert [segment["label"] for segment in entry.segments] == ["allein", "einsam"]
+    finally:
+        await pipeline.close()
+
+
+async def test_a_unit_still_becomes_a_note_and_offers_nothing(languages):
+    anki = RecordingAnki(Added(1, None))
+    pipeline = WordPipeline(
+        ScriptedCascade([Completion([valid_card("Rad fahren")])]),
+        target_lang="ru",
+        anki=anki,
+    )
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(languages["de"], "Rad fahren", False)
+        await pipeline.join()
+        assert len(anki.calls) == 1
+        assert entry.card_status.startswith(ADDED_STATUS)
+        assert entry.segments == []
+    finally:
+        await pipeline.close()
 
 
 async def test_lookup_only_skips_anki_and_reports_it_in_done(languages):

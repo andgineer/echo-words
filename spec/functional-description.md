@@ -93,9 +93,19 @@ The four requirements every design decision is weighed against:
    created — is made with the lookup-only control next to the input;
    prefixing the text with `?` ("? word") does the same as a typed
    shortcut.
-   **A multi-word input is analysed whole.** A collocation, an idiom or a
-   phrasal verb is one unit whose parts cannot be looked up separately,
-   so the app never asks which of its words was meant.
+   **A multi-word input is analysed whole when it is one unit.** A
+   collocation, an idiom or a phrasal verb is one unit whose parts cannot
+   be looked up separately, so the app never asks which of its words was
+   meant, and it becomes a note exactly as a single word does.
+   **A multi-word input that is a *use* of a unit produces no note.**
+   Typing a word with the words around it is how the reader asks for the
+   sense it carries there, so the answer is about the unit inside it —
+   but the submitted text would be an unreviewable card front, and the
+   unit is not what was typed. The answer therefore offers the units it
+   is about, and one tap on one of them makes the note. Which of the two
+   a multi-word input is, is the model's own judgement, read off the
+   headword it answered under: an answer about the input itself is a
+   unit, an answer about something else is a use.
    **Running text is a second shape.** A sentence or a longer passage is
    translated and explained instead, and produces **no note**; alongside
    the answer come the units of that text worth looking up on their own.
@@ -209,11 +219,20 @@ The answer contains, in this order:
 
 - **Translations into the target language** (Russian by default; the
   target language is an app-wide configuration setting), ordered by
-  likelihood in everyday speech, each marked with part of speech and
-  register (neutral / colloquial / formal / slang) where it matters.
+  likelihood in everyday speech, and nothing in front of them: the
+  answer opens on the meaning, because that is what was asked for. A
+  register mark (neutral / colloquial / formal / slang) follows the
+  translation it belongs to, where it matters. The part of speech is
+  never named — it costs a line at the top and tells the reader what
+  they already knew.
+- **Forms**, when and only when the word changes shape in a way the
+  reader has to recognise or produce. A compact table whose cells are
+  short everyday phrases with their translations: the phrases carry the
+  grammar, so no person, number, gender, case or tense is ever named.
+  An invariable word gets no table at all — the section is a signal, not
+  a fixture.
 - **Usage notes**: typical collocations and prepositions, common
-  confusions with similar words, countability/irregular forms when
-  relevant.
+  confusions with similar words, countability when relevant.
 - **Origin**: if the word was borrowed into the source language from
   another language, a short story of where it came from and how it
   traveled; otherwise a one-line note on origin. No forced etymology

@@ -15,6 +15,6 @@ pytest-coverage.txt
 *.py-e
 **/.setup-scripts/
 allure-results/
-experiments/.bench/
+experiments/.bench*/
 _static/
 node_modules/

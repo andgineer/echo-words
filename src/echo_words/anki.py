@@ -655,9 +655,6 @@ def _render_translation_block(meaning: Meaning, word: str, show_label: bool) -> 
                 f"<i>{html.escape(masked)}</i> — {html.escape(example.translation)}",
             )
             break
-    else:
-        if meaning.pos:
-            parts.append(f"<i>{html.escape(meaning.pos)}</i>")
     return "<br>".join(parts)
 
 

@@ -9,6 +9,7 @@ from echo_words.languages import Language, validate_word
 
 MAX_MEANINGS = 3
 MAX_EXAMPLES_PER_MEANING = 2
+MAX_CANDIDATES = 3
 
 
 class CardParseError(ValueError):
@@ -24,7 +25,6 @@ class Example:
 @dataclass(frozen=True)
 class Meaning:
     label: str
-    pos: str
     translations: list[str]
     examples: list[Example]
 
@@ -35,7 +35,23 @@ class Note:
     meanings: list[Meaning]
 
 
-ParsedCard = tuple[Note, str | None]
+@dataclass(frozen=True)
+class ParsedCard:
+    note: Note
+    suggestion: str | None
+    # The unit the answer is actually about. It differs from the submitted text
+    # when that text was a use of a unit rather than a unit itself, and the
+    # difference is what tells the two apart — nothing else in the answer does.
+    analysed: str
+    candidates: list[str]
+
+    @property
+    def input_is_unit(self) -> bool:
+        return _fold(self.analysed) == _fold(self.note.word)
+
+
+def _fold(text: str) -> str:
+    return " ".join(unicodedata.normalize("NFC", text).casefold().split())
 
 
 def parse_card_payload(payload: str, word: str, language: Language) -> ParsedCard:
@@ -57,7 +73,53 @@ def parse_card_payload(payload: str, word: str, language: Language) -> ParsedCar
         for index, item in enumerate(meanings_value)
     ]
     suggestion = _usable_suggestion(card.get("suggestion"), word, language)
-    return Note(word=word, meanings=meanings), suggestion
+    analysed = _analysed_unit(card.get("word"), word, language)
+    return ParsedCard(
+        note=Note(word=word, meanings=meanings),
+        suggestion=suggestion,
+        analysed=analysed,
+        candidates=_candidates(card.get("candidates"), analysed, language),
+    )
+
+
+def _analysed_unit(value: Any, word: str, language: Language) -> str:
+    """What the answer is about: the model's own headword, or the input when it is unusable.
+
+    Falling back to the input is deliberate. A headword that would have been
+    refused had the user typed it must never reach the deck, and treating the
+    input as the analysed unit keeps today's behaviour rather than inventing new.
+    """
+    if not isinstance(value, str):
+        return word
+    analysed = unicodedata.normalize("NFC", value).strip()
+    if not analysed or validate_word(analysed, language) is not None:
+        return word
+    return analysed
+
+
+def _candidates(value: Any, analysed: str, language: Language) -> list[str]:
+    """The units worth looking up, held to the rule typed input is held to.
+
+    One tap turns a candidate into the front of a real note, so a candidate that
+    would have been refused had the user typed it is dropped and never offered.
+    """
+    if not isinstance(value, list):
+        return []
+    picked: list[str] = []
+    seen = {_fold(analysed)}
+    for item in value:
+        if not isinstance(item, str):
+            continue
+        candidate = unicodedata.normalize("NFC", item).strip()
+        if not candidate or validate_word(candidate, language) is not None:
+            continue
+        if _fold(candidate) in seen:
+            continue
+        seen.add(_fold(candidate))
+        picked.append(candidate)
+        if len(picked) == MAX_CANDIDATES:
+            break
+    return picked
 
 
 def _parse_meaning(value: Any, index: int, *, require_label: bool) -> Meaning:
@@ -86,7 +148,6 @@ def _parse_meaning(value: Any, index: int, *, require_label: bool) -> Meaning:
             if require_label
             else _required_string(meaning, "label", path)
         ),
-        pos=_optional_string(meaning, "pos", path),
         translations=translations,
         examples=examples,
     )
@@ -120,13 +181,6 @@ def _object(value: Any, path: str) -> dict[str, Any]:
 
 def _required_string(value: dict[str, Any], key: str, path: str) -> str:
     item = value.get(key)
-    if not isinstance(item, str):
-        raise CardParseError(f"{path}.{key} must be a string")
-    return item
-
-
-def _optional_string(value: dict[str, Any], key: str, path: str) -> str:
-    item = value.get(key, "")
     if not isinstance(item, str):
         raise CardParseError(f"{path}.{key} must be a string")
     return item

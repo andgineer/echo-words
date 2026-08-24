@@ -1,10 +1,13 @@
 # Phrases and sentences — decision
 
-Status: **decided 2026-08-22 — a multi-word input is analysed whole, running
-text is translated and explained instead of being carded, and the backend
-decides which of the two an input is.** This document records the benchmark
-behind those defaults; its harness is `experiments/backend_bench.py` and its
-fixtures are `experiments/bench_items.py` and `experiments/route.py`.
+Status: **decided 2026-08-24 — a multi-word input is analysed whole and carded
+when it is one unit, and produces no note when it is a use of one; running text
+is translated and explained instead of being carded; the backend decides which
+shape an input is.** This document records the benchmark
+behind those defaults. Its harnesses are `experiments/backend_bench.py` with
+`experiments/bench_items.py` and `experiments/route.py` for routing and sentence
+mode, and `experiments/extract_bench.py` with `experiments/extract_items.py` and
+`experiments/extract_prompts.py` for whether a multi-word input is a unit.
 
 ## The problem
 
@@ -176,3 +179,42 @@ to a metered backend.
 
 The harness is outside CI, calls real models, and its paid phase spends real
 money.
+
+
+## A multi-word input is not always a unit
+
+The router places an input in the unit band from punctuation and length, which
+cannot separate a fixed expression from a fragment of a clause — that is this
+document's own finding. What the router cannot decide, the answer can: the model
+is asked whether the text it was given is itself a lexical unit or a use of one,
+and answers under the headword it chose. The input echoed back means a unit; a
+different headword means a use.
+
+The measurement covers 81 inputs over English, German and Serbian in four
+classes — units that must survive whole, fragments whose focus has to be found,
+short clauses, and single-word controls — plus 22 inputs whose bare stem is a
+real word of the language (`aufstehen`/`stehen`, `вратити се`/`вратити`), which
+is what makes a lost prefix or reflexive particle invisible.
+
+| | free pool | metered |
+|---|---|---|
+| a unit survives whole | 100% | 100% |
+| a unit taken apart | **0%** | **0%** |
+| a prefix or reflexive particle lost | — | **0%** |
+| the focus of a fragment, offered first | 42% | 92% |
+| the focus of a fragment, offered at all | **100%** | 96% |
+| an ordinary single word left alone | 100% | 100% |
+
+Two results decide the design. **A unit is never taken apart** — not once, on
+either backend, in any language — so carding a multi-word input the model
+answered under its own name is safe. And **the focus of a fragment is offered
+somewhere in the answer every time on the free pool**, while it leads only two
+times in five. So the answer offers its units and a tap chooses; ranking them
+correctly is what a metered model would buy, and a tap already buys it.
+
+Auto-carding the model's first choice was rejected on those numbers: at 42% it
+would put a wrong note in the deck three times in five, and a wrong note that
+looks right is the one error nothing downstream catches.
+
+What would re-open this: a revision of the vocabulary prompt, or the pool's
+primary model changing. Both numbers are bound to the prompt that produced them.
