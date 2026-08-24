@@ -83,6 +83,9 @@ _STORY_BY_FILE_AND_TEST: dict[tuple[str, str], str] = {
     ("test_backend.py", "test_a_pool_answer_the_caller_cannot_use_steps_up_with_a_reset"): (
         "Paid recovery"
     ),
+    ("test_backend.py", "test_an_answer_the_caller_cannot_use_is_stepped_up_to_exactly_once"): (
+        "Paid recovery"
+    ),
     ("test_backend.py", "test_a_pool_answer_the_caller_can_use_never_steps_up"): "Cascade routing",
     ("test_backend.py", "test_an_unusable_answer_stands_when_there_is_nothing_to_step_up_to"): (
         "Paid recovery"

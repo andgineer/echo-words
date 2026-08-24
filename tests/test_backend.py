@@ -88,6 +88,22 @@ async def test_a_pool_answer_the_caller_cannot_use_steps_up_with_a_reset(setting
     assert cascade.calls_today == 1
 
 
+async def test_an_answer_the_caller_cannot_use_is_stepped_up_to_exactly_once(settings, languages):
+    cascade = fake_cascade(
+        settings,
+        handles=[FakeHandle(["free ", "answer"])],
+        client=FakeDirectClient(["paid ", "answer"]),
+    )
+    completion = cascade.stream_completion(
+        "prompt",
+        languages["en"],
+        usable=lambda _answer: False,
+    )
+    assert await drain(completion) == ["free ", "answer", "paid ", "answer"]
+    assert cascade.broker.direct_calls == ["gpt-fast"]
+    assert cascade.calls_today == 1
+
+
 async def test_a_pool_answer_the_caller_can_use_never_steps_up(settings, languages):
     cascade = fake_cascade(settings, handles=[FakeHandle(["free ", "answer"])])
     completion = cascade.stream_completion(

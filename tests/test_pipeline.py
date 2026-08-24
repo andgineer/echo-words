@@ -1417,3 +1417,24 @@ async def test_a_unit_answer_is_judged_by_its_card_and_a_text_answer_by_its_segm
     assert unit_check(BROKEN_CARD) is False
     assert text_check(text_answer(AUFSTEHEN)) is True
     assert text_check("prose with no segments block") is False
+
+
+async def test_a_card_block_the_paid_model_breaks_too_ends_the_request(settings, languages):
+    handle = FakeHandle([BROKEN_CARD])
+    cascade = fake_cascade(
+        settings,
+        handles=[handle],
+        client=FakeDirectClient([BROKEN_CARD]),
+    )
+    anki = RecordingAnki(Added(7, None))
+    pipeline = WordPipeline(cascade, target_lang="Russian", anki=anki)
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(languages["en"], "word", False)
+        await pipeline.join()
+    finally:
+        await pipeline.close()
+    assert anki.calls == []
+    assert cascade.broker.direct_calls == ["gpt-fast"]
+    assert cascade.calls_today == 1
+    assert entry.card_status == f"{CARD_FAILED_STATUS} · {NO_AUDIO_STATUS}"
