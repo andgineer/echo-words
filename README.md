@@ -9,7 +9,7 @@
 | src/echo\_words/api.py           |      270 |       22 |     92% |72, 117, 134, 144, 184, 275-277, 286-288, 297-298, 304-307, 362, 366-367, 385-386 |
 | src/echo\_words/api\_backend.py  |       17 |        0 |    100% |           |
 | src/echo\_words/audio.py         |      201 |       26 |     87% |101, 103-105, 144, 148, 152-153, 164-167, 194-195, 220, 226, 241, 245-246, 307, 352-356, 362 |
-| src/echo\_words/backend.py       |      155 |        3 |     98% |223-226, 247 |
+| src/echo\_words/backend.py       |      167 |        3 |     98% |247-250, 271 |
 | src/echo\_words/broker.py        |       28 |        0 |    100% |           |
 | src/echo\_words/card.py          |       72 |        2 |     97% |  117, 131 |
 | src/echo\_words/config.py        |       41 |        0 |    100% |           |
@@ -19,12 +19,12 @@
 | src/echo\_words/languages.py     |      112 |        1 |     99% |        72 |
 | src/echo\_words/llm\_backend.py  |       38 |        0 |    100% |           |
 | src/echo\_words/main.py          |       11 |        0 |    100% |           |
-| src/echo\_words/pipeline.py      |      474 |       36 |     92% |170, 289, 319, 340, 361, 393, 402-403, 428, 485-486, 505-506, 532, 554-561, 595, 696, 703, 712, 737, 740, 755-758, 762, 766, 809, 855 |
-| src/echo\_words/prompt.py        |       34 |        0 |    100% |           |
+| src/echo\_words/pipeline.py      |      476 |       36 |     92% |171, 290, 320, 341, 362, 394, 403-404, 439, 490-491, 510-511, 537, 559-566, 600, 701, 708, 717, 742, 745, 760-763, 767, 771, 814, 860 |
+| src/echo\_words/prompt.py        |       46 |        0 |    100% |           |
 | src/echo\_words/sanitizer.py     |       24 |        1 |     96% |        34 |
 | src/echo\_words/segments.py      |       44 |        0 |    100% |           |
 | src/echo\_words/shape.py         |       23 |        0 |    100% |           |
-| **TOTAL**                        | **2116** |  **118** | **94%** |           |
+| **TOTAL**                        | **2142** |  **118** | **94%** |           |
 
 
 ## Setup coverage badge
