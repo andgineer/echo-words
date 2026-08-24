@@ -28,7 +28,7 @@ def parse_segments_payload(payload: str, language: Language) -> list[Segment]:
     try:
         value, _end = json.JSONDecoder().raw_decode(payload.lstrip())
     except (json.JSONDecodeError, TypeError) as exc:
-        raise SegmentParseError("segment payload is not valid JSON") from exc
+        raise SegmentParseError(f"segment payload is not valid JSON: {exc}") from exc
     if not isinstance(value, dict):
         raise SegmentParseError("segment payload must be an object")
     listed = value.get("segments")

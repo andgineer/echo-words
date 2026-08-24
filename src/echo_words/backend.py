@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from llmbroker import AsyncBroker
 
 ResetHook = Callable[[], Awaitable[None]]
+AnswerCheck = Callable[[str], bool]
 
 
 def utc_today() -> date:
@@ -31,6 +32,7 @@ class CallRequest:
     language: Language
     trace_id: str | None = None
     on_reset: ResetHook | None = None
+    usable: AnswerCheck | None = None
 
 
 @dataclass(frozen=True)
@@ -60,6 +62,7 @@ class Completion:
         self._deltas: AsyncGenerator[str] | None = None
         self._pool: PoolStream | None = None
         self._pool_answered = False
+        self._rated = False
         self.llm_name: str | None = None
         self.paid = paid_only
 
@@ -73,9 +76,12 @@ class Completion:
             await self._deltas.aclose()
 
     async def record_quality(self, score: float) -> None:
-        """Rate the pool call that answered; an abandoned or stepped-up stream is not rated."""
-        if self._pool is not None and self._pool_answered:
-            await self._pool.record_quality(score)
+        """Rate the pool call that answered, once; an abandoned or stepped-up stream is
+        not rated, and a rating the cascade already gave stands."""
+        if self._rated or self._pool is None or not self._pool_answered:
+            return
+        self._rated = True
+        await self._pool.record_quality(score)
 
     async def _recorded(self) -> AsyncGenerator[str]:
         # Every nested generator is closed through ``aclosing``: an ``async for``
@@ -107,20 +113,17 @@ class Completion:
                 async for delta in paid:
                     yield delta
             return
-        delivered = 0
+        delivered: list[str] = []
         miss: BudgetMissError | None = None
         try:
             async with aclosing(self._pool_deltas()) as pool:
                 async for delta in pool:
-                    delivered += 1
+                    delivered.append(delta)
                     yield delta
         except BudgetMissError as exc:
             miss = exc
-        if miss is None:
+        if not await self._steps_up(miss, "".join(delivered)):
             return
-        refusal = self._cascade.paid_refusal(self._request.language)
-        if refusal is not None:
-            raise BackendError(f"{miss}; paid step unavailable: {refusal}") from miss
         # Text already on the page cannot be spliced with the paid answer: the
         # pipeline is told to drop it before the second step starts.
         if delivered and self._request.on_reset is not None:
@@ -128,6 +131,20 @@ class Completion:
         async with aclosing(self._paid_deltas()) as paid:
             async for delta in paid:
                 yield delta
+
+    async def _steps_up(self, miss: BudgetMissError | None, answer: str) -> bool:
+        """Whether the paid model takes the request over from the pool."""
+        if miss is None and (self._request.usable is None or self._request.usable(answer)):
+            return False
+        refusal = self._cascade.paid_refusal(self._request.language)
+        if miss is not None:
+            if refusal is not None:
+                raise BackendError(f"{miss}; paid step unavailable: {refusal}") from miss
+            return True
+        # An answer the caller cannot use is no more complete than one that never
+        # arrived: it is rated down here, and stands only when nothing can replace it.
+        await self.record_quality(0.0)
+        return refusal is None
 
     async def _pool_deltas(self) -> AsyncIterator[str]:
         pool = open_pool_stream(
@@ -182,8 +199,15 @@ class Cascade:
         *,
         trace_id: str | None = None,
         on_reset: ResetHook | None = None,
+        usable: AnswerCheck | None = None,
     ) -> Completion:
-        request = CallRequest(prompt, language, trace_id=trace_id, on_reset=on_reset)
+        request = CallRequest(
+            prompt,
+            language,
+            trace_id=trace_id,
+            on_reset=on_reset,
+            usable=usable,
+        )
         return Completion(self, request)
 
     def stream_paid(

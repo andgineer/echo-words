@@ -1,6 +1,8 @@
 import asyncio
 from collections.abc import AsyncIterator, Iterable
 
+from fakes import FakeDirectClient, FakeHandle, fake_cascade
+
 from echo_words.anki import Added, Duplicate, MisconfiguredNoteTypeError
 from echo_words.broker import BackendError
 from echo_words.events import Event, EventHub
@@ -74,11 +76,13 @@ class ScriptedCascade:
         self.max_active = 0
         self.refusal = refusal
         self.paid_calls = 0
+        self.usable_checks: list[object] = []
 
-    def stream_completion(self, prompt, language, *, trace_id=None, on_reset=None):
+    def stream_completion(self, prompt, language, *, trace_id=None, on_reset=None, usable=None):
         self.calls.append(language.code)
         self.prompts.append(prompt)
         self.trace_ids.append(trace_id)
+        self.usable_checks.append(usable)
         completion = self.completions.pop(0)
         completion.on_reset = on_reset
         original = completion.stream
@@ -1333,3 +1337,83 @@ async def test_rebuild_and_detail_are_refused_on_a_text_entry(languages, tmp_pat
         assert entry.card_status == TEXT_STATUS
     finally:
         await pipeline.close()
+
+
+# The free pool's own failure, kept verbatim: an answer that stops escaping Cyrillic
+# halfway through and leaves a payload no JSON parser will take.
+BROKEN_CARD = (
+    'analysis===CARD==={"word":"word","meanings":[{"label":"","pos":"\\u04гл.",'
+    '"translations":["перевод"],"examples":'
+    '[{"text":"Use word now.","translation":"Перевод."}]}]}'
+)
+
+
+async def test_an_answer_whose_card_block_is_broken_is_replaced_by_the_paid_model(
+    settings,
+    languages,
+):
+    handle = FakeHandle([BROKEN_CARD])
+    cascade = fake_cascade(
+        settings,
+        handles=[handle],
+        client=FakeDirectClient([valid_card("word")]),
+    )
+    anki = RecordingAnki(Added(7, None))
+    hub = EventHub()
+    pipeline = WordPipeline(cascade, target_lang="Russian", events=hub, anki=anki)
+    pipeline.start()
+    try:
+        async with hub.subscribe() as subscriber:
+            entry = await pipeline.enqueue(languages["en"], "word", False)
+            await pipeline.join()
+            events = drain(subscriber)
+    finally:
+        await pipeline.close()
+    assert [note.word for note, _deck, _audio in anki.calls] == ["word"]
+    assert entry.card_status == f"{ADDED_STATUS} · {NO_AUDIO_STATUS}"
+    assert entry.model == "gpt-fast"
+    assert entry.text == "analysis"
+    assert handle.scores == [0.0]
+    assert [event.name for event in events].count("reset") == 1
+
+
+async def test_a_broken_card_block_stands_when_no_paid_model_can_replace_it(settings, languages):
+    handle = FakeHandle([BROKEN_CARD])
+    cascade = fake_cascade(
+        settings.model_copy(update={"api_model": ""}),
+        handles=[handle],
+        client=FakeDirectClient(),
+    )
+    anki = RecordingAnki(Added(7, None))
+    pipeline = WordPipeline(cascade, target_lang="Russian", anki=anki)
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(languages["en"], "word", False)
+        await pipeline.join()
+    finally:
+        await pipeline.close()
+    assert anki.calls == []
+    assert cascade.broker.direct_calls == []
+    assert entry.card_status == f"{CARD_FAILED_STATUS} · {NO_AUDIO_STATUS}"
+    assert handle.scores == [0.0]
+
+
+async def test_a_unit_answer_is_judged_by_its_card_and_a_text_answer_by_its_segments(languages):
+    cascade = ScriptedCascade(
+        [Completion([valid_card("word")]), Completion([text_answer(AUFSTEHEN)])],
+    )
+    pipeline = WordPipeline(cascade, target_lang="ru", anki=RecordingAnki(Added(1, None)))
+    pipeline.start()
+    try:
+        await pipeline.enqueue(languages["en"], "word", False)
+        await pipeline.join()
+        await pipeline.enqueue(languages["de"], SENTENCE, False, shape="text")
+        await pipeline.join()
+    finally:
+        await pipeline.close()
+    unit_check, text_check = cascade.usable_checks
+    assert unit_check(valid_card("word")) is True
+    assert unit_check("analysis with no card block") is False
+    assert unit_check(BROKEN_CARD) is False
+    assert text_check(text_answer(AUFSTEHEN)) is True
+    assert text_check("prose with no segments block") is False

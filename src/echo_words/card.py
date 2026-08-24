@@ -43,7 +43,7 @@ def parse_card_payload(payload: str, word: str, language: Language) -> ParsedCar
     try:
         value, _end = json.JSONDecoder().raw_decode(payload.lstrip())
     except (json.JSONDecodeError, TypeError) as exc:
-        raise CardParseError("card payload is not valid JSON") from exc
+        raise CardParseError(f"card payload is not valid JSON: {exc}") from exc
     card = _object(value, "card")
     # The model's echo is required by the contract but never trusted for identity.
     _non_empty_string(card.get("word"), "card.word")

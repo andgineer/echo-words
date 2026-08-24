@@ -386,7 +386,12 @@ enabled = true
 backend = systemd
 ECHOWORDS_F2B_EOF
 sudo install -d /etc/systemd/journald.conf.d
-echo -e '[Journal]\nSystemMaxUse=200M' | sudo tee /etc/systemd/journald.conf.d/size.conf >/dev/null
+sudo rm -f /etc/systemd/journald.conf.d/size.conf
+sudo tee /etc/systemd/journald.conf.d/echo-words.conf >/dev/null <<'ECHOWORDS_JOURNAL_EOF'
+[Journal]
+SystemMaxUse=200M
+MaxRetentionSec=3month
+ECHOWORDS_JOURNAL_EOF
 sudo systemctl restart systemd-journald
 {_swap_prep_script()}
 sudo systemctl enable --now fail2ban

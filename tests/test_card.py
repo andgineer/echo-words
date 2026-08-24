@@ -157,6 +157,12 @@ def test_invalid_payload_is_rejected(languages, broken):
         parse_card_payload(broken, "bank", languages["en"])
 
 
+def test_a_broken_payload_carries_what_the_json_decoder_objected_to(languages):
+    # The free pool's own failure: escaping stops halfway through a \uXXXX sequence.
+    with pytest.raises(CardParseError, match=r"Invalid \\uXXXX escape"):
+        parse_card_payload('{"word": "bank", "pos": "\\u04гл."}', "bank", languages["en"])
+
+
 def test_missing_pos_is_tolerated_as_an_empty_string(languages):
     meanings = [
         {

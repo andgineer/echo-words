@@ -69,6 +69,72 @@ async def test_a_pool_that_outlives_the_budget_steps_up_with_a_reset(settings, l
     assert reset.calls == 1
 
 
+async def test_a_pool_answer_the_caller_cannot_use_steps_up_with_a_reset(settings, languages):
+    handle = FakeHandle(["free ", "answer"])
+    cascade = fake_cascade(
+        settings,
+        handles=[handle],
+        client=FakeDirectClient(["paid ", "answer"]),
+    )
+    reset = ResetHook()
+    completion = cascade.stream_completion(
+        "prompt",
+        languages["en"],
+        on_reset=reset,
+        usable=lambda answer: "paid" in answer,
+    )
+    assert await drain(completion) == ["free ", "answer", "paid ", "answer"]
+    assert reset.calls == 1
+    assert cascade.calls_today == 1
+
+
+async def test_a_pool_answer_the_caller_can_use_never_steps_up(settings, languages):
+    cascade = fake_cascade(settings, handles=[FakeHandle(["free ", "answer"])])
+    completion = cascade.stream_completion(
+        "prompt",
+        languages["en"],
+        usable=lambda answer: "free" in answer,
+    )
+    assert await drain(completion) == ["free ", "answer"]
+    assert cascade.broker.direct_calls == []
+
+
+async def test_an_unusable_answer_stands_when_there_is_nothing_to_step_up_to(settings, languages):
+    handle = FakeHandle(["free ", "answer"])
+    cascade = fake_cascade(
+        settings.model_copy(update={"api_model": ""}),
+        handles=[handle],
+        client=FakeDirectClient(),
+    )
+    reset = ResetHook()
+    completion = cascade.stream_completion(
+        "prompt",
+        languages["en"],
+        on_reset=reset,
+        usable=lambda _answer: False,
+    )
+    assert await drain(completion) == ["free ", "answer"]
+    assert cascade.broker.direct_calls == []
+    assert reset.calls == 0
+    assert handle.scores == [0.0]
+
+
+async def test_an_answer_replaced_over_its_payload_keeps_the_rating_that_rejected_it(
+    settings,
+    languages,
+):
+    handle = FakeHandle(["free ", "answer"])
+    cascade = fake_cascade(settings, handles=[handle], client=FakeDirectClient())
+    completion = cascade.stream_completion(
+        "prompt",
+        languages["en"],
+        usable=lambda answer: "paid" in answer,
+    )
+    await drain(completion)
+    await completion.record_quality(1.0)
+    assert handle.scores == [0.0]
+
+
 async def test_a_fault_is_not_paid_for(settings, languages):
     cascade = fake_cascade(
         settings,

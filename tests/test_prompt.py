@@ -1,6 +1,8 @@
+import logging
 import re
 
 from echo_words.prompt import (
+    PAYLOAD_LOG_LIMIT,
     build_extended_prompt,
     build_prompt,
     build_text_prompt,
@@ -48,6 +50,37 @@ def test_missing_delimiter_has_no_card(languages):
 
 def test_malformed_json_after_the_delimiter_has_no_card(languages):
     assert extract_card("analysis===CARD==={broken", "word", languages["en"]) is None
+
+
+def test_a_rejected_card_block_is_logged_with_its_reason_and_its_payload(languages, caplog):
+    raw = 'analysis===CARD==={"word":"word","meanings":[{"label":"","translations":[]}]}'
+    with caplog.at_level(logging.WARNING, logger="echo_words.prompt"):
+        assert extract_card(raw, "word", languages["en"]) is None
+    logged = caplog.text
+    assert "en/'word'" in logged
+    assert "translations must be a non-empty list" in logged
+    assert '"meanings"' in logged
+
+
+def test_a_missing_card_block_is_logged_as_such(languages, caplog):
+    with caplog.at_level(logging.WARNING, logger="echo_words.prompt"):
+        assert extract_card("analysis with no payload", "word", languages["en"]) is None
+    assert "never wrote the delimiter" in caplog.text
+
+
+def test_a_logged_payload_is_clipped_and_says_how_long_it_was(languages, caplog):
+    payload = '{"word":"word","junk":"' + "x" * (PAYLOAD_LOG_LIMIT * 2)
+    with caplog.at_level(logging.WARNING, logger="echo_words.prompt"):
+        assert extract_card(f"analysis===CARD==={payload}", "word", languages["en"]) is None
+    assert f"({len(payload)} chars)" in caplog.text
+    assert "x" * (PAYLOAD_LOG_LIMIT + 1) not in caplog.text
+
+
+def test_a_rejected_segments_block_is_logged_with_its_payload(languages, caplog):
+    with caplog.at_level(logging.WARNING, logger="echo_words.prompt"):
+        assert extract_segments('prose===CARD==={"segments":{}}', languages["de"]) is None
+    assert "unusable segments block for de" in caplog.text
+    assert '"segments"' in caplog.text
 
 
 def test_extended_prompt_carries_context_but_has_no_card_contract(languages):

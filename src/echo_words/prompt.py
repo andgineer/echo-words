@@ -1,10 +1,17 @@
 """The vocabulary and running-text prompts, and the payloads their answers hide."""
 
+import logging
+
 from echo_words.card import CardParseError, ParsedCard, parse_card_payload
 from echo_words.languages import Language
 from echo_words.segments import Segment, SegmentParseError, parse_segments_payload
 
 CARD_DELIMITER = "===CARD==="
+# A rejected payload is logged whole because nothing else keeps it: the answer it
+# came in is gone, and what the model got wrong is only visible here.
+PAYLOAD_LOG_LIMIT = 2000
+
+logger = logging.getLogger(__name__)
 
 _PROMPT = """You are a vocabulary tutor. The word below is in {source_lang}. Analyse
 this word or short phrase: {word}
@@ -212,11 +219,23 @@ def extract_card(raw: str, word: str, language: Language) -> ParsedCard | None:
     """Extract and validate the hidden card block, returning ``None`` when it is unusable."""
     delimiter_at = raw.find(CARD_DELIMITER)
     if delimiter_at < 0:
+        logger.warning(
+            "no card block for %s/%r: the answer never wrote the delimiter",
+            language.code,
+            word,
+        )
         return None
     payload = raw[delimiter_at + len(CARD_DELIMITER) :]
     try:
         return parse_card_payload(payload, word, language)
-    except CardParseError:
+    except CardParseError as exc:
+        logger.warning(
+            "unusable card block for %s/%r: %s; payload %s",
+            language.code,
+            word,
+            exc,
+            _logged(payload),
+        )
         return None
 
 
@@ -224,9 +243,26 @@ def extract_segments(raw: str, language: Language) -> list[Segment] | None:
     """Extract the suggested units, returning ``None`` when the payload is unusable."""
     delimiter_at = raw.find(CARD_DELIMITER)
     if delimiter_at < 0:
+        logger.warning(
+            "no segments block for %s: the answer never wrote the delimiter",
+            language.code,
+        )
         return None
     payload = raw[delimiter_at + len(CARD_DELIMITER) :]
     try:
         return parse_segments_payload(payload, language)
-    except SegmentParseError:
+    except SegmentParseError as exc:
+        logger.warning(
+            "unusable segments block for %s: %s; payload %s",
+            language.code,
+            exc,
+            _logged(payload),
+        )
         return None
+
+
+def _logged(payload: str) -> str:
+    payload = payload.strip()
+    if len(payload) <= PAYLOAD_LOG_LIMIT:
+        return repr(payload)
+    return f"{payload[:PAYLOAD_LOG_LIMIT]!r} … ({len(payload)} chars)"

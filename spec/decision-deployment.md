@@ -49,8 +49,10 @@ removes the memory constraints.)
 - **A swap file is a hard setup requirement.** The web backend, the
   Anki pylib collection and a Piper inference peak coexist in 1 GB only
   with 1–2 GB of swap behind them, and with 41 GB free the insurance is
-  cheap. Capping the journal (`SystemMaxUse=200M`) is worth doing on
-  both VMs.
+  cheap. The journal is bounded twice over on both VMs — by size
+  (`SystemMaxUse=200M`) and by age (`MaxRetentionSec=3month`), so a quiet
+  box does not keep records past the horizon llmbroker's own call journal
+  holds itself to.
 - **The unit stays memory-bounded anyway** — `MemoryHigh=400M` /
   `MemoryMax=500M`. Not to protect a neighbour, there is none, but so a
   runaway is killed as itself instead of taking the box down and

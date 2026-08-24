@@ -80,6 +80,17 @@ _STORY_BY_FILE_AND_TEST: dict[tuple[str, str], str] = {
     ("test_backend.py", "test_a_pool_that_outlives_the_budget_steps_up_with_a_reset"): (
         "Paid recovery"
     ),
+    ("test_backend.py", "test_a_pool_answer_the_caller_cannot_use_steps_up_with_a_reset"): (
+        "Paid recovery"
+    ),
+    ("test_backend.py", "test_a_pool_answer_the_caller_can_use_never_steps_up"): "Cascade routing",
+    ("test_backend.py", "test_an_unusable_answer_stands_when_there_is_nothing_to_step_up_to"): (
+        "Paid recovery"
+    ),
+    (
+        "test_backend.py",
+        "test_an_answer_replaced_over_its_payload_keeps_the_rating_that_rejected_it",
+    ): "Quality feedback",
     ("test_backend.py", "test_a_fault_is_not_paid_for"): "Cascade routing",
     ("test_backend.py", "test_a_pool_configuration_fault_never_steps_up"): "Cascade routing",
     ("test_backend.py", "test_the_call_that_answered_is_the_call_that_is_rated"): (

@@ -64,7 +64,8 @@ in 10 minutes, escalating 1-day bans capped at 30 days). The jail uses the
 systemd backend and excludes Tailscale's `100.64.0.0/10` range, so tailnet
 administration cannot ban itself; public ssh — the deploy path, and whatever else
 reaches port 22 from the internet — is subject to it. Setup also disables
-rpcbind and caps the system journal. It leaves the host firewall as it finds it:
+rpcbind and bounds the system journal, by size (200 MB) and by age (three
+months). It leaves the host firewall as it finds it:
 the loopback and terminal-REJECT rules are re-asserted only when absent, and a
 rejected change is skipped instead of failing the pass. It deliberately leaves an
 existing checkout and running service untouched, and on a fresh host it does not

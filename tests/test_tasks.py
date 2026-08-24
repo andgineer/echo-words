@@ -45,7 +45,9 @@ def test_host_prep_provisions_swap_hardening_and_bounded_journal():
     assert "disable --now rpcbind rpcbind.socket" in script
     assert "PermitRootLogin no" in script
     assert "fail2ban" in script
+    assert "/etc/systemd/journald.conf.d/echo-words.conf" in script
     assert "SystemMaxUse=200M" in script
+    assert "MaxRetentionSec=3month" in script
 
 
 def test_host_prep_never_fails_on_the_firewall_recheck():

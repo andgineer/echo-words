@@ -141,10 +141,23 @@ The four requirements every design decision is weighed against:
    within the latency budget — whether it never started or started at
    once and then kept going — and the user sees a slower answer, not an
    error; the pool being busy is the one thing the paid path exists to
-   absorb. When the move happens mid-answer the partial text is
-   discarded and replaced by the paid model's. Which model answered is
+   absorb. An answer that arrives in time but carries no usable hidden
+   payload — an unparseable card, or unparseable units for running text —
+   is not complete either, and moves the request the same way: a free
+   model that writes a good analysis and then botches the payload costs
+   the user the card, which is the point of the request. The pool call is
+   rated down before the paid model is asked, so the router learns which
+   model does this. When the move happens mid-answer, or after a whole
+   answer that turned out unusable, the text already shown is discarded
+   and replaced by the paid model's. Which model answered is
    visible on the entry; nothing else about the two paths differs, and
    the card is built from whichever answer arrived.
+   The step-up happens at most once per request: when no paid model is
+   configured or the daily cap is spent, an unusable answer stands as it
+   is — the analysis is worth reading even when the card behind it failed,
+   and the entry says the card failed. Every rejected payload is logged
+   with the reason it was rejected and the payload itself, since nothing
+   else keeps it.
    The step-up is failure recovery, not part of the normal latency path.
    The paid model starts a new attempt with the same full complete-answer
    budget as the pool; time already lost waiting for the failed pool does
@@ -450,9 +463,9 @@ to be last.
 - **Cost**: **no metered API is ever required.** Every answer starts on
   the free-tier `llmbroker` model pool, which is un-metered. A paid
   per-token model is reached in exactly two situations, both bounded by a
-  daily cap (`ECHOWORDS_API_DAILY_CAP`): when the pool fails to complete an
-  answer within its attempt budget, and when the user explicitly asks for
-  a deeper analysis. With no paid key configured, or with the cap spent,
+  daily cap (`ECHOWORDS_API_DAILY_CAP`): when the pool fails to deliver a
+  complete and usable answer within its attempt budget, and when the user
+  explicitly asks for a deeper analysis. With no paid key configured, or with the cap spent,
   both simply do not happen — the pool timing out then reports a failure
   instead, and the deeper analysis says it is unavailable. The design
   must run fully on the un-metered pool.

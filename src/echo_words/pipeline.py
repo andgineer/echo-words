@@ -27,6 +27,7 @@ from echo_words.prompt import (
     extract_segments,
 )
 from echo_words.sanitizer import sanitize_html
+from echo_words.segments import Segment
 from echo_words.shape import Shape
 
 UPDATE_INTERVAL_SECONDS = 0.5
@@ -406,8 +407,17 @@ class WordPipeline:
                 if job.shape == "text"
                 else build_prompt(job.language, job.word, self.target_lang, context=job.context)
             )
-            parsed = None
-            segments = None
+            parsed: ParsedCard | None = None
+            segments: list[Segment] | None = None
+
+            def parse_payload(answer: str) -> bool:
+                nonlocal parsed, segments
+                if job.shape == "text":
+                    segments = extract_segments(answer, job.language)
+                    return segments is not None
+                parsed = extract_card(answer, job.word, job.language)
+                return parsed is not None
+
             try:
                 if job.paid_only:
                     completion = self.cascade.stream_paid(
@@ -421,6 +431,7 @@ class WordPipeline:
                         job.language,
                         trace_id=job.entry_id,
                         on_reset=reset,
+                        usable=parse_payload,
                     )
                 async with aclosing(completion):
                     async for delta in completion:
@@ -446,13 +457,7 @@ class WordPipeline:
                             last_published,
                             last_update_at,
                         )
-                    if job.shape == "text":
-                        segments = extract_segments(raw, job.language)
-                        answered = segments is not None
-                    else:
-                        parsed = extract_card(raw, job.word, job.language)
-                        answered = parsed is not None
-                    await completion.record_quality(1.0 if answered else 0.0)
+                    await completion.record_quality(1.0 if parse_payload(raw) else 0.0)
             except BackendError as exc:
                 if job.kind == "rebuild" and not entry_reset:
                     await self.events.publish(
