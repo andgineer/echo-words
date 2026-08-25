@@ -87,6 +87,33 @@ headless Anki integration, and the audio chain are interface-agnostic.
   above; the local resend queue still turns words submitted during an
   outage into cards.
 
+## The interface language is the client's, and so is every wording
+
+The PWA carries an interface-language selector (English and Russian) whose
+choice is remembered per browser. It governs the whole interface, including
+text about work the backend did — the Anki result on an answer, a failed
+analysis, a missing recording.
+
+**The client owns the wording; the API carries codes, not sentences.** An
+answer's Anki outcome travels as a status code and the client renders the
+label. Two reasons, in order of weight:
+
+- Word history outlives the request that created it. A sentence rendered by
+  the backend would freeze at the language that was active when the card was
+  made, so switching the selector would leave older entries in the old
+  language. A code re-renders with the rest of the interface.
+- Much of this text never passes through a response the client can put a
+  language on: results arrive over SSE, which carries no request headers.
+
+Two kinds of text stay on the backend, because no code can stand in for
+them: the analysis itself, and a foreign error quoted verbatim — what Anki
+or a provider reported. They are shown as they came.
+
+The backend keeps a message catalogue only for what it must render in the
+response itself: validation refusals of a submitted word. Those are answers
+to one request, never stored, and the request carries `Accept-Language` set
+from the selector.
+
 ## Consequences
 
 - The backend's home is the **always-on micro instance**; the laptop is a

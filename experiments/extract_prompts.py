@@ -169,3 +169,11 @@ TEXT_VARIANTS["t2"] = (
     "t1 + drop modifiers, rank the focus first",
     [(_ORDINARY_ANCHOR, _ORDINARY_ALLOWED + _NARROW + _RANK)],
 )
+
+
+# v5 is the shipped prompt itself: v4 plus the surface field, which is what makes
+# the decision readable at all. An inflected unit cannot echo its input, so the
+# echo test that v1-v4 were scored under calls it a fragment; surface says how
+# much of the input the unit actually occupies, and the whole input means a unit.
+VARIANTS["v5"] = ("shipped: v4 + the unit's surface in the input", [])
+WITH_CANDIDATES = frozenset({"v3", "v4", "v5"})

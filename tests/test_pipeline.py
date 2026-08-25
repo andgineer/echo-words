@@ -8,12 +8,11 @@ from echo_words.broker import BackendError
 from echo_words.events import Event, EventHub
 from echo_words.pipeline import (
     ADDED_STATUS,
+    ANALYSIS_FAILED_CODE,
     CARD_FAILED_STATUS,
     DUPLICATE_STATUS,
-    ERROR_MESSAGE,
     FRAGMENT_STATUS,
     LOOKUP_ONLY_STATUS,
-    NO_AUDIO_STATUS,
     TEXT_STATUS,
     WordPipeline,
 )
@@ -142,7 +141,9 @@ async def test_deltas_are_throttled_cut_sanitized_and_finished(languages):
                 "text": "<b>Word</b> &amp; meaning",
                 "suggestion": None,
                 "shown_spelling": "Word",
-                "card_status": f"{CARD_FAILED_STATUS} · {NO_AUDIO_STATUS}",
+                "card_status": CARD_FAILED_STATUS,
+                "card_error": None,
+                "no_audio": True,
                 "segments": [],
                 "audio_url": None,
                 "context_audio_url": None,
@@ -169,7 +170,7 @@ async def test_a_backend_error_keeps_partial_text_and_publishes_a_safe_hint(lang
         assert entry.status == "error"
         assert events[-1] == Event(
             "error",
-            {"entry_id": entry.entry_id, "message": ERROR_MESSAGE},
+            {"entry_id": entry.entry_id, "code": ANALYSIS_FAILED_CODE},
         )
     finally:
         await pipeline.close()
@@ -201,7 +202,9 @@ async def test_card_parse_quality_and_suggestion_are_published_after_completion(
                 "text": "analysis",
                 "suggestion": "receive",
                 "shown_spelling": "recieve",
-                "card_status": f"{CARD_FAILED_STATUS} · {NO_AUDIO_STATUS}",
+                "card_status": CARD_FAILED_STATUS,
+                "card_error": None,
+                "no_audio": True,
                 "segments": [],
                 "audio_url": None,
                 "context_audio_url": None,
@@ -240,7 +243,9 @@ async def test_card_without_examples_is_rated_as_a_failure_without_losing_analys
                 "text": "analysis",
                 "suggestion": None,
                 "shown_spelling": "word",
-                "card_status": f"{CARD_FAILED_STATUS} · {NO_AUDIO_STATUS}",
+                "card_status": CARD_FAILED_STATUS,
+                "card_error": None,
+                "no_audio": True,
                 "segments": [],
                 "audio_url": None,
                 "context_audio_url": None,
@@ -295,7 +300,7 @@ async def test_a_fragment_makes_no_note_and_offers_the_unit_it_is_about(language
         entry = await pipeline.enqueue(languages["de"], "ist allein im Restaurant", False)
         await pipeline.join()
         assert anki.calls == []
-        assert entry.card_status.startswith(FRAGMENT_STATUS)
+        assert entry.card_status == FRAGMENT_STATUS
         assert [segment["label"] for segment in entry.segments] == ["allein", "einsam"]
     finally:
         await pipeline.close()
@@ -313,7 +318,27 @@ async def test_a_unit_still_becomes_a_note_and_offers_nothing(languages):
         entry = await pipeline.enqueue(languages["de"], "Rad fahren", False)
         await pipeline.join()
         assert len(anki.calls) == 1
-        assert entry.card_status.startswith(ADDED_STATUS)
+        assert entry.card_status == ADDED_STATUS
+        assert entry.segments == []
+    finally:
+        await pipeline.close()
+
+
+async def test_an_inflected_single_word_still_becomes_a_note(languages):
+    # The answer names the dictionary form of a word that was submitted inflected;
+    # that is the same unit, not a unit found inside a longer input.
+    anki = RecordingAnki(Added(1, None))
+    pipeline = WordPipeline(
+        ScriptedCascade([Completion([valid_card("одржавати")])]),
+        target_lang="ru",
+        anki=anki,
+    )
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(languages["sr"], "одржава", False)
+        await pipeline.join()
+        assert [note.word for note, *_ in anki.calls] == ["одржава"]
+        assert entry.card_status == ADDED_STATUS
         assert entry.segments == []
     finally:
         await pipeline.close()
@@ -335,9 +360,10 @@ async def test_lookup_only_skips_anki_and_reports_it_in_done(languages):
             await pipeline.join()
             events = drain(subscriber)
         assert anki.calls == []
-        expected = f"{LOOKUP_ONLY_STATUS} · {NO_AUDIO_STATUS}"
-        assert entry.card_status == expected
-        assert events[-1].data["card_status"] == expected
+        assert entry.card_status == LOOKUP_ONLY_STATUS
+        assert entry.no_audio is True
+        assert events[-1].data["card_status"] == LOOKUP_ONLY_STATUS
+        assert events[-1].data["no_audio"] is True
     finally:
         await pipeline.close()
 
@@ -360,9 +386,10 @@ async def test_added_and_duplicate_results_become_done_statuses(languages):
                 events = drain(subscriber)
             assert len(anki.calls) == 1
             assert anki.calls[0][1] == "English::Vocabulary"
-            expected_with_audio = f"{expected} · {NO_AUDIO_STATUS}"
-            assert entry.card_status == expected_with_audio
-            assert events[-1].data["card_status"] == expected_with_audio
+            assert entry.card_status == expected
+            assert entry.no_audio is True
+            assert events[-1].data["card_status"] == expected
+            assert events[-1].data["no_audio"] is True
         finally:
             await pipeline.close()
 
@@ -446,7 +473,8 @@ async def test_audio_deadline_cancels_a_wedged_task_and_does_not_stall_done(lang
         assert cancelled.is_set()
         assert entry.status == "done"
         assert entry.audio_url is None
-        assert entry.card_status == f"{CARD_FAILED_STATUS} · {NO_AUDIO_STATUS}"
+        assert entry.card_status == CARD_FAILED_STATUS
+        assert entry.no_audio is True
         assert events[-1].data["audio_url"] is None
     finally:
         release.set()
@@ -472,12 +500,13 @@ async def test_a_misconfigured_note_type_is_a_clear_done_status_not_a_lost_answe
             entry = await pipeline.enqueue(languages["en"], "word", False)
             await pipeline.join()
             events = drain(subscriber)
-        expected = "⚠️ note type EchoWords is misconfigured — fix or delete it in Anki"
+        expected = "note type EchoWords is misconfigured — fix or delete it in Anki"
         assert entry.status == "done"
         assert entry.text == "analysis"
-        expected_with_audio = f"{expected} · {NO_AUDIO_STATUS}"
-        assert entry.card_status == expected_with_audio
-        assert events[-1].data["card_status"] == expected_with_audio
+        assert entry.card_status == CARD_FAILED_STATUS
+        assert entry.card_error == expected
+        assert events[-1].data["card_status"] == CARD_FAILED_STATUS
+        assert events[-1].data["card_error"] == expected
     finally:
         await pipeline.close()
 
@@ -1170,7 +1199,7 @@ async def test_running_text_is_voiced_whole_and_still_makes_no_card(languages, t
         assert audio_calls == [(SENTENCE, "de")]
         assert anki.calls == []
         assert entry.card_status == TEXT_STATUS
-        assert NO_AUDIO_STATUS not in entry.card_status
+        assert entry.no_audio is False
         assert entry.audio_url == f"/api/audio/{spoken.name}"
         assert entry.context_audio_url is None
         assert entry.lookup_only is True
@@ -1190,7 +1219,8 @@ async def test_a_text_that_cannot_be_voiced_says_so(languages):
         entry = await pipeline.enqueue(languages["de"], SENTENCE, False, shape="text")
         await pipeline.join()
 
-        assert entry.card_status == f"{TEXT_STATUS} · {NO_AUDIO_STATUS}"
+        assert entry.card_status == TEXT_STATUS
+        assert entry.no_audio is True
         assert entry.audio_url is None
     finally:
         await pipeline.close()
@@ -1416,7 +1446,8 @@ async def test_an_answer_whose_card_block_is_broken_is_replaced_by_the_paid_mode
     finally:
         await pipeline.close()
     assert [note.word for note, _deck, _audio in anki.calls] == ["word"]
-    assert entry.card_status == f"{ADDED_STATUS} · {NO_AUDIO_STATUS}"
+    assert entry.card_status == ADDED_STATUS
+    assert entry.no_audio is True
     assert entry.model == "gpt-fast"
     assert entry.text == "analysis"
     assert handle.scores == [0.0]
@@ -1440,7 +1471,8 @@ async def test_a_broken_card_block_stands_when_no_paid_model_can_replace_it(sett
         await pipeline.close()
     assert anki.calls == []
     assert cascade.broker.direct_calls == []
-    assert entry.card_status == f"{CARD_FAILED_STATUS} · {NO_AUDIO_STATUS}"
+    assert entry.card_status == CARD_FAILED_STATUS
+    assert entry.no_audio is True
     assert handle.scores == [0.0]
 
 
@@ -1483,4 +1515,5 @@ async def test_a_card_block_the_paid_model_breaks_too_ends_the_request(settings,
     assert anki.calls == []
     assert cascade.broker.direct_calls == ["gpt-fast"]
     assert cascade.calls_today == 1
-    assert entry.card_status == f"{CARD_FAILED_STATUS} · {NO_AUDIO_STATUS}"
+    assert entry.card_status == CARD_FAILED_STATUS
+    assert entry.no_audio is True

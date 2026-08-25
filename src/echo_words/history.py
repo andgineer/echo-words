@@ -28,6 +28,8 @@ class Entry:
     shape: Shape = "unit"
     segments: list[dict] = field(default_factory=list)
     card_status: str | None = None
+    card_error: str | None = None
+    no_audio: bool = False
     error: str | None = None
     model: str | None = None
     detail_available: bool = False

@@ -188,7 +188,9 @@ cannot separate a fixed expression from a fragment of a clause — that is this
 document's own finding. What the router cannot decide, the answer can: the model
 is asked whether the text it was given is itself a lexical unit or a use of one,
 and answers under the headword it chose. The input echoed back means a unit; a
-different headword means a use.
+different headword means a use. Only a multi-word input is read this way: a
+single word is a unit whatever headword the answer names, because an inflected
+word is answered under the dictionary form the card contract asks for.
 
 The measurement covers 81 inputs over English, German and Serbian in four
 classes — units that must survive whole, fragments whose focus has to be found,

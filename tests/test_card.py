@@ -235,6 +235,14 @@ def test_input_is_the_unit_when_the_model_echoes_it(languages):
     assert parsed.input_is_unit
 
 
+def test_a_single_word_is_its_own_unit_even_under_a_dictionary_headword(languages):
+    # An inflected word is answered under the form a dictionary lists, which is
+    # the same unit, not a unit found inside a longer input.
+    parsed = parse_card_payload(payload(word="одржавати"), "одржава", languages["sr"])
+    assert parsed.analysed == "одржавати"
+    assert parsed.input_is_unit
+
+
 @pytest.mark.parametrize("headword", ["bank!", "банк", "a" * 60])
 def test_headword_that_fails_the_word_rule_falls_back_to_the_input(languages, headword):
     # It would be one tap from the front of a note, so it is held to the rule a

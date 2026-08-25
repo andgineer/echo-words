@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from echo_words.languages import Language, validate_word
+from echo_words.shape import word_count
 
 MAX_MEANINGS = 3
 MAX_EXAMPLES_PER_MEANING = 2
@@ -47,6 +48,10 @@ class ParsedCard:
 
     @property
     def input_is_unit(self) -> bool:
+        # Only a multi-word input can be a use of a unit. A single word is one
+        # already, and the headword the answer names is its dictionary form.
+        if word_count(self.note.word) <= 1:
+            return True
         return _fold(self.analysed) == _fold(self.note.word)
 
 

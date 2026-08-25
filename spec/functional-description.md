@@ -105,7 +105,10 @@ The four requirements every design decision is weighed against:
    is about, and one tap on one of them makes the note. Which of the two
    a multi-word input is, is the model's own judgement, read off the
    headword it answered under: an answer about the input itself is a
-   unit, an answer about something else is a use.
+   unit, an answer about something else is a use. The question is asked
+   of a multi-word input only: a single word is a unit already, and one
+   submitted inflected is answered under its dictionary form, so its
+   note is made exactly as for a word typed in that form.
    **Running text is a second shape.** A sentence or a longer passage is
    translated and explained instead, and produces **no note**; alongside
    the answer come the units of that text worth looking up on their own.

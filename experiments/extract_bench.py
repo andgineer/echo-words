@@ -85,6 +85,16 @@ def tokens(text: str) -> list[str]:
     return _WORDS.findall(normalize(text))
 
 
+def covers_input(surface: str, source: str) -> bool:
+    """Whether the unit occupies the whole input — the test the card decision reads.
+
+    A sequence comparison, not a set one: a dropped clitic is exactly the
+    difference between an inflected unit and a use of one, and ``вратио се`` out
+    of ``вратио се кући`` must not count as the whole thing.
+    """
+    return bool(surface) and tokens(surface) == tokens(source)
+
+
 def is_split(label: str, source: str) -> bool:
     """The expensive error, detected structurally rather than against the fixture:
     the answer is a proper part of the input, every word of it already there.
@@ -142,9 +152,11 @@ def score(shot: Shot) -> Shot:
         candidates = segment_labels(card)
         label = candidates[0] if candidates else ""
         problems = [parse_error] if card is None else ([] if candidates else ["no segments"])
+        surface = ""
     else:
         problems = validate_card(card) if card else [parse_error]
         label = str((card or {}).get("word", "")).strip()
+        surface = str((card or {}).get("surface", "")).strip()
         raw_candidates = (card or {}).get("candidates")
         candidates = (
             [str(c).strip() for c in raw_candidates if str(c).strip()]
@@ -160,6 +172,11 @@ def score(shot: Shot) -> Shot:
         "stripped_any": any(normalize(c) in traps for c in candidates),
         "split": is_split(label, shot.word),
         "echoed": normalize(label) == normalize(shot.word),
+        "surface": surface,
+        "surface_present": bool(surface),
+        # What the shipped rule would do with this answer: the whole input
+        # occupied by the unit means the input is that unit and becomes a note.
+        "cards_whole": covers_input(surface, shot.word),
         "label_valid": bool(label) and word_hint(label, shot.lang) is None,
         "candidates": candidates,
         "too_many_candidates": len(candidates) > MAX_CANDIDATES,
@@ -329,8 +346,8 @@ def report(out: Path) -> None:
     combos = sorted({(s.variant, s.model) for s in shots})
     print(f"{len(shots)} answers over {', '.join(sorted({s.variant for s in shots}))}\n")
     header = f"{'class':10} {'variant':8} {'model':16} {'n':>3} {'hit@1':>6} {'hit@any':>8} {'STRIP':>6} "
-    print(header + f"{'SPLIT':>6} {'echoed':>7} {'valid':>6} {'card':>5} {'p50 s':>6}")
-    for klass in ("units", "morphology", "fragments", "clauses", "controls"):
+    print(header + f"{'SPLIT':>6} {'echoed':>7} {'whole':>6} {'surf':>5} {'valid':>6} {'card':>5} {'p50 s':>6}")
+    for klass in ("units", "inflected", "morphology", "fragments", "clauses", "controls"):
         rows = [s for s in shots if s.klass == klass]
         if not rows:
             continue
@@ -352,6 +369,8 @@ def report(out: Path) -> None:
                 f"{any_hit:>8} {pct(sum(x['stripped'] for x in m), n):>6} "
                 f"{pct(sum(x['split'] for x in m), n):>6} "
                 f"{pct(sum(x['echoed'] for x in m), n):>7} "
+                f"{pct(sum(x.get('cards_whole') for x in m), n):>6} "
+                f"{pct(sum(x.get('surface_present') for x in m), n):>5} "
                 f"{pct(sum(x['label_valid'] for x in m), n):>6} "
                 f"{pct(sum(x['card_ok'] for x in m), n):>5} "
                 f"{statistics.median(times) if times else 0:>6.1f}"
@@ -387,6 +406,25 @@ def report(out: Path) -> None:
             f"  {shot.variant} {shot.lang} {shot.word!r} -> {shot.metrics['label']!r} "
             f"(wanted {shot.accepted}){tail}"
         )
+
+    print("\n--- the card decision: whole input carded, or its unit offered ---")
+    for klass, want in (("units", True), ("inflected", True), ("fragments", False)):
+        wrong = [
+            s
+            for s in shots
+            if s.klass == klass and s.metrics.get("surface_present") and s.metrics["cards_whole"] is not want
+        ]
+        verb = "offered instead of carded" if want else "CARDED WHOLE instead of offered"
+        print(f"  {klass}: {len(wrong)} {verb}")
+        for shot in sorted(wrong, key=lambda s: (s.variant, s.lang)):
+            print(
+                f"    {shot.variant} {shot.lang} {shot.word!r} -> word={shot.metrics['label']!r} "
+                f"surface={shot.metrics['surface']!r}"
+            )
+    missing = [s for s in shots if s.metrics and not s.metrics.get("surface_present") and s.metrics.get("card_ok")]
+    print(f"  no surface field at all: {len(missing)}")
+    for shot in missing[:10]:
+        print(f"    {shot.variant} {shot.lang} {shot.word!r}")
 
     broken = [s for s in shots if s.error or not s.metrics["card_ok"]]
     print(f"\n--- unusable answers: {len(broken)} ---")

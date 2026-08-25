@@ -5,6 +5,10 @@ Four classes, because the two error directions are not symmetric.
 ``UNITS``      the input is itself one lexical unit and must be carded whole.
                Splitting one — carding ``fahren`` out of ``Rad fahren`` — is the
                expensive error: the card looks right, so nothing catches it.
+``INFLECTED``  the input is itself one lexical unit too, but typed in a form no
+               dictionary lists — ``fährt Rad``. It must be carded whole exactly
+               as ``UNITS`` is; what makes it its own class is that the headword
+               cannot echo it, so an echo test reads it as a fragment.
 ``FRAGMENTS``  the input is a *use* of a unit, typed with the words around it so
                the answer can address that sense. The focus has to be found.
 ``CLAUSES``    a short complete clause. Today it is carded whole, which the
@@ -107,6 +111,39 @@ FRAGMENTS: dict[str, list[tuple[str, tuple[str, ...]]]] = {
     ],
 }
 
+# The input IS the unit, typed in a form other than the one a dictionary lists.
+# The class the first sweep had no fixtures for: every UNITS item was handed over
+# already lemmatised, so nothing measured what happens when the reader types the
+# unit the way it stood in the text they met it in.
+INFLECTED: dict[str, list[tuple[str, tuple[str, ...]]]] = {
+    "en": [
+        ("gave up", ("give up",)),
+        ("broke down", ("break down",)),
+        ("spilled the beans", ("spill the beans",)),
+        ("bit the bullet", ("bite the bullet",)),
+        ("looking forward to", ("look forward to",)),
+        ("got away with", ("get away with",)),
+    ],
+    "de": [
+        ("fährt Rad", ("Rad fahren",)),
+        ("spielt eine Rolle", ("eine Rolle spielen", "Rolle spielen")),
+        ("steht zur Verfügung", ("zur Verfügung stehen",)),
+        ("nimmt Rücksicht", ("Rücksicht nehmen",)),
+        ("kommt in Frage", ("in Frage kommen", "infrage kommen")),
+        ("zog in Betracht", ("in Betracht ziehen",)),
+        ("eine Entscheidung getroffen", ("eine Entscheidung treffen", "Entscheidung treffen")),
+    ],
+    "sr": [
+        ("возим бицикл", ("возити бицикл",)),
+        ("донео одлуку", ("донети одлуку",)),
+        ("води рачуна", ("водити рачуна",)),
+        ("обратио пажњу", ("обратити пажњу",)),
+        ("пада ми на памет", ("пасти на памет", "падати на памет", "не падати на памет")),
+        ("држи реч", ("држати реч",)),
+        ("ide pešice", ("ići pešice",)),
+    ],
+}
+
 # A short complete clause. Generous on purpose — this class reports, it does not decide.
 CLAUSES: dict[str, list[tuple[str, tuple[str, ...]]]] = {
     "en": [
@@ -179,6 +216,7 @@ MORPHOLOGY: dict[str, list[tuple[str, tuple[str, ...], tuple[str, ...]]]] = {
 
 CLASSES: dict[str, dict[str, list[tuple]]] = {
     "units": UNITS,
+    "inflected": INFLECTED,
     "fragments": FRAGMENTS,
     "clauses": CLAUSES,
     "controls": CONTROLS,

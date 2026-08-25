@@ -31,14 +31,15 @@ from echo_words.segments import Segment
 from echo_words.shape import Shape
 
 UPDATE_INTERVAL_SECONDS = 0.5
-ERROR_MESSAGE = "Не удалось получить разбор. Попробуйте отправить слово ещё раз."
-ADDED_STATUS = "✅ added to Anki"
-DUPLICATE_STATUS = "📌 already in Anki"
-LOOKUP_ONLY_STATUS = "👁 lookup only"
-TEXT_STATUS = "👁 text — no card"
-FRAGMENT_STATUS = "👁 fragment — no card"
-CARD_FAILED_STATUS = "⚠️ card failed"
-NO_AUDIO_STATUS = "🔇 no audio"
+# Codes, not sentences: the client owns every user-facing wording, so a
+# stored entry re-renders in whatever interface language is picked later.
+ANALYSIS_FAILED_CODE = "analysis_failed"
+ADDED_STATUS = "added"
+DUPLICATE_STATUS = "duplicate"
+LOOKUP_ONLY_STATUS = "lookup_only"
+TEXT_STATUS = "text"
+FRAGMENT_STATUS = "fragment"
+CARD_FAILED_STATUS = "failed"
 REQUEST_EXPIRED = "request expired"
 
 logger = logging.getLogger(__name__)
@@ -123,6 +124,7 @@ class StoreResult:
     action: str
     note_id: int | None = None
     media_filename: str | None = None
+    error: str | None = None
 
 
 QueueJob = Job | DetailJob
@@ -490,7 +492,8 @@ class WordPipeline:
             elif job.kind == "switch" and stored.action == "failed":
                 self._delete_audio(audio_path)
                 audio_path = job.replaced_audio
-            card_status, entry.audio_file = _audio_result(stored.status, audio_path)
+            entry.audio_file = audio_path.name if audio_path else None
+            entry.no_audio = audio_path is None
             entry.context_audio_file = context_audio_path.name if context_audio_path else None
             suggestion = self._correction_target(job, parsed)
             entry.segments = [
@@ -501,7 +504,7 @@ class WordPipeline:
                 job.shape != "text" and await self._paid_refusal_fresh(job.language) is None
             )
             self._update_state(job, parsed, stored, audio_path, context_audio_path)
-            await self._finish_entry(entry, raw, last_published, suggestion, card_status, stored)
+            await self._finish_entry(entry, raw, last_published, suggestion, stored)
         finally:
             for pending in (audio_task, context_audio_task):
                 if pending is not None:
@@ -603,8 +606,7 @@ class WordPipeline:
                 result = await self.anki.add_note(parsed.note, job.language.deck, audio_path)
         except Exception as exc:  # noqa: BLE001
             logger.exception("could not add %r to Anki", job.word)
-            status = f"⚠️ {exc}" if str(exc) else CARD_FAILED_STATUS
-            return StoreResult(status, "failed")
+            return StoreResult(CARD_FAILED_STATUS, "failed", error=str(exc) or None)
         if isinstance(result, Added):
             return StoreResult(ADDED_STATUS, "added", result.note_id, result.media_filename)
         if isinstance(result, Duplicate):
@@ -617,7 +619,6 @@ class WordPipeline:
         raw: str,
         last_published: str,
         suggestion: str | None,
-        card_status: str,
         stored: StoreResult,
     ) -> None:
         final = sanitize_html(visible_analysis(raw))
@@ -625,7 +626,8 @@ class WordPipeline:
         if final != last_published:
             await self._publish_update(entry)
         entry.action = stored.action
-        entry.card_status = card_status
+        entry.card_status = stored.status
+        entry.card_error = stored.error
         entry.suggestion = suggestion
         entry.shown_spelling = entry.word
         control = self._controls.get(entry.entry_id)
@@ -641,7 +643,9 @@ class WordPipeline:
                 "text": final,
                 "suggestion": suggestion,
                 "shown_spelling": entry.shown_spelling,
-                "card_status": card_status,
+                "card_status": stored.status,
+                "card_error": stored.error,
+                "no_audio": entry.no_audio,
                 "segments": entry.segments,
                 "audio_url": entry.audio_url,
                 "context_audio_url": entry.context_audio_url,
@@ -756,8 +760,11 @@ class WordPipeline:
         if entry is None:
             return
         entry.action = "failed"
-        entry.error = ERROR_MESSAGE
-        await self.events.publish("error", {"entry_id": entry.entry_id, "message": ERROR_MESSAGE})
+        entry.error = ANALYSIS_FAILED_CODE
+        await self.events.publish(
+            "error",
+            {"entry_id": entry.entry_id, "code": ANALYSIS_FAILED_CODE},
+        )
         self.history.trim()
         self._drop_evicted_state()
 
@@ -799,6 +806,8 @@ class WordPipeline:
         entry.text = ""
         entry.action = "pending"
         entry.card_status = None
+        entry.card_error = None
+        entry.no_audio = False
         entry.error = None
         entry.model = None
         if kind != "rebuild":
@@ -860,12 +869,6 @@ def _suggestion_from(parsed: ParsedCard | None) -> str | None:
 def _voiced_context(job: Job) -> str:
     """The text a unit came from, when the unit's own audio does not already cover it."""
     return job.context if job.context and job.context != job.word else ""
-
-
-def _audio_result(card_status: str, audio_path: Path | None) -> tuple[str, str | None]:
-    if audio_path is None:
-        return f"{card_status} · {NO_AUDIO_STATUS}", None
-    return card_status, audio_path.name
 
 
 def _cancel_task(task: asyncio.Task[Path | None]) -> None:

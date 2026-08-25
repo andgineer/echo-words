@@ -55,7 +55,7 @@ export function useEventStream({
     } else if (name === "control_error") {
       upsertEntry({ entry_id: data.entry_id, control_error: data.message });
     } else if (name === "error") {
-      upsertEntry({ entry_id: data.entry_id, status: "error", error: data.message });
+      upsertEntry({ entry_id: data.entry_id, status: "error", error: data.code });
     }
   }
 

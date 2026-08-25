@@ -105,14 +105,22 @@ The whole analysis: at most 3500 characters.
 After the analysis output the line ===CARD=== exactly, and immediately
 after it one line of JSON, with no commentary and no HTML tags inside the
 values:
-{{"word": "...", "suggestion": "...", "candidates": ["...", "..."],
+{{"word": "...", "surface": "...", "suggestion": "...",
+ "candidates": ["...", "..."],
  "meanings": [{{"label": "...", "translations": ["...", "..."],
  "examples": [{{"text": "...", "translation": "..."}}]}}]}}
 word — the unit you analysed, in the form a dictionary lists it and the way
 it would be typed into a search box: letters, spaces, hyphens and
 apostrophes only, in the same script as the input. It is the whole input
 when the input was itself one unit, and the unit you found inside it
-otherwise. suggestion — the
+otherwise.
+surface — the part of the input that unit occupies, copied from the input
+exactly as it stands there, its words in the order they appear, and its
+pieces joined by a space, an ellipsis character and a space when they stand
+apart. It is the whole input, word for word, when the input was itself that
+unit however it was inflected; it is only the part the unit occupies when
+the rest of the input is context around it.
+suggestion — the
 likely intended spelling of a typo, or an empty string.
 candidates — every unit of the input worth looking up on its own, most
 useful first, at most three, each in the dictionary form the word field is

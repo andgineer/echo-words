@@ -108,6 +108,27 @@ async function entryAction(entry, action) {
   }
 }
 
+const CARD_STATUS_KEYS = {
+  added: "card.added",
+  duplicate: "card.duplicate",
+  lookup_only: "card.lookupOnly",
+  text: "card.text",
+  fragment: "card.fragment",
+  failed: "card.failed",
+};
+
+function cardStatusText(entry) {
+  if (!entry.card_status) return "";
+  const label = entry.card_error
+    ? `⚠️ ${entry.card_error}`
+    : t(CARD_STATUS_KEYS[entry.card_status] ?? entry.card_status);
+  return entry.no_audio ? `${label} · ${t("card.noAudio")}` : label;
+}
+
+function errorText(error) {
+  return error === "analysis_failed" ? t("add.analysisFailed") : error;
+}
+
 async function undo() {
   if (!selected.value) return;
   try {
@@ -199,8 +220,8 @@ async function undo() {
           <p v-if="segment.reason" class="segment-reason">{{ segment.reason }}</p>
         </div>
       </div>
-      <p v-if="entry.card_status" class="entry-card-status">{{ entry.card_status }}</p>
-      <p v-if="entry.error" class="entry-error">{{ entry.error }}</p>
+      <p v-if="entry.card_status" class="entry-card-status">{{ cardStatusText(entry) }}</p>
+      <p v-if="entry.error" class="entry-error">{{ errorText(entry.error) }}</p>
       <p v-if="entry.detail_error" class="entry-error">{{ entry.detail_error }}</p>
       <p v-if="entry.control_error" class="entry-error">{{ entry.control_error }}</p>
       <div v-if="entry.status === 'done'" class="entry-actions">

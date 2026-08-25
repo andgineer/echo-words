@@ -6,6 +6,7 @@ vi.mock("../src/api/_request.js", () => ({ apiRequest: vi.fn() }));
 import { apiRequest } from "../src/api/_request.js";
 import { entries } from "../src/composables/useEntries.js";
 import { languages, selected } from "../src/composables/useLanguage.js";
+import { locale } from "../src/i18n/index.js";
 import AddView from "../src/views/AddView.vue";
 import { EPIC, FEATURE, labelBehavior } from "./allure-taxonomy.js";
 
@@ -19,6 +20,7 @@ beforeEach(async () => {
   languages.value = [];
   entries.value = [];
   selected.value = "";
+  locale.value = "en";
   localStorage.clear();
   apiRequest.mockReset();
   apiRequest.mockImplementation(async (path) => {
@@ -29,6 +31,7 @@ beforeEach(async () => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  locale.value = "en";
   localStorage.clear();
 });
 
@@ -45,7 +48,7 @@ function textEntry(segments = [
     shape: "text",
     status: "done",
     text: "Он встаёт каждое утро в шесть.",
-    card_status: "👁 text — no card",
+    card_status: "text",
     detail_available: false,
     segments,
   };
@@ -164,13 +167,69 @@ describe("AddView", () => {
       lookup_only: false,
       status: "done",
       text: "<b>Word</b> — meaning",
-      card_status: "✅ added to Anki",
+      card_status: "added",
     }];
     const wrapper = mount(AddView);
     await flushPromises();
 
     expect(wrapper.find(".entry-card-status").text()).toBe("✅ added to Anki");
   });
+
+  it("renders the Anki result in the interface language, switching with it", async () => {
+    await labelBehavior(EPIC.ANKI_CARDS, FEATURE.COLLECTION, "Card delivery status");
+    entries.value = [{
+      entry_id: "entry-1",
+      word: "Word",
+      language: "English",
+      status: "done",
+      text: "meaning",
+      card_status: "added",
+      no_audio: true,
+    }];
+    const wrapper = mount(AddView);
+    await flushPromises();
+    expect(wrapper.find(".entry-card-status").text()).toBe("✅ added to Anki · 🔇 no audio");
+
+    locale.value = "ru";
+    await flushPromises();
+
+    expect(wrapper.find(".entry-card-status").text()).toBe(
+      "✅ добавлено в Anki · 🔇 без озвучки",
+    );
+  });
+
+  it("shows an Anki failure reason verbatim, and a failed analysis in the interface language",
+    async () => {
+      await labelBehavior(EPIC.ANKI_CARDS, FEATURE.COLLECTION, "Card delivery status");
+      entries.value = [
+        {
+          entry_id: "entry-1",
+          word: "Word",
+          language: "English",
+          status: "done",
+          text: "meaning",
+          card_status: "failed",
+          card_error: "note type EchoWords is misconfigured",
+        },
+        {
+          entry_id: "entry-2",
+          word: "Other",
+          language: "English",
+          status: "error",
+          error: "analysis_failed",
+        },
+      ];
+      locale.value = "ru";
+      const wrapper = mount(AddView);
+      await flushPromises();
+
+      expect(wrapper.find(".entry-card-status").text()).toBe(
+        "⚠️ note type EchoWords is misconfigured",
+      );
+      expect(wrapper.find(".entry-error").text()).toBe(
+        "Не удалось получить разбор. Попробуйте отправить слово ещё раз.",
+      );
+    });
 
   it("attaches a replayable pronunciation to a completed answer", async () => {
     await labelBehavior(EPIC.PRONUNCIATION, FEATURE.AUDIO_DELIVERY, "Playback");

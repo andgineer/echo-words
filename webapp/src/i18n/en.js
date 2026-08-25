@@ -22,6 +22,7 @@ export default {
   "add.detail": "More detail",
   "add.noCard": "no card",
   "add.textNoCard": "text — no card",
+  "add.analysisFailed": "Could not get the analysis. Try sending the word again.",
   "add.contextAudio": "The whole text",
   "add.segments": "Worth looking up on their own:",
   "add.aboutHide": "Hide",
@@ -43,6 +44,14 @@ export default {
     "<b>✏️ Correct.</b> A word is always analysed exactly as typed, and reaches the card that " +
     "way. When it looks like a typo, a ✏️ button with the corrected spelling appears under the " +
     "analysis — it is analysed again for that spelling, and one tap brings the original back.",
+
+  "card.added": "✅ added to Anki",
+  "card.duplicate": "📌 already in Anki",
+  "card.lookupOnly": "👁 lookup only",
+  "card.text": "👁 text — no card",
+  "card.fragment": "👁 fragment — no card",
+  "card.failed": "⚠️ card failed",
+  "card.noAudio": "🔇 no audio",
 
   "stats.title": "Stats",
   "stats.today": "Today: {count}",
