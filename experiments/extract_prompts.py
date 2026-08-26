@@ -7,13 +7,30 @@ identical, so a difference in the numbers can only come from the rule that
 changed. ``build`` raises when an anchor does not fire — a silently skipped edit
 would measure the baseline four times and report it as four variants.
 
-v0  shipped, unedited. The floor: the prompt is told to echo the input, so a
-    multi-word input can only come back whole.
+v0  the shipped prompt, unedited: the baseline every other variant is a delta
+    against.
 v1  the decision alone: is this input a unit, or a use of one? No criteria.
 v2  v1 plus the test for unithood and the tie-break for picking a focus.
 v3  v2 plus a ranked candidate list, which is what a chip row would be built
     from. One run then scores both designs: the top candidate is what would be
     carded automatically, the whole list is what a tap would choose from.
+v4  v3 plus dropping modifiers and ranking the focus first. This is the wording
+    that then shipped, which is why v0 builds it today.
+v5  v4 plus the unit's surface in the input; v7 the same field worded to name
+    only the unit's own words. Both add a field the shipped prompt no longer
+    carries: it was measured, it bought nothing, and it was removed.
+v6  the surface-free baseline both were measured against: the prompt as it then
+    shipped, before the card catalogue joined it. The two numbers
+    ``decision-phrases-and-sentences.md`` quotes for the card decision were
+    taken under it — 89% of inflected units and 50% of fragments carded whole,
+    over its 44 recorded answers. It is not rebuilt here and needs no delta:
+    v0 is the shipped prompt, and what v6 asked survives in those answers.
+
+v1-v4 no longer build. Every line they replace has since shipped, so their
+anchors are not in the template any more, and reconstructing the wordings they
+started from would be the hand-copying this delta form exists to avoid. They
+are kept as the record of what was asked; ``build`` refuses them rather than
+measuring the baseline under their name.
 """
 
 # The echo rule, and the field description that repeats it. Both must move together:
@@ -73,7 +90,7 @@ that one unit and nothing else.
 """
 
 VARIANTS: dict[str, tuple[str, list[tuple[str, str]]]] = {
-    "v0": ("shipped, echoes the input", []),
+    "v0": ("shipped, unedited", []),
     "v1": (
         "decide unit vs use",
         [(_ECHO_ANCHOR, _DECIDE), (_WORD_FIELD_ANCHOR, _WORD_FIELD)],
@@ -171,9 +188,51 @@ TEXT_VARIANTS["t2"] = (
 )
 
 
-# v5 is the shipped prompt itself: v4 plus the surface field, which is what makes
-# the decision readable at all. An inflected unit cannot echo its input, so the
-# echo test that v1-v4 were scored under calls it a fragment; surface says how
-# much of the input the unit actually occupies, and the whole input means a unit.
-VARIANTS["v5"] = ("shipped: v4 + the unit's surface in the input", [])
-WITH_CANDIDATES = frozenset({"v3", "v4", "v5"})
+# The surface field, which the shipped prompt no longer carries. v5 and v7 put it
+# back, in the place and the wording it stood in, and differ from v0 and from each
+# other in nothing else. What it is for: an inflected unit cannot echo its input,
+# so the echo test calls it a fragment; surface says how much of the input the unit
+# actually occupies, and the whole input means a unit.
+_JSON_WITHOUT_SURFACE = """{{"word": "...", "suggestion": "...", "candidates": ["...", "..."],"""
+
+_JSON_WITH_SURFACE = """{{"word": "...", "surface": "...", "suggestion": "...",
+ "candidates": ["...", "..."],"""
+
+_SUGGESTION_ANCHOR = """otherwise. suggestion — the"""
+
+_SURFACE_LOOSE = """surface — the part of the input that unit occupies, copied from the input
+exactly as it stands there, its words in the order they appear, and its
+pieces joined by a space, an ellipsis character and a space when they stand
+apart. It is the whole input, word for word, when the input was itself that
+unit however it was inflected; it is only the part the unit occupies when
+the rest of the input is context around it.
+"""
+
+# v7 says what v5 left the model free to ignore: which words of the input are NOT
+# in the surface. v5 returned the whole input as the surface for four fragments
+# out of five, including ones whose headword was a single word of it.
+_SURFACE_STRICT = """surface — the words of the input that belong to the unit itself, copied from
+the input in the order they appear and joined by a space, an ellipsis
+character and a space wherever a word that is not part of the unit stands
+between them. Every word of the input that is not part of the unit is left
+out of it: a degree adverb or an intensifier, a quantifier, an adverb of
+time, an auxiliary carrying no meaning of its own, anything you dropped when
+you gave the dictionary form. The whole input goes here only when every one
+of its words belongs to the unit; when the unit is one word of a longer
+input, the surface is that one word.
+"""
+
+
+def _with_surface(field: str) -> list[tuple[str, str]]:
+    return [
+        (_JSON_WITHOUT_SURFACE, _JSON_WITH_SURFACE),
+        (_SUGGESTION_ANCHOR, f"otherwise.\n{field}suggestion — the"),
+    ]
+
+
+VARIANTS["v5"] = ("v4 + the unit's surface in the input", _with_surface(_SURFACE_LOOSE))
+VARIANTS["v7"] = (
+    "v5 + the surface names only the unit's own words",
+    _with_surface(_SURFACE_STRICT),
+)
+WITH_CANDIDATES = frozenset({"v3", "v4", "v5", "v6", "v7"})

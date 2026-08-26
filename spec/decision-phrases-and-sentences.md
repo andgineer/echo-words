@@ -109,8 +109,12 @@ card. Set lower, it taxes idioms — the app's whole subject — with an extra t
 each. Set higher, it starts carding throwaway sentences. The rule:
 
 - A single word is always analysed as a word, whatever punctuation trails it.
-- Any sentence punctuation — a terminal mark, or a comma, semicolon, colon or
-  dash inside — makes it running text.
+- A comma, semicolon, colon or dash *inside* makes it running text. A mark that
+  merely ends the input does not: within the band a trailing mark carries no
+  information, because the selection an input was copied from carries the
+  punctuation of the sentence it was cut from — the same reason a single word
+  keeps its shape whatever trails it. Above the band the word count routes
+  anyway, so nothing that reads as a sentence changes shape.
 - Anything longer than the canonical-word limit is running text.
 - More than four words is running text.
 - Everything else is analysed whole, as one unit.
@@ -217,6 +221,46 @@ correctly is what a metered model would buy, and a tap already buys it.
 Auto-carding the model's first choice was rejected on those numbers: at 42% it
 would put a wrong note in the deck three times in five, and a wrong note that
 looks right is the one error nothing downstream catches.
+
+### What the decision is worth, measured on its own
+
+The extraction numbers above say the model finds the unit. They do not say how
+often the card decision that reads them lands, and the fixtures they were taken
+over could not: every unit in them was handed over already in its dictionary
+form, so the headword could always echo it. A reader types what they just read.
+Twenty inputs that are one unit in a form no dictionary lists — `fährt Rad`,
+`донео одлуку`, `пада ми на памет` — close that gap, on the free pool:
+
+| | free pool |
+|---|---|
+| a unit typed inflected, carded whole | 89% |
+| a fragment, carded whole | 50% |
+
+Over 18 and 24 answers. The first number is what the decision costs a reader:
+one unit in nine is withheld and has to be tapped for. The second is what it is
+worth: half the fragments the branch exists to catch are carded whole anyway,
+because the model answers under the input itself and the headword echoes. The
+discrimination is real, and it is far weaker than the extraction numbers
+suggest.
+
+Asking the model for the unit's surface in the input — the field the
+running-text prompt already carries, where it measured clean — was tried as the
+way out and rejected. Worded as *the part of the input the unit occupies*, it
+came back as the whole input for four fragments in five, which would card 82% of
+them. Tightened to name only the unit's own words and to leave out every word
+that is not part of it, it reached 89% of inflected units carded and 43% of
+fragments: the headword test's own two numbers, within one item on samples this
+size. It buys nothing measurable and costs a prompt revision, which moves every
+other prompt-bound number in this document. The field is therefore not in the
+shipped prompt; both wordings of it are kept in the harness as deltas against
+that prompt, so the comparison can be run again. The four numbers above were
+taken before the card catalogue joined the same prompt, and are bound to it as
+it then stood.
+
+A decision rule is read off an answer already recorded, so `extract_bench.py
+replay` scores every rule over the whole corpus without a single call. Only a
+change to what the prompt *asks for* has to be bought again, and `--resume` and
+`--only-wrong` keep that to the items that actually discriminate.
 
 What would re-open this: a revision of the vocabulary prompt, or the pool's
 primary model changing. Both numbers are bound to the prompt that produced them.

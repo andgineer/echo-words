@@ -105,6 +105,29 @@ deterministic.
 
 To build the PWA locally without deploying, use `inv build-static`.
 
+## Rebuilding the Anki note type
+
+`inv rebuild-note-type` deletes the `EchoWords` note type together with every
+note of it, so the next card added recreates it with the current fields and
+templates. It is the only destructive command here: it stops the service, prints
+what it would delete and how many notes, and removes nothing until you type
+`yes`. The console command behind it, `echo-words rebuild-note-type`, deletes
+nothing without `--yes`, and fails instead of reporting success when it finds no
+collection where the service keeps one. The service is started again whatever
+you answer, and whatever goes wrong in between.
+
+Run it only when a release changes the note type — `inv deploy` then fails every
+add with `note type EchoWords is misconfigured`, because the app refuses to
+rewrite a note type it did not create.
+
+!!! warning
+    Changing a note type's fields is an Anki *schema* change, so the first sync
+    afterwards demands a one-way full sync and the service reports
+    `full-sync-required` instead of resolving it. Resolve it by hand, from the
+    device that holds the collection you want to keep — the backend will never
+    choose a direction for you, because choosing wrong overwrites your other
+    decks.
+
 ## Releases
 
 `inv ver-bug`, `inv ver-feature`, and `inv ver-release` bump the version in

@@ -46,6 +46,15 @@ export default {
     "analysis — it is analysed again for that spelling, and one tap brings the original back.",
 
   "card.added": "✅ added to Anki",
+  "card.addedCount.one": "✅ 1 card: {kinds}",
+  // English selects neither "few" nor "many"; the catalogues are keyed alike.
+  "card.addedCount.few": "✅ {count} cards: {kinds}",
+  "card.addedCount.many": "✅ {count} cards: {kinds}",
+  "card.addedCount.other": "✅ {count} cards: {kinds}",
+  "card.kind.recognition": "recognition",
+  "card.kind.recall": "recall",
+  "card.kind.context": "context",
+  "card.kind.sense": "by sense",
   "card.duplicate": "📌 already in Anki",
   "card.lookupOnly": "👁 lookup only",
   "card.text": "👁 text — no card",

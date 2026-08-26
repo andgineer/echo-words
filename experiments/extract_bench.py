@@ -24,7 +24,7 @@ so it spends time rather than money.
 
 Run:
     uv run --no-project --python 3.12 --with "llmbroker>=1.5.2" \\
-        python experiments/extract_bench.py run --variant v0 v1 v2 v3
+        python experiments/extract_bench.py run --variant v0
     uv run --no-project --python 3.12 --with "llmbroker>=1.5.2" \\
         python experiments/extract_bench.py report
 """
@@ -59,13 +59,59 @@ from backend_bench import (  # noqa: E402
     validate_card,
     word_hint,
 )
+from context_items import ADDS_NOTHING_GATE, CLASSES as CONTEXT_CLASSES  # noqa: E402
+from context_items import items as context_items  # noqa: E402
 from extract_items import CLASSES, items  # noqa: E402
 from llmbroker import AsyncBroker  # noqa: E402
 from llmbroker.direct import AsyncDirectClient  # noqa: E402
 
 MAX_CANDIDATES = 3
+# The classes whose input a correct decision cards whole. ``clauses`` is left out
+# on purpose: the routing decision calls a whole-clause note cheap either way, so
+# it reports rather than scores.
+CARDS_WHOLE = frozenset({"units", "inflected", "controls"})
 _WORDS = re.compile(r"[^\W\d_]+", re.UNICODE)
 PROMPT_SOURCE = Path(__file__).resolve().parent.parent / "src" / "echo_words" / "prompt.py"
+
+
+def context_template() -> str:
+    """The shipped context note, read as text — same reason as load_template."""
+    source = PROMPT_SOURCE.read_text(encoding="utf-8")
+    block = re.search(r'^_CONTEXT_NOTE = """(.*?)"""$', source, re.DOTALL | re.MULTILINE)
+    if block is None:
+        raise RuntimeError(f"context note not found in {PROMPT_SOURCE}")
+    return block.group(1)
+
+
+def requests_of(card: dict | None, kind: str) -> list[dict]:
+    raw = (card or {}).get("cards")
+    if not isinstance(raw, list):
+        return []
+    return [i for i in raw if isinstance(i, dict) and str(i.get("kind", "")).strip() == kind]
+
+
+def card_kinds(card: dict | None) -> list[str]:
+    raw = (card or {}).get("cards")
+    if not isinstance(raw, list):
+        return []
+    return [str(i.get("kind", "")).strip() for i in raw if isinstance(i, dict)]
+
+
+def context_usable(card: dict | None, meanings: int) -> bool:
+    """The sense the model pointed at exists — the check the parser already applies."""
+    picked = requests_of(card, "context")
+    if not picked:
+        return False
+    sense = picked[0].get("sense", 0)
+    return isinstance(sense, int) and not isinstance(sense, bool) and 0 <= sense < meanings
+
+
+def production_usable(card: dict | None, word: str, context: str) -> bool:
+    """A rendering, and a context the word literally stands in — else there is no gap."""
+    picked = requests_of(card, "context_production")
+    if not picked or not str(picked[0].get("prompt", "")).strip():
+        return False
+    return re.search(rf"(?<!\w){re.escape(word)}(?!\w)", context, re.IGNORECASE) is not None
 
 
 def text_template() -> str:
@@ -110,6 +156,56 @@ def is_split(label: str, source: str) -> bool:
     return set(label_words) <= set(source_words)
 
 
+def rule_surface(card: dict, source: str) -> bool:
+    """The unit stands over the whole input, read off a field the prompt no longer asks for."""
+    return covers_input(str(card.get("surface", "")).strip(), source)
+
+
+def rule_echo(card: dict, source: str) -> bool:
+    """The headword is the input verbatim — what the shipped decision reads."""
+    return normalize(str(card.get("word", ""))) == normalize(source)
+
+
+def rule_surface_and_own_words(card: dict, source: str) -> bool:
+    """Surface, refused when the headword brings in a word the input never had.
+
+    ``ist allein im Restaurant`` answered under ``allein im Restaurant sein`` is a
+    use of a unit however the surface reads: the input cannot be a unit whose
+    dictionary form needs a word it does not contain.
+    """
+    label = tokens(str(card.get("word", "")))
+    return rule_surface(card, source) and set(label) <= set(tokens(source))
+
+
+def rule_surface_or_echo(card: dict, source: str) -> bool:
+    return rule_surface(card, source) or rule_echo(card, source)
+
+
+# The decision rules a recorded answer can be replayed under. Rules are read off
+# answers already on disk, so trying one costs nothing and spends no pool quota.
+def rule_not_a_part(card: dict, source: str) -> bool:
+    """Card unless the headword is a proper part of the input.
+
+    The one signal that needs no new field: a model that answered about one word
+    of a longer input picked a focus out of it, and a model that answered about
+    the input inflected could not have, because its dictionary form brings in
+    letters the input does not carry.
+    """
+    return not is_split(str(card.get("word", "")).strip(), source)
+
+
+RULES = {
+    "surface": rule_surface,
+    "not-a-part": rule_not_a_part,
+    "echo": rule_echo,
+    "surface+own-words": rule_surface_and_own_words,
+    "surface|echo": rule_surface_or_echo,
+}
+# The rule that ships: the headword echoes the input. ``surface`` scores a field
+# the shipped prompt no longer asks for, so it reads as zero everywhere.
+DEFAULT_RULE = "echo"
+
+
 @dataclass
 class Shot:
     variant: str
@@ -117,6 +213,7 @@ class Shot:
     lang: str
     word: str
     accepted: list
+    context: str = ""
     traps: list = field(default_factory=list)
     model: str = "pool"
     answered_by: str | None = None
@@ -138,7 +235,7 @@ def segment_labels(card: dict | None) -> list[str]:
     ]
 
 
-def score(shot: Shot) -> Shot:
+def score(shot: Shot, rule: str = DEFAULT_RULE) -> Shot:
     if not shot.text:
         return shot
     text_mode = shot.variant in extract_prompts.TEXT_VARIANTS
@@ -176,7 +273,7 @@ def score(shot: Shot) -> Shot:
         "surface_present": bool(surface),
         # What the shipped rule would do with this answer: the whole input
         # occupied by the unit means the input is that unit and becomes a note.
-        "cards_whole": covers_input(surface, shot.word),
+        "cards_whole": bool(card) and RULES[rule](card, shot.word),
         "label_valid": bool(label) and word_hint(label, shot.lang) is None,
         "candidates": candidates,
         "too_many_candidates": len(candidates) > MAX_CANDIDATES,
@@ -188,6 +285,25 @@ def score(shot: Shot) -> Shot:
         "analysis_chars": len(analysis),
         "answer_lang": answer_language(analysis),
     }
+    meanings = (card or {}).get("meanings")
+    kinds = card_kinds(card)
+    shot.metrics.update(
+        {
+            "card_kinds": kinds,
+            "context_asked": "context" in kinds,
+            "production_asked": "context_production" in kinds,
+            "split_asked": "split_recall" in kinds,
+            "any_context_asked": bool({"context", "context_production"} & set(kinds)),
+            "context_usable": context_usable(
+                card,
+                len(meanings) if isinstance(meanings, list) else 0,
+            ),
+            "production_usable": production_usable(card, shot.word, shot.context),
+            "split_usable": "split_recall" in kinds
+            and isinstance(meanings, list)
+            and len(meanings) > 1,
+        },
+    )
     return shot
 
 
@@ -201,7 +317,7 @@ def append(path: Path, shot: Shot) -> None:
         handle.write(json.dumps(asdict(shot), ensure_ascii=False) + "\n")
 
 
-def read_shots(out: Path) -> list[Shot]:
+def read_shots(out: Path, rule: str = DEFAULT_RULE) -> list[Shot]:
     path = out_path(out)
     if not path.exists():
         return []
@@ -209,22 +325,50 @@ def read_shots(out: Path) -> list[Shot]:
     for line in path.read_text(encoding="utf-8").splitlines():
         if line.strip():
             # Re-score on read: the metrics move as the harness learns, the answers do not.
-            shots.append(score(Shot(**json.loads(line))))
+            shots.append(score(Shot(**json.loads(line)), rule))
     return shots
 
 
-def jobs(args) -> list[tuple[str, str, str, str, list, list]]:
-    """(variant, klass, lang, text, accepted, traps) for everything the filters admit."""
+def jobs(args, out: Path) -> list[tuple[str, str, str, str, list, list, str]]:
+    """(variant, klass, lang, text, accepted, traps) for everything the filters admit.
+
+    ``--resume`` and ``--only-wrong`` exist to keep a wording iteration off the
+    pool's daily allowance: the first never re-buys an answer already on disk,
+    the second buys only the items a named variant got wrong.
+    """
+    recorded = read_shots(out) if (args.resume or args.only_wrong) else []
+    seen = {(s.variant, s.lang, normalize(s.word)) for s in recorded if s.text}
+    wrong = {
+        (s.lang, normalize(s.word))
+        for s in recorded
+        if s.variant == args.only_wrong
+        and s.metrics
+        and s.metrics.get("cards_whole") is not (s.klass in CARDS_WHOLE)
+    }
     picked = []
     for variant in args.variant:
         for klass in args.klass:
             for lang in args.lang:
-                for text, accepted, traps in items(klass, lang)[: args.limit or None]:
-                    picked.append((variant, klass, lang, text, list(accepted), list(traps)))
+                for text, accepted, traps, context in class_items(klass, lang)[: args.limit or None]:
+                    key = (lang, normalize(text))
+                    if args.resume and (variant, *key) in seen:
+                        continue
+                    if args.only_wrong and key not in wrong:
+                        continue
+                    picked.append(
+                        (variant, klass, lang, text, list(accepted), list(traps), context),
+                    )
     return picked
 
 
-def build_prompt(variant: str, word: str, lang: str, target: str) -> str:
+def class_items(klass: str, lang: str) -> list[tuple[str, tuple, tuple, str]]:
+    """(text, accepted, traps, context) — the context arm carries no accepted answer."""
+    if klass in CONTEXT_CLASSES:
+        return [(word, (), (), context) for word, context in context_items(klass, lang)]
+    return [(text, accepted, traps, "") for text, accepted, traps in items(klass, lang)]
+
+
+def build_prompt(variant: str, word: str, lang: str, target: str, context: str = "") -> str:
     source_lang, hints = LANGS[lang]
     if variant in extract_prompts.TEXT_VARIANTS:
         rendered = extract_prompts.build_text(text_template(), variant)
@@ -234,7 +378,7 @@ def build_prompt(variant: str, word: str, lang: str, target: str) -> str:
         source_lang=source_lang,
         target_lang=TARGETS[target][0],
         source_hints=hints,
-        context_note="",
+        context_note=context_template().format(context=context) if context else "",
         word=word,
     )
 
@@ -250,15 +394,16 @@ async def run(args, out: Path) -> None:
 
     async def one(  # noqa: PLR0913 - one call carries its whole identity
         variant: str, klass: str, lang: str, word: str, accepted: list, traps: list,
+        context: str = "",
     ) -> None:
         shot = Shot(
             variant=variant, klass=klass, lang=lang, word=word,
-            accepted=accepted, traps=traps,
+            accepted=accepted, traps=traps, context=context,
         )
         await pacer.wait()
         async with gate:
             handle = broker.stream(
-                build_prompt(variant, word, lang, args.target),
+                build_prompt(variant, word, lang, args.target, context),
                 operation=f"extract-{variant}-{lang}",
                 wait=args.wait,
             )
@@ -276,7 +421,7 @@ async def run(args, out: Path) -> None:
         log(f"{variant} {klass:9} {lang} {word!r} -> {got!r} {shot.t_total}s {shot.error or ''}")
 
     try:
-        await asyncio.gather(*(one(*job) for job in jobs(args)))
+        await asyncio.gather(*(one(*job) for job in jobs(args, out)))
     finally:
         await broker.aclose()
 
@@ -301,11 +446,12 @@ async def run_paid(args, out: Path) -> None:
 
     async def one(  # noqa: PLR0913 - one metered call carries its whole identity
         alias: str, spec: dict, variant: str, klass: str, lang: str,
-        word: str, accepted: list, traps: list,
+        word: str, accepted: list, traps: list, context: str = "",
     ) -> None:
         shot = Shot(
             variant=variant, klass=klass, lang=lang, word=word,
-            accepted=accepted, traps=traps, model=alias, answered_by=alias,
+            accepted=accepted, traps=traps, context=context,
+            model=alias, answered_by=alias,
         )
         await pacer.wait()
         client = AsyncDirectClient(
@@ -314,7 +460,7 @@ async def run_paid(args, out: Path) -> None:
             api_key=keys.get(spec["api_key_ref"], ""),
             timeout=args.wait,
         )
-        prompt = build_prompt(variant, word, lang, args.target)
+        prompt = build_prompt(variant, word, lang, args.target, context)
         async with gate:
             for attempt in range(args.retries + 1):
                 try:
@@ -331,7 +477,7 @@ async def run_paid(args, out: Path) -> None:
         log(f"{alias} {variant} {klass:9} {lang} {word!r} -> {got!r} {shot.t_total}s {shot.error or ''}")
 
     await asyncio.gather(
-        *(one(alias, spec, *job) for alias, spec in targets for job in jobs(args))
+        *(one(alias, spec, *job) for alias, spec in targets for job in jobs(args, out))
     )
 
 
@@ -339,8 +485,83 @@ def pct(part: int, whole: int) -> str:
     return f"{part / whole:.0%}" if whole else "  -"
 
 
-def report(out: Path) -> None:
-    shots = [s for s in read_shots(out) if s.metrics]
+def replay(out: Path) -> None:
+    """Every decision rule over the answers already on disk — no calls, no quota.
+
+    A rule is read off a recorded payload, so a change to how the answer is
+    interpreted is measured for free; only a change to what the prompt asks for
+    has to be bought again.
+    """
+    baseline = [s for s in read_shots(out) if s.metrics]
+    if not baseline:
+        raise SystemExit(f"nothing recorded in {out_path(out)}")
+    variants = sorted({s.variant for s in baseline})
+    classes = [k for k in ("units", "inflected", "morphology", "fragments", "clauses", "controls")
+               if any(s.klass == k for s in baseline)]
+    print("share of inputs carded whole; ✓ marks the classes that should be\n")
+    width = max(len(name) for name in RULES) + 2
+    print(f"{'variant':8} {'rule':{width}} " + " ".join(
+        f"{klass + ('✓' if klass in CARDS_WHOLE else ''):>12}" for klass in classes
+    ))
+    for variant in variants:
+        for name in RULES:
+            shots = [s for s in read_shots(out, name) if s.metrics and s.variant == variant]
+            cells = []
+            for klass in classes:
+                group = [s for s in shots if s.klass == klass]
+                cells.append(
+                    f"{pct(sum(s.metrics['cards_whole'] for s in group), len(group)):>12}"
+                    if group
+                    else f"{'-':>12}"
+                )
+            print(f"{variant:8} {name:{width}} " + " ".join(cells))
+        print()
+
+
+def cards_report(out: Path) -> None:
+    """The card catalogue arm: which kinds were asked for, and whether they build.
+
+    ``usable`` counts the requests that survive the checks the parser and the
+    renderer already apply, so the gap between a column and its usable twin is
+    the share of cards the model asked for and nobody could make.
+    """
+    shots = [s for s in read_shots(out) if s.metrics and s.klass in CONTEXT_CLASSES]
+    if not shots:
+        raise SystemExit(f"no context items recorded in {out_path(out)}")
+    print("share of answers asking for each card kind\n")
+    columns = [
+        ("context", "context_asked"),
+        ("usable", "context_usable"),
+        ("produce", "production_asked"),
+        ("usable", "production_usable"),
+        ("split", "split_asked"),
+        ("any ctx", "any_context_asked"),
+    ]
+    head = " ".join(f"{name:>8}" for name, _key in columns)
+    print(f"{'variant':8} {'class':13} {'n':>4} {head}")
+    for variant in sorted({s.variant for s in shots}):
+        for klass in CONTEXT_CLASSES:
+            group = [s for s in shots if s.variant == variant and s.klass == klass]
+            if not group:
+                continue
+            cells = " ".join(
+                f"{pct(sum(bool(s.metrics.get(key)) for s in group), len(group)):>8}"
+                for _name, key in columns
+            )
+            print(f"{variant:8} {klass:13} {len(group):>4} {cells}")
+    print()
+    for variant in sorted({s.variant for s in shots}):
+        control = [s for s in shots if s.variant == variant and s.klass == "adds_nothing"]
+        if not control:
+            continue
+        share = sum(bool(s.metrics["any_context_asked"]) for s in control) / len(control)
+        verdict = "PASS" if share < ADDS_NOTHING_GATE else "FAIL — move the decision to a rule"
+        print(f"{variant}: adds_nothing asks for a context card {share:.0%} — {verdict}")
+    print(f"gate: under {ADDS_NOTHING_GATE:.0%}")
+
+
+def report(out: Path, rule: str = DEFAULT_RULE) -> None:
+    shots = [s for s in read_shots(out, rule) if s.metrics]
     if not shots:
         raise SystemExit(f"nothing recorded in {out_path(out)}")
     combos = sorted({(s.variant, s.model) for s in shots})
@@ -409,10 +630,15 @@ def report(out: Path) -> None:
 
     print("\n--- the card decision: whole input carded, or its unit offered ---")
     for klass, want in (("units", True), ("inflected", True), ("fragments", False)):
+        # The vocabulary arm only: a running-text answer names units in a chip row
+        # and has no headword for the decision to read.
         wrong = [
             s
             for s in shots
-            if s.klass == klass and s.metrics.get("surface_present") and s.metrics["cards_whole"] is not want
+            if s.klass == klass
+            and s.variant not in extract_prompts.TEXT_VARIANTS
+            and s.metrics["card_ok"]
+            and s.metrics["cards_whole"] is not want
         ]
         verb = "offered instead of carded" if want else "CARDED WHOLE instead of offered"
         print(f"  {klass}: {len(wrong)} {verb}")
@@ -421,10 +647,20 @@ def report(out: Path) -> None:
                 f"    {shot.variant} {shot.lang} {shot.word!r} -> word={shot.metrics['label']!r} "
                 f"surface={shot.metrics['surface']!r}"
             )
-    missing = [s for s in shots if s.metrics and not s.metrics.get("surface_present") and s.metrics.get("card_ok")]
-    print(f"  no surface field at all: {len(missing)}")
-    for shot in missing[:10]:
-        print(f"    {shot.variant} {shot.lang} {shot.word!r}")
+    # One file holds every variant, and only an arm that asked for a surface can be
+    # missing one: counting an arm that never asks reports its every answer as a fault.
+    asks_surface = {s.variant for s in shots if s.metrics.get("surface_present")}
+    if asks_surface:
+        missing = [
+            s
+            for s in shots
+            if s.variant in asks_surface
+            and not s.metrics.get("surface_present")
+            and s.metrics["card_ok"]
+        ]
+        print(f"  no surface field at all: {len(missing)}")
+        for shot in missing[:10]:
+            print(f"    {shot.variant} {shot.lang} {shot.word!r}")
 
     broken = [s for s in shots if s.error or not s.metrics["card_ok"]]
     print(f"\n--- unusable answers: {len(broken)} ---")
@@ -435,7 +671,13 @@ def report(out: Path) -> None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("phase", choices=["run", "paid", "report", "prompts"])
+    parser.add_argument(
+        "phase",
+        choices=["run", "paid", "report", "replay", "cards", "prompts"],
+    )
+    parser.add_argument("--rule", default=DEFAULT_RULE, choices=list(RULES), help="report: decision rule")
+    parser.add_argument("--resume", action="store_true", help="skip items already recorded")
+    parser.add_argument("--only-wrong", default="", help="run only the items this variant got wrong")
     parser.add_argument("--alias", nargs="+", default=["gpt-fast"], help="paid: catalog aliases")
     parser.add_argument("--retries", type=int, default=2, help="paid: retries on a rate limit")
     parser.add_argument("--backoff", type=float, default=20.0)
@@ -445,7 +687,12 @@ def parse_args() -> argparse.Namespace:
         default=sorted(extract_prompts.VARIANTS),
         choices=sorted(extract_prompts.VARIANTS) + sorted(extract_prompts.TEXT_VARIANTS),
     )
-    parser.add_argument("--klass", nargs="+", default=list(CLASSES), choices=list(CLASSES))
+    parser.add_argument(
+        "--klass",
+        nargs="+",
+        default=list(CLASSES),
+        choices=list(CLASSES) + list(CONTEXT_CLASSES),
+    )
     parser.add_argument("--lang", nargs="+", default=["en", "de", "sr"], choices=list(LANGS))
     parser.add_argument("--limit", type=int, default=0, help="first N items per class per language")
     parser.add_argument("--target", default="ru", choices=list(TARGETS))
@@ -461,10 +708,20 @@ def main() -> None:
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     if args.phase == "report":
-        report(out)
+        report(out, args.rule)
+    elif args.phase == "replay":
+        replay(out)
+    elif args.phase == "cards":
+        cards_report(out)
     elif args.phase == "prompts":
         for variant in args.variant:
-            rendered = build_prompt(variant, "ist allein im Restaurant", "de", args.target)
+            rendered = build_prompt(
+                variant,
+                "ist allein im Restaurant",
+                "de",
+                args.target,
+                "Er ist allein im Restaurant geblieben.",
+            )
             family = extract_prompts.VARIANTS | extract_prompts.TEXT_VARIANTS
             print(f"===== {variant}: {family[variant][0]} =====")
             print(rendered)

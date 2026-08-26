@@ -175,6 +175,106 @@ describe("AddView", () => {
     expect(wrapper.find(".entry-card-status").text()).toBe("✅ added to Anki");
   });
 
+  it("names the cards a note produced, counting the pair a context makes", async () => {
+    await labelBehavior(EPIC.ANKI_CARDS, FEATURE.COLLECTION, "Card delivery status");
+    entries.value = [{
+      entry_id: "entry-1",
+      word: "bank",
+      language: "English",
+      status: "done",
+      text: "meaning",
+      card_status: "added",
+      card_kinds: ["Recognition", "Recall", "ContextRecognition", "ContextProduction"],
+    }];
+    const wrapper = mount(AddView);
+    await flushPromises();
+
+    expect(wrapper.find(".entry-card-status").text()).toBe(
+      "✅ 4 cards: recognition, recall, context ×2",
+    );
+
+    locale.value = "ru";
+    await flushPromises();
+
+    expect(wrapper.find(".entry-card-status").text()).toBe(
+      "✅ 4 карточки: узнавание, воспроизведение, контекст ×2",
+    );
+  });
+
+  it("counts a split into one card per sense, and one card in the singular", async () => {
+    await labelBehavior(EPIC.ANKI_CARDS, FEATURE.COLLECTION, "Card delivery status");
+    entries.value = [
+      {
+        entry_id: "entry-1",
+        word: "bank",
+        language: "English",
+        status: "done",
+        text: "meaning",
+        card_status: "added",
+        card_kinds: ["Recognition", "SenseRecall1", "SenseRecall2"],
+      },
+      {
+        entry_id: "entry-2",
+        word: "Wort",
+        language: "German",
+        status: "done",
+        text: "meaning",
+        card_status: "added",
+        card_kinds: ["Recognition"],
+      },
+    ];
+    locale.value = "ru";
+    const wrapper = mount(AddView);
+    await flushPromises();
+
+    const lines = wrapper.findAll(".entry-card-status").map((node) => node.text());
+    expect(lines[0]).toBe("✅ 3 карточки: узнавание, по значению ×2");
+    expect(lines[1]).toBe("✅ 1 карточка: узнавание");
+  });
+
+  it("counts five cards in the form Russian actually uses", async () => {
+    await labelBehavior(EPIC.ANKI_CARDS, FEATURE.COLLECTION, "Card delivery status");
+    entries.value = [{
+      entry_id: "entry-1",
+      word: "bank",
+      language: "English",
+      status: "done",
+      text: "meaning",
+      card_status: "added",
+      card_kinds: [
+        "Recognition",
+        "ContextRecognition",
+        "SenseRecall1",
+        "SenseRecall2",
+        "SenseRecall3",
+      ],
+    }];
+    locale.value = "ru";
+    const wrapper = mount(AddView);
+    await flushPromises();
+
+    expect(wrapper.find(".entry-card-status").text()).toBe(
+      "✅ 5 карточек: узнавание, контекст, по значению ×3",
+    );
+  });
+
+  it("falls back to the plain result when the kinds are not known", async () => {
+    await labelBehavior(EPIC.ANKI_CARDS, FEATURE.COLLECTION, "Card delivery status");
+    entries.value = [{
+      entry_id: "entry-1",
+      word: "bank",
+      language: "English",
+      status: "done",
+      text: "meaning",
+      card_status: "added",
+      card_kinds: [],
+    }];
+    const wrapper = mount(AddView);
+    await flushPromises();
+
+    expect(wrapper.find(".entry-card-status").text()).toBe("✅ added to Anki");
+  });
+
   it("renders the Anki result in the interface language, switching with it", async () => {
     await labelBehavior(EPIC.ANKI_CARDS, FEATURE.COLLECTION, "Card delivery status");
     entries.value = [{

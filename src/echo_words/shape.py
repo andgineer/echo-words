@@ -8,7 +8,6 @@ from echo_words.languages import MAX_WORD_LENGTH, split_words
 Shape = Literal["unit", "text"]
 
 MAX_UNIT_WORDS = 4
-TERMINAL_MARKS = ".!?…"
 INTERNAL_MARKS = ",;:—–"
 
 
@@ -23,8 +22,6 @@ def classify(text: str) -> Shape:
     if words <= 1:
         return "unit"
     if any(char in text for char in INTERNAL_MARKS):
-        return "text"
-    if text[-1:] in TERMINAL_MARKS:
         return "text"
     if len(text) > MAX_WORD_LENGTH:
         return "text"

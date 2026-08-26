@@ -229,8 +229,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:  # noqa: C901, PLR0
         locale = pick_locale(request.headers.get("accept-language"))
         language = _resolve_language(request.app.state.languages, submission.lang, locale)
         word, lookup_only = normalize_submission(submission.word, submission.lookup_only)
-        # Classified before the edges are trimmed: the terminal mark a shared
-        # selection carries is what routes that selection to running text.
         shape = submission.shape or classify(word)
         if shape == "text":
             word = plain_text(word)

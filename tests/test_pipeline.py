@@ -142,6 +142,7 @@ async def test_deltas_are_throttled_cut_sanitized_and_finished(languages):
                 "suggestion": None,
                 "shown_spelling": "Word",
                 "card_status": CARD_FAILED_STATUS,
+                "card_kinds": [],
                 "card_error": None,
                 "no_audio": True,
                 "segments": [],
@@ -203,6 +204,7 @@ async def test_card_parse_quality_and_suggestion_are_published_after_completion(
                 "suggestion": "receive",
                 "shown_spelling": "recieve",
                 "card_status": CARD_FAILED_STATUS,
+                "card_kinds": [],
                 "card_error": None,
                 "no_audio": True,
                 "segments": [],
@@ -244,6 +246,7 @@ async def test_card_without_examples_is_rated_as_a_failure_without_losing_analys
                 "suggestion": None,
                 "shown_spelling": "word",
                 "card_status": CARD_FAILED_STATUS,
+                "card_kinds": [],
                 "card_error": None,
                 "no_audio": True,
                 "segments": [],
@@ -277,6 +280,148 @@ def valid_card(word):
         '"label":"","translations":["перевод"],"examples":'
         f'[{{"text":"Use {word} now.","translation":"Перевод."}}]}}]}}'
     )
+
+
+def card_with(word, cards, meanings=None):
+    blocks = meanings or (
+        '{"label":"","translations":["перевод"],'
+        f'"examples":[{{"text":"Use {word} now.","translation":"Перевод."}}]}}'
+    )
+    return f'analysis===CARD==={{"word":"{word}","cards":{cards},"meanings":[{blocks}]}}'
+
+
+async def test_a_context_card_asked_for_without_a_context_is_dropped_and_the_note_stands(
+    languages,
+):
+    anki = RecordingAnki(Added(1, None, ("Recognition", "Recall")))
+    answer = card_with(
+        "bank",
+        '[{"kind":"context","sense":0},{"kind":"context_production","prompt":"Банк открыт."}]',
+    )
+    pipeline = WordPipeline(ScriptedCascade([Completion([answer])]), target_lang="ru", anki=anki)
+    pipeline.start()
+    try:
+        await pipeline.enqueue(languages["en"], "bank", False)
+        await pipeline.join()
+    finally:
+        await pipeline.close()
+
+    note = anki.calls[0][0]
+    assert note.word == "bank"
+    assert note.context == ""
+    assert note.context_sense is None
+    assert note.context_prompt == ""
+
+
+async def test_a_context_equal_to_the_word_carries_no_context_card_either(languages):
+    anki = RecordingAnki(Added(1, None, ("Recognition", "Recall")))
+    answer = card_with("bank", '[{"kind":"context","sense":0}]')
+    pipeline = WordPipeline(ScriptedCascade([Completion([answer])]), target_lang="ru", anki=anki)
+    pipeline.start()
+    try:
+        await pipeline.enqueue(languages["en"], "bank", False, context="bank")
+        await pipeline.join()
+    finally:
+        await pipeline.close()
+
+    assert anki.calls[0][0].context_sense is None
+
+
+async def test_the_decisions_reach_the_note_when_the_submission_carried_a_context(languages):
+    anki = RecordingAnki(Added(1, None, ("Recognition", "Recall", "ContextRecognition")))
+    answer = card_with(
+        "bank",
+        '[{"kind":"context","sense":0},{"kind":"context_production","prompt":"Банк открыт."}]',
+    )
+    pipeline = WordPipeline(ScriptedCascade([Completion([answer])]), target_lang="ru", anki=anki)
+    pipeline.start()
+    try:
+        await pipeline.enqueue(
+            languages["en"],
+            "bank",
+            False,
+            context="The bank opens at nine.",
+        )
+        await pipeline.join()
+    finally:
+        await pipeline.close()
+
+    note = anki.calls[0][0]
+    assert note.context == "The bank opens at nine."
+    assert note.context_sense == 0
+    assert note.context_prompt == "Банк открыт."
+
+
+async def test_the_status_names_the_kinds_the_collection_actually_made(languages):
+    kinds = ("Recognition", "Recall", "ContextRecognition", "ContextProduction")
+    anki = RecordingAnki(Added(1, None, kinds))
+    hub = EventHub()
+    pipeline = WordPipeline(
+        ScriptedCascade([Completion([card_with("bank", '[{"kind":"context","sense":0}]')])]),
+        target_lang="ru",
+        events=hub,
+        anki=anki,
+    )
+    pipeline.start()
+    try:
+        async with hub.subscribe() as subscriber:
+            entry = await pipeline.enqueue(
+                languages["en"],
+                "bank",
+                False,
+                context="The bank opens at nine.",
+            )
+            await pipeline.join()
+            events = drain(subscriber)
+    finally:
+        await pipeline.close()
+
+    done = [event for event in events if event.name == "done"][-1]
+    assert done.data["card_status"] == "added"
+    assert done.data["card_kinds"] == list(kinds)
+    assert entry.card_kinds == list(kinds)
+    assert entry.public()["card_kinds"] == list(kinds)
+
+
+async def test_a_rebuild_carries_the_card_decisions_into_the_replacement(languages):
+    asked = '[{"kind":"context","sense":0},{"kind":"context_production","prompt":"Банк открыт."}]'
+    replaced_kinds = ("Recognition", "Recall", "ContextRecognition", "ContextProduction")
+    anki = MutableAnki(
+        [Added(1, None, ("Recognition", "Recall")), Added(2, None, replaced_kinds)],
+    )
+    cascade = ScriptedCascade(
+        [Completion([valid_card("bank")]), Completion([card_with("bank", asked)])],
+    )
+    hub = EventHub()
+    pipeline = WordPipeline(
+        cascade,
+        target_lang="ru",
+        events=hub,
+        anki=anki,
+    )
+    pipeline.start()
+    try:
+        async with hub.subscribe() as subscriber:
+            entry = await pipeline.enqueue(
+                languages["en"],
+                "bank",
+                False,
+                context="The bank opens at nine.",
+            )
+            await pipeline.join()
+            await pipeline.request_rebuild(entry.entry_id)
+            await pipeline.join()
+            events = drain(subscriber)
+    finally:
+        await pipeline.close()
+
+    _note_id, note, _deck, _audio_path, _media = anki.replaced[0]
+    assert note.context == "The bank opens at nine."
+    assert note.context_sense == 0
+    assert note.context_prompt == "Банк открыт."
+    done = [event for event in events if event.name == "done"][-1]
+    assert done.data["card_kinds"] == list(replaced_kinds)
+    assert entry.card_kinds == list(replaced_kinds)
 
 
 async def test_a_fragment_makes_no_note_and_offers_the_unit_it_is_about(languages):

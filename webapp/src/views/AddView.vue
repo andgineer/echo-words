@@ -11,7 +11,7 @@ import {
   withRequestId,
 } from "../composables/useResendQueue.js";
 
-const { t } = useI18n();
+const { t, tn } = useI18n();
 const { languages, selected, loadLanguages } = useLanguage();
 const { entries, start: startEventStream, stop: stopEventStream } = useEventStream();
 
@@ -117,11 +117,40 @@ const CARD_STATUS_KEYS = {
   failed: "card.failed",
 };
 
+// Two templates share a label: the pair a context produces reads as one thing
+// with a count, which is what the reviewer will meet in the queue.
+const CARD_KIND_KEYS = {
+  Recognition: "card.kind.recognition",
+  Recall: "card.kind.recall",
+  ContextRecognition: "card.kind.context",
+  ContextProduction: "card.kind.context",
+  SenseRecall1: "card.kind.sense",
+  SenseRecall2: "card.kind.sense",
+  SenseRecall3: "card.kind.sense",
+};
+
+function cardKindsText(kinds) {
+  const counted = [];
+  for (const kind of kinds) {
+    const label = t(CARD_KIND_KEYS[kind] ?? kind);
+    const seen = counted.find((item) => item.label === label);
+    if (seen) seen.count += 1;
+    else counted.push({ label, count: 1 });
+  }
+  return counted.map(({ label, count }) => (count > 1 ? `${label} ×${count}` : label)).join(", ");
+}
+
+function cardStatusLabel(entry) {
+  const kinds = entry.card_kinds ?? [];
+  if (entry.card_status === "added" && kinds.length) {
+    return tn("card.addedCount", kinds.length, { kinds: cardKindsText(kinds) });
+  }
+  return t(CARD_STATUS_KEYS[entry.card_status] ?? entry.card_status);
+}
+
 function cardStatusText(entry) {
   if (!entry.card_status) return "";
-  const label = entry.card_error
-    ? `⚠️ ${entry.card_error}`
-    : t(CARD_STATUS_KEYS[entry.card_status] ?? entry.card_status);
+  const label = entry.card_error ? `⚠️ ${entry.card_error}` : cardStatusLabel(entry);
   return entry.no_audio ? `${label} · ${t("card.noAudio")}` : label;
 }
 

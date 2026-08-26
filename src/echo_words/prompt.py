@@ -105,22 +105,15 @@ The whole analysis: at most 3500 characters.
 After the analysis output the line ===CARD=== exactly, and immediately
 after it one line of JSON, with no commentary and no HTML tags inside the
 values:
-{{"word": "...", "surface": "...", "suggestion": "...",
- "candidates": ["...", "..."],
+{{"word": "...", "suggestion": "...", "candidates": ["...", "..."],
+ "cards": [{{"kind": "...", "sense": 0, "prompt": "..."}}],
  "meanings": [{{"label": "...", "translations": ["...", "..."],
  "examples": [{{"text": "...", "translation": "..."}}]}}]}}
 word — the unit you analysed, in the form a dictionary lists it and the way
 it would be typed into a search box: letters, spaces, hyphens and
 apostrophes only, in the same script as the input. It is the whole input
 when the input was itself one unit, and the unit you found inside it
-otherwise.
-surface — the part of the input that unit occupies, copied from the input
-exactly as it stands there, its words in the order they appear, and its
-pieces joined by a space, an ellipsis character and a space when they stand
-apart. It is the whole input, word for word, when the input was itself that
-unit however it was inflected; it is only the part the unit occupies when
-the rest of the input is context around it.
-suggestion — the
+otherwise. suggestion — the
 likely intended spelling of a typo, or an empty string.
 candidates — every unit of the input worth looking up on its own, most
 useful first, at most three, each in the dictionary form the word field is
@@ -129,6 +122,24 @@ identical to word. When the input was itself one unit, candidates holds
 that one unit and nothing else.
 Order them by what the learner most likely did not know and put that one
 first. Never lead with the input restated.
+
+cards — the review cards this entry is worth beyond the two it always makes,
+most often an empty list. Each element names one kind and carries only what
+that kind needs:
+{{"kind": "context", "sense": 0}} — the context you were given settles which
+sense is meant, so a card fronted with that context is worth reviewing. sense
+is the index into meanings, counting from zero, of the sense used there.
+{{"kind": "context_production", "prompt": "..."}} — that same context is worth
+producing and not merely recognising. prompt is the whole context rendered in
+{target_lang}; without it the card asks nothing.
+{{"kind": "split_recall"}} — the senses are so unrelated that one card asking
+for all of them at once cannot be answered, so each should be asked for on its
+own. Only ever when meanings holds more than one element.
+Emit either context kind ONLY when the context actually pins down a sense the
+bare word would leave open. A context in which the word means exactly what it
+always means adds nothing to the word, and gets NO card — that is the normal
+case, and an empty list is the right answer for it. When you were given no
+context at all, neither context kind may appear.
 
 meanings normally holds one element with an empty label. Split it into
 several (at most three) only when the senses are genuinely unrelated (like

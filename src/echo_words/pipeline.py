@@ -6,7 +6,7 @@ import time
 import uuid
 from collections.abc import Callable, Coroutine
 from contextlib import aclosing, suppress
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any, Literal, Protocol
 
@@ -125,6 +125,7 @@ class StoreResult:
     note_id: int | None = None
     media_filename: str | None = None
     error: str | None = None
+    kinds: tuple[str, ...] = ()
 
 
 QueueJob = Job | DetailJob
@@ -593,22 +594,29 @@ class WordPipeline:
             return StoreResult(status, "lookup")
         if parsed is None or self.anki is None:
             return StoreResult(CARD_FAILED_STATUS, "failed")
+        note = _note_with_cards(job, parsed)
         try:
             if job.replace_note_id is not None:
                 result = await self.anki.replace_note(
                     job.replace_note_id,
-                    parsed.note,
+                    note,
                     job.language.deck,
                     audio_path,
                     job.replace_media,
                 )
             else:
-                result = await self.anki.add_note(parsed.note, job.language.deck, audio_path)
+                result = await self.anki.add_note(note, job.language.deck, audio_path)
         except Exception as exc:  # noqa: BLE001
             logger.exception("could not add %r to Anki", job.word)
             return StoreResult(CARD_FAILED_STATUS, "failed", error=str(exc) or None)
         if isinstance(result, Added):
-            return StoreResult(ADDED_STATUS, "added", result.note_id, result.media_filename)
+            return StoreResult(
+                ADDED_STATUS,
+                "added",
+                result.note_id,
+                result.media_filename,
+                kinds=result.kinds,
+            )
         if isinstance(result, Duplicate):
             return StoreResult(DUPLICATE_STATUS, "duplicate")
         return StoreResult(CARD_FAILED_STATUS, "failed")
@@ -627,6 +635,7 @@ class WordPipeline:
             await self._publish_update(entry)
         entry.action = stored.action
         entry.card_status = stored.status
+        entry.card_kinds = list(stored.kinds)
         entry.card_error = stored.error
         entry.suggestion = suggestion
         entry.shown_spelling = entry.word
@@ -644,6 +653,7 @@ class WordPipeline:
                 "suggestion": suggestion,
                 "shown_spelling": entry.shown_spelling,
                 "card_status": stored.status,
+                "card_kinds": entry.card_kinds,
                 "card_error": stored.error,
                 "no_audio": entry.no_audio,
                 "segments": entry.segments,
@@ -806,6 +816,7 @@ class WordPipeline:
         entry.text = ""
         entry.action = "pending"
         entry.card_status = None
+        entry.card_kinds = []
         entry.card_error = None
         entry.no_audio = False
         entry.error = None
@@ -864,6 +875,18 @@ def _candidate_segments(parsed: ParsedCard | None) -> list[Segment]:
 
 def _suggestion_from(parsed: ParsedCard | None) -> str | None:
     return parsed.suggestion if parsed is not None else None
+
+
+def _note_with_cards(job: Job, parsed: ParsedCard) -> Note:
+    """A card fronted with a context this submission never carried has an empty front."""
+    context = _voiced_context(job)
+    return replace(
+        parsed.note,
+        split_recall=parsed.split_recall,
+        context=context,
+        context_sense=parsed.context_sense if context else None,
+        context_prompt=parsed.context_prompt if context else "",
+    )
 
 
 def _voiced_context(job: Job) -> str:

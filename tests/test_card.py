@@ -10,6 +10,7 @@ from echo_words.card import (
     Note,
     parse_card_payload,
 )
+from echo_words.languages import MAX_CONTEXT_LENGTH
 
 
 def _note(payload_text, word, language):
@@ -276,3 +277,201 @@ def test_absent_or_broken_candidates_are_an_empty_list(languages):
     for value in (None, "nope", 5, {}):
         parsed = parse_card_payload(payload(candidates=value), "bank", languages["en"])
         assert parsed.candidates == []
+
+
+def two_meanings() -> list[dict]:
+    return [
+        {
+            "label": "учреждение",
+            "translations": ["банк"],
+            "examples": [{"text": "The bank is open.", "translation": "Банк открыт."}],
+        },
+        {
+            "label": "берег",
+            "translations": ["берег"],
+            "examples": [{"text": "Sit on the bank.", "translation": "Сядь на берегу."}],
+        },
+    ]
+
+
+def test_a_payload_without_cards_asks_for_nothing_beyond_the_two(languages):
+    parsed = parse_card_payload(payload(), "bank", languages["en"])
+
+    assert parsed.context_sense is None
+    assert parsed.context_prompt == ""
+    assert parsed.split_recall is False
+
+
+def test_the_card_requests_are_read_off_the_payload(languages):
+    parsed = parse_card_payload(
+        payload(
+            meanings=two_meanings(),
+            cards=[
+                {"kind": "context", "sense": 1},
+                {"kind": "context_production", "prompt": "Мы сидели  на\nберегу."},
+                {"kind": "split_recall"},
+            ],
+        ),
+        "bank",
+        languages["en"],
+    )
+
+    assert parsed.context_sense == 1
+    assert parsed.context_prompt == "Мы сидели на берегу."
+    assert parsed.split_recall is True
+
+
+def test_an_unknown_kind_is_ignored_rather_than_fatal(languages):
+    """Anything can stand where a kind belongs, including a value that cannot be looked
+    up in a dict at all — and the analysis is already on screen when this is read."""
+    parsed = parse_card_payload(
+        payload(
+            cards=[
+                {"kind": "cloze_deletion"},
+                "nonsense",
+                7,
+                {"kind": ["context"]},
+                {"kind": {"context": 0}},
+                {"kind": 7},
+                {"kind": None},
+                {},
+                {"kind": "context", "sense": 0},
+            ],
+        ),
+        "bank",
+        languages["en"],
+    )
+
+    assert parsed.context_sense == 0
+    assert parsed.split_recall is False
+
+
+@pytest.mark.parametrize(
+    "item",
+    [
+        {"kind": "context", "sense": 1},
+        {"kind": "context", "sense": -1},
+        {"kind": "context", "sense": 9},
+        {"kind": "context", "sense": "0"},
+        {"kind": "context", "sense": True},
+        {"kind": "context", "sense": None},
+        {"kind": "context"},
+    ],
+)
+def test_a_sense_that_names_no_meaning_drops_the_context_card(languages, item):
+    """The absent index is in here too: defaulting it to the first meaning would back
+    the card with a sense the context need not be about, and it would look right."""
+    parsed = parse_card_payload(payload(cards=[item]), "bank", languages["en"])
+
+    assert parsed.context_sense is None
+
+
+def test_a_split_asked_for_on_a_single_meaning_is_dropped(languages):
+    parsed = parse_card_payload(
+        payload(cards=[{"kind": "split_recall"}]),
+        "bank",
+        languages["en"],
+    )
+
+    assert parsed.split_recall is False
+
+
+def test_a_duplicate_kind_keeps_the_first(languages):
+    parsed = parse_card_payload(
+        payload(
+            meanings=two_meanings(),
+            cards=[
+                {"kind": "context", "sense": 1},
+                {"kind": "context", "sense": 0},
+                {"kind": "context_production", "prompt": "первый"},
+                {"kind": "context_production", "prompt": "второй"},
+            ],
+        ),
+        "bank",
+        languages["en"],
+    )
+
+    assert parsed.context_sense == 1
+    assert parsed.context_prompt == "первый"
+
+
+def test_a_first_request_the_model_spoiled_is_not_rescued_by_a_second(languages):
+    parsed = parse_card_payload(
+        payload(
+            meanings=two_meanings(),
+            cards=[{"kind": "context", "sense": 7}, {"kind": "context", "sense": 0}],
+        ),
+        "bank",
+        languages["en"],
+    )
+
+    assert parsed.context_sense is None
+
+
+@pytest.mark.parametrize("cards", [None, "nope", 5, {}, []])
+def test_absent_or_broken_cards_ask_for_nothing(languages, cards):
+    parsed = parse_card_payload(payload(cards=cards), "bank", languages["en"])
+
+    assert parsed.context_sense is None
+    assert parsed.context_prompt == ""
+    assert parsed.split_recall is False
+
+
+@pytest.mark.parametrize("prompt", [None, "", "   ", 7])
+def test_a_production_card_without_a_prompt_has_no_front(languages, prompt):
+    parsed = parse_card_payload(
+        payload(cards=[{"kind": "context_production", "prompt": prompt}]),
+        "bank",
+        languages["en"],
+    )
+
+    assert parsed.context_prompt == ""
+
+
+def test_a_sense_the_parser_refused_leaves_the_production_card_asked_for(languages):
+    """The two context cards are decided separately, and only one needs a sense."""
+    parsed = parse_card_payload(
+        payload(
+            cards=[
+                {"kind": "context", "sense": 9},
+                {"kind": "context_production", "prompt": "Банк открыт."},
+            ],
+        ),
+        "bank",
+        languages["en"],
+    )
+
+    assert parsed.context_sense is None
+    assert parsed.context_prompt == "Банк открыт."
+
+
+def test_a_prompt_is_sanitised_like_the_context_it_renders(languages):
+    """One rule for free text on a card front, whether the user pasted it or the
+    model wrote it: single-spaced, printable, bounded."""
+    parsed = parse_card_payload(
+        payload(
+            cards=[
+                {
+                    "kind": "context_production",
+                    "prompt": "\u0007Банк  открыт\nв\u200bдевять.",
+                },
+            ],
+        ),
+        "bank",
+        languages["en"],
+    )
+
+    assert parsed.context_prompt == "Банк открыт в девять."
+
+
+def test_a_prompt_is_bounded_like_the_context_it_renders(languages):
+    """It goes on a card front and stays there: an answer that returned the whole
+    analysis would put a wall of text on every review."""
+    parsed = parse_card_payload(
+        payload(cards=[{"kind": "context_production", "prompt": "очень длинно. " * 200}]),
+        "bank",
+        languages["en"],
+    )
+
+    assert len(parsed.context_prompt) <= MAX_CONTEXT_LENGTH
+    assert parsed.context_prompt.startswith("очень длинно.")

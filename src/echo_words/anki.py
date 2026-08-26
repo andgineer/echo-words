@@ -7,6 +7,7 @@ import json
 import logging
 import re
 import shutil
+import tempfile
 import time
 from collections.abc import Callable
 from contextlib import suppress
@@ -17,6 +18,7 @@ from typing import Protocol
 
 from anki.collection import Collection
 from anki.errors import SyncError, SyncErrorKind
+from anki.notes import Note as AnkiNote
 from anki.notes import NoteId
 from anki.sync import SyncAuth
 from anki.sync_pb2 import SyncCollectionResponse, SyncStatusResponse
@@ -25,11 +27,42 @@ from echo_words.card import Meaning, Note
 from echo_words.config import Settings
 
 NOTE_TYPE_NAME = "EchoWords"
-FIELD_NAMES = ("Word", "Translations", "Meanings", "Audio")
-TEMPLATE_NAMES = ("Recognition", "Recall")
+SENSE_FIELDS = ("Sense1", "Sense2", "Sense3")
+FIELD_NAMES = (
+    "Word",
+    "Translations",
+    "Meanings",
+    "Audio",
+    "Context",
+    "ContextMeaning",
+    "ContextPrompt",
+    "ContextGapped",
+    *SENSE_FIELDS,
+)
+# (template, front, back). Recognition comes first because Anki requires the first
+# template to always produce a card, and Word is never empty.
+_TEMPLATES: tuple[tuple[str, str, str], ...] = (
+    ("Recognition", "{{Word}} {{Audio}}", "{{Meanings}}"),
+    ("Recall", "{{Translations}}", "{{Word}} {{Audio}}"),
+    ("ContextRecognition", "{{Context}}", "{{ContextMeaning}}"),
+    (
+        "ContextProduction",
+        "{{#ContextGapped}}{{ContextPrompt}}<br>{{ContextGapped}}{{/ContextGapped}}",
+        "{{Word}} {{Audio}}",
+    ),
+    ("SenseRecall1", "{{Sense1}}", "{{Word}} {{Audio}}"),
+    ("SenseRecall2", "{{Sense2}}", "{{Word}} {{Audio}}"),
+    ("SenseRecall3", "{{Sense3}}", "{{Word}} {{Audio}}"),
+)
+TEMPLATE_NAMES = tuple(name for name, _front, _back in _TEMPLATES)
 SYNC_INTERVAL_SECONDS = 5 * 60
+_NOTE_TYPE_ABSENT = f"note type {NOTE_TYPE_NAME} is absent; the next add creates it"
 
 logger = logging.getLogger(__name__)
+
+
+def collection_path(settings: Settings) -> Path:
+    return settings.data_dir / "anki" / "collection.anki2"
 
 
 class AnkiError(RuntimeError):
@@ -52,10 +85,67 @@ class FullSyncRequiredError(AnkiError):
         super().__init__("Anki requires a one-way full sync — resolve it manually")
 
 
+class CollectionAbsentError(AnkiError):
+    """There is no collection where the settings point."""
+
+    def __init__(self, path: Path) -> None:
+        super().__init__(f"no collection at {path} — nothing to rebuild")
+
+
+def rebuild_note_type(settings: Settings, *, confirmed: bool) -> str:
+    """Count the EchoWords notes, and delete the note type with them once confirmed.
+
+    Deleting a note type deletes its notes, which makes this the only operation in
+    the codebase that destroys anything. It is reachable from the console command
+    alone: no startup path, and nothing the running app can call.
+    """
+    path = collection_path(settings)
+    if not path.exists():
+        raise CollectionAbsentError(path)
+    if not confirmed:
+        return _would_delete(path)
+    collection = Collection(str(path))
+    try:
+        model = collection.models.by_name(NOTE_TYPE_NAME)
+        if model is None:
+            return _NOTE_TYPE_ABSENT
+        summary = _note_type_summary(collection, path)
+        collection.models.remove(model["id"])
+        return f"deleted {summary}"
+    finally:
+        collection.close()
+
+
+def _would_delete(path: Path) -> str:
+    """Counted on a copy: closing a collection saves it, and the pass that reports
+    that nothing was changed must not be the one that changes it."""
+    with tempfile.TemporaryDirectory() as workspace:
+        copy = Path(workspace) / path.name
+        shutil.copy2(path, copy)
+        # An unclean stop leaves notes in a write-ahead log the main file does not hold.
+        for sidecar in path.parent.glob(f"{path.name}-*"):
+            shutil.copy2(sidecar, copy.parent / sidecar.name)
+        collection = Collection(str(copy))
+        try:
+            if collection.models.by_name(NOTE_TYPE_NAME) is None:
+                return _NOTE_TYPE_ABSENT
+            summary = _note_type_summary(collection, path)
+        finally:
+            collection.close()
+    return f"would delete {summary}; nothing was changed — pass --yes to delete"
+
+
+def _note_type_summary(collection: Collection, path: Path) -> str:
+    notes = len(collection.find_notes(f"note:{NOTE_TYPE_NAME}"))
+    cards = len(collection.find_cards(f"note:{NOTE_TYPE_NAME}"))
+    return f"note type {NOTE_TYPE_NAME} in {path} with {notes} notes and {cards} cards"
+
+
 @dataclass(frozen=True)
 class Added:
     note_id: int
     media_filename: str | None
+    kinds: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -169,7 +259,7 @@ class AnkiStore:
         sleep: Sleeper = asyncio.sleep,
     ) -> None:
         self.settings = settings
-        self.collection_path = settings.data_dir / "anki" / "collection.anki2"
+        self.collection_path = collection_path(settings)
         self.bootstrap_path = settings.data_dir / "anki" / "bootstrap.pending"
         self.auth_path = settings.data_dir / "anki-sync.json"
         self.sync_backend = sync_backend or PylibSyncBackend()
@@ -519,12 +609,9 @@ class AnkiStore:
 
         media_filename = _add_media(collection, note_data.word, audio_path)
         note = collection.new_note(model)
-        note["Word"] = note_data.word
-        note["Translations"] = render_translations(note_data)
-        note["Meanings"] = render_meanings(note_data)
-        note["Audio"] = f"[sound:{media_filename}]" if media_filename else ""
+        note.fields = _ordered_fields(card_fields(note_data, media_filename))
         collection.add_note(note, deck_id)
-        return Added(note.id, media_filename)
+        return Added(note.id, media_filename, _created_kinds(model, note))
 
     def _replace_note_blocking(
         self,
@@ -558,10 +645,7 @@ class AnkiStore:
             collection.remove_notes([NoteId(note_id)])
             media_filename = _add_media(collection, note_data.word, audio_path)
             note = collection.new_note(model)
-            note["Word"] = note_data.word
-            note["Translations"] = render_translations(note_data)
-            note["Meanings"] = render_meanings(note_data)
-            note["Audio"] = f"[sound:{media_filename}]" if media_filename else ""
+            note.fields = _ordered_fields(card_fields(note_data, media_filename))
             _wait_past_millisecond(note_id)
             collection.add_note(note, deck_id)
             collection.merge_undo_entries(undo_entry)
@@ -575,7 +659,7 @@ class AnkiStore:
             raise
         if old_media_filename and old_media_filename != media_filename:
             _trash_replaced_media(collection, old_media_filename)
-        return Added(note.id, media_filename)
+        return Added(note.id, media_filename, _created_kinds(model, note))
 
     def _require_collection(self) -> Collection:
         if self.collection is None:
@@ -619,14 +703,11 @@ def _ensure_note_type(collection: Collection) -> dict:
     model = models.new(NOTE_TYPE_NAME)
     for name in FIELD_NAMES:
         models.add_field(model, models.new_field(name))
-    recognition = models.new_template("Recognition")
-    recognition["qfmt"] = "{{Word}} {{Audio}}"
-    recognition["afmt"] = "{{Meanings}}"
-    models.add_template(model, recognition)
-    recall = models.new_template("Recall")
-    recall["qfmt"] = "{{Translations}}"
-    recall["afmt"] = "{{Word}} {{Audio}}"
-    models.add_template(model, recall)
+    for name, front, back in _TEMPLATES:
+        template = models.new_template(name)
+        template["qfmt"] = front
+        template["afmt"] = back
+        models.add_template(model, template)
     model["css"] = ".card { font-family: sans-serif; font-size: 20px; text-align: left; }"
     models.add(model)
     created = models.by_name(NOTE_TYPE_NAME)
@@ -635,15 +716,82 @@ def _ensure_note_type(collection: Collection) -> dict:
     return created
 
 
+def card_fields(note: Note, media_filename: str | None = None) -> dict[str, str]:
+    """Every field of one note. Which cards it produces follows from what is left empty."""
+    senses = _sense_fronts(note)
+    context_meaning = _context_meaning(note)
+    gapped = _context_gap(note)
+    fields = {
+        "Word": note.word,
+        # A split asks for each sense on its own, so the one card that asked for
+        # them together is replaced rather than joined.
+        "Translations": "" if senses else render_translations(note),
+        "Meanings": render_meanings(note),
+        "Audio": f"[sound:{media_filename}]" if media_filename else "",
+        "Context": _context_front(note) if context_meaning else "",
+        "ContextMeaning": context_meaning,
+        "ContextPrompt": html.escape(note.context_prompt) if gapped else "",
+        "ContextGapped": gapped,
+    }
+    fields.update(dict.fromkeys(SENSE_FIELDS, ""))
+    fields.update(dict(zip(SENSE_FIELDS, senses, strict=False)))
+    return fields
+
+
+def _ordered_fields(fields: dict[str, str]) -> list[str]:
+    return [fields[name] for name in FIELD_NAMES]
+
+
+def _created_kinds(model: dict, note: AnkiNote) -> tuple[str, ...]:
+    names = [template["name"] for template in model["tmpls"]]
+    return tuple(names[card.ord] for card in sorted(note.cards(), key=lambda card: card.ord))
+
+
+def _sense_fronts(note: Note) -> list[str]:
+    """One recall front per meaning, or none: a single meaning is not a split."""
+    if not note.split_recall or len(note.meanings) <= 1:
+        return []
+    return [
+        _render_translation_block(meaning, note.word, show_label=True)
+        for meaning in note.meanings[: len(SENSE_FIELDS)]
+    ]
+
+
+def _context_meaning(note: Note) -> str:
+    index = note.context_sense
+    if not note.context or index is None or not 0 <= index < len(note.meanings):
+        return ""
+    return _render_meaning_block(note.meanings[index], len(note.meanings) > 1)
+
+
+def _context_front(note: Note) -> str:
+    """The context with the word under review marked, so the card asks about one word."""
+    highlighted = _highlight_word(note.context, note.word)
+    if highlighted is not None:
+        return highlighted
+    # A word the context does not carry verbatim — an inflected form, a separable
+    # prefix — has nothing to mark, so it is named above the sentence instead.
+    return f"{html.escape(note.word)}<br>{html.escape(note.context)}"
+
+
+def _context_gap(note: Note) -> str:
+    """The context with the word blanked, or nothing when the word is not in it verbatim."""
+    if not note.context or not note.context_prompt:
+        return ""
+    masked = _mask_word(note.context, note.word)
+    return html.escape(masked) if masked is not None else ""
+
+
 def render_translations(note: Note) -> str:
     """Render the recall front without ever leaking an unmasked source example."""
     multiple = len(note.meanings) > 1
     return "<br><br>".join(
-        _render_translation_block(meaning, note.word, multiple) for meaning in note.meanings
+        _render_translation_block(meaning, note.word, show_label=multiple)
+        for meaning in note.meanings
     )
 
 
-def _render_translation_block(meaning: Meaning, word: str, show_label: bool) -> str:
+def _render_translation_block(meaning: Meaning, word: str, *, show_label: bool) -> str:
     parts = []
     if show_label:
         parts.append(f"<b>{html.escape(meaning.label)}</b>")
@@ -679,11 +827,29 @@ def _render_meaning_block(meaning: Meaning, show_label: bool) -> str:
     return "<br>".join(parts)
 
 
+def _word_pattern(word: str) -> re.Pattern[str]:
+    # Captured so that splitting on it keeps the word the match found.
+    return re.compile(rf"(?<!\w)({re.escape(word)})(?!\w)", re.IGNORECASE)
+
+
 def _mask_word(sentence: str, word: str) -> str | None:
-    pattern = re.compile(rf"(?<!\w){re.escape(word)}(?!\w)", re.IGNORECASE)
+    pattern = _word_pattern(word)
     if pattern.search(sentence) is None:
         return None
     return pattern.sub("___", sentence)
+
+
+def _highlight_word(sentence: str, word: str) -> str | None:
+    """The sentence escaped with the word in bold, or ``None`` when it is not in it."""
+    parts = _word_pattern(word).split(sentence)
+    if len(parts) == 1:
+        return None
+    # A captured split alternates context, word, context …, and each part is escaped
+    # on its own because escaping the finished string would eat the tags.
+    return "".join(
+        f"<b>{html.escape(part)}</b>" if index % 2 else html.escape(part)
+        for index, part in enumerate(parts)
+    )
 
 
 def _add_media(collection: Collection, word: str, audio_path: Path | None) -> str | None:

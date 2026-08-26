@@ -126,9 +126,11 @@ The four requirements every design decision is weighed against:
    front of a card, it is held to exactly the rule a typed word is held
    to, and one that would have been refused had the user typed it is
    never offered.
-   Context never changes what the card is *about*: the canonical word is
+   Context never changes what the note is *about*: the canonical word is
    still the submitted unit exactly as written, so deduplication, audio,
-   statistics and the deck are unaffected by it.
+   statistics and the deck are unaffected by it. It can add cards to that
+   note — see `decision-card-shapes.md` — but never a second note and
+   never a different headword.
 2. The backend validates the input against the selected language's
    allowed script (Latin with accented letters — café, naïve, Straße —
    for English and German; Latin or Cyrillic for Serbian) and length
@@ -360,29 +362,53 @@ both in the answer entry and on the flashcard.
   when meanings are genuinely unrelated (bank «банк» / bank «берег») the
   LLM splits the back into numbered meaning blocks — at most three —
   each with a short meaning label, its own translations, and its own
-  examples. A word never produces more than one note, so a review shows
-  the word once and asks for everything it means; two cards with an
-  identical front (which the reviewer could not tell apart) can never
-  exist.
+  examples. A word never produces more than one note, however many cards
+  that note goes on to make, and two cards with an identical front (which
+  the reviewer could not tell apart) can never exist.
+- **The card set is chosen per word.** Every note makes a recognition
+  card and, unless its senses are split, a recall card. Beyond those it
+  may make a pair fronted with the context the word was submitted in, and
+  it may replace the single recall card with one card per sense. The
+  model decides which of those are worth making and points at the sense
+  each is about; the backend builds every front, and the fields it leaves
+  empty are the cards it declines. The catalogue, the reasoning, and the
+  measurement that gates the context pair are in
+  `decision-card-shapes.md`. The status line names the set as soon as the
+  word is submitted, so a set the model got wrong is visible at once and
+  undo removes the note with every card of it.
 - **Compact by design.** Recognition card — front: the word/phrase with
   pronunciation audio; back: the meaning
   block(s) — label (when there is more than one), the top 2–4
   translations, plus 1–2 short examples. The long-form analysis
   (etymology, full meaning list) stays in the app only — cards must
   remain quick to review.
-- **Reverse (recall) card.** Every note also produces a second card:
-  front — the translations (with meaning labels when there are several
-  blocks), each followed by one of that meaning's examples with the word
-  masked out ("I received a ___ from Amazon yesterday", with its
-  translation); back — the word/phrase with pronunciation audio.
+- **Reverse (recall) card.** Unless the senses are split, the note also
+  produces a second card: front — the translations (with meaning labels
+  when there are several blocks), each followed by one of that meaning's
+  examples with the word masked out ("I received a ___ from Amazon
+  yesterday", with its translation); back — the word/phrase with
+  pronunciation audio.
   A bare translation often matches several words of the source language
   (посылка → parcel / package / shipment), and the reviewer cannot know
   which one is expected; the gapped example pins it down without giving
   the answer away. A meaning's example is used only when it contains the
   word exactly as the user typed it; when no example of that meaning does
-  (an inflected form, a separable prefix), the meaning shows its part of
-  speech instead — the front never carries an unmasked example. Each word
+  (an inflected form, a separable prefix), that meaning stands on its
+  translations alone — the front never carries an unmasked example. Each word
   is therefore reviewed in both directions, from the same single note.
+  A split turns this one card into one per sense, each asking for the word
+  from that sense alone.
+- **Context cards.** When the submission carried the text the word was
+  taken from, and only when that text pins a sense the bare word would
+  leave open, the note also carries the context on the front of a
+  recognition card whose back is the meaning used there, and — decided
+  separately — a production card fronted with that context rendered in the
+  interface language above the context with the word gapped out. That
+  recognition front marks the word it is asking about — in bold where the
+  word stands in the context, named on the line above it where it does not
+  — because a sentence on its own asks about no word in particular. The
+  gapped front instead needs the word to stand in the context verbatim;
+  where it does not, that card alone is dropped.
 - **One deck per source language**, set in the languages configuration
   (e.g. `EchoWords: English`, `EchoWords: German`,
   `EchoWords: Serbian`). The language selected at submission determines

@@ -18,6 +18,10 @@ from echo_words.shape import classify, word_count
         "unter die Lupe nehmen",
         "von Zeit zu Zeit",
         "с времена на време",
+        "Das geht.",
+        "Es regnet.",
+        "Не знам.",
+        "Wie geht es dir?",
     ],
 )
 def test_a_unit_is_analysed_whole(text: str):
@@ -30,7 +34,7 @@ def test_a_unit_is_analysed_whole(text: str):
         "Er steht jeden Morgen um sechs auf.",
         "Он се синоћ вратио кући.",
         "Sve mi se čini da nešto nije u redu.",
-        "Wie geht es dir?",
+        "Das geht, oder?",
         "Ich weiß nicht, was du meinst",
         "a" * 30 + " " + "b" * 30,
     ],

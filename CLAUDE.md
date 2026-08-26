@@ -18,7 +18,8 @@ tool looks for.
   of product decisions (`decision-product.md`), the user interface
   (`decision-interface.md`, `decision-chat-interface.md`), the two input
   shapes (`decision-phrases-and-sentences.md`), what an answer contains
-  and in what order (`decision-answer-shape.md`), spaced repetition, TTS,
+  and in what order (`decision-answer-shape.md`), which cards one note
+  produces (`decision-card-shapes.md`), spaced repetition, TTS,
   the LLM backend, and the deployment host, its rules and its tooling
   (`decision-deployment.md`). They hold the reasoning
   and the measurements behind the choices. Do not re-open them.

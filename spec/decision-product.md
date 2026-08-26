@@ -32,17 +32,23 @@ the work again. **Do not re-open any of it.**
   keeps the card's front equal to what the user sent, so a mistake is
   visible on the first review. There is deliberately no on/off setting;
   this behavior is the design, not an option.
-- Every note produces two cards: recognition (source→target) and recall
-  (target→source). Still one note per word. The recall front
-  carries, per meaning, a **gapped example** — that meaning's first
-  example with the word replaced by `___` — because a bare translation
-  often fits several source words and the reviewer cannot tell which one
-  is being asked. The word is found by a plain case-insensitive
-  whole-word match on the input as typed; where no example contains it
-  verbatim the meaning shows its part of speech instead. Deliberately no
-  stemming or per-language morphology: one rule that behaves the same in
-  every configured language beats a better English front and an
-  unpredictable Serbian one.
+- Every note produces a card set chosen for that word: always a
+  recognition card (source→target), a recall card (target→source) unless
+  the senses are split into one card each, and a pair fronted with the
+  submitted context where that context pins a sense the bare word would
+  leave open. Still one note per word. The model decides which cards are
+  worth making; the backend builds every front. The catalogue and the
+  measurement that gates the context pair are in
+  `decision-card-shapes.md`.
+- Every recall front — the single one, or one per sense — carries a
+  **gapped example**: that meaning's first example with the word replaced
+  by `___`, because a bare translation often fits several source words and
+  the reviewer cannot tell which one is being asked. The word is found by
+  a plain case-insensitive whole-word match on the input as typed; where
+  no example contains it verbatim the meaning stands on its translations
+  alone. Deliberately no stemming or per-language morphology: one rule
+  that behaves the same in every configured language beats a better
+  English front and an unpredictable Serbian one.
 - **Anki without a GUI — final.** The backend maintains its own
   collection via the headless `anki` pylib and syncs it to AnkiWeb;
   AnkiConnect and Anki desktop are not part of the architecture. There

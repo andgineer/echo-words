@@ -21,6 +21,7 @@ DEPLOY_ENV_EXAMPLE = Path(".deploy.example/.env")
 REPO_URL = "https://github.com/andgineer/echo-words.git"
 REMOTE_ROOT = "/home/ubuntu/echo-words"
 REMOTE_DATA = f"{REMOTE_ROOT}/data"
+REMOTE_DEPLOY_ENV = f"{REMOTE_ROOT}/.deploy/.env"
 SERVICE_NAME = "echo-words"
 
 TAILSCALE_WAIT = (
@@ -38,7 +39,7 @@ Wants=network-online.target tailscaled.service
 Type=simple
 User=ubuntu
 WorkingDirectory={REMOTE_ROOT}
-EnvironmentFile={REMOTE_ROOT}/.deploy/.env
+EnvironmentFile={REMOTE_DEPLOY_ENV}
 ExecStartPre={TAILSCALE_WAIT}
 ExecStart={REMOTE_ROOT}/.venv/bin/uvicorn echo_words.api:app --host 127.0.0.1 --port 8080
 Restart=always
@@ -235,8 +236,8 @@ def _sync_deploy_env(c: Context) -> None:
     if not DEPLOY_ENV.is_file():
         raise RuntimeError(f"Create {DEPLOY_ENV} from {DEPLOY_ENV_EXAMPLE} before deploying.")
     _ssh(c, f"mkdir -p {REMOTE_ROOT}/.deploy")
-    c.run(f"scp {DEPLOY_ENV} {_deploy_host()}:{REMOTE_ROOT}/.deploy/.env")
-    _ssh(c, f"chmod 600 {REMOTE_ROOT}/.deploy/.env")
+    c.run(f"scp {DEPLOY_ENV} {_deploy_host()}:{REMOTE_DEPLOY_ENV}")
+    _ssh(c, f"chmod 600 {REMOTE_DEPLOY_ENV}")
 
 
 def _health_check(c: Context) -> None:
@@ -478,6 +479,61 @@ def _status_script() -> str:
 def status(c: Context):
     """Show the production service, proxy, memory, and replica receive state."""
     _ssh(c, _status_script())
+
+
+def _remote_data_dir() -> str:
+    """The data dir the service resolves, read here from the file systemd hands it.
+
+    Read rather than sourced on the VM: a shell would execute a backtick or a
+    ``$(...)`` inside a password, and an unbalanced quote a line earlier would
+    swallow this value and send the CLI to a dev default. Empty when the file
+    names none, and the CLI then falls back to the default the service does.
+    """
+    if not DEPLOY_ENV.is_file():
+        raise RuntimeError(f"Create {DEPLOY_ENV} from {DEPLOY_ENV_EXAMPLE} before deploying.")
+    return (dotenv_values(DEPLOY_ENV).get("ECHOWORDS_DATA_DIR") or "").strip()
+
+
+def _rebuild_note_type_script(*, confirmed: bool, data_dir: str) -> str:
+    """Delete with the service down, under the data dir the service itself uses."""
+    flag = " --yes" if confirmed else ""
+    setting = f"ECHOWORDS_DATA_DIR={shlex.quote(data_dir)} " if data_dir else ""
+    return (
+        "set -euo pipefail; "
+        f"cd {REMOTE_ROOT}; "
+        f"sudo systemctl stop {SERVICE_NAME}; "
+        "source /home/ubuntu/.local/bin/env; "
+        f"{setting}uv run --no-dev echo-words rebuild-note-type{flag}"
+    )
+
+
+@task(name="rebuild-note-type")
+def rebuild_note_type(c: Context):
+    """Drop the EchoWords note type and its notes so the next card recreates it.
+
+    The only destructive operation here: it names what it will delete and how
+    many notes, and deletes nothing until that is confirmed by typing "yes".
+    """
+    _deploy_host()
+    data_dir = _remote_data_dir()
+    deleted = False
+    try:
+        _ssh(c, _rebuild_note_type_script(confirmed=False, data_dir=data_dir))
+        if input('Delete them? Type "yes" to confirm: ').strip() != "yes":
+            print("Nothing deleted.")
+            return
+        _ssh(c, _rebuild_note_type_script(confirmed=True, data_dir=data_dir))
+        deleted = True
+    finally:
+        # The confirmation sits between the stop and the start, so an answer of no,
+        # a failed remote command and a Ctrl-C all have to leave the service up.
+        _ssh(c, f"sudo systemctl start {SERVICE_NAME}")
+        _health_check(c)
+    if deleted:
+        print(
+            "Adding fields is an Anki schema change: the next sync will demand a "
+            "one-way full sync, which has to be resolved by hand.",
+        )
 
 
 @task(help={"follow": "Follow new log lines.", "lines": "Number of existing lines."})

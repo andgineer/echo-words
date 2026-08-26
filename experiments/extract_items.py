@@ -8,7 +8,10 @@ Four classes, because the two error directions are not symmetric.
 ``INFLECTED``  the input is itself one lexical unit too, but typed in a form no
                dictionary lists — ``fährt Rad``. It must be carded whole exactly
                as ``UNITS`` is; what makes it its own class is that the headword
-               cannot echo it, so an echo test reads it as a fragment.
+               cannot echo it, so an echo test reads it as a fragment. Its gate is
+               therefore the card decision, not ``hit``: ``accepted`` names the
+               dictionary form only so the report says whether the model
+               lemmatised the headword, which is a separate question.
 ``FRAGMENTS``  the input is a *use* of a unit, typed with the words around it so
                the answer can address that sense. The focus has to be found.
 ``CLAUSES``    a short complete clause. Today it is carded whole, which the

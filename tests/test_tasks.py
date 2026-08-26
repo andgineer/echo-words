@@ -329,3 +329,117 @@ def test_status_separates_process_and_cgroup_memory_measurements():
     assert "CGroupMemoryPeak=unsupported" in script
     assert "else main_pid=" not in script
     assert "tail -5 || true" not in script
+
+
+def _rebuild_context(monkeypatch, tmp_path, answer: str):
+    remote_scripts = []
+    _write_deploy_env(monkeypatch, tmp_path, "ECHOWORDS_DEPLOY_HOST=ubuntu@203.0.113.10\n")
+    monkeypatch.setattr(tasks, "_ssh", lambda _context, script: remote_scripts.append(script))
+    monkeypatch.setattr(tasks, "_health_check", lambda _context: None)
+    monkeypatch.setattr("builtins.input", lambda _prompt="": answer)
+    return remote_scripts
+
+
+@pytest.mark.parametrize("answer", ["", "no", "y", "YES", " yes please "])
+def test_rebuild_note_type_deletes_nothing_without_a_typed_confirmation(
+    monkeypatch,
+    tmp_path,
+    answer,
+):
+    remote_scripts = _rebuild_context(monkeypatch, tmp_path, answer)
+
+    tasks.rebuild_note_type.body(_Context([]))
+
+    assert not any("--yes" in script for script in remote_scripts)
+    assert remote_scripts[-1] == "sudo systemctl start echo-words"
+
+
+def test_rebuild_note_type_runs_the_cli_under_the_data_dir_the_service_uses():
+    """The CLI reads the data dir from the environment alone. Pointed anywhere else it
+    would find no collection, and report having nothing to rebuild while production
+    stays broken. The value is passed in, never sourced: the deploy env sits next to
+    an AnkiWeb password, and a shell would run whatever that password contains."""
+    for confirmed in (False, True):
+        script = tasks._rebuild_note_type_script(
+            confirmed=confirmed,
+            data_dir="/home/ubuntu/echo-words/data",
+        )
+        assert "ECHOWORDS_DATA_DIR=/home/ubuntu/echo-words/data uv run " in script
+        assert tasks.REMOTE_DEPLOY_ENV not in script
+        assert script.index("ECHOWORDS_DATA_DIR") < script.index("echo-words rebuild-note-type")
+        assert script.index("systemctl stop echo-words") < script.index("ECHOWORDS_DATA_DIR")
+        assert script.endswith("--yes") is confirmed
+
+
+def test_a_data_dir_carrying_shell_syntax_reaches_the_vm_as_one_literal_value():
+    script = tasks._rebuild_note_type_script(
+        confirmed=True,
+        data_dir="/home/ubuntu/$(touch pwned) data",
+    )
+
+    assert "ECHOWORDS_DATA_DIR='/home/ubuntu/$(touch pwned) data' uv run " in script
+
+
+def test_a_deploy_env_naming_no_data_dir_leaves_the_cli_on_the_service_default():
+    """An empty assignment would be a data dir of "", which is not the default the
+    service falls back to."""
+    script = tasks._rebuild_note_type_script(confirmed=True, data_dir="")
+
+    assert "ECHOWORDS_DATA_DIR" not in script
+
+
+def test_the_data_dir_is_parsed_rather_than_sourced(monkeypatch, tmp_path):
+    """Read the way systemd reads an EnvironmentFile, not the way a shell would. A
+    shell takes the quote inside the password as opening a string, closes it on the
+    quote two lines down, and leaves the data dir unset without ever failing."""
+    _write_deploy_env(
+        monkeypatch,
+        tmp_path,
+        'ECHOWORDS_ANKIWEB_PASSWORD=pa"ss\n'
+        "ECHOWORDS_DATA_DIR=/home/ubuntu/echo-words/data\n"
+        'ECHOWORDS_TARGET_LANG=ru"\n',
+    )
+
+    assert tasks._remote_data_dir() == "/home/ubuntu/echo-words/data"
+
+
+def test_rebuild_note_type_counts_before_it_deletes(monkeypatch, tmp_path):
+    remote_scripts = _rebuild_context(monkeypatch, tmp_path, "yes")
+
+    tasks.rebuild_note_type.body(_Context([]))
+
+    counted, deleted = remote_scripts[0], remote_scripts[1]
+    assert "--yes" not in counted
+    assert deleted.endswith("--yes")
+    assert remote_scripts[-1] == "sudo systemctl start echo-words"
+
+
+def test_rebuild_note_type_restarts_the_service_when_the_delete_fails(monkeypatch, tmp_path):
+    """The confirmation sits between the stop and the start: no path may leave it down."""
+    remote_scripts = _rebuild_context(monkeypatch, tmp_path, "yes")
+
+    def fail_the_delete(_context, script):
+        remote_scripts.append(script)
+        if "--yes" in script:
+            raise RuntimeError("remote command exited 1")
+
+    monkeypatch.setattr(tasks, "_ssh", fail_the_delete)
+
+    with pytest.raises(RuntimeError):
+        tasks.rebuild_note_type.body(_Context([]))
+
+    assert remote_scripts[-1] == "sudo systemctl start echo-words"
+
+
+def test_rebuild_note_type_restarts_the_service_when_the_operator_interrupts(monkeypatch, tmp_path):
+    remote_scripts = _rebuild_context(monkeypatch, tmp_path, "yes")
+
+    def interrupt(_prompt=""):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr("builtins.input", interrupt)
+
+    with pytest.raises(KeyboardInterrupt):
+        tasks.rebuild_note_type.body(_Context([]))
+
+    assert remote_scripts[-1] == "sudo systemctl start echo-words"

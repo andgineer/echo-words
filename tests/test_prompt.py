@@ -32,6 +32,21 @@ def test_prompt_carries_the_language_word_target_context_and_hints(languages):
     assert "with no punctuation used for emphasis\nanywhere?" in prompt
 
 
+def test_the_card_contract_names_every_extra_card_and_when_not_to_ask(languages):
+    prompt = build_prompt(languages["de"], "Bank", "Russian")
+
+    assert '"cards": [{"kind": "...", "sense": 0, "prompt": "..."}]' in prompt
+    assert '{"kind": "context", "sense": 0}' in prompt
+    assert '{"kind": "context_production", "prompt": "..."}' in prompt
+    assert '{"kind": "split_recall"}' in prompt
+    assert "rendered in\nRussian" in prompt
+    # The negative control: without this sentence the arm emits context cards
+    # unconditionally, and every share-sheet submission grows two cards.
+    assert "adds nothing to the word, and gets NO card" in prompt
+    assert "you were given no\ncontext at all, neither context kind may appear" in prompt
+    assert not re.search(r"\{[a-z_]+\}", prompt)
+
+
 def test_card_is_extracted_after_the_hidden_delimiter(languages):
     raw = """<b>recieve</b>\n===CARD===
 {"word":"recieve","suggestion":"receive","meanings":[{"label":"","pos":"гл.",

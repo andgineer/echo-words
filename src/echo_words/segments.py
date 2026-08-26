@@ -52,17 +52,17 @@ def _segment(value: Any, language: Language) -> Segment | None:
         return None
     # One tap turns a label into the front of a real note, so it is held to the rule a
     # typed word is held to; a label that would have been refused is dropped silently.
-    label = _display_text(value.get("label"), None)
+    label = display_text(value.get("label"), None)
     if not label or validate_word(label, language) is not None:
         return None
     return Segment(
         label=label,
-        surface=_display_text(value.get("surface"), MAX_SURFACE_LENGTH),
-        reason=_display_text(value.get("why"), MAX_REASON_LENGTH),
+        surface=display_text(value.get("surface"), MAX_SURFACE_LENGTH),
+        reason=display_text(value.get("why"), MAX_REASON_LENGTH),
     )
 
 
-def _display_text(value: Any, limit: int | None) -> str:
+def display_text(value: Any, limit: int | None) -> str:
     if not isinstance(value, str):
         return ""
     text = unicodedata.normalize("NFC", value).strip()

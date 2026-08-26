@@ -54,6 +54,13 @@ export function t(key, params) {
   );
 }
 
+// A counted message is keyed by CLDR plural category, so the runtime picks the form:
+// Russian alone needs four of them, and 5 карточек is "many", not "other".
+export function tn(key, count, params) {
+  const form = new Intl.PluralRules(locale.value).select(count);
+  return t(`${key}.${form}`, { count, ...params });
+}
+
 export function useI18n() {
-  return { t, locale, locales: LOCALES };
+  return { t, tn, locale, locales: LOCALES };
 }

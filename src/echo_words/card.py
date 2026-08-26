@@ -5,7 +5,7 @@ import unicodedata
 from dataclasses import dataclass
 from typing import Any
 
-from echo_words.languages import Language, validate_word
+from echo_words.languages import Language, sanitize_context, validate_word
 from echo_words.shape import word_count
 
 MAX_MEANINGS = 3
@@ -34,6 +34,11 @@ class Meaning:
 class Note:
     word: str
     meanings: list[Meaning]
+    # The card set this note asks Anki for, beyond the two every note has.
+    context: str = ""
+    context_sense: int | None = None
+    context_prompt: str = ""
+    split_recall: bool = False
 
 
 @dataclass(frozen=True)
@@ -45,11 +50,15 @@ class ParsedCard:
     # difference is what tells the two apart — nothing else in the answer does.
     analysed: str
     candidates: list[str]
+    # The model decides which extra cards are worth making and points at the
+    # sense they are about; every front is built here, from fields it never sees.
+    context_sense: int | None = None
+    context_prompt: str = ""
+    split_recall: bool = False
 
     @property
     def input_is_unit(self) -> bool:
-        # Only a multi-word input can be a use of a unit. A single word is one
-        # already, and the headword the answer names is its dictionary form.
+        # Only a multi-word input can be a use of a unit; a single word is one already.
         if word_count(self.note.word) <= 1:
             return True
         return _fold(self.analysed) == _fold(self.note.word)
@@ -57,6 +66,64 @@ class ParsedCard:
 
 def _fold(text: str) -> str:
     return " ".join(unicodedata.normalize("NFC", text).casefold().split())
+
+
+@dataclass(frozen=True)
+class _RequestedCards:
+    context_sense: int | None = None
+    context_prompt: str = ""
+    split_recall: bool = False
+
+
+def _requested_cards(value: Any, meanings: int) -> _RequestedCards:
+    """Read the card requests, dropping any one of them without failing the note.
+
+    An extra card is an improvement on a note that already works, so nothing here
+    is fatal: an entry the model got wrong costs that card, never the note.
+    """
+    if not isinstance(value, list):
+        return _RequestedCards()
+    fields: dict[str, Any] = {}
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        kind = item.get("kind")
+        if not isinstance(kind, str) or kind not in _CARD_REQUESTS or kind in fields:
+            continue
+        # Recorded even when the entry is dropped: a duplicate keeps the first,
+        # and a first request the model spoiled must not be rescued by a second.
+        fields[kind] = _CARD_REQUESTS[kind](item, meanings)
+    return _RequestedCards(
+        context_sense=fields.get("context"),
+        context_prompt=fields.get("context_production") or "",
+        split_recall=bool(fields.get("split_recall")),
+    )
+
+
+def _requested_sense(item: dict[str, Any], meanings: int) -> int | None:
+    sense = item.get("sense")
+    if not isinstance(sense, int) or isinstance(sense, bool) or not 0 <= sense < meanings:
+        return None
+    return sense
+
+
+def _requested_prompt(item: dict[str, Any], _meanings: int) -> str:
+    # Held to exactly what a submitted context is held to: it is free text that goes
+    # on a card front, where a wall of it, or a control character, would stay forever.
+    prompt = item.get("prompt")
+    return sanitize_context(prompt) if isinstance(prompt, str) else ""
+
+
+def _requested_split(_item: dict[str, Any], meanings: int) -> bool:
+    # A split replaces the one recall card, so a single meaning would leave none.
+    return meanings > 1
+
+
+_CARD_REQUESTS = {
+    "context": _requested_sense,
+    "context_production": _requested_prompt,
+    "split_recall": _requested_split,
+}
 
 
 def parse_card_payload(payload: str, word: str, language: Language) -> ParsedCard:
@@ -79,11 +146,15 @@ def parse_card_payload(payload: str, word: str, language: Language) -> ParsedCar
     ]
     suggestion = _usable_suggestion(card.get("suggestion"), word, language)
     analysed = _analysed_unit(card.get("word"), word, language)
+    requested = _requested_cards(card.get("cards"), len(meanings))
     return ParsedCard(
         note=Note(word=word, meanings=meanings),
         suggestion=suggestion,
         analysed=analysed,
         candidates=_candidates(card.get("candidates"), analysed, language),
+        context_sense=requested.context_sense,
+        context_prompt=requested.context_prompt,
+        split_recall=requested.split_recall,
     )
 
 
