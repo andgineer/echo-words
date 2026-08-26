@@ -64,41 +64,39 @@ finished strings and we print them.
 
 ## The design
 
-### One prompt, one call
+### Two prompts, one call per submission
 
-Every submission is one streamed call to one prompt. The prompt no longer branches
-on a router's guess; the answer says what the input turned out to be.
+Every submission is one streamed call. The existing surface router chooses the
+vocabulary prompt or the running-text prompt before that call. A vocabulary
+answer makes a note; a running-text answer does not.
 
-The model answers one question about the input: **is it one unit worth carding**,
-or is it something with units inside it. On the first it returns the card; on the
-second it returns the units and words found inside, and no note is made.
+The vocabulary prompt returns the card and the running-text prompt returns the
+units and words found inside the text. The model is not trusted with the decision
+that touches the deck: Step 0 measured that verdict and rejected it.
 
-A single typed word is always a unit and the backend knows it from `word_count`
-without asking.
+A single typed word always routes to the vocabulary prompt. A chip tap explicitly
+sends `shape: "unit"`, so its selected word or combination cannot be re-routed by
+its own surface shape.
 
-**Whether the model can answer that question reliably is unsettled, and Step 0
-settles it before anything else is built.**
+### The submit box and a chip tap
 
-### Two requests
-
-The server never infers which of these it is from the shape of a string.
-
-- **"analyse this text"** — one field, exactly what the user typed. It never
-  carries a context; the API rejects one rather than ignoring it, so the
-  guarantee is the server's and not the UI's.
-- **"make a card"** — a word or combination plus its context, only ever sent by
-  tapping a chip. The word is already chosen, and no card-set derivation may
-  withhold the note — but `lookup_only` still does, because that is the reader
-  saying they want no note at all.
+- **The submit box** sends exactly what the user typed with no shape hint. The
+  backend classifies it as it does today.
+- **A chip tap** sends a word or combination, its context, and the explicit unit
+  shape. The word is already chosen, and no card-set derivation may withhold the
+  note — but `lookup_only` still does, because that is the reader saying they
+  want no note at all.
 
 The `word` of a card request may be a combination, when that combination is one
 unit in that text — a German separable prefix stranded at the clause end is still
 part of its verb.
 
 A chip carries the context it will send: a chip under a running text carries that
-text, a chip under a sense list carries that sense's example sentence. The chip
-carries it as its own field rather than having the frontend reconstruct it from
-`entry`.
+text, a chip under a sense list carries that sense's example sentence, and a word
+chip under a set expression carries the first example sentence of the
+expression's carded sense. The last must not carry the bare expression: cards 3
+and 4 require a sentence. The chip carries context as its own field rather than
+having the frontend reconstruct it from `entry`.
 
 ### What each case produces
 
@@ -106,12 +104,17 @@ carries it as its own field rather than having the frontend reconstruct it from
 |---|---|---|---|
 | one word | every sense | the most common sense | every sense |
 | set expression | its meaning, and what it is made of and why it means that | the expression itself | the words of the expression |
-| anything with units inside it | the text rendered and explained | **none** | the words and the combinations that are units in it |
+| anything with units inside it | the text rendered and explained | **none** | every word, with the words belonging to a combination replaced by that combination |
 | word + context | the sense used in the context, the other senses below it | that sense | every sense |
 
-The first three rows are "analyse this text"; the last is "make a card". In the
-article the context's sense comes first and the others follow, in whatever order
-the model chooses.
+The first three rows begin at the submit box; the last begins with a chip tap. In
+the article the context's sense comes first and the others follow, in whatever
+order the model chooses.
+
+The vocabulary article remains the full PWA dictionary article: headword and
+translations, useful morphology, usage, origin and examples. The smaller payload
+below exists only to build the note and its chips; it does not replace or shorten
+the article shown in the application.
 
 **Chips are offered for every sense, including the one the note was just made
 for.** `_sense_segments` excludes the carded sense today and must stop; the
@@ -156,12 +159,13 @@ process:
 "Er ___ jeden Morgen um sechs ___."
 ```
 
-The first is card 3's front, the second is card 4's. There is no marker
-convention, no stripping, no comparison against the original, and no fallback:
-these are held to exactly what every other printed field is held to — a non-empty
-string that survives the sanitizer. A model that mangles a sentence produces a
-slightly wrong card, which is the same class of error as a wrong translation, and
-we accept that one without checking it.
+The first is card 3's front, the second is card 4's. The backend does not invent
+either string with literal replacement and does not try to prove the model's
+linguistic work character by character. It checks only that both are bounded,
+non-empty strings, sanitizes the allowed HTML, and requires a highlight in one
+and a blank marker in the other. A missing field cannot make a sentence card; a
+minor difference in punctuation, spacing, inflection or word order does not make
+the whole meaning disappear.
 
 Two places produce a sentence, so both carry the pair: a card answer for the
 context it was given, and every sense for its own example.
@@ -256,19 +260,69 @@ and whether `context_sense` appears when no context was sent.
 Either way the merged or revised prompt re-opens the prompt-bound numbers; see
 Verification.
 
-## Step 1 — one prompt, one contract
+### Result — 2026-08-26
 
-**`src/echo_words/prompt.py`.** Merge `_PROMPT` and `_TEXT_PROMPT` into one.
+**The verdict did not pass, so the prompts do not merge and the router stays.**
+The pre-registered gate required zero expensive false positives, zero
+article/verdict contradictions, zero `context_sense` fields without a context,
+and at least 95% of real units to be carded directly or recovered as the first
+chip. All 122 fixtures produced a usable answer under the neutral schema:
 
-- the answer says whether the input is one unit worth carding, or has units
-  inside it
-- when it is a unit: the card JSON, with `meanings` as "the senses that need
+- 1 of 57 sentences, clauses or fragments was flagged as a unit:
+  `völlig durcheinander gebracht`
+- 4 of 65 units were flagged as not units, and none was recovered as the first
+  chip: `возим бицикл`, `донео одлуку`, `steht zur Verfügung`, `ide pešice`
+- 3 of 122 articles contradicted their JSON verdict
+- no answer leaked `context_sense`
+
+Replacing the literal `true` removed neither class of problem. A second wording
+made the safe direction explicit and required first-chip recovery. On the 13
+regression inputs it removed the expensive false positive, but split three real
+inflected units into their component words and contradicted its verdict once.
+It therefore failed before a full re-run was warranted.
+
+The reproducible harness and prompt deltas are
+`experiments/unit_verdict_bench.py` and
+`experiments/unit_verdict_prompts.py`. Raw answers remain in the gitignored
+`experiments/.bench-unit-verdict/` and can be re-scored without another call.
+
+## Step 1 — revise both prompts and their contracts
+
+**`src/echo_words/prompt.py`.** Keep `_PROMPT` and `_TEXT_PROMPT` separate.
+
+- `_PROMPT` keeps returning a card JSON, with `meanings` as "the senses that need
   different words in {target_lang}, most common first", each with its label, its
   translations, its examples, and for each example the highlighted and gapped
   strings
-- when it is not: the units and the words worth learning, each with the context a
-  tap will send. The current text prompt's "a single ordinary word never
-  qualifies" goes, because the design asks for chips on words
+- `_TEXT_PROMPT` keeps returning no card and returns only the multi-word lexical
+  combinations it found, each as surface-word hints plus a short reason and an
+  internal dictionary label. The label is a semantic hint, not a second verdict
+  that the backend uses to overrule the model. It is never shown on the chip.
+  The prompt does not enumerate ordinary words. The backend best-effort matches
+  surface words against unclaimed source words without requiring the model's
+  order, contiguity, capitalization or ellipsis placement to be exact. It then
+  uses the matched source forms in their real source order for the visible chip.
+  A combination is retained when at least two of its surface words can be
+  identified; an unmatched fragment is ignored without rejecting the answer or
+  any other combination. Overlap is resolved deterministically because one
+  source occurrence can belong to only one visible chip. Every still-unclaimed
+  source word becomes its own chip. Completeness therefore does not
+  depend on a list of parts of speech or on the
+  model deciding which ordinary words matter. A chip label keeps the exact
+  inflected forms seen in the text; separated parts are joined for the label but
+  are not converted to a dictionary form. The vocabulary prompt still derives
+  and prints the authoritative dictionary
+  headword only after the chip is tapped. The backend also attaches the submitted
+  text as context and sorts all chips by their first source occurrence. No source
+  indices, chip labels, echoed context or standalone words enter the model
+  contract. The five-item cap goes, and repeated surface words remain separate
+  targets rather than being deduplicated by their label
+- the prompt does not replace five with another numerical limit. It asks for
+  every unit that clearly satisfies the conservative qualification, says not to
+  pad the list, and makes an empty list explicitly correct. The backend already
+  supplies the bound: every accepted combination contains at least two source
+  words and accepted combinations cannot overlap, so a text of `N` words can
+  contain at most `floor(N / 2)` of them without the model counting anything
 - a set expression additionally returns the words it is made of, and the analysis
   explains what it is made of and why it means what it does. Four shipped rules
   block this and all four must move: "analyse it WHOLE. Never take it apart, and
@@ -276,45 +330,116 @@ Verification.
   unit, candidates holds that one unit and nothing else"; "the first is always
   identical to word"; and `card._candidates`, which drops a candidate equal to
   `analysed` and caps at `MAX_CANDIDATES`. Decide and record whether that cap
-  applies to the parts of an expression
+  applies to the parts of an expression. Every part carries the first example
+  sentence of the expression's carded sense as its tap context
 - on a card request, the context comes back as the same highlighted/gapped pair
 - `context_sense` keeps its meaning
+
+**`src/echo_words/segments.py`.** Remove `MAX_SEGMENTS` and the early break at
+five. Do not replace them with another product cap. Parsing accepts every
+bounded combination object and normalizes harmless schema variation. Matching
+is case-insensitive and order-independent; it maps the model's words back to the
+actual source occurrences and derives the printed label there. A bad internal
+lookup hint or one unmatchable combination is local damage, not a reason to
+reject the other combinations or the answer. Payload-size limits, JSON types and
+HTML sanitization remain security and resource guards. Do not deduplicate equal
+visible labels because repeated occurrences are separate chips.
+
+The full-word guarantee is backend work, not a broader LLM enumeration prompt.
+The existing production definition of a learnable combination remains the
+baseline. A replacement combination prompt must re-pass the sentence benchmark;
+the report records both recovered expected units and extra optional chips, but
+does not pretend the backend can adjudicate the latter more accurately than the
+model.
+
+### No-cap, full-word and four-card bench — 2026-08-26
+
+The end-to-end harness is `experiments/one_note_bench.py`; its future text and
+vocabulary prompts are under `experiments/prompts/`. A fresh run in
+`experiments/.bench-one-note-final/` made 41 real free-pool calls: 26 texts, nine
+bare vocabulary inputs and six chip taps. Twenty-one answers came from
+`google-gemini-3.5-flash-lite` and 20 from `groq-gpt-oss-120b`. Four chip calls
+that initially met a pool cooldown were retried alone with the same prompt; no
+successful answer from an earlier prompt or run was reused.
+
+The text prompt in this run had no numerical limit. It asked for every clearly
+qualifying combination, explicitly allowed an empty list, and told the model not
+to pad it. The recorded answers were then processed as the implemented design
+would process them: reject an unusable or overlapping combination, derive the
+visible label from matched source forms, attach the submitted text as context,
+and add every unclaimed source word in source order.
+
+That deterministic part worked. It produced chips for all 178 of 178 source
+words, including all 53 of 53 function-word controls. All final labels used the
+visible forms rather than lemmas, all contexts were backend-owned, and all text
+answers remained note-free. Removing five as both a prompt instruction and a
+parser cap therefore stays in the plan; it needs no replacement number.
+
+Scoring the same recorded answers with the tolerant normalization above found all
+21 of 21 expected lexical units. Nineteen of 21 contained every registered source
+part; in the other two the model still identified the useful core and the omitted
+pronoun stayed available as its own chip: `uns | auf beschränken` and
+`mi | se čini`. All 26 text answers remained usable and no source word was lost.
+`unter die Lupe nehmen`, `se oblači`, `nadam se` and `čini se` were recovered
+despite reordered, separated or differently capitalized surface text.
+
+Only three of six texts with no multi-word lookup target stayed empty. The extra
+chips were `hat … angerufen`, `richtig schön`, and `went outside`. This is the
+chosen trust boundary: the backend does not possess a better lexical judgement
+than the model and therefore does not silently delete a coherent proposed unit.
+A false-positive chip costs an optional tap; rejecting a real combination makes
+the useful lookup unavailable. None of these results was related to counting:
+every text contained at most two proposed combinations, so removal of the
+five-item limit stands without a replacement limit.
+
+The vocabulary and click payloads looked stronger structurally than they were
+pedagogically. After normalizing singular `translation` to `translations` and a
+single string to a one-item list, all 15 retained every meaning and supplied four
+non-empty card fronts. All 15 contained usage and origin; all ten cases selected
+as requiring morphology contained a forms section; and every one of the six
+clicks returned its context as the first example with every clicked part
+highlighted. The `bank` river meaning is therefore retained rather than turning
+one harmless key variation into a missing chip.
+
+Manual review found clear learner-facing errors which the structural scores did
+not detect:
+
+- `Vorschlag` was translated as “sentence” rather than “proposal”; the note on
+  `look forward to` called Russian genitive `поездки` instrumental
+- German `Bank` was marked neuter and omitted the distinct plural `Bänke`; the
+  Serbian plural of `град` was given as `гради` instead of `градови`
+- `уморан` used the malformed first card example `Након дуге шете ...` and gave
+  invented or misleading usage; `водити рачуна` claimed an ungrammatical
+  prepositionless genitive construction
+- a click on German `Er` supplied `seine` as a case form and claimed that `er`
+  is used impersonally for weather; a click on Serbian `Он` supplied Russian
+  forms such as `Него` and `Нему` instead of Serbian `њега` and `њему`
+- clicks on `gave up` and `се вратио` left the inflected chip text in `word`
+  instead of returning the promised dictionary headword; the latter also made
+  an ungrammatical generated example part of the sense chip
+- `aufstehen` included “wake up” among its translations and described
+  `steht auf dem Feld` as another inseparable verb, both of which are wrong
+
+These are visible in the full PWA article, and several also enter a card front or
+the first example used for cards 3 and 4. They are model-quality errors, not
+schema failures that deterministic code can safely correct. The backend keeps
+the answer unless it is unusable or unsafe; it does not turn a mostly useful
+answer into no article, no sense or no combination while trying to verify
+linguistics itself. The bench therefore passes the post-plan structural flow,
+with the qualitative examples retained as evidence of the model boundary rather
+than as a backend rejection gate.
 
 **`src/echo_words/card.py`.**
 
 - `MAX_MEANINGS` stops rejecting an answer; keep a generous ceiling as a guard
   against a malformed list
-- a malformed meaning is dropped and the card is built from the rest; only an
-  answer with no usable meaning fails
+- normalize harmless schema variation before deciding that data is missing:
+  singular `translation` aliases `translations`, and a single translation or
+  example object is wrapped as a one-item list
+- after normalization, a meaning with no usable translation or example is
+  dropped and the card is built from the rest; only an answer with no usable
+  meaning fails
 - the highlighted and gapped strings are parsed as ordinary printed fields
-
-## Step 2 — the router goes
-
-**`src/echo_words/shape.py`.** `classify`, `Shape`, `MAX_UNIT_WORDS` and
-`INTERNAL_MARKS` go; `word_count` stays, because `card.py` uses it.
-
-**`src/echo_words/api.py`.** `WordSubmission`'s `shape` hint becomes the request
-intent. **Do not name the field `kind`** — `JobKind` and `Job.kind` already mean
-`submit` / `rebuild` / `switch`.
-
-- a text request validates its input as text, since it may be either. A single
-  typed word therefore no longer passes the canonical-word rule at the door; the
-  headword the answer returns is validated as it already is, so what reaches a
-  note is unchanged. Say so in the spec rather than letting it be noticed later
-- a context on a text request is a 400
-- `SubmissionFingerprint` carries the intent instead of the shape — a rename
-
-**`src/echo_words/pipeline.py`.** `Job.shape` goes. `request_rebuild` and
-`request_switch` re-enqueue without passing `shape` and rely on its default; both
-must carry the intent forward, or rebuilding a chip-tap entry silently becomes a
-text request. `detail_available` keys off `shape != "text"` and needs a new
-condition — the answer's own verdict, which is known by then.
-
-**`webapp/`.** `AddView.vue` sends the two intents; the chip carries its own
-context field; `entry.shape` leaves the entry unless something else needs it.
-`useResendQueue.js` replays stored bodies, so a body queued under the old field
-names arrives after the change — accept both shapes for one release, or drop
-unreadable queued bodies explicitly.
 
 ## Step 3 — the note type
 
@@ -346,7 +471,7 @@ four cards — `anki==26.8.1` is a project dependency.
 unless one of these says otherwise:
 
 - `job.lookup_only`
-- the answer says the input is not one unit worth carding
+- `job.shape == "text"`
 
 and it is about the sense `context_sense` names, or the first sense otherwise.
 
@@ -357,7 +482,10 @@ first rather than to no context.
 
 Chips, by what the answer said:
 
-- not a unit → the units and words found inside it
+- a text answer → every word in source order; the parts of a lexical combination
+  are replaced by one chip for that combination. Its label uses the same forms
+  the learner just saw, not a lemma; a tap sends that label plus the whole text
+  to the vocabulary prompt, whose answer supplies the dictionary headword
 - a set expression → the words it is made of; `_candidate_segments` prepends
   `parsed.analysed`, which would otherwise put the expression itself first
 - a single word, or any card request → every sense of the word
@@ -367,21 +495,27 @@ headings, so it becomes a kind. `add.segments` and `add.senses` need a third
 sibling for the expression case in both `en.js` and `ru.js` — `i18n.test.js`
 asserts key-set parity.
 
+Text targets stay compact chips in this change. Rendering the submitted text
+itself as individually clickable words, including a visual treatment for
+non-contiguous combinations, is a future interface improvement. A future
+per-language setting may hide function-word chips for an experienced learner;
+the default here is all words because the beginner cannot safely pre-filter
+them.
+
 ## Step 5 — the specs and the docs
 
-- `spec/functional-description.md` — the two requests, the four cases, the four
-  cards; the router is gone; the "named on the line above" sentence goes.
+- `spec/functional-description.md` — the routed text and card flows, the four
+  cases, the four cards; the "named on the line above" sentence goes.
 - `spec/decision-card-shapes.md` — rewritten around one note and four cards; add
   the payload-rejection numbers quoted under "Why"; drop the "named on the line
   above" sentence.
 - `spec/decision-product.md` — one note per submission, and **amend "every recall
   front carries a gapped example"**: that is card 4 now, and card 2 is
-  disambiguated by the label. Note the door-validation change from Step 2.
-- `spec/decision-phrases-and-sentences.md` — the router it measured is deleted
-  and the single-call alternative it rejected is adopted; the unit-offers-no-
-  candidates rule is reversed; the sentence-mode negative control is re-opened by
-  offering chips on ordinary words. Rewrite the status line and say plainly which
-  numbers are now unbound.
+  disambiguated by the label.
+- `spec/decision-phrases-and-sentences.md` — record Step 0's rejection of the
+  merged prompt; the router stays; the unit-offers-no-candidates rule is reversed;
+  the sentence-mode negative control is re-opened by offering chips on ordinary
+  words. Rewrite the status line and say plainly which numbers are now unbound.
 - `spec/decision-answer-shape.md` — re-opened by a vocabulary-prompt revision, as
   its own "what would re-open this" says.
 - `README.md`, `docs/src/en/index.md`, `docs/src/ru/index.md` — all three
@@ -392,34 +526,39 @@ asserts key-set parity.
 
 ## Tests
 
-- `tests/test_card.py` — a malformed meaning is dropped; an answer with no usable
-  meaning fails; a rich answer is not rejected by the ceiling; the highlighted and
-  gapped strings parse and are rejected when empty or not strings
+- `tests/test_card.py` — singular keys and singleton values normalize; a meaning
+  still missing usable content is dropped; an answer with no usable meaning
+  fails; a rich answer is not rejected by the ceiling; highlighted and gapped
+  strings parse without equality checks and are rejected only when empty or not
+  strings
+- `tests/test_segments.py` — reordered, separated and differently capitalized
+  surface words map back to their source occurrences; one unmatchable proposal
+  does not reject the other combinations or prevent standalone-word fill; no
+  arbitrary count limit remains
 - `tests/test_anki.py` — a note generates exactly the four cards on a real
   throwaway collection; a separable verb's gapped front is
   `Er ___ jeden Morgen um sechs ___.` and its highlighted front marks both pieces;
   a note without a sentence generates cards 1 and 2; the label is on the bare
   fronts only when the answer holds several senses; the same word twice makes two
   notes
-- `tests/test_pipeline.py` — a card request makes a note; `lookup_only` withholds
-  it; an answer that says "not a unit" makes none and offers its units; a set
+- `tests/test_pipeline.py` — a unit-routed request makes a note; `lookup_only`
+  withholds it; a text-routed request makes none and offers its units; a set
   expression makes one and offers its words; a single word offers every sense
-- `tests/test_api.py` — nothing is classified; a context on a text request is a
-  400; the fingerprint tells the intents apart
-- `webapp/tests/AddView.test.js` — the two intents are sent as such; a chip
-  submits its own context; the three chip headings
+- `tests/test_api.py` — the router remains pinned; an explicit unit chip is not
+  reclassified
+- `webapp/tests/AddView.test.js` — a chip submits its own context; the three chip
+  headings
 
-Delete rather than adapt every test pinning the router, the split, the
-conditional card set, `context_dropped`, or the literal word search.
+Delete rather than adapt every test pinning the per-sense split, the conditional
+card set, `context_dropped`, or the literal word search.
 
 ## Landing order
 
-Step 0 first, and its outcome decides whether Step 2 exists at all.
+Step 0 first; its outcome removed Step 2 from this plan.
 
 Then `inv pre` and `inv test` green after each batch. Land Steps 1, 3 and 4
-together with their tests — the contract, the note type and the derivation are
-one change and cannot be green apart. Then Step 2, if Step 0 allowed it, moving
-the API surface and the frontend together. Then Step 5.
+together with their tests — the contracts, the note type and the derivation are
+one change and cannot be green apart. Then Step 5.
 
 ## Verification
 
@@ -435,6 +574,6 @@ first. Beyond it: the routing and sentence-mode arms of
 prompt-bound number in those two documents and in `decision-answer-shape.md` is
 unbound until then, and the specs must say so.
 
-The merged prompt, if it happens, is also one larger prompt, and
-`decision-llm-backend.md` records Serbian already straining on the free pool. Read
-the Serbian numbers of every re-run arm specifically, rather than only the totals.
+Read the Serbian numbers of every re-run arm specifically, rather than only the
+totals: `decision-llm-backend.md` records Serbian already straining on the free
+pool.
