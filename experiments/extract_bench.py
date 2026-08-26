@@ -31,6 +31,7 @@ Run:
 
 import argparse
 import asyncio
+import collections
 import json
 import re
 import statistics
@@ -300,12 +301,15 @@ def read_shots(out: Path, rule: str = DEFAULT_RULE) -> list[Shot]:
     path = out_path(out)
     if not path.exists():
         return []
-    shots = []
+    # The log is append-only, so a resumed item is on it twice; the later answer
+    # is the one that was bought to replace the earlier failure.
+    latest: dict[tuple[str, str, str], Shot] = {}
     for line in path.read_text(encoding="utf-8").splitlines():
         if line.strip():
             # Re-score on read: the metrics move as the harness learns, the answers do not.
-            shots.append(score(Shot(**json.loads(line)), rule))
-    return shots
+            shot = score(Shot(**json.loads(line)), rule)
+            latest[(shot.variant, shot.lang, normalize(shot.word))] = shot
+    return list(latest.values())
 
 
 def jobs(args, out: Path) -> list[tuple[str, str, str, str, list, list, str]]:
@@ -314,9 +318,12 @@ def jobs(args, out: Path) -> list[tuple[str, str, str, str, list, list, str]]:
     ``--resume`` and ``--only-wrong`` exist to keep a wording iteration off the
     pool's daily allowance: the first never re-buys an answer already on disk,
     the second buys only the items a named variant got wrong.
+
+    An answer cut off mid-stream is on disk with its text but is not an answer,
+    so resume has to re-buy it or the gap is permanent.
     """
     recorded = read_shots(out) if (args.resume or args.only_wrong) else []
-    seen = {(s.variant, s.lang, normalize(s.word)) for s in recorded if s.text}
+    seen = {(s.variant, s.lang, normalize(s.word)) for s in recorded if s.text and not s.error}
     wrong = {
         (s.lang, normalize(s.word))
         for s in recorded
@@ -503,10 +510,18 @@ def senses_report(out: Path) -> None:
     Both gates read the meaning count alone, because that is what the card set is
     derived from: several senses card the context, one sense discards it. The sense
     index reports beside them — an unusable one costs the narrowing, not the note.
+
+    An answer the pool never finished carries a partial text and no card, which
+    scores as neither several senses nor one. Counting it would charge a pool
+    timeout to the model, so the gates read answers and the attempts that never
+    became one are reported beside them.
     """
-    shots = [s for s in read_shots(out) if s.metrics and s.klass in CONTEXT_CLASSES]
+    attempts = [s for s in read_shots(out) if s.klass in CONTEXT_CLASSES]
+    shots = [s for s in attempts if (s.metrics or {}).get("meanings", 0) > 0]
     if not shots:
         raise SystemExit(f"no context items recorded in {out_path(out)}")
+    answered = {id(s) for s in shots}
+    unanswered = collections.Counter(s.klass for s in attempts if id(s) not in answered)
     print("how many senses the answer holds, and whether it names the one used\n")
     columns = [
         ("several", "several_meanings"),
@@ -514,7 +529,7 @@ def senses_report(out: Path) -> None:
         ("sense", "sense_in_range"),
     ]
     head = " ".join(f"{name:>8}" for name, _key in columns)
-    print(f"{'variant':8} {'class':13} {'n':>4} {head}")
+    print(f"{'variant':8} {'class':13} {'n':>4} {head} {'no answer':>10}")
     for variant in sorted({s.variant for s in shots}):
         for klass in CONTEXT_CLASSES:
             group = [s for s in shots if s.variant == variant and s.klass == klass]
@@ -524,7 +539,7 @@ def senses_report(out: Path) -> None:
                 f"{pct(sum(bool(s.metrics.get(key)) for s in group), len(group)):>8}"
                 for _name, key in columns
             )
-            print(f"{variant:8} {klass:13} {len(group):>4} {cells}")
+            print(f"{variant:8} {klass:13} {len(group):>4} {cells} {unanswered[klass]:>10}")
     print()
     gates = [
         ("pins", "several_meanings", PINS_GATE, "holds several senses"),

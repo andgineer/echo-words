@@ -105,9 +105,19 @@ those numbers. It gates nothing — an unusable index falls through to the bare
 note by design — but a class where it is routinely missing indicts the
 wording of the question rather than the model.
 
-**Those two numbers have not been taken yet.** The 80% is what this design is
-conditioned on, not a measurement of it: the fixtures, the scoring and the gate
-all exist, and the run that spends the pool quota to fill them in is
+**Both gates pass**, measured over the full 24 items per class:
+
+| class | holds several senses | holds one sense | names the sense used |
+|---|---|---|---|
+| polysemous | **83%** — PASS | 17% | 100% |
+| one-sense control | 12% | **88%** — PASS | 96% |
+| set expressions | 0% | 100% | 100% |
+
+The expressions behave like the control, so a set expression is not being read
+as its parts. The sense index is all but always usable, so the fall-through to
+a bare note is a safety net rather than a routine path.
+
+The run that takes those numbers is
 
     python experiments/extract_bench.py run --variant v0 \
         --klass pins adds_nothing expression --out experiments/.bench-senses
@@ -116,7 +126,9 @@ followed by `extract_bench.py senses --out …`, which prints the share per clas
 and the PASS or FAIL against each gate. Reading a recorded answer differently
 costs nothing, so a second wording iteration buys only the items that
 discriminate; only a change to what the prompt *asks for* has to be bought
-again.
+again. The gates read answers, not attempts: an answer the pool cuts off
+mid-stream holds no senses and would otherwise score as a miss against the
+model, so `--resume` re-buys it and the report counts it separately.
 
 ## Why no cap, and what stands in for one
 
