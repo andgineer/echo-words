@@ -7,6 +7,20 @@ Delete this file once the work has landed. What outlives it is
 This plan **supersedes the card-catalogue decision layer already in the working
 tree**. The mechanics landed there are sound and stay; what goes is who decides.
 
+## Preconditions
+
+The baseline is commit `1e47976`, "card catalogue: a per-word card set, and a
+punctuated set phrase stays a unit". Everything this plan calls "already in the
+tree" is in that commit; `git show 1e47976 --stat` is the list. On it both gates
+are green: `inv pre` with pyrefly at 0 errors, `inv test` at 471 pytest and 58
+frontend tests, none skipped. A test count that does not start from there means
+something broke before this work, not because of it.
+
+The measurement this plan answers to is in `experiments/.bench-cards/`, which is
+gitignored and lives only on the operator's machine. The numbers quoted below are
+also written into `spec/decision-card-shapes.md`, so nothing here depends on that
+directory surviving.
+
 ## Scope
 
 In scope: who decides the card set, the wording of the context note, the other
