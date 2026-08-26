@@ -266,7 +266,6 @@ def test_stats_keep_collection_windows_separate_from_startup_counters(
             }
 
         live_client.app.state.anki.note_counts = counts
-        live_client.app.state.pipeline.history.bump("en", "duplicate")
         live_client.app.state.pipeline.history.bump("en", "lookup")
         response = live_client.get("/api/stats")
 
@@ -276,7 +275,6 @@ def test_stats_keep_collection_windows_separate_from_startup_counters(
         "today": 2,
         "last_7_days": 5,
         "all_time": 10,
-        "duplicates": 1,
         "lookup_only": 1,
     }
     assert response.json()["session_counters_since"] == "startup"

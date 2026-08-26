@@ -10,10 +10,10 @@ from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any, Literal, Protocol
 
-from echo_words.anki import Added, Duplicate
+from echo_words.anki import Added
 from echo_words.backend import Cascade
 from echo_words.broker import BackendError
-from echo_words.card import Note, ParsedCard
+from echo_words.card import Meaning, Note, ParsedCard
 from echo_words.events import EventHub
 from echo_words.history import Entry, History, UndoState
 from echo_words.i18n import DEFAULT_LOCALE, message
@@ -27,7 +27,7 @@ from echo_words.prompt import (
     extract_segments,
 )
 from echo_words.sanitizer import sanitize_html
-from echo_words.segments import Segment
+from echo_words.segments import MAX_SURFACE_LENGTH, Segment, display_text
 from echo_words.shape import Shape
 
 UPDATE_INTERVAL_SECONDS = 0.5
@@ -35,7 +35,6 @@ UPDATE_INTERVAL_SECONDS = 0.5
 # stored entry re-renders in whatever interface language is picked later.
 ANALYSIS_FAILED_CODE = "analysis_failed"
 ADDED_STATUS = "added"
-DUPLICATE_STATUS = "duplicate"
 LOOKUP_ONLY_STATUS = "lookup_only"
 TEXT_STATUS = "text"
 FRAGMENT_STATUS = "fragment"
@@ -55,7 +54,7 @@ class CardStore(Protocol):
         note: Note,
         deck: str,
         audio_path: Path | None = None,
-    ) -> Added | Duplicate: ...
+    ) -> Added: ...
 
     async def remove_note(self, note_id: int, media_filename: str | None = None) -> None: ...
 
@@ -66,7 +65,7 @@ class CardStore(Protocol):
         deck: str,
         audio_path: Path | None = None,
         old_media_filename: str | None = None,
-    ) -> Added | Duplicate: ...
+    ) -> Added: ...
 
 
 AudioFetcher = Callable[[str, Language], Coroutine[Any, Any, Path | None]]
@@ -126,6 +125,7 @@ class StoreResult:
     media_filename: str | None = None
     error: str | None = None
     kinds: tuple[str, ...] = ()
+    context_dropped: bool = False
 
 
 QueueJob = Job | DetailJob
@@ -497,9 +497,10 @@ class WordPipeline:
             entry.no_audio = audio_path is None
             entry.context_audio_file = context_audio_path.name if context_audio_path else None
             suggestion = self._correction_target(job, parsed)
-            entry.segments = [
-                asdict(segment) for segment in (segments or _candidate_segments(parsed))
-            ]
+            chips = segments or _candidate_segments(parsed)
+            senses = _sense_segments(job, parsed) if not chips else []
+            entry.segments = [asdict(segment) for segment in chips or senses]
+            entry.segments_are_senses = bool(senses)
             entry.model = getattr(completion, "llm_name", None)
             entry.detail_available = (
                 job.shape != "text" and await self._paid_refusal_fresh(job.language) is None
@@ -594,7 +595,7 @@ class WordPipeline:
             return StoreResult(status, "lookup")
         if parsed is None or self.anki is None:
             return StoreResult(CARD_FAILED_STATUS, "failed")
-        note = _note_with_cards(job, parsed)
+        note = _note_for(job, parsed)
         try:
             if job.replace_note_id is not None:
                 result = await self.anki.replace_note(
@@ -609,17 +610,14 @@ class WordPipeline:
         except Exception as exc:  # noqa: BLE001
             logger.exception("could not add %r to Anki", job.word)
             return StoreResult(CARD_FAILED_STATUS, "failed", error=str(exc) or None)
-        if isinstance(result, Added):
-            return StoreResult(
-                ADDED_STATUS,
-                "added",
-                result.note_id,
-                result.media_filename,
-                kinds=result.kinds,
-            )
-        if isinstance(result, Duplicate):
-            return StoreResult(DUPLICATE_STATUS, "duplicate")
-        return StoreResult(CARD_FAILED_STATUS, "failed")
+        return StoreResult(
+            ADDED_STATUS,
+            "added",
+            result.note_id,
+            result.media_filename,
+            kinds=result.kinds,
+            context_dropped=bool(_voiced_context(job)) and note.narrowed_sense is None,
+        )
 
     async def _finish_entry(  # noqa: PLR0913, PLR0917
         self,
@@ -637,6 +635,7 @@ class WordPipeline:
         entry.card_status = stored.status
         entry.card_kinds = list(stored.kinds)
         entry.card_error = stored.error
+        entry.context_dropped = stored.context_dropped
         entry.suggestion = suggestion
         entry.shown_spelling = entry.word
         control = self._controls.get(entry.entry_id)
@@ -655,8 +654,10 @@ class WordPipeline:
                 "card_status": stored.status,
                 "card_kinds": entry.card_kinds,
                 "card_error": stored.error,
+                "context_dropped": entry.context_dropped,
                 "no_audio": entry.no_audio,
                 "segments": entry.segments,
+                "segments_are_senses": entry.segments_are_senses,
                 "audio_url": entry.audio_url,
                 "context_audio_url": entry.context_audio_url,
                 "model": entry.model,
@@ -818,6 +819,7 @@ class WordPipeline:
         entry.card_status = None
         entry.card_kinds = []
         entry.card_error = None
+        entry.context_dropped = False
         entry.no_audio = False
         entry.error = None
         entry.model = None
@@ -877,16 +879,45 @@ def _suggestion_from(parsed: ParsedCard | None) -> str | None:
     return parsed.suggestion if parsed is not None else None
 
 
-def _note_with_cards(job: Job, parsed: ParsedCard) -> Note:
-    """A card fronted with a context this submission never carried has an empty front."""
-    context = _voiced_context(job)
-    return replace(
-        parsed.note,
-        split_recall=parsed.split_recall,
-        context=context,
-        context_sense=parsed.context_sense if context else None,
-        context_prompt=parsed.context_prompt if context else "",
-    )
+def _note_for(job: Job, parsed: ParsedCard) -> Note:
+    """The note this submission makes: carded under its context, or bare."""
+    carded = replace(parsed.note, context=_voiced_context(job), context_sense=parsed.context_sense)
+    return carded if carded.narrowed_sense is not None else parsed.note
+
+
+def _sense_segments(job: Job, parsed: ParsedCard | None) -> list[Segment]:
+    """The senses the context did not use, each a chip carrying a sentence that shows it.
+
+    A tap on one is an ordinary submission of the same word with that sentence as
+    its context, which is how a sense the answer led away from still reaches the deck.
+    """
+    if parsed is None or not parsed.input_is_unit:
+        return []
+    sense = _note_for(job, parsed).narrowed_sense
+    if sense is None:
+        return []
+    return [
+        Segment(
+            label=parsed.note.word,
+            surface=_sense_sentence(meaning),
+            reason=", ".join(meaning.translations),
+        )
+        for index, meaning in enumerate(parsed.note.meanings)
+        if index != sense
+    ]
+
+
+def _sense_sentence(meaning: Meaning) -> str:
+    """The sentence a tap submits as its context, or nothing when none is short enough.
+
+    Cutting one to length would card a mangled sentence forever; a chip without a
+    sentence still reaches the deck, as an ordinary bare submission of the word.
+    """
+    for example in meaning.examples:
+        text = display_text(example.text, None)
+        if text and len(text) <= MAX_SURFACE_LENGTH:
+            return text
+    return ""
 
 
 def _voiced_context(job: Job) -> str:

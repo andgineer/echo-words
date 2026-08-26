@@ -127,8 +127,8 @@ two.
 ## What a sentence answer is, and what it is not
 
 - **A sentence never produces a note.** A whole clause on the front of a card
-  is unreviewable, duplicate detection over it is meaningless — a paraphrase is
-  a new card — and the reverse card would have to mask the entire sentence.
+  is unreviewable — a paraphrase of it is a different front asking the same
+  thing — and the reverse card would have to mask the entire sentence.
   The deck stays a dictionary.
 - The answer is the text rendered whole in the target language, then a short
   list of what is hard **in this particular text**: a construction, the word
@@ -143,8 +143,9 @@ two.
   refused had the user typed it is dropped and never offered. This is the same
   guard the spelling suggestion already lives under, for the same reason.
 - Tapping one is an ordinary submission of that unit, carrying the sentence as
-  its context. The note it makes is fronted with the dictionary form, not with
-  the sentence.
+  its context. The note it makes is about the dictionary form and never about
+  the sentence; what the sentence can do is decide which cards that note makes
+  (`decision-card-shapes.md`).
 
 ## The shape of the input is decided by the backend
 

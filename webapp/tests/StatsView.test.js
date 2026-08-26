@@ -21,7 +21,6 @@ describe("StatsView", () => {
           today: 2,
           last_7_days: 5,
           all_time: 10,
-          duplicates: 3,
           lookup_only: 1,
         },
       },
@@ -31,6 +30,6 @@ describe("StatsView", () => {
 
     expect(wrapper.text()).toContain("Today: 2");
     expect(wrapper.text()).toContain("All time: 10");
-    expect(wrapper.text()).toContain("Since startup: 3 duplicates, 1 without a card");
+    expect(wrapper.text()).toContain("Since startup: 1 without a card");
   });
 });

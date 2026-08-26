@@ -80,8 +80,7 @@ What changes in the backend, compared to AnkiConnect:
 
 - `anki.py` becomes a pylib wrapper instead of an httpx client — the
   same operations, in-process, no localhost HTTP hop. Model/deck
-  bootstrap, deck-scoped dedup, `[sound:...]` media, two card
-  templates: all map 1:1.
+  bootstrap, `[sound:...]` media, the card templates: all map 1:1.
 - **The pending queue shrinks to a sync-retry.** "Anki is not
   running" is not a state that exists: the collection is always
   available in-process, so adding a note cannot fail on connectivity.
@@ -188,8 +187,8 @@ self-hosting ever becomes unwanted.
 
 Generate an `.apkg` server-side (genanki, pure Python) and send it in
 the chat; tapping it on the phone imports into AnkiDroid. Zero server
-state, but every batch needs a manual import tap, `/undo`/`/redo` and
-dedup degrade to hope, and sync conflicts between generated packages
+state, but every batch needs a manual import tap, `/undo`/`/redo`
+degrades to hope, and sync conflicts between generated packages
 and the live collection are the user's problem. Fails "no UX
 regression". (Running full Anki desktop + AnkiConnect headless under
 Xvfb in Docker — the community workaround — is rejected without
@@ -234,7 +233,7 @@ independent of the card store:
 |---|---|---|---|---|---|
 | No GUI app required | ✗ (CLI needs the app) | ✓ | ✓ | ✓ | ✓ |
 | Backend stays small | — | ✓ (~one wheel) | ✓✓ (smallest) | ✓✓ | ✓ |
-| Minimal own code | — | ✓ (deletes the queue) | ✗ (adds review UI) | ✓ | ✗ (dedup/undo pain) |
+| Minimal own code | — | ✓ (deletes the queue) | ✗ (adds review UI) | ✓ | ✗ (import/undo pain) |
 | RAM/CPU on Free Tier | — | ✓ (aarch64 wheel) | ✓✓ | ✓✓ | ✓ |
 | Runs 24/7 on OCI Free Tier | ✗ | ✓ | ✓ | ✓ | ✓ |
 | No UX regression | ✗ | ✓✓ (identical) | ✗ (different product) | ~ (new app, paid) | ✗ (manual imports) |

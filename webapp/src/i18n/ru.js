@@ -25,6 +25,7 @@ export default {
   "add.analysisFailed": "Не удалось получить разбор. Попробуйте отправить слово ещё раз.",
   "add.contextAudio": "Весь текст",
   "add.segments": "Стоит разобрать отдельно:",
+  "add.senses": "У слова есть и другие значения — нажмите, чтобы разобрать:",
   "add.aboutHide": "Свернуть",
   "add.aboutShow": "Что это и как пользоваться",
   "add.aboutIntro":
@@ -55,7 +56,7 @@ export default {
   "card.kind.recall": "воспроизведение",
   "card.kind.context": "контекст",
   "card.kind.sense": "по значению",
-  "card.duplicate": "📌 уже в Anki",
+  "card.contextNotNeeded": "контекст не понадобился",
   "card.lookupOnly": "👁 только просмотр",
   "card.text": "👁 текст — без карточки",
   "card.fragment": "👁 фрагмент — без карточки",
@@ -66,7 +67,7 @@ export default {
   "stats.today": "Сегодня: {count}",
   "stats.last7Days": "За 7 дней: {count}",
   "stats.allTime": "Всего: {count}",
-  "stats.sinceStart": "После запуска: дублей {duplicates}, без карточки {lookupOnly}",
+  "stats.sinceStart": "После запуска: без карточки {lookupOnly}",
 
   "status.title": "Состояние",
   "status.never": "нет",

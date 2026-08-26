@@ -13,7 +13,7 @@ export const FEATURE = Object.freeze({
   HISTORY: "History",
   CARD_CONTRACT: "Card contract",
   COLLECTION: "Collection",
-  DUPLICATES_AND_REBUILD: "Duplicates and rebuild",
+  REBUILD: "Rebuild",
   ANKIWEB_SYNC: "AnkiWeb sync",
   STATS_AND_UNDO: "Stats and undo",
   RECORDING_LOOKUP: "Recording lookup",

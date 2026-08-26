@@ -26,7 +26,7 @@ onMounted(async () => {
       <p>{{ t("stats.last7Days", { count: item.last_7_days }) }}</p>
       <p>{{ t("stats.allTime", { count: item.all_time }) }}</p>
       <p class="muted">
-        {{ t("stats.sinceStart", { duplicates: item.duplicates, lookupOnly: item.lookup_only }) }}
+        {{ t("stats.sinceStart", { lookupOnly: item.lookup_only }) }}
       </p>
     </article>
   </section>

@@ -25,6 +25,7 @@ export default {
   "add.analysisFailed": "Could not get the analysis. Try sending the word again.",
   "add.contextAudio": "The whole text",
   "add.segments": "Worth looking up on their own:",
+  "add.senses": "This word has other senses — tap one to analyse it:",
   "add.aboutHide": "Hide",
   "add.aboutShow": "What this is and how to use it",
   "add.aboutIntro":
@@ -55,7 +56,7 @@ export default {
   "card.kind.recall": "recall",
   "card.kind.context": "context",
   "card.kind.sense": "by sense",
-  "card.duplicate": "📌 already in Anki",
+  "card.contextNotNeeded": "the context was not needed",
   "card.lookupOnly": "👁 lookup only",
   "card.text": "👁 text — no card",
   "card.fragment": "👁 fragment — no card",
@@ -66,7 +67,7 @@ export default {
   "stats.today": "Today: {count}",
   "stats.last7Days": "Last 7 days: {count}",
   "stats.allTime": "All time: {count}",
-  "stats.sinceStart": "Since startup: {duplicates} duplicates, {lookupOnly} without a card",
+  "stats.sinceStart": "Since startup: {lookupOnly} without a card",
 
   "status.title": "Status",
   "status.never": "never",

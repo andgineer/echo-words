@@ -106,7 +106,7 @@ After the analysis output the line ===CARD=== exactly, and immediately
 after it one line of JSON, with no commentary and no HTML tags inside the
 values:
 {{"word": "...", "suggestion": "...", "candidates": ["...", "..."],
- "cards": [{{"kind": "...", "sense": 0, "prompt": "..."}}],
+ "context_sense": 0,
  "meanings": [{{"label": "...", "translations": ["...", "..."],
  "examples": [{{"text": "...", "translation": "..."}}]}}]}}
 word — the unit you analysed, in the form a dictionary lists it and the way
@@ -123,23 +123,9 @@ that one unit and nothing else.
 Order them by what the learner most likely did not know and put that one
 first. Never lead with the input restated.
 
-cards — the review cards this entry is worth beyond the two it always makes,
-most often an empty list. Each element names one kind and carries only what
-that kind needs:
-{{"kind": "context", "sense": 0}} — the context you were given settles which
-sense is meant, so a card fronted with that context is worth reviewing. sense
-is the index into meanings, counting from zero, of the sense used there.
-{{"kind": "context_production", "prompt": "..."}} — that same context is worth
-producing and not merely recognising. prompt is the whole context rendered in
-{target_lang}; without it the card asks nothing.
-{{"kind": "split_recall"}} — the senses are so unrelated that one card asking
-for all of them at once cannot be answered, so each should be asked for on its
-own. Only ever when meanings holds more than one element.
-Emit either context kind ONLY when the context actually pins down a sense the
-bare word would leave open. A context in which the word means exactly what it
-always means adds nothing to the word, and gets NO card — that is the normal
-case, and an empty list is the right answer for it. When you were given no
-context at all, neither context kind may appear.
+context_sense — ONLY when a context was given above: the index into meanings,
+counting from zero, of the sense that context uses. Leave the field out
+entirely when you were given no context.
 
 meanings normally holds one element with an empty label. Split it into
 several (at most three) only when the senses are genuinely unrelated (like
@@ -212,9 +198,15 @@ If nothing in the text qualifies, return an empty list.
 """
 
 _CONTEXT_NOTE = """The word was met in this context: "{context}"
-Analyse the sense in which it is used there. If that sense is rare,
-domain-specific or not recorded in dictionaries at all, say so plainly and
-explain that sense — do not substitute the nearest dictionary meaning.
+Give the senses this word has exactly as you would with no context in front
+of you, and then name which of them this context uses. Lead the answer with
+that sense — the translations, the usage and the examples open on it — and
+let the other senses follow it. Never drop a sense because the context does
+not use it, and never invent one to fit the context: when the word has only
+the one sense, that single sense is the whole answer. If the sense used here
+is rare, domain-specific or not recorded in dictionaries at all, say so
+plainly and explain it rather than substituting the nearest dictionary
+meaning.
 
 """
 

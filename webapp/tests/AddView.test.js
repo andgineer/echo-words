@@ -54,6 +54,27 @@ function textEntry(segments = [
   };
 }
 
+function senseEntry() {
+  return {
+    entry_id: "entry-1",
+    word: "bank",
+    lang: "en",
+    language: "English",
+    lookup_only: false,
+    shape: "unit",
+    status: "done",
+    text: "берег",
+    card_status: "added",
+    card_kinds: ["ContextRecognition", "ContextProduction"],
+    context: "We sat on the bank.",
+    segments_are_senses: true,
+    segments: [
+      { label: "bank", surface: "The bank opens at nine.", reason: "банк" },
+      { label: "bank", surface: "The bank of the hill is steep.", reason: "склон" },
+    ],
+  };
+}
+
 describe("AddView", () => {
   it("renders the configured language selector and M1 controls", async () => {
     const wrapper = mount(AddView);
@@ -580,6 +601,111 @@ describe("AddView", () => {
     expect(segment.find("img").exists()).toBe(false);
     expect(segment.find("b").exists()).toBe(false);
     expect(segment.find("script").exists()).toBe(false);
+  });
+
+  it("offers the other senses of a carded word as chips telling them apart", async () => {
+    await labelBehavior(EPIC.VOCABULARY_ANALYSIS, FEATURE.ANSWER_DELIVERY, "Suggested units");
+    entries.value = [senseEntry()];
+    const wrapper = mount(AddView);
+    await flushPromises();
+
+    expect(wrapper.findAll(".segment-label").map((button) => button.text())).toEqual([
+      "bank",
+      "bank",
+    ]);
+    const reasons = wrapper.findAll(".segment-reason").map((node) => node.text());
+    expect(reasons).toEqual(["банк", "склон"]);
+  });
+
+  it("heads the sense chips with what they are, not with the running-text heading", async () => {
+    await labelBehavior(EPIC.VOCABULARY_ANALYSIS, FEATURE.ANSWER_DELIVERY, "Suggested units");
+    entries.value = [senseEntry()];
+    const wrapper = mount(AddView);
+    await flushPromises();
+
+    expect(wrapper.find(".segments-title").text()).toBe(
+      "This word has other senses — tap one to analyse it:",
+    );
+
+    entries.value = [textEntry()];
+    await flushPromises();
+
+    expect(wrapper.find(".segments-title").text()).toBe("Worth looking up on their own:");
+  });
+
+  it("keeps the sense chips on a lookup-only answer, heading them without a card", async () => {
+    await labelBehavior(EPIC.VOCABULARY_ANALYSIS, FEATURE.ANSWER_DELIVERY, "Suggested units");
+    entries.value = [
+      { ...senseEntry(), lookup_only: true, card_status: "lookup_only", card_kinds: [] },
+    ];
+    const wrapper = mount(AddView);
+    await flushPromises();
+
+    expect(wrapper.findAll(".segment-label")).toHaveLength(2);
+    expect(wrapper.find(".segments-title").text()).toBe(
+      "This word has other senses — tap one to analyse it:",
+    );
+
+    locale.value = "ru";
+    await flushPromises();
+
+    expect(wrapper.find(".segments-title").text()).toBe(
+      "У слова есть и другие значения — нажмите, чтобы разобрать:",
+    );
+  });
+
+  it("submits a sense chip with that sense's own sentence as the context", async () => {
+    await labelBehavior(EPIC.VOCABULARY_ANALYSIS, FEATURE.INPUT_AND_LANGUAGES, "Word submission");
+    apiRequest.mockImplementation(async (path) => {
+      if (path === "/api/languages") return OPTIONS;
+      if (path === "/api/words") return { entry_id: "entry-2" };
+      throw new Error(`Unexpected request: ${path}`);
+    });
+    entries.value = [senseEntry()];
+    const wrapper = mount(AddView);
+    await flushPromises();
+
+    await wrapper.find(".segment-label").trigger("click");
+    await flushPromises();
+
+    expect(apiRequest).toHaveBeenCalledWith("/api/words", {
+      method: "POST",
+      body: {
+        word: "bank",
+        lang: "en",
+        lookup_only: false,
+        context: "The bank opens at nine.",
+        shape: "unit",
+        request_id: expect.any(String),
+      },
+    });
+  });
+
+  it("says the context was not needed beside the cards that were made", async () => {
+    await labelBehavior(EPIC.ANKI_CARDS, FEATURE.COLLECTION, "Card delivery status");
+    entries.value = [{
+      entry_id: "entry-1",
+      word: "elbow",
+      language: "English",
+      status: "done",
+      text: "meaning",
+      card_status: "added",
+      card_kinds: ["Recognition", "Recall"],
+      context_dropped: true,
+    }];
+    const wrapper = mount(AddView);
+    await flushPromises();
+
+    expect(wrapper.find(".entry-card-status").text()).toBe(
+      "✅ 2 cards: recognition, recall · the context was not needed",
+    );
+
+    locale.value = "ru";
+    await flushPromises();
+
+    expect(wrapper.find(".entry-card-status").text()).toBe(
+      "✅ 2 карточки: узнавание, воспроизведение · контекст не понадобился",
+    );
   });
 
   it("offers neither rebuild nor deeper analysis on a running-text entry", async () => {

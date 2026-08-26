@@ -3,14 +3,13 @@ from collections.abc import AsyncIterator, Iterable
 
 from fakes import FakeDirectClient, FakeHandle, fake_cascade
 
-from echo_words.anki import Added, Duplicate, MisconfiguredNoteTypeError
+from echo_words.anki import Added, MisconfiguredNoteTypeError
 from echo_words.broker import BackendError
 from echo_words.events import Event, EventHub
 from echo_words.pipeline import (
     ADDED_STATUS,
     ANALYSIS_FAILED_CODE,
     CARD_FAILED_STATUS,
-    DUPLICATE_STATUS,
     FRAGMENT_STATUS,
     LOOKUP_ONLY_STATUS,
     TEXT_STATUS,
@@ -144,8 +143,10 @@ async def test_deltas_are_throttled_cut_sanitized_and_finished(languages):
                 "card_status": CARD_FAILED_STATUS,
                 "card_kinds": [],
                 "card_error": None,
+                "context_dropped": False,
                 "no_audio": True,
                 "segments": [],
+                "segments_are_senses": False,
                 "audio_url": None,
                 "context_audio_url": None,
                 "model": None,
@@ -206,8 +207,10 @@ async def test_card_parse_quality_and_suggestion_are_published_after_completion(
                 "card_status": CARD_FAILED_STATUS,
                 "card_kinds": [],
                 "card_error": None,
+                "context_dropped": False,
                 "no_audio": True,
                 "segments": [],
+                "segments_are_senses": False,
                 "audio_url": None,
                 "context_audio_url": None,
                 "model": None,
@@ -248,8 +251,10 @@ async def test_card_without_examples_is_rated_as_a_failure_without_losing_analys
                 "card_status": CARD_FAILED_STATUS,
                 "card_kinds": [],
                 "card_error": None,
+                "context_dropped": False,
                 "no_audio": True,
                 "segments": [],
+                "segments_are_senses": False,
                 "audio_url": None,
                 "context_audio_url": None,
                 "model": None,
@@ -282,82 +287,143 @@ def valid_card(word):
     )
 
 
-def card_with(word, cards, meanings=None):
+TWO_MEANINGS = (
+    '{"label":"учреждение","translations":["банк"],'
+    '"examples":[{"text":"The bank opens at nine.","translation":"Банк открывается в девять."}]},'
+    '{"label":"берег","translations":["берег"],'
+    '"examples":[{"text":"We sat on the bank.","translation":"Мы сидели на берегу."}]}'
+)
+
+
+def card_with(word, meanings=None, **fields):
     blocks = meanings or (
         '{"label":"","translations":["перевод"],'
         f'"examples":[{{"text":"Use {word} now.","translation":"Перевод."}}]}}'
     )
-    return f'analysis===CARD==={{"word":"{word}","cards":{cards},"meanings":[{blocks}]}}'
+    named = "".join(f'"{name}":{value},' for name, value in fields.items())
+    return f'analysis===CARD==={{"word":"{word}",{named}"meanings":[{blocks}]}}'
 
 
-async def test_a_context_card_asked_for_without_a_context_is_dropped_and_the_note_stands(
-    languages,
-):
-    anki = RecordingAnki(Added(1, None, ("Recognition", "Recall")))
-    answer = card_with(
-        "bank",
-        '[{"kind":"context","sense":0},{"kind":"context_production","prompt":"Банк открыт."}]',
-    )
+async def stored_note(languages, answer, anki, **submission):
     pipeline = WordPipeline(ScriptedCascade([Completion([answer])]), target_lang="ru", anki=anki)
     pipeline.start()
     try:
-        await pipeline.enqueue(languages["en"], "bank", False)
+        entry = await pipeline.enqueue(languages["en"], "bank", False, **submission)
         await pipeline.join()
     finally:
         await pipeline.close()
+    return entry
+
+
+async def test_a_sense_index_without_a_context_leaves_the_note_bare(languages):
+    anki = RecordingAnki(Added(1, None, ("Recognition", "SenseRecall1", "SenseRecall2")))
+    answer = card_with("bank", meanings=TWO_MEANINGS, context_sense=1)
+
+    entry = await stored_note(languages, answer, anki)
 
     note = anki.calls[0][0]
     assert note.word == "bank"
     assert note.context == ""
     assert note.context_sense is None
-    assert note.context_prompt == ""
+    assert entry.context_dropped is False
 
 
-async def test_a_context_equal_to_the_word_carries_no_context_card_either(languages):
-    anki = RecordingAnki(Added(1, None, ("Recognition", "Recall")))
-    answer = card_with("bank", '[{"kind":"context","sense":0}]')
-    pipeline = WordPipeline(ScriptedCascade([Completion([answer])]), target_lang="ru", anki=anki)
-    pipeline.start()
-    try:
-        await pipeline.enqueue(languages["en"], "bank", False, context="bank")
-        await pipeline.join()
-    finally:
-        await pipeline.close()
+async def test_a_context_equal_to_the_word_narrows_nothing(languages):
+    anki = RecordingAnki(Added(1, None, ("Recognition", "SenseRecall1", "SenseRecall2")))
+    answer = card_with("bank", meanings=TWO_MEANINGS, context_sense=1)
+
+    await stored_note(languages, answer, anki, context="bank")
 
     assert anki.calls[0][0].context_sense is None
 
 
-async def test_the_decisions_reach_the_note_when_the_submission_carried_a_context(languages):
-    anki = RecordingAnki(Added(1, None, ("Recognition", "Recall", "ContextRecognition")))
-    answer = card_with(
-        "bank",
-        '[{"kind":"context","sense":0},{"kind":"context_production","prompt":"Банк открыт."}]',
-    )
-    pipeline = WordPipeline(ScriptedCascade([Completion([answer])]), target_lang="ru", anki=anki)
-    pipeline.start()
-    try:
-        await pipeline.enqueue(
-            languages["en"],
-            "bank",
-            False,
-            context="The bank opens at nine.",
-        )
-        await pipeline.join()
-    finally:
-        await pipeline.close()
+async def test_several_meanings_card_the_context_under_the_sense_it_uses(languages):
+    anki = RecordingAnki(Added(1, None, ("ContextRecognition", "ContextProduction")))
+    answer = card_with("bank", meanings=TWO_MEANINGS, context_sense=1)
+
+    entry = await stored_note(languages, answer, anki, context="We sat on the bank.")
 
     note = anki.calls[0][0]
-    assert note.context == "The bank opens at nine."
-    assert note.context_sense == 0
-    assert note.context_prompt == "Банк открыт."
+    assert note.context == "We sat on the bank."
+    assert note.context_sense == 1
+    assert entry.context_dropped is False
+
+
+async def test_one_meaning_drops_the_context_and_says_so(languages):
+    """The context narrows nothing, and the app decided that on the user's behalf."""
+    anki = RecordingAnki(Added(1, None, ("Recognition", "Recall")))
+    answer = card_with("bank", context_sense=0)
+
+    entry = await stored_note(languages, answer, anki, context="The bank opens at nine.")
+
+    note = anki.calls[0][0]
+    assert note.context == ""
+    assert note.context_sense is None
+    assert entry.card_status == ADDED_STATUS
+    assert entry.context_dropped is True
+
+
+async def test_an_unusable_sense_index_falls_through_to_the_bare_note(languages):
+    anki = RecordingAnki(Added(1, None, ("Recognition", "SenseRecall1", "SenseRecall2")))
+    answer = card_with("bank", meanings=TWO_MEANINGS, context_sense=7)
+
+    entry = await stored_note(languages, answer, anki, context="We sat on the bank.")
+
+    assert anki.calls[0][0].context == ""
+    assert entry.context_dropped is True
+
+
+async def test_the_senses_the_context_did_not_use_are_offered_as_chips(languages):
+    anki = RecordingAnki(Added(1, None, ("ContextRecognition", "ContextProduction")))
+    answer = card_with("bank", meanings=TWO_MEANINGS, context_sense=1)
+
+    entry = await stored_note(languages, answer, anki, context="We sat on the bank.")
+
+    assert entry.segments == [
+        {
+            "label": "bank",
+            "surface": "The bank opens at nine.",
+            "reason": "банк",
+        },
+    ]
+    assert entry.segments_are_senses is True
+
+
+async def test_a_sense_sentence_too_long_for_a_context_is_left_off_its_chip(languages):
+    """Cutting it to length would card a mangled sentence; without one the tap is an
+    ordinary bare send of the word, which still brings that sense into the deck."""
+    long_example = "The bank opens at nine " + "and closes at five " * 10
+    meanings = (
+        '{"label":"учреждение","translations":["банк"],'
+        f'"examples":[{{"text":"{long_example}","translation":"Банк."}}]}},'
+        '{"label":"берег","translations":["берег"],'
+        '"examples":[{"text":"We sat on the bank.","translation":"Мы сидели на берегу."}]}'
+    )
+    anki = RecordingAnki(Added(1, None, ("ContextRecognition", "ContextProduction")))
+    answer = card_with("bank", meanings=meanings, context_sense=1)
+
+    entry = await stored_note(languages, answer, anki, context="We sat on the bank.")
+
+    assert entry.segments == [{"label": "bank", "surface": "", "reason": "банк"}]
+
+
+async def test_a_context_that_narrowed_nothing_offers_no_chips(languages):
+    anki = RecordingAnki(Added(1, None, ("Recognition", "Recall")))
+    answer = card_with("bank", context_sense=0)
+
+    entry = await stored_note(languages, answer, anki, context="The bank opens at nine.")
+
+    assert entry.segments == []
 
 
 async def test_the_status_names_the_kinds_the_collection_actually_made(languages):
-    kinds = ("Recognition", "Recall", "ContextRecognition", "ContextProduction")
+    kinds = ("ContextRecognition", "ContextProduction")
     anki = RecordingAnki(Added(1, None, kinds))
     hub = EventHub()
     pipeline = WordPipeline(
-        ScriptedCascade([Completion([card_with("bank", '[{"kind":"context","sense":0}]')])]),
+        ScriptedCascade(
+            [Completion([card_with("bank", meanings=TWO_MEANINGS, context_sense=0)])],
+        ),
         target_lang="ru",
         events=hub,
         anki=anki,
@@ -379,18 +445,21 @@ async def test_the_status_names_the_kinds_the_collection_actually_made(languages
     done = [event for event in events if event.name == "done"][-1]
     assert done.data["card_status"] == "added"
     assert done.data["card_kinds"] == list(kinds)
+    assert done.data["context_dropped"] is False
     assert entry.card_kinds == list(kinds)
     assert entry.public()["card_kinds"] == list(kinds)
 
 
-async def test_a_rebuild_carries_the_card_decisions_into_the_replacement(languages):
-    asked = '[{"kind":"context","sense":0},{"kind":"context_production","prompt":"Банк открыт."}]'
-    replaced_kinds = ("Recognition", "Recall", "ContextRecognition", "ContextProduction")
+async def test_a_rebuild_carries_the_card_set_into_the_replacement(languages):
+    replaced_kinds = ("ContextRecognition", "ContextProduction")
     anki = MutableAnki(
         [Added(1, None, ("Recognition", "Recall")), Added(2, None, replaced_kinds)],
     )
     cascade = ScriptedCascade(
-        [Completion([valid_card("bank")]), Completion([card_with("bank", asked)])],
+        [
+            Completion([valid_card("bank")]),
+            Completion([card_with("bank", meanings=TWO_MEANINGS, context_sense=0)]),
+        ],
     )
     hub = EventHub()
     pipeline = WordPipeline(
@@ -418,7 +487,6 @@ async def test_a_rebuild_carries_the_card_decisions_into_the_replacement(languag
     _note_id, note, _deck, _audio_path, _media = anki.replaced[0]
     assert note.context == "The bank opens at nine."
     assert note.context_sense == 0
-    assert note.context_prompt == "Банк открыт."
     done = [event for event in events if event.name == "done"][-1]
     assert done.data["card_kinds"] == list(replaced_kinds)
     assert entry.card_kinds == list(replaced_kinds)
@@ -513,30 +581,29 @@ async def test_lookup_only_skips_anki_and_reports_it_in_done(languages):
         await pipeline.close()
 
 
-async def test_added_and_duplicate_results_become_done_statuses(languages):
-    for result, expected in [(Added(10, None), ADDED_STATUS), (Duplicate(), DUPLICATE_STATUS)]:
-        anki = RecordingAnki(result)
-        hub = EventHub()
-        pipeline = WordPipeline(
-            ScriptedCascade([Completion([valid_card("word")])]),
-            target_lang="ru",
-            events=hub,
-            anki=anki,
-        )
-        pipeline.start()
-        try:
-            async with hub.subscribe() as subscriber:
-                entry = await pipeline.enqueue(languages["en"], "word", False)
-                await pipeline.join()
-                events = drain(subscriber)
-            assert len(anki.calls) == 1
-            assert anki.calls[0][1] == "English::Vocabulary"
-            assert entry.card_status == expected
-            assert entry.no_audio is True
-            assert events[-1].data["card_status"] == expected
-            assert events[-1].data["no_audio"] is True
-        finally:
-            await pipeline.close()
+async def test_an_added_note_becomes_the_done_status(languages):
+    anki = RecordingAnki(Added(10, None))
+    hub = EventHub()
+    pipeline = WordPipeline(
+        ScriptedCascade([Completion([valid_card("word")])]),
+        target_lang="ru",
+        events=hub,
+        anki=anki,
+    )
+    pipeline.start()
+    try:
+        async with hub.subscribe() as subscriber:
+            entry = await pipeline.enqueue(languages["en"], "word", False)
+            await pipeline.join()
+            events = drain(subscriber)
+        assert len(anki.calls) == 1
+        assert anki.calls[0][1] == "English::Vocabulary"
+        assert entry.card_status == ADDED_STATUS
+        assert entry.no_audio is True
+        assert events[-1].data["card_status"] == ADDED_STATUS
+        assert events[-1].data["no_audio"] is True
+    finally:
+        await pipeline.close()
 
 
 async def test_audio_is_speculative_used_once_and_attached_to_the_note(languages, tmp_path):
@@ -1226,10 +1293,8 @@ async def test_undo_removes_the_note_media_and_cached_audio_per_language(languag
         await pipeline.close()
 
 
-@pytest.mark.parametrize("lookup_only", [False, True])
-async def test_undo_after_duplicate_or_lookup_is_a_noop(languages, lookup_only):
-    result = Added(1, None) if lookup_only else Duplicate()
-    anki = MutableAnki([result] if not lookup_only else [])
+async def test_undo_after_a_lookup_only_send_is_a_noop(languages):
+    anki = MutableAnki([])
     pipeline = WordPipeline(
         ScriptedCascade([Completion([valid_card("word")])]),
         target_lang="Russian",
@@ -1237,7 +1302,7 @@ async def test_undo_after_duplicate_or_lookup_is_a_noop(languages, lookup_only):
     )
     pipeline.start()
     try:
-        await pipeline.enqueue(languages["en"], "word", lookup_only)
+        await pipeline.enqueue(languages["en"], "word", True)
         await pipeline.join()
         assert await pipeline.undo(languages["en"]) is None
         assert anki.removed == []
@@ -1245,17 +1310,11 @@ async def test_undo_after_duplicate_or_lookup_is_a_noop(languages, lookup_only):
         await pipeline.close()
 
 
-@pytest.mark.parametrize("lookup_only", [False, True])
-async def test_pending_latest_send_never_reexposes_the_previous_card_to_undo(
-    languages,
-    lookup_only,
-):
+async def test_pending_latest_send_never_reexposes_the_previous_card_to_undo(languages):
     release_first = asyncio.Event()
     release_latest = asyncio.Event()
     latest_started = asyncio.Event()
-    anki = MutableAnki(
-        [Added(1, "first.mp3"), Duplicate()] if not lookup_only else [Added(1, "first.mp3")],
-    )
+    anki = MutableAnki([Added(1, "first.mp3")])
     pipeline = WordPipeline(
         ScriptedCascade(
             [
@@ -1273,7 +1332,7 @@ async def test_pending_latest_send_never_reexposes_the_previous_card_to_undo(
     pipeline.start()
     try:
         await pipeline.enqueue(languages["en"], "first", False)
-        await pipeline.enqueue(languages["en"], "latest", lookup_only)
+        await pipeline.enqueue(languages["en"], "latest", True)
 
         assert await pipeline.undo(languages["en"]) is None
         release_first.set()
@@ -1465,6 +1524,7 @@ async def test_segments_reach_the_done_event_and_the_history(languages):
         assert entry.segments == suggested
         assert events[-1].data["segments"] == suggested
         assert entry.public()["segments"] == suggested
+        assert entry.public()["segments_are_senses"] is False
     finally:
         await pipeline.close()
 

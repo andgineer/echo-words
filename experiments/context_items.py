@@ -1,21 +1,21 @@
-"""Fixtures for the card-catalogue arm: when a submitted context is worth its own card.
+"""Fixtures for the context arm: does a context leave the word's other senses visible?
 
-Three classes, because the question is not whether the model *can* build a context
-card but whether it knows when not to.
+Three classes, because the question is not whether the model *can* read a context
+but whether the senses survive being given one.
 
 ``PINS``          a word with several unrelated senses, submitted with a context
-                  that selects exactly one of them. A context card here is the
-                  feature working: the front carries the sentence, the back the
-                  one sense meant.
+                  that selects exactly one of them. Several senses in the answer
+                  is the feature working: the context is carded under the sense
+                  it uses, and the others reach the reader as chips.
 ``ADDS_NOTHING``  a word with one everyday sense, submitted with an ordinary
-                  sentence it happens to stand in. **The negative control, and
-                  the number that decides the design.** A context card here is
-                  the failure mode: two extra cards on everything that arrives
-                  from the share sheet, none of them teaching anything the bare
-                  word does not.
-``EXPRESSION``    a set expression submitted with the text it came from. The
-                  expression is the unit either way; the question is whether the
-                  sentence around it earns a card of its own.
+                  sentence it happens to stand in. **The negative control.** One
+                  sense in the answer is the context discarded and an ordinary
+                  bare note made; several would card the context on everything
+                  that arrives from the share sheet.
+``EXPRESSION``    a set expression submitted with the text it came from. One unit
+                  with one sense, so it should behave like ``adds_nothing``.
+                  Several senses would mean the expression is being read as its
+                  parts — worth knowing, but a different defect.
 
 Each item is ``(word, context)``. The word is what a user submits — it stays
 inside the router's unit band — and the context is the running text it was taken
@@ -23,13 +23,12 @@ from, which is what the share sheet and the suggested-unit tap both send.
 
 The word stands in the context verbatim wherever a learner would meet it that
 way, because a context the word is not literally in cannot be gapped and its
-production card is dropped by a mechanical rule rather than by a decision. The
-handful of inflected occurrences are deliberate: they measure how often that rule
-fires on real text.
+production card is dropped by a mechanical rule. The handful of inflected
+occurrences are deliberate: they measure how often that rule fires on real text.
 
-Nothing here is scored against an expected answer. What is scored is which card
-kinds the model asked for per class, and whether each request survives the check
-the parser and the renderer already apply.
+Nothing here is scored against an expected answer. What is scored is how many
+senses the answer holds — a lexical fact, checkable against a dictionary — and,
+reported beside it, whether the answer names which sense the context uses.
 """
 
 # A polysemous word in a context that settles which sense is meant.
@@ -140,10 +139,11 @@ CLASSES: dict[str, dict[str, list[tuple[str, str]]]] = {
     "expression": EXPRESSION,
 }
 
-# The share of ``adds_nothing`` answers allowed to ask for a context card. Above it
-# the model is emitting them unconditionally, the feature is "+2 cards on
-# everything from the share sheet", and the decision has to move to a rule.
-ADDS_NOTHING_GATE = 0.25
+# Pre-registered, and read as "at least". Below ``PINS_GATE`` the context is still
+# suppressing the senses and the design does not work; below ``ADDS_NOTHING_GATE``
+# the context gets carded on words that do not need it.
+PINS_GATE = 0.80
+ADDS_NOTHING_GATE = 0.80
 
 
 def items(klass: str, lang: str) -> list[tuple[str, str]]:

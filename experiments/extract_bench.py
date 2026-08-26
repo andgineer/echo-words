@@ -59,7 +59,11 @@ from backend_bench import (  # noqa: E402
     validate_card,
     word_hint,
 )
-from context_items import ADDS_NOTHING_GATE, CLASSES as CONTEXT_CLASSES  # noqa: E402
+from context_items import (  # noqa: E402
+    ADDS_NOTHING_GATE,
+    CLASSES as CONTEXT_CLASSES,
+    PINS_GATE,
+)
 from context_items import items as context_items  # noqa: E402
 from extract_items import CLASSES, items  # noqa: E402
 from llmbroker import AsyncBroker  # noqa: E402
@@ -83,35 +87,20 @@ def context_template() -> str:
     return block.group(1)
 
 
-def requests_of(card: dict | None, kind: str) -> list[dict]:
-    raw = (card or {}).get("cards")
-    if not isinstance(raw, list):
-        return []
-    return [i for i in raw if isinstance(i, dict) and str(i.get("kind", "")).strip() == kind]
+def meaning_count(card: dict | None) -> int:
+    """How many senses the answer holds — the one fact every card decision now reads."""
+    meanings = (card or {}).get("meanings")
+    return len(meanings) if isinstance(meanings, list) else 0
 
 
-def card_kinds(card: dict | None) -> list[str]:
-    raw = (card or {}).get("cards")
-    if not isinstance(raw, list):
-        return []
-    return [str(i.get("kind", "")).strip() for i in raw if isinstance(i, dict)]
+def sense_in_range(card: dict | None, meanings: int) -> bool:
+    """The index names a meaning — the check the parser already applies.
 
-
-def context_usable(card: dict | None, meanings: int) -> bool:
-    """The sense the model pointed at exists — the check the parser already applies."""
-    picked = requests_of(card, "context")
-    if not picked:
-        return False
-    sense = picked[0].get("sense", 0)
+    An index that does not is not an error: it falls through to a bare note by
+    design. A class where it is routinely missing indicts the prompt's wording.
+    """
+    sense = (card or {}).get("context_sense")
     return isinstance(sense, int) and not isinstance(sense, bool) and 0 <= sense < meanings
-
-
-def production_usable(card: dict | None, word: str, context: str) -> bool:
-    """A rendering, and a context the word literally stands in — else there is no gap."""
-    picked = requests_of(card, "context_production")
-    if not picked or not str(picked[0].get("prompt", "")).strip():
-        return False
-    return re.search(rf"(?<!\w){re.escape(word)}(?!\w)", context, re.IGNORECASE) is not None
 
 
 def text_template() -> str:
@@ -285,23 +274,13 @@ def score(shot: Shot, rule: str = DEFAULT_RULE) -> Shot:
         "analysis_chars": len(analysis),
         "answer_lang": answer_language(analysis),
     }
-    meanings = (card or {}).get("meanings")
-    kinds = card_kinds(card)
+    meanings = meaning_count(card)
     shot.metrics.update(
         {
-            "card_kinds": kinds,
-            "context_asked": "context" in kinds,
-            "production_asked": "context_production" in kinds,
-            "split_asked": "split_recall" in kinds,
-            "any_context_asked": bool({"context", "context_production"} & set(kinds)),
-            "context_usable": context_usable(
-                card,
-                len(meanings) if isinstance(meanings, list) else 0,
-            ),
-            "production_usable": production_usable(card, shot.word, shot.context),
-            "split_usable": "split_recall" in kinds
-            and isinstance(meanings, list)
-            and len(meanings) > 1,
+            "meanings": meanings,
+            "several_meanings": meanings > 1,
+            "one_meaning": meanings == 1,
+            "sense_in_range": sense_in_range(card, meanings),
         },
     )
     return shot
@@ -518,24 +497,21 @@ def replay(out: Path) -> None:
         print()
 
 
-def cards_report(out: Path) -> None:
-    """The card catalogue arm: which kinds were asked for, and whether they build.
+def senses_report(out: Path) -> None:
+    """The context arm: how many senses each answer holds, and whether it names one.
 
-    ``usable`` counts the requests that survive the checks the parser and the
-    renderer already apply, so the gap between a column and its usable twin is
-    the share of cards the model asked for and nobody could make.
+    Both gates read the meaning count alone, because that is what the card set is
+    derived from: several senses card the context, one sense discards it. The sense
+    index reports beside them — an unusable one costs the narrowing, not the note.
     """
     shots = [s for s in read_shots(out) if s.metrics and s.klass in CONTEXT_CLASSES]
     if not shots:
         raise SystemExit(f"no context items recorded in {out_path(out)}")
-    print("share of answers asking for each card kind\n")
+    print("how many senses the answer holds, and whether it names the one used\n")
     columns = [
-        ("context", "context_asked"),
-        ("usable", "context_usable"),
-        ("produce", "production_asked"),
-        ("usable", "production_usable"),
-        ("split", "split_asked"),
-        ("any ctx", "any_context_asked"),
+        ("several", "several_meanings"),
+        ("one", "one_meaning"),
+        ("sense", "sense_in_range"),
     ]
     head = " ".join(f"{name:>8}" for name, _key in columns)
     print(f"{'variant':8} {'class':13} {'n':>4} {head}")
@@ -550,14 +526,22 @@ def cards_report(out: Path) -> None:
             )
             print(f"{variant:8} {klass:13} {len(group):>4} {cells}")
     print()
+    gates = [
+        ("pins", "several_meanings", PINS_GATE, "holds several senses"),
+        ("adds_nothing", "one_meaning", ADDS_NOTHING_GATE, "holds exactly one sense"),
+    ]
     for variant in sorted({s.variant for s in shots}):
-        control = [s for s in shots if s.variant == variant and s.klass == "adds_nothing"]
-        if not control:
-            continue
-        share = sum(bool(s.metrics["any_context_asked"]) for s in control) / len(control)
-        verdict = "PASS" if share < ADDS_NOTHING_GATE else "FAIL — move the decision to a rule"
-        print(f"{variant}: adds_nothing asks for a context card {share:.0%} — {verdict}")
-    print(f"gate: under {ADDS_NOTHING_GATE:.0%}")
+        for klass, key, gate, wording in gates:
+            group = [s for s in shots if s.variant == variant and s.klass == klass]
+            if not group:
+                continue
+            share = sum(bool(s.metrics[key]) for s in group) / len(group)
+            verdict = "PASS" if share >= gate else "FAIL"
+            print(f"{variant}: {klass} {wording} {share:.0%} — {verdict} (gate: at least {gate:.0%})")
+        expression = [s for s in shots if s.variant == variant and s.klass == "expression"]
+        if expression:
+            share = sum(bool(s.metrics["one_meaning"]) for s in expression) / len(expression)
+            print(f"{variant}: expression holds exactly one sense {share:.0%} — reports, does not gate")
 
 
 def report(out: Path, rule: str = DEFAULT_RULE) -> None:
@@ -673,7 +657,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "phase",
-        choices=["run", "paid", "report", "replay", "cards", "prompts"],
+        choices=["run", "paid", "report", "replay", "senses", "prompts"],
     )
     parser.add_argument("--rule", default=DEFAULT_RULE, choices=list(RULES), help="report: decision rule")
     parser.add_argument("--resume", action="store_true", help="skip items already recorded")
@@ -711,8 +695,8 @@ def main() -> None:
         report(out, args.rule)
     elif args.phase == "replay":
         replay(out)
-    elif args.phase == "cards":
-        cards_report(out)
+    elif args.phase == "senses":
+        senses_report(out)
     elif args.phase == "prompts":
         for variant in args.variant:
             rendered = build_prompt(

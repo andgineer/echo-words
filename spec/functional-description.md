@@ -120,17 +120,17 @@ The four requirements every design decision is weighed against:
    `decision-phrases-and-sentences.md`.
    **A suggested unit is one tap from an ordinary submission** of that
    unit, carrying the text it came from as its context, so the analysis
-   answers for *the sense used there* — which is the only way to reach a
-   meaning that no dictionary lists, because it is a term of art, a joke,
-   a regionalism, or simply rare. Because a suggested unit can become the
-   front of a card, it is held to exactly the rule a typed word is held
-   to, and one that would have been refused had the user typed it is
-   never offered.
+   *opens on the sense used there* and lets the word's other senses follow
+   it — which is the only way to reach a meaning that no dictionary lists,
+   because it is a term of art, a joke, a regionalism, or simply rare.
+   Because a suggested unit can become the front of a card, it is held to
+   exactly the rule a typed word is held to, and one that would have been
+   refused had the user typed it is never offered.
    Context never changes what the note is *about*: the canonical word is
-   still the submitted unit exactly as written, so deduplication, audio,
-   statistics and the deck are unaffected by it. It can add cards to that
-   note — see `decision-card-shapes.md` — but never a second note and
-   never a different headword.
+   still the submitted unit exactly as written, so audio, statistics and
+   the deck are unaffected by it. It decides which cards that note makes —
+   see `decision-card-shapes.md` — but never makes a second note and never
+   a different headword.
 2. The backend validates the input against the selected language's
    allowed script (Latin with accented letters — café, naïve, Straße —
    for English and German; Latin or Cyrillic for Serbian) and length
@@ -196,7 +196,7 @@ The four requirements every design decision is weighed against:
 7. In parallel with the LLM call (the input word is known before
    generation starts), the backend obtains pronunciation audio for the
    submitted text (see "Pronunciation audio"). The **canonical word** — the
-   key for the card, deduplication, statistics, and undo — is
+   word the note is about, and the key for statistics and undo — is
    always the **raw input**, never silently replaced. If the input looks
    misspelled the LLM does not swap it: it analyzes the word as typed and
    only *suggests* a correction (see "Autocorrection: advisory only"), so
@@ -207,8 +207,9 @@ The four requirements every design decision is weighed against:
 8. When generation completes, the entry gains a playable pronunciation
    (one tap to hear; played automatically where the browser allows),
    the backend adds the note (with the audio attached) to the
-   collection, and a status line is appended to the entry: "✅ added to
-   Anki" / "📌 already in Anki". The collection lives in-process, so
+   collection, and a status line is appended to the entry naming the
+   cards it made: "✅ 2 карточки: узнавание, воспроизведение". The
+   collection lives in-process, so
    adding a card cannot fail because "Anki is not running"; delivery to
    the user's devices happens via the debounced AnkiWeb sync (see "Anki
    cards").
@@ -276,7 +277,7 @@ LLM "corrects" a word the user actually meant (a rare word, a proper noun,
 a dialectal or deliberately unusual form), the card looks correct yet is
 wrong, and — because every card enters a spaced-repetition deck — the user
 would drill the wrong word without noticing. Analyzing the word **as
-typed** keeps the card's front equal to what the user sent, so a mistake is
+typed** keeps the note about the word the user sent, so a mistake is
 visible on the very first review, not hidden.
 
 Behavior — fixed, not configurable (there is no on/off setting):
@@ -354,40 +355,44 @@ both in the answer entry and on the flashcard.
 ## Anki cards
 
 - **Running text never produces a note.** A whole clause on the front of
-  a card is unreviewable, duplicate detection over it is meaningless — a
-  paraphrase is a new card — and the reverse card would have to mask the
-  entire sentence. The deck stays a dictionary; the units suggested under
+  a card is unreviewable — a paraphrase of it is a different front asking
+  the same thing — and the reverse card would have to mask the entire
+  sentence. The deck stays a dictionary; the units suggested under
   a text answer are how it grows from one.
-- **One note per word.** Usually the back carries a single meaning, but
-  when meanings are genuinely unrelated (bank «банк» / bank «берег») the
-  LLM splits the back into numbered meaning blocks — at most three —
+- **One note per submission.** Usually the back carries a single meaning,
+  but when meanings are genuinely unrelated (bank «банк» / bank «берег»)
+  the LLM splits the back into numbered meaning blocks — at most three —
   each with a short meaning label, its own translations, and its own
-  examples. A word never produces more than one note, however many cards
-  that note goes on to make, and two cards with an identical front (which
-  the reviewer could not tell apart) can never exist.
-- **The card set is chosen per word.** Every note makes a recognition
-  card and, unless its senses are split, a recall card. Beyond those it
-  may make a pair fronted with the context the word was submitted in, and
-  it may replace the single recall card with one card per sense. The
-  model decides which of those are worth making and points at the sense
-  each is about; the backend builds every front, and the fields it leaves
-  empty are the cards it declines. The catalogue, the reasoning, and the
-  measurement that gates the context pair are in
+  examples. A submission never produces more than one note, however many
+  cards that note goes on to make, and two cards with an identical front
+  (which the reviewer could not tell apart) can never exist within it.
+  **The same word may be submitted again and gets a second note**: there
+  is no duplicate check, because a second submission is how a sense the
+  first answer led away from reaches the deck at all.
+- **The card set is chosen per submission**, by the backend, from two
+  facts: whether a context came with the word, and how many senses the
+  answer holds. A word sent bare makes a recognition card and a recall
+  card — one recall per sense where the senses are several. A word sent
+  with a context that narrows it to one of several senses makes the two
+  context cards instead, and nothing else. A context that narrows nothing
+  is discarded and the note is the bare one. The model is never asked
+  which cards to make: it answers the senses, and which one the context
+  uses. The catalogue, the reasoning and the gate are in
   `decision-card-shapes.md`. The status line names the set as soon as the
-  word is submitted, so a set the model got wrong is visible at once and
-  undo removes the note with every card of it.
+  word is submitted — including when the context was dropped — so a set
+  that came out wrong is visible at once, and undo removes the note with
+  every card of it.
 - **Compact by design.** Recognition card — front: the word/phrase with
   pronunciation audio; back: the meaning
   block(s) — label (when there is more than one), the top 2–4
   translations, plus 1–2 short examples. The long-form analysis
   (etymology, full meaning list) stays in the app only — cards must
   remain quick to review.
-- **Reverse (recall) card.** Unless the senses are split, the note also
-  produces a second card: front — the translations (with meaning labels
-  when there are several blocks), each followed by one of that meaning's
-  examples with the word masked out ("I received a ___ from Amazon
-  yesterday", with its translation); back — the word/phrase with
-  pronunciation audio.
+- **Reverse (recall) card.** A bare note also produces a second card:
+  front — the translations (with meaning labels when there are several
+  blocks), each followed by one of that meaning's examples with the word
+  masked out ("I received a ___ from Amazon yesterday", with its
+  translation); back — the word/phrase with pronunciation audio.
   A bare translation often matches several words of the source language
   (посылка → parcel / package / shipment), and the reviewer cannot know
   which one is expected; the gapped example pins it down without giving
@@ -396,30 +401,32 @@ both in the answer entry and on the flashcard.
   (an inflected form, a separable prefix), that meaning stands on its
   translations alone — the front never carries an unmasked example. Each word
   is therefore reviewed in both directions, from the same single note.
-  A split turns this one card into one per sense, each asking for the word
-  from that sense alone.
+  Several senses turn this one card into one per sense, each asking for
+  the word from that sense alone.
 - **Context cards.** When the submission carried the text the word was
-  taken from, and only when that text pins a sense the bare word would
-  leave open, the note also carries the context on the front of a
-  recognition card whose back is the meaning used there, and — decided
-  separately — a production card fronted with that context rendered in the
-  interface language above the context with the word gapped out. That
+  taken from, and that text narrows a word of several senses to one of
+  them, the note is carded under the context instead of bare: a
+  recognition card fronted with the context, whose back is the sense used
+  there and the word with its pronunciation, and — where the word stands
+  in the context verbatim — a production card fronted with that sense's
+  translations above the context with the word gapped out. The
   recognition front marks the word it is asking about — in bold where the
   word stands in the context, named on the line above it where it does not
-  — because a sentence on its own asks about no word in particular. The
-  gapped front instead needs the word to stand in the context verbatim;
-  where it does not, that card alone is dropped.
+  — because a sentence on its own asks about no word in particular. Where
+  the context does not carry the word verbatim there is no gap to make,
+  and the production card alone is dropped.
+- **The senses the context did not use are offered under the answer**,
+  each with its own translations so the reader can tell them apart, and
+  each one tap from an ordinary submission of the same word carrying a
+  sentence that shows that sense. That is how a reader meeting the word
+  for the first time learns it has other senses at all — which they
+  cannot see in an answer that opens on the one the context selected, and
+  must not be asked to judge.
 - **One deck per source language**, set in the languages configuration
   (e.g. `EchoWords: English`, `EchoWords: German`,
   `EchoWords: Serbian`). The language selected at submission determines
   the deck — there is no per-word deck switching, and the deck is never
   guessed from the word itself.
-- **Duplicates**: keyed by the pair (source language, canonical word),
-  case-insensitively — the same spelling in two languages (English *Hand*
-  and German *Hand*) is two separate notes in two decks, never a
-  duplicate. The check is scoped to the language's deck. If a note already
-  exists in the collection, nothing is added or modified and the entry
-  reports "already in Anki".
 - **Sync**: after cards are added the backend synchronizes its collection
   (including media) with AnkiWeb, so new cards reach the user's devices
   (e.g. the phone) without manual action. Sync is debounced and retried;
@@ -436,9 +443,13 @@ Kept minimal — everything beyond typing a word:
 - **About/help note** — what the app does, the two input shapes, the
   lookup-only control and `?` shortcut, and the ✏️ correction button for
   a suspected typo.
-- **Suggested units** — under a running-text answer, the units worth
-  looking up on their own, each one tap from an ordinary submission that
-  carries the text as its context.
+- **Suggested units** — under an answer, the things worth looking up on
+  their own, each one tap from an ordinary submission. Under a running
+  text they are its units, submitted with the text as their context;
+  under a multi-word input that turned out to be a use of a unit, the
+  units it was about; and under a word a context narrowed, the senses
+  that context did not use, each submitted with a sentence that shows the
+  sense.
 - **History** — the answer area shows recent words with their finished
   analyses, pronunciation, and status; in-progress entries appear with
   their text accumulated so far. History is served by the backend, so
@@ -479,14 +490,14 @@ Kept minimal — everything beyond typing a word:
 - **Stats view** — how many words were added today, over the last
   7 days, and in total, broken down by source language; these are
   counted from the Anki collection itself, so they are accurate
-  regardless of restarts. Duplicate and lookup-only sends create no
-  card and are therefore counted in memory, labeled as being since the
-  last restart.
+  regardless of restarts. Lookup-only sends create no card and are
+  therefore counted in memory, labeled as being since the last restart.
 - **Undo** — remove the note created by the last submitted word of the
   currently selected language (mistaken sends). When the last word
-  created nothing — it was a duplicate or a lookup-only request — undo
-  reports that there is nothing to undo and changes nothing: it must
-  never delete a note that existed before the last send.
+  created nothing — a lookup-only request, a running text, or a card that
+  failed — undo reports that there is nothing to undo and changes
+  nothing: it must never delete a note that existed before the last
+  send.
 Undo acts on the most recent word **per source language** and only since
 the backend started — acceptable for a personal tool. There is no plain
 "run it again" control: re-rolling the same model on the same prompt is

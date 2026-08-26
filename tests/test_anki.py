@@ -23,7 +23,6 @@ from echo_words.anki import (
     Added,
     AnkiStore,
     CollectionAbsentError,
-    Duplicate,
     MisconfiguredNoteTypeError,
     PylibSyncBackend,
     _wait_past_millisecond,
@@ -39,14 +38,12 @@ from echo_words.config import Settings
 pytestmark = pytest.mark.anyio
 
 
-def make_note(  # noqa: PLR0913 - a note fixture names every card decision explicitly.
+def make_note(
     word: str = "receive",
     *,
     meanings: list[Meaning] | None = None,
     context: str = "",
     context_sense: int | None = None,
-    context_prompt: str = "",
-    split_recall: bool = False,
 ) -> Note:
     return Note(
         word,
@@ -60,8 +57,6 @@ def make_note(  # noqa: PLR0913 - a note fixture names every card decision expli
         ],
         context=context,
         context_sense=context_sense,
-        context_prompt=context_prompt,
-        split_recall=split_recall,
     )
 
 
@@ -76,6 +71,17 @@ def two_meanings() -> list[Meaning]:
             label="берег",
             translations=["берег"],
             examples=[Example("We sat on the bank.", "Мы сидели на берегу.")],
+        ),
+    ]
+
+
+def three_meanings() -> list[Meaning]:
+    return [
+        *two_meanings(),
+        Meaning(
+            label="насыпь",
+            translations=["насыпь"],
+            examples=[Example("The bank of the road was steep.", "Насыпь у дороги была крутой.")],
         ),
     ]
 
@@ -95,14 +101,14 @@ async def test_note_type_bootstrap_creates_every_field_and_template(tmp_path):
         assert tuple(template["name"] for template in model["tmpls"]) == TEMPLATE_NAMES
         fronts = {template["name"]: template["qfmt"] for template in model["tmpls"]}
         backs = {template["name"]: template["afmt"] for template in model["tmpls"]}
-        assert fronts["Recognition"] == "{{Word}} {{Audio}}"
+        assert fronts["Recognition"] == "{{#Meanings}}{{Word}} {{Audio}}{{/Meanings}}"
         assert backs["Recognition"] == "{{Meanings}}"
         assert fronts["Recall"] == "{{Translations}}"
         assert backs["Recall"] == "{{Word}} {{Audio}}"
         assert fronts["ContextRecognition"] == "{{Context}}"
-        assert backs["ContextRecognition"] == "{{ContextMeaning}}"
+        assert backs["ContextRecognition"] == "{{ContextMeaning}}<br>{{Word}} {{Audio}}"
         assert fronts["ContextProduction"] == (
-            "{{#ContextGapped}}{{ContextPrompt}}<br>{{ContextGapped}}{{/ContextGapped}}"
+            "{{#ContextGapped}}{{ContextTranslations}}<br>{{ContextGapped}}{{/ContextGapped}}"
         )
         assert backs["ContextProduction"] == "{{Word}} {{Audio}}"
         assert fronts["SenseRecall2"] == "{{Sense2}}"
@@ -129,21 +135,8 @@ async def test_a_note_without_a_context_makes_exactly_recognition_and_recall(tmp
         await store.close()
 
 
-async def test_a_context_the_model_asked_for_adds_the_recognition_card(tmp_path):
-    store = AnkiStore(local_settings(tmp_path))
-    await store.open()
-    try:
-        kinds, cards = await stored_kinds(
-            store,
-            make_note("bank", context="The bank opens at nine.", context_sense=0),
-        )
-        assert kinds == ("Recognition", "Recall", "ContextRecognition")
-        assert cards == 3
-    finally:
-        await store.close()
-
-
-async def test_a_context_with_a_prompt_adds_the_production_card_too(tmp_path):
+async def test_a_context_note_makes_the_two_context_cards_and_no_bare_front(tmp_path):
+    """The context narrowed to one sense, so the note asks about that sense alone."""
     store = AnkiStore(local_settings(tmp_path))
     await store.open()
     try:
@@ -151,18 +144,13 @@ async def test_a_context_with_a_prompt_adds_the_production_card_too(tmp_path):
             store,
             make_note(
                 "bank",
-                context="The bank opens at nine.",
-                context_sense=0,
-                context_prompt="Банк открывается в девять.",
+                meanings=two_meanings(),
+                context="We sat on the bank.",
+                context_sense=1,
             ),
         )
-        assert kinds == (
-            "Recognition",
-            "Recall",
-            "ContextRecognition",
-            "ContextProduction",
-        )
-        assert cards == 4
+        assert kinds == ("ContextRecognition", "ContextProduction")
+        assert cards == 2
     finally:
         await store.close()
 
@@ -174,43 +162,23 @@ async def test_a_context_the_word_is_not_in_keeps_recognition_and_drops_producti
     try:
         note = make_note(
             "bank",
+            meanings=two_meanings(),
             context="They open at nine every weekday.",
             context_sense=0,
-            context_prompt="Они открываются в девять.",
         )
         assert card_fields(note)["ContextGapped"] == ""
         kinds, cards = await stored_kinds(store, note)
-        assert kinds == ("Recognition", "Recall", "ContextRecognition")
-        assert cards == 3
+        assert kinds == ("ContextRecognition",)
+        assert cards == 1
     finally:
         await store.close()
 
 
-async def test_a_context_whose_sense_was_unusable_still_makes_the_production_card(tmp_path):
-    """The gapped front needs the word in the context, not a sense to point at, so the
-    production card outlives a sense index the parser refused."""
+async def test_several_meanings_ask_for_each_sense_on_its_own(tmp_path):
     store = AnkiStore(local_settings(tmp_path))
     await store.open()
     try:
-        kinds, cards = await stored_kinds(
-            store,
-            make_note(
-                "bank",
-                context="The bank opens at nine.",
-                context_prompt="Банк открывается в девять.",
-            ),
-        )
-        assert kinds == ("Recognition", "Recall", "ContextProduction")
-        assert cards == 3
-    finally:
-        await store.close()
-
-
-async def test_a_split_replaces_the_one_recall_card_with_one_per_sense(tmp_path):
-    store = AnkiStore(local_settings(tmp_path))
-    await store.open()
-    try:
-        note = make_note("bank", meanings=two_meanings(), split_recall=True)
+        note = make_note("bank", meanings=two_meanings())
         fields = card_fields(note)
         assert fields["Translations"] == ""
         assert "берег" in fields["Sense2"]
@@ -224,31 +192,67 @@ async def test_a_split_replaces_the_one_recall_card_with_one_per_sense(tmp_path)
         await store.close()
 
 
-def test_a_split_with_a_single_meaning_still_leaves_one_recall_card():
-    fields = card_fields(make_note("bank", split_recall=True))
+async def test_three_senses_make_the_largest_card_set_a_note_can_have(tmp_path):
+    """Recognition plus one recall per sense: four cards, and nothing makes more."""
+    store = AnkiStore(local_settings(tmp_path))
+    await store.open()
+    try:
+        note = make_note("bank", meanings=three_meanings())
+        fields = card_fields(note)
+        assert fields["Translations"] == ""
+        assert "насыпь" in fields["Sense3"]
+        kinds, cards = await stored_kinds(store, note)
+        assert kinds == ("Recognition", "SenseRecall1", "SenseRecall2", "SenseRecall3")
+        assert cards == 4
+    finally:
+        await store.close()
+
+
+def test_a_single_meaning_keeps_the_one_recall_card():
+    fields = card_fields(make_note("bank"))
 
     assert fields["Translations"] != ""
     assert fields["Sense1"] == ""
 
 
-def test_a_context_card_nobody_asked_for_leaves_every_context_field_empty():
+def test_a_context_that_narrows_nothing_leaves_every_context_field_empty():
     fields = card_fields(make_note("bank", context="The bank opens at nine."))
 
+    assert fields["Meanings"] != ""
     assert fields["Context"] == ""
     assert fields["ContextMeaning"] == ""
+    assert fields["ContextTranslations"] == ""
     assert fields["ContextGapped"] == ""
 
 
-def test_a_sense_index_outside_the_meanings_makes_no_context_card():
+def test_one_meaning_is_never_carded_under_a_context_however_the_note_was_built():
+    """A one-sense answer leaves nothing for a context to narrow, and the rule that
+    says so lives on the note itself rather than in each of its two readers."""
     fields = card_fields(
-        make_note("bank", context="The bank opens at nine.", context_sense=2),
+        make_note("bank", context="The bank opens at nine.", context_sense=0),
     )
 
+    assert fields["Meanings"] != ""
     assert fields["Context"] == ""
     assert fields["ContextMeaning"] == ""
 
 
-def test_the_context_card_carries_the_meaning_block_of_the_sense_it_pins():
+def test_a_sense_index_outside_the_meanings_makes_a_bare_note():
+    fields = card_fields(
+        make_note(
+            "bank",
+            meanings=two_meanings(),
+            context="The bank opens at nine.",
+            context_sense=2,
+        ),
+    )
+
+    assert fields["Meanings"] != ""
+    assert fields["Context"] == ""
+    assert fields["ContextMeaning"] == ""
+
+
+def test_the_context_cards_carry_the_sense_the_context_uses_and_nothing_else():
     fields = card_fields(
         make_note(
             "bank",
@@ -261,13 +265,24 @@ def test_the_context_card_carries_the_meaning_block_of_the_sense_it_pins():
     assert fields["Context"] == "We sat on the <b>bank</b>."
     assert "берег" in fields["ContextMeaning"]
     assert "банк" not in fields["ContextMeaning"]
+    # The gapped context below it does the job a gapped example does elsewhere.
+    assert fields["ContextTranslations"] == "берег"
+    assert fields["ContextGapped"] == "We sat on the ___."
+    assert fields["Meanings"] == ""
+    assert fields["Translations"] == ""
+    assert fields["Sense1"] == ""
 
 
 def test_a_context_the_word_is_not_in_verbatim_names_it_above_the_sentence():
     """A sentence on its own is a question about no word in particular, and an
     inflected form or a separable prefix leaves nothing in it to mark."""
     fields = card_fields(
-        make_note("bank", context="They banked on it every weekday.", context_sense=0),
+        make_note(
+            "bank",
+            meanings=two_meanings(),
+            context="They banked on it every weekday.",
+            context_sense=0,
+        ),
     )
 
     assert fields["Context"] == "bank<br>They banked on it every weekday."
@@ -276,7 +291,12 @@ def test_a_context_the_word_is_not_in_verbatim_names_it_above_the_sentence():
 
 def test_every_occurrence_of_the_word_is_marked_on_the_context_front():
     fields = card_fields(
-        make_note("bank", context="A bank is a bank, whatever the sign says.", context_sense=0),
+        make_note(
+            "bank",
+            meanings=two_meanings(),
+            context="A bank is a bank, whatever the sign says.",
+            context_sense=0,
+        ),
     )
 
     assert fields["Context"] == "A <b>bank</b> is a <b>bank</b>, whatever the sign says."
@@ -286,14 +306,13 @@ def test_a_context_carrying_markup_reaches_the_card_as_text():
     fields = card_fields(
         make_note(
             "bank",
+            meanings=two_meanings(),
             context="<b>The bank</b> opens at nine.",
             context_sense=0,
-            context_prompt="<i>Банк</i> открывается в девять.",
         ),
     )
 
     assert fields["Context"] == "&lt;b&gt;The <b>bank</b>&lt;/b&gt; opens at nine."
-    assert fields["ContextPrompt"] == "&lt;i&gt;Банк&lt;/i&gt; открывается в девять."
     assert fields["ContextGapped"] == "&lt;b&gt;The ___&lt;/b&gt; opens at nine."
 
 
@@ -467,16 +486,14 @@ def test_an_unreachable_millisecond_gives_up_instead_of_hanging():
     assert time.monotonic() - started < 1
 
 
-async def test_decks_are_created_and_duplicates_are_scoped_to_each_deck(tmp_path):
+async def test_decks_are_created_per_language(tmp_path):
     store = AnkiStore(local_settings(tmp_path))
     await store.open()
     try:
         english = await store.add_note(make_note("Hand"), "English::Vocabulary")
-        duplicate = await store.add_note(make_note("hand"), "English::Vocabulary")
         german = await store.add_note(make_note("Hand"), "German::Vocabulary")
 
         assert isinstance(english, Added)
-        assert isinstance(duplicate, Duplicate)
         assert isinstance(german, Added)
         assert store.collection.note_count() == 2
         deck_names = {deck.name for deck in store.collection.decks.all_names_and_ids()}
@@ -485,18 +502,42 @@ async def test_decks_are_created_and_duplicates_are_scoped_to_each_deck(tmp_path
         await store.close()
 
 
-async def test_a_colon_in_a_deck_name_keeps_dedup_and_counts_deck_scoped(tmp_path):
+async def test_the_same_word_twice_makes_two_notes_and_leaves_the_first_alone(tmp_path):
+    """A second submission is how a second sense reaches the deck, so it is never refused."""
+    store = AnkiStore(local_settings(tmp_path))
+    await store.open()
+    try:
+        first = await store.add_note(make_note("bank"), "English::Vocabulary")
+        second = await store.add_note(
+            make_note(
+                "bank",
+                meanings=two_meanings(),
+                context="We sat on the bank.",
+                context_sense=1,
+            ),
+            "English::Vocabulary",
+        )
+
+        assert isinstance(first, Added)
+        assert isinstance(second, Added)
+        assert second.note_id != first.note_id
+        assert store.collection.note_count() == 2
+        assert store.collection.get_note(first.note_id)["Meanings"] != ""
+        assert len(store.collection.find_cards(f"nid:{first.note_id}")) == 2
+    finally:
+        await store.close()
+
+
+async def test_a_colon_in_a_deck_name_keeps_counts_deck_scoped(tmp_path):
     # ":" is Anki search syntax, and the shipped deck names ("EchoWords: Serbian") carry one.
     store = AnkiStore(local_settings(tmp_path))
     await store.open()
     try:
         serbian = await store.add_note(make_note("kuća"), "EchoWords: Serbian")
-        duplicate = await store.add_note(make_note("Kuća"), "EchoWords: Serbian")
         german = await store.add_note(make_note("kuća"), "EchoWords: German")
         counts = await store.note_counts({"sr": "EchoWords: Serbian"})
 
         assert isinstance(serbian, Added)
-        assert isinstance(duplicate, Duplicate)
         assert isinstance(german, Added)
         assert counts["sr"]["all_time"] == 1
     finally:
@@ -526,7 +567,7 @@ async def test_replacement_deletes_then_adds_a_fresh_note(tmp_path):
         await store.close()
 
 
-async def test_a_replacement_carries_the_card_decisions_and_reports_the_kinds(tmp_path):
+async def test_a_replacement_carries_the_card_set_and_reports_the_kinds(tmp_path):
     store = AnkiStore(local_settings(tmp_path))
     await store.open()
     try:
@@ -538,49 +579,19 @@ async def test_a_replacement_carries_the_card_decisions_and_reports_the_kinds(tm
             original.note_id,
             make_note(
                 "bank",
+                meanings=two_meanings(),
                 context="The bank opens at nine.",
                 context_sense=0,
-                context_prompt="Банк открывается в девять.",
             ),
             "English::Vocabulary",
             old_media_filename=original.media_filename,
         )
 
         assert isinstance(replaced, Added)
-        assert replaced.kinds == (
-            "Recognition",
-            "Recall",
-            "ContextRecognition",
-            "ContextProduction",
-        )
-        assert len(store.collection.find_cards(f"nid:{replaced.note_id}")) == 4
+        assert replaced.kinds == ("ContextRecognition", "ContextProduction")
+        assert len(store.collection.find_cards(f"nid:{replaced.note_id}")) == 2
         stored = store.collection.get_note(replaced.note_id)
         assert stored["Context"] == "The <b>bank</b> opens at nine."
-    finally:
-        await store.close()
-
-
-async def test_replacement_removes_its_old_note_when_target_spelling_already_exists(tmp_path):
-    store = AnkiStore(local_settings(tmp_path))
-    await store.open()
-    try:
-        target = await store.add_note(make_note("receive"), "English::Vocabulary")
-        typo = await store.add_note(make_note("recieve"), "English::Vocabulary")
-        assert isinstance(target, Added)
-        assert isinstance(typo, Added)
-
-        replaced = await store.replace_note(
-            typo.note_id,
-            make_note("receive"),
-            "English::Vocabulary",
-            old_media_filename=typo.media_filename,
-        )
-
-        assert isinstance(replaced, Duplicate)
-        assert store.collection.note_count() == 1
-        assert store.collection.get_note(target.note_id)["Word"] == "receive"
-        assert store.collection.find_notes('"Word:recieve"') == []
-        assert "English::Vocabulary" not in store.last_added_by_deck
     finally:
         await store.close()
 
@@ -740,7 +751,7 @@ async def test_media_name_uses_slug_hash_and_the_name_returned_by_anki(tmp_path)
         stored = store.collection.get_note(result.note_id)
         assert stored["Audio"] == f"[sound:{result.media_filename}]"
         assert (media_dir / result.media_filename).read_bytes() == b"new audio"
-        assert store.last_added_by_deck["English::Vocabulary"] == result
+        assert (media_dir / requested).read_bytes() == b"old file"
     finally:
         await store.close()
 
@@ -1139,10 +1150,10 @@ async def test_collection_errors_propagate_to_the_caller(tmp_path, monkeypatch):
     await store.open()
     try:
 
-        def fail(_query):
+        def fail(_note, _deck_id):
             raise RuntimeError("collection broke")
 
-        monkeypatch.setattr(store.collection, "find_notes", fail)
+        monkeypatch.setattr(store.collection, "add_note", fail)
         with pytest.raises(RuntimeError, match="collection broke"):
             await store.add_note(make_note(), "English::Vocabulary")
     finally:

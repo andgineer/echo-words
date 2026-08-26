@@ -27,9 +27,11 @@ class Entry:
     lookup_only: bool = False
     shape: Shape = "unit"
     segments: list[dict] = field(default_factory=list)
+    segments_are_senses: bool = False
     card_status: str | None = None
     card_kinds: list[str] = field(default_factory=list)
     card_error: str | None = None
+    context_dropped: bool = False
     no_audio: bool = False
     error: str | None = None
     model: str | None = None
@@ -110,13 +112,13 @@ class History:
         return [self.entries[entry_id].public() for entry_id in ids]
 
     def bump(self, lang: str, action: str) -> None:
-        if action not in {"duplicate", "lookup"}:
+        if action != "lookup":
             return
         self.counters.setdefault(lang, Counter())[action] += 1
 
     def counts(self, lang: str) -> dict[str, int]:
         counter = self.counters.get(lang, Counter())
-        return {"duplicates": counter["duplicate"], "lookup_only": counter["lookup"]}
+        return {"lookup_only": counter["lookup"]}
 
     def trim(self) -> None:
         """Evict oldest terminal entries, never work the FIFO still needs."""

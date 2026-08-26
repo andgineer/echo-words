@@ -14,7 +14,8 @@ accepted a POST but its response was lost, retrying that UUID returns the
 original entry instead of repeating the LLM and audio work. This receipt map is
 in-memory like the history: it holds at most 4096 accepted IDs for seven days and
 resets when the backend restarts. A retry outside that window is a new request,
-but Anki's durable word/deck duplicate check still prevents a second card.
+and since there is no duplicate check it makes a second note — undo, or Anki's
+own browser, removes it.
 
 ## Share-sheet Shortcut
 

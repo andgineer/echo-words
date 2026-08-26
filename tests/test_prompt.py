@@ -32,19 +32,25 @@ def test_prompt_carries_the_language_word_target_context_and_hints(languages):
     assert "with no punctuation used for emphasis\nanywhere?" in prompt
 
 
-def test_the_card_contract_names_every_extra_card_and_when_not_to_ask(languages):
-    prompt = build_prompt(languages["de"], "Bank", "Russian")
+def test_the_card_contract_asks_for_the_senses_and_never_for_a_card(languages):
+    bare = build_prompt(languages["de"], "Bank", "Russian")
+    with_context = build_prompt(
+        languages["de"],
+        "Bank",
+        "Russian",
+        context="Wir saßen auf der Bank im Park.",
+    )
 
-    assert '"cards": [{"kind": "...", "sense": 0, "prompt": "..."}]' in prompt
-    assert '{"kind": "context", "sense": 0}' in prompt
-    assert '{"kind": "context_production", "prompt": "..."}' in prompt
-    assert '{"kind": "split_recall"}' in prompt
-    assert "rendered in\nRussian" in prompt
-    # The negative control: without this sentence the arm emits context cards
-    # unconditionally, and every share-sheet submission grows two cards.
-    assert "adds nothing to the word, and gets NO card" in prompt
-    assert "you were given no\ncontext at all, neither context kind may appear" in prompt
-    assert not re.search(r"\{[a-z_]+\}", prompt)
+    assert '"context_sense": 0' in bare
+    assert "the index into meanings,\ncounting from zero, of the sense that context uses" in bare
+    # The senses are the only thing asked for: a prompt that also asked which
+    # cards to make measured as a decision carrying no information.
+    assert '"cards"' not in bare
+    assert "context_production" not in bare
+    assert "split_recall" not in bare
+    assert "Give the senses this word has exactly as you would with no context" in with_context
+    assert "Never drop a sense because the context does\nnot use it" in with_context
+    assert not re.search(r"\{[a-z_]+\}", with_context)
 
 
 def test_card_is_extracted_after_the_hidden_delimiter(languages):

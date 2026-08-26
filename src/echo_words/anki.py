@@ -35,19 +35,20 @@ FIELD_NAMES = (
     "Audio",
     "Context",
     "ContextMeaning",
-    "ContextPrompt",
+    "ContextTranslations",
     "ContextGapped",
     *SENSE_FIELDS,
 )
-# (template, front, back). Recognition comes first because Anki requires the first
-# template to always produce a card, and Word is never empty.
+# (template, front, back). Every front is guarded by a field a declined card leaves
+# empty, Word included: Anki drops a card whose front renders empty, and falls back
+# to the first template only for a note that would otherwise get no card at all.
 _TEMPLATES: tuple[tuple[str, str, str], ...] = (
-    ("Recognition", "{{Word}} {{Audio}}", "{{Meanings}}"),
+    ("Recognition", "{{#Meanings}}{{Word}} {{Audio}}{{/Meanings}}", "{{Meanings}}"),
     ("Recall", "{{Translations}}", "{{Word}} {{Audio}}"),
-    ("ContextRecognition", "{{Context}}", "{{ContextMeaning}}"),
+    ("ContextRecognition", "{{Context}}", "{{ContextMeaning}}<br>{{Word}} {{Audio}}"),
     (
         "ContextProduction",
-        "{{#ContextGapped}}{{ContextPrompt}}<br>{{ContextGapped}}{{/ContextGapped}}",
+        "{{#ContextGapped}}{{ContextTranslations}}<br>{{ContextGapped}}{{/ContextGapped}}",
         "{{Word}} {{Audio}}",
     ),
     ("SenseRecall1", "{{Sense1}}", "{{Word}} {{Audio}}"),
@@ -146,14 +147,6 @@ class Added:
     note_id: int
     media_filename: str | None
     kinds: tuple[str, ...] = ()
-
-
-@dataclass(frozen=True)
-class Duplicate:
-    pass
-
-
-AddResult = Added | Duplicate
 
 
 @dataclass(frozen=True)
@@ -266,7 +259,6 @@ class AnkiStore:
         self.clock = clock
         self.sleep = sleep
         self.collection: Collection | None = None
-        self.last_added_by_deck: dict[str, Added] = {}
         self.sync_error: str | None = None
         self._lock = asyncio.Lock()
         self._sync_task: asyncio.Task[None] | None = None
@@ -329,8 +321,8 @@ class AnkiStore:
         note: Note,
         deck: str,
         audio_path: Path | None = None,
-    ) -> AddResult:
-        """Add a rendered note unless its canonical word already exists in the deck."""
+    ) -> Added:
+        """Add a rendered note to the deck of its source language."""
         async with self._lock:
             result = await _to_thread_uncancellable(
                 self._add_note_blocking,
@@ -338,9 +330,7 @@ class AnkiStore:
                 deck,
                 audio_path,
             )
-        if isinstance(result, Added):
-            self.last_added_by_deck[deck] = result
-            self.schedule_sync()
+        self.schedule_sync()
         return result
 
     async def replace_note(
@@ -350,8 +340,8 @@ class AnkiStore:
         deck: str,
         audio_path: Path | None = None,
         old_media_filename: str | None = None,
-    ) -> AddResult:
-        """Replace a note, removing the old result when the target is a duplicate."""
+    ) -> Added:
+        """Replace one note with a freshly built one, resetting its scheduling."""
         async with self._lock:
             result = await _to_thread_uncancellable(
                 self._replace_note_blocking,
@@ -361,12 +351,6 @@ class AnkiStore:
                 audio_path,
                 old_media_filename,
             )
-        if isinstance(result, Added):
-            self.last_added_by_deck[deck] = result
-        elif (
-            last_added := self.last_added_by_deck.get(deck)
-        ) is not None and last_added.note_id == note_id:
-            self.last_added_by_deck.pop(deck, None)
         self.schedule_sync()
         return result
 
@@ -594,19 +578,12 @@ class AnkiStore:
         note_data: Note,
         deck: str,
         audio_path: Path | None,
-    ) -> AddResult:
+    ) -> Added:
         collection = self._require_collection()
         model = _ensure_note_type(collection)
         deck_id = collection.decks.id(deck)
         if deck_id is None:
             raise AnkiError(f"could not create Anki deck {deck!r}")
-        query = (
-            f'deck:"{_query_value(deck)}" note:{NOTE_TYPE_NAME} '
-            f'"Word:{_query_value(note_data.word)}"'
-        )
-        if collection.find_notes(query):
-            return Duplicate()
-
         media_filename = _add_media(collection, note_data.word, audio_path)
         note = collection.new_note(model)
         note.fields = _ordered_fields(card_fields(note_data, media_filename))
@@ -620,22 +597,12 @@ class AnkiStore:
         deck: str,
         audio_path: Path | None,
         old_media_filename: str | None,
-    ) -> AddResult:
+    ) -> Added:
         collection = self._require_collection()
         model = _ensure_note_type(collection)
         deck_id = collection.decks.id(deck)
         if deck_id is None:
             raise AnkiError(f"could not create Anki deck {deck!r}")
-        query = (
-            f'deck:"{_query_value(deck)}" note:{NOTE_TYPE_NAME} '
-            f'"Word:{_query_value(note_data.word)}"'
-        )
-        if any(int(found) != note_id for found in collection.find_notes(query)):
-            collection.remove_notes([NoteId(note_id)])
-            if old_media_filename:
-                _trash_replaced_media(collection, old_media_filename)
-            return Duplicate()
-
         media_filename = None
         undo_entry = collection.add_custom_undo_entry("Replace EchoWords note")
         try:
@@ -718,20 +685,27 @@ def _ensure_note_type(collection: Collection) -> dict:
 
 def card_fields(note: Note, media_filename: str | None = None) -> dict[str, str]:
     """Every field of one note. Which cards it produces follows from what is left empty."""
-    senses = _sense_fronts(note)
-    context_meaning = _context_meaning(note)
-    gapped = _context_gap(note)
+    index = note.narrowed_sense
+    narrowed = note.meanings[index] if index is not None else None
+    senses = [] if narrowed else _sense_fronts(note)
     fields = {
         "Word": note.word,
-        # A split asks for each sense on its own, so the one card that asked for
-        # them together is replaced rather than joined.
-        "Translations": "" if senses else render_translations(note),
-        "Meanings": render_meanings(note),
+        # Several senses are asked for one at a time, and a narrowed context is
+        # asked for under that context, so the card that would ask for them all
+        # at once is replaced rather than joined.
+        "Translations": "" if narrowed or senses else render_translations(note),
+        "Meanings": "" if narrowed else render_meanings(note),
         "Audio": f"[sound:{media_filename}]" if media_filename else "",
-        "Context": _context_front(note) if context_meaning else "",
-        "ContextMeaning": context_meaning,
-        "ContextPrompt": html.escape(note.context_prompt) if gapped else "",
-        "ContextGapped": gapped,
+        "Context": _context_front(note) if narrowed else "",
+        "ContextMeaning": (
+            _render_meaning_block(narrowed, len(note.meanings) > 1) if narrowed else ""
+        ),
+        "ContextTranslations": (
+            _render_translation_block(narrowed, note.word, show_label=False, gapped_example=False)
+            if narrowed
+            else ""
+        ),
+        "ContextGapped": _context_gap(note) if narrowed else "",
     }
     fields.update(dict.fromkeys(SENSE_FIELDS, ""))
     fields.update(dict(zip(SENSE_FIELDS, senses, strict=False)))
@@ -749,19 +723,12 @@ def _created_kinds(model: dict, note: AnkiNote) -> tuple[str, ...]:
 
 def _sense_fronts(note: Note) -> list[str]:
     """One recall front per meaning, or none: a single meaning is not a split."""
-    if not note.split_recall or len(note.meanings) <= 1:
+    if len(note.meanings) <= 1:
         return []
     return [
         _render_translation_block(meaning, note.word, show_label=True)
         for meaning in note.meanings[: len(SENSE_FIELDS)]
     ]
-
-
-def _context_meaning(note: Note) -> str:
-    index = note.context_sense
-    if not note.context or index is None or not 0 <= index < len(note.meanings):
-        return ""
-    return _render_meaning_block(note.meanings[index], len(note.meanings) > 1)
 
 
 def _context_front(note: Note) -> str:
@@ -776,8 +743,6 @@ def _context_front(note: Note) -> str:
 
 def _context_gap(note: Note) -> str:
     """The context with the word blanked, or nothing when the word is not in it verbatim."""
-    if not note.context or not note.context_prompt:
-        return ""
     masked = _mask_word(note.context, note.word)
     return html.escape(masked) if masked is not None else ""
 
@@ -791,12 +756,18 @@ def render_translations(note: Note) -> str:
     )
 
 
-def _render_translation_block(meaning: Meaning, word: str, *, show_label: bool) -> str:
+def _render_translation_block(
+    meaning: Meaning,
+    word: str,
+    *,
+    show_label: bool,
+    gapped_example: bool = True,
+) -> str:
     parts = []
     if show_label:
         parts.append(f"<b>{html.escape(meaning.label)}</b>")
     parts.append(", ".join(html.escape(value) for value in meaning.translations))
-    for example in meaning.examples:
+    for example in meaning.examples if gapped_example else []:
         masked = _mask_word(example.text, word)
         if masked is not None:
             parts.append(

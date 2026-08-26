@@ -14,8 +14,8 @@ live in memory and reset when the backend restarts. This is by design: the
 durable record of every lookup is the Anki note it produced.
 
 The **Stats** screen shows this split directly — `Today`, `Last 7 days`, and
-`All time` are counted from the collection, while `Since startup: N duplicates,
-N without a card` are the in-memory session counters.
+`All time` are counted from the collection, while `Since startup: N without a
+card` is the in-memory session counter.
 
 ## The audio cache
 

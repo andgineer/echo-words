@@ -8,38 +8,44 @@ the work again. **Do not re-open any of it.**
 
 ## Product decisions (all questions resolved — do not re-open)
 
-- One note per word. Genuinely unrelated meanings (bank «банк» / bank
-  «берег») become numbered blocks on the back — at most three, split
-  by the LLM; usually one. Never separate cards: identical fronts
-  would be indistinguishable during review, and one note per word
-  keeps dedup and undo trivially correct.
-- Duplicate send → report only, existing note untouched: "📌 already
-  in Anki".
+- One note per submission. A word's genuinely unrelated meanings (bank
+  «банк» / bank «берег») become numbered blocks on the back of that one
+  note — at most three, split by the LLM; usually one. A submission never
+  produces two notes, and within one note two cards with an identical
+  front, which the reviewer could not tell apart, can never exist.
+- **The same word may be sent twice, and gets a second note.** There is
+  no duplicate check. Sending a word with a context is how a reader asks
+  for the sense it carries there, and offering the senses that context
+  did not use means the second sense arrives as a second submission of
+  the same word; a duplicate check would refuse exactly that and the
+  sense could never enter the deck. Two bare sends of one word therefore
+  make two identical notes — accepted deliberately, as the cheap side of
+  an error the reader can see and undo.
 - **Autocorrection is advisory only — hardcoded, no config flag.** The
   canonical word is always the **raw input** — together with the source
-  language, the key for dedup (deck-scoped), stats, undo,
-  and the Anki `Word` field, compared case-insensitively. The same
-  spelling in two languages is two notes in two decks. The LLM never
-  silently swaps a misspelling: it analyzes the word as typed and returns
-  an optional `suggestion`. When the suggestion differs from the input, a
-  button on the entry switches to the suggested word (and back),
-  re-running the analysis and replacing the note like a rebuild; only that
-  path re-fetches audio. Because that tap turns LLM output into a
-  canonical word, a `suggestion` must pass the same validation as typed
-  input or it is dropped and no button appears. Rationale: a silently
-  swapped card looks correct but is wrong and would poison the
-  spaced-repetition deck without the user noticing — analyzing as-typed
-  keeps the card's front equal to what the user sent, so a mistake is
-  visible on the first review. There is deliberately no on/off setting;
+  language, it is the word the note is about and the key for stats and
+  undo. The same spelling in two languages is two notes in two decks. The LLM never silently swaps a misspelling: it
+  analyzes the word as typed and returns an optional `suggestion`. When
+  the suggestion differs from the input, a button on the entry switches to
+  the suggested word (and back), re-running the analysis and replacing the
+  note like a rebuild; only that path re-fetches audio. Because that tap
+  turns LLM output into a canonical word, a `suggestion` must pass the
+  same validation as typed input or it is dropped and no button appears.
+  Rationale: a silently swapped card looks correct but is wrong and would
+  poison the spaced-repetition deck without the user noticing — analyzing
+  as-typed keeps the note about the word the user sent, so a mistake
+  is visible on the first review. There is deliberately no on/off setting;
   this behavior is the design, not an option.
-- Every note produces a card set chosen for that word: always a
-  recognition card (source→target), a recall card (target→source) unless
-  the senses are split into one card each, and a pair fronted with the
-  submitted context where that context pins a sense the bare word would
-  leave open. Still one note per word. The model decides which cards are
-  worth making; the backend builds every front. The catalogue and the
-  measurement that gates the context pair are in
-  `decision-card-shapes.md`.
+- Every note produces a card set chosen for that submission. A word sent
+  bare is reviewed in both directions — recognition (source→target) and
+  recall (target→source), the recall asked for one sense at a time when
+  the senses are several. A word sent with a context that narrows it to
+  one of several senses is instead carded under that context, and the
+  senses it did not use are offered under the answer. A context that
+  narrows nothing is discarded, and the note is the bare one. Every one of
+  those is a backend decision read off the answer; the model is never
+  asked which cards to make, and never writes a front. The catalogue, the
+  measurement behind it and the gate are in `decision-card-shapes.md`.
 - Every recall front — the single one, or one per sense — carries a
   **gapped example**: that meaning's first example with the word replaced
   by `___`, because a bare translation often fits several source words and
@@ -62,9 +68,9 @@ the work again. **Do not re-open any of it.**
 - Lookup-only (the UI control or the `?` prefix): analysis and audio,
   no Anki card.
 - Undo removes what the last send created and is an explicit no-op
-  after a duplicate or a lookup-only send — it never deletes a note that
-  existed before. A rebuild replaces the previous run's note instead of being
-  blocked by the duplicate check. Both act per source language.
+  after a lookup-only send — it never deletes a note that existed before.
+  A rebuild replaces the note the entry produced rather than adding a
+  second one. Both act per source language.
 - Multiple source languages via the **language selector**; the
   selection determines the deck. One deck per source language from the
   languages config, no per-word switching and no guessing the deck from
@@ -106,8 +112,8 @@ the work again. **Do not re-open any of it.**
   over a FIFO queue) — no parallel LLM runs, even across languages.
 - **echo-words has no database.** The Anki collection is the only
   durable state; history is a bounded in-memory buffer, "added" stats
-  are counted from the collection's own note ids, and duplicate/lookup
-  counters, undo and correction state reset on restart. Losing any
+  are counted from the collection's own note ids, and the lookup-only
+  counter, undo and correction state reset on restart. Losing any
   of it costs nothing, because every word that mattered is already a
   card — so there is no schema, no migrations, and nothing to back up
   or replicate.

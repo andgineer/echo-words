@@ -43,8 +43,11 @@ async function submit() {
 
 async function analyseSegment(entry, segment) {
   if (busy.value) return;
+  // A running text is the context of every unit found in it; a sense chip instead
+  // carries the sentence that shows its own sense.
+  const context = entry.shape === "text" ? entry.word : segment.surface || entry.word;
   // The unit belongs to the text it was found in, whatever the selector shows now.
-  await sendWord(segment.label, lookupOnly.value, entry.word, "unit", entry.lang);
+  await sendWord(segment.label, lookupOnly.value, context, "unit", entry.lang);
 }
 
 async function sendWord(
@@ -110,7 +113,6 @@ async function entryAction(entry, action) {
 
 const CARD_STATUS_KEYS = {
   added: "card.added",
-  duplicate: "card.duplicate",
   lookup_only: "card.lookupOnly",
   text: "card.text",
   fragment: "card.fragment",
@@ -150,7 +152,10 @@ function cardStatusLabel(entry) {
 
 function cardStatusText(entry) {
   if (!entry.card_status) return "";
-  const label = entry.card_error ? `⚠️ ${entry.card_error}` : cardStatusLabel(entry);
+  let label = entry.card_error ? `⚠️ ${entry.card_error}` : cardStatusLabel(entry);
+  if (!entry.card_error && entry.context_dropped) {
+    label = `${label} · ${t("card.contextNotNeeded")}`;
+  }
   return entry.no_audio ? `${label} · ${t("card.noAudio")}` : label;
 }
 
@@ -236,8 +241,14 @@ async function undo() {
         ></audio>
       </div>
       <div v-if="entry.segments?.length" class="segments">
-        <p class="segments-title">{{ t("add.segments") }}</p>
-        <div v-for="segment in entry.segments" :key="segment.label" class="segment">
+        <p class="segments-title">
+          {{ t(entry.segments_are_senses ? "add.senses" : "add.segments") }}
+        </p>
+        <div
+          v-for="(segment, index) in entry.segments"
+          :key="`${index}|${segment.label}`"
+          class="segment"
+        >
           <button
             class="btn-inline segment-label"
             :disabled="busy"
