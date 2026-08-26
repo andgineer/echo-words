@@ -7,13 +7,13 @@ Delete this file once the work has landed. What outlives it is
 
 ## Preconditions
 
-The baseline is commit `379931b`. On it both gates are green: `inv pre` with
+The implementation baseline is commit `d6f3b68`. On it both gates are green: `inv pre` with
 pyrefly at 0 errors, `inv test` at 460 pytest and 63 frontend tests, none
 skipped.
 
-Nothing is deployed from the two commits this plan builds on, so the note type is
-still free to change shape. Land the final field set here rather than rebuilding
-twice.
+Nothing is deployed from the two planning commits after `379931b`, so the note
+type is still free to change shape. Land the final field set here rather than
+rebuilding twice.
 
 ## What this supersedes
 
@@ -28,8 +28,7 @@ twice.
 
 What stays: the four template names and the note-type rebuild task, the removal
 of deduplication, the sense chips and the tap that turns one into a submission,
-the status line naming the kinds, `lookup_only`, and `word_count` (used by
-`card.py`, not only by the router).
+the status line naming the kinds and `lookup_only`.
 
 ## Why
 
@@ -64,26 +63,29 @@ finished strings and we print them.
 
 ## The design
 
-### Two prompts, one call per submission
+### One prompt contract, one analysis path
 
-Every submission is one streamed call. The existing surface router chooses the
-vocabulary prompt or the running-text prompt before that call. A vocabulary
-answer makes a note; a running-text answer does not.
+Every model attempt for a submission uses the same prompt contract. There is no
+punctuation or word-count router and no preliminary classification call. The
+answer says whether the input is one lexical unit or text containing units: the
+unit branch returns the dictionary article and card data; the text branch returns
+the translated/explained text and its combinations. The existing cascade may
+retry an unusable answer with another backend, but it does not change this
+contract or make a separate routing call.
 
-The vocabulary prompt returns the card and the running-text prompt returns the
-units and words found inside the text. The model is not trusted with the decision
-that touches the deck: Step 0 measured that verdict and rejected it.
-
-A single typed word always routes to the vocabulary prompt. A chip tap explicitly
-sends `shape: "unit"`, so its selected word or combination cannot be re-routed by
-its own surface shape.
+A single typed word is a unit by definition and gets unit intent without a
+classifier. A chip tap also carries explicit unit intent, so a selected word or
+combination is analysed as the chosen unit rather than classified again. For an
+ordinary multi-word submit-box request the model's result is authoritative:
+`unit` makes a note and `text` does not.
 
 ### The submit box and a chip tap
 
-- **The submit box** sends exactly what the user typed with no shape hint. The
-  backend classifies it as it does today.
+- **The submit box** sends exactly what the user typed with no shape hint. A
+  single word takes the known unit branch; the model classifies a multi-word
+  input inside the same call that writes the answer.
 - **A chip tap** sends a word or combination, its context, and the explicit unit
-  shape. The word is already chosen, and no card-set derivation may withhold the
+  intent. The word is already chosen, and no card-set derivation may withhold the
   note — but `lookup_only` still does, because that is the reader saying they
   want no note at all.
 
@@ -116,10 +118,11 @@ translations, useful morphology, usage, origin and examples. The smaller payload
 below exists only to build the note and its chips; it does not replace or shorten
 the article shown in the application.
 
-**Chips are offered for every sense, including the one the note was just made
-for.** `_sense_segments` excludes the carded sense today and must stop; the
-`add.senses` string, which says "this word has *other* senses", is re-worded in
-both catalogues.
+For a single word and a card request, **chips are offered for every sense,
+including the one the note was just made for.** `_sense_segments` excludes the
+carded sense today and must stop; the `add.senses` string, which says "this word
+has *other* senses", is re-worded in both catalogues. A set expression uses its
+chip row for its component words instead, as the table specifies.
 
 ### One note, four cards
 
@@ -181,92 +184,19 @@ holding one sense means no label is needed.
 
 ---
 
-## Step 0 — make the unit verdict reliable, or do not merge the prompts
+## Step 0 — measure the unit verdict before merging the prompts
 
-**This step gates the rest of the plan.** Nothing below it is worth building
-until the merged prompt can say what it was given.
-
-### What was observed
-
-A draft merged prompt was run against the free pool over six characteristic
-inputs. Three results matter.
-
-The design's core worked. `bank` came back as one unit with **two** meanings —
-the senses that need different Russian words, not the four or five a dictionary
-lists, which is the cap problem gone. `Rad fahren` came back as a unit with its
-parts. The gapped and highlighted strings were correct on every unit whose parts
-stand apart, including `Er <b>steht</b> jeden Morgen um sechs <b>auf</b>.` and
-`Er ___ jeden Morgen um sechs ___.` A chip tap on `aufstehen` carrying its
-sentence came back with three senses and named the right one.
-
-**The unit verdict did not work, in the band where the router already failed.**
-
-- `Er steht jeden Morgen um sechs auf.` — a whole sentence — came back
-  `unit: true`, `word: "aufstehen"`. Under this design that auto-cards a clause.
-- `чувам се.` came back `unit: true`, `word: "чувати се"`, and additionally
-  carried a `context_sense` although no context was given.
-
-In both, **the model contradicted itself**: it wrote the not-a-unit article — a
-translation of the whole text followed by the difficulties in it — and then set
-the flag to true and filled the card fields anyway. It read the input correctly
-and filled the field wrongly.
-
-One likely cause is in the draft itself: the JSON template opens with
-`"unit": true` as its literal example, which pulls the answer toward true. That is
-a hypothesis to test first because it is cheap, not an explanation to accept.
-The band is exactly the two-to-five-words-no-punctuation band that
-`decision-phrases-and-sentences.md` measured as indistinguishable by any surface
-signal, so a wording tweak may move it and may not.
-
-### Why it blocks
-
-The error is not the cheap one this plan assumed. A wrong "this is a unit" no
-longer costs one note about a word — it costs an **automatic note whose front is
-a whole clause**, chosen by the model's own pick of the focus. That is the
-decision `decision-phrases-and-sentences.md` rejected outright, having measured
-the model's first choice right 42% of the time on the free pool.
-
-### What to do
-
-Build the harness in `experiments/`, not in the scratchpad, and score the verdict
-against ground truth the fixtures already carry — `extract_items.py` has units,
-fragments, short clauses and single-word controls; `bench_items.py` and `route.py`
-carry the sentences. Vary the prompt's wording and re-score without re-buying:
-only a change to what the prompt asks for costs a call.
-
-Pre-register the gate before running it, and keep the two directions apart,
-because their costs are not equal:
-
-- **a sentence or a clause flagged as a unit** — expensive, it auto-cards a
-  clause. This is the direction the gate has to be strict on.
-- **a unit flagged as not a unit** — cheap: the unit comes back as its own first
-  chip and one tap recovers it, measured at 28 of 29 in
-  `decision-phrases-and-sentences.md`.
-
-Two further checks belong in the same run, because they are free once the answers
-are recorded: whether the article the model wrote matches the verdict it gave,
-and whether `context_sense` appears when no context was sent.
-
-### The outcomes, and what each means
-
-- **The verdict is reliable enough.** Merge the prompts, delete the router,
-  proceed with Step 1 as written.
-- **It is not, and wording does not fix it.** The merge does not happen. The
-  router stays, `shape.py` and Step 2 are dropped from this plan, and everything
-  else — one note, four cards, senses per language pair, model-built gaps, senses
-  as chips — lands on the two prompts as they are. The rest of the plan does not
-  depend on the merge.
-
-Either way the merged or revised prompt re-opens the prompt-bound numbers; see
-Verification.
+This completed experiment quantifies the cost of trusting the merged answer's
+kind. Its zero-error gate was deliberately stricter than the product's eventual
+trust boundary; the recorded result below is the decision used by this plan.
 
 ### Result — 2026-08-26
 
-**The verdict did not pass, so the prompts do not merge and the router stays.**
-The pre-registered gate required zero expensive false positives, zero
-article/verdict contradictions, zero `context_sense` fields without a context,
-and at least 95% of real units to be carded directly or recovered as the first
-chip. All 122 fixtures produced a usable answer under the neutral schema:
+The pre-registered zero-error gate did not pass. It required zero expensive
+false positives, zero article/verdict contradictions, zero `context_sense`
+fields without a context, and at least 95% of real units to be carded directly
+or recovered as the first chip. All 122 fixtures produced a usable answer under
+the neutral schema:
 
 - 1 of 57 sentences, clauses or fragments was flagged as a unit:
   `völlig durcheinander gebracht`
@@ -279,44 +209,74 @@ Replacing the literal `true` removed neither class of problem. A second wording
 made the safe direction explicit and required first-chip recovery. On the 13
 regression inputs it removed the expensive false positive, but split three real
 inflected units into their component words and contradicted its verdict once.
-It therefore failed before a full re-run was warranted.
+It therefore failed that deliberately strict gate.
+
+The product accepts the measured trade-off rather than restoring a surface
+router that cannot answer the question either. The one false unit verdict in 57
+text-like inputs is visible and undoable. A real unit returned as text is not
+lost under the final text contract: the backend offers every source word and any
+combination the model found, so the reader can recover it by tapping. The later
+41-answer flow bench confirmed that this downstream path keeps all words and
+does not turn harmless schema or surface variation into a missing result.
+
+**The prompts therefore merge and `shape.classify` is deleted.** The model's
+verdict is trusted like its translations and morphology; the backend enforces
+only the structural and safety conditions needed to render the answer and build
+the note. Article/verdict disagreement is recorded by the benchmark, not used as
+a second hidden classifier.
 
 The reproducible harness and prompt deltas are
 `experiments/unit_verdict_bench.py` and
 `experiments/unit_verdict_prompts.py`. Raw answers remain in the gitignored
 `experiments/.bench-unit-verdict/` and can be re-scored without another call.
+The prompt-bound routing, answer-shape and sense numbers are replaced once by the
+final merged-prompt run described under Verification.
 
-## Step 1 — revise both prompts and their contracts
+## Step 1 — one prompt and one contract
 
-**`src/echo_words/prompt.py`.** Keep `_PROMPT` and `_TEXT_PROMPT` separate.
+**`src/echo_words/prompt.py`.** Merge `_PROMPT` and `_TEXT_PROMPT`. The JSON has a
+neutral `kind` discriminator, `unit` or `text`; neither value appears as the
+literal preferred example. The visible article and remaining fields follow that
+kind:
 
-- `_PROMPT` keeps returning a card JSON, with `meanings` as "the senses that need
-  different words in {target_lang}, most common first", each with its label, its
-  translations, its examples, and for each example the highlighted and gapped
-  strings
-- `_TEXT_PROMPT` keeps returning no card and returns only the multi-word lexical
-  combinations it found, each as surface-word hints plus a short reason and an
-  internal dictionary label. The label is a semantic hint, not a second verdict
-  that the backend uses to overrule the model. It is never shown on the chip.
-  The prompt does not enumerate ordinary words. The backend best-effort matches
-  surface words against unclaimed source words without requiring the model's
-  order, contiguity, capitalization or ellipsis placement to be exact. It then
-  uses the matched source forms in their real source order for the visible chip.
-  A combination is retained when at least two of its surface words can be
-  identified; an unmatched fragment is ignored without rejecting the answer or
-  any other combination. Overlap is resolved deterministically because one
-  source occurrence can belong to only one visible chip. Every still-unclaimed
-  source word becomes its own chip. Completeness therefore does not
-  depend on a list of parts of speech or on the
-  model deciding which ordinary words matter. A chip label keeps the exact
-  inflected forms seen in the text; separated parts are joined for the label but
-  are not converted to a dictionary form. The vocabulary prompt still derives
-  and prints the authoritative dictionary
-  headword only after the chip is tapped. The backend also attaches the submitted
-  text as context and sorts all chips by their first source occurrence. No source
-  indices, chip labels, echoed context or standalone words enter the model
-  contract. The five-item cap goes, and repeated surface words remain separate
-  targets rather than being deduplicated by their label
+- `unit` returns the full dictionary article plus `word`, `suggestion`,
+  `meanings`, optional `context_sense`, and component `segments`. `meanings` are
+  "the senses that need different words in {target_lang}, most common first";
+  each has its label, translations, examples, and finished highlighted and
+  gapped forms. `word` is the dictionary form of the submitted unit but retains
+  the spelling the user sent: an orthographic correction appears only in
+  `suggestion`, never silently in `word`
+- `text` returns the translated and explained text plus only the multi-word
+  lexical `combinations` it found. Each combination carries surface-word hints,
+  a short reason and an internal dictionary label. It returns no word, meanings
+  or other card fields
+- an explicit unit intent from a chip requires the unit branch. A submit-box
+  request has no intent and the model chooses the branch. A single source word is
+  defined as a unit in the prompt
+
+For text, the internal label is a semantic hint, not a second verdict that the
+backend uses to overrule the model, and is never shown on the chip. The model
+does not enumerate ordinary words. The backend best-effort matches surface words
+against unclaimed source words without requiring the model's order, contiguity,
+capitalization or ellipsis placement to be exact. It then uses the matched source
+forms in their real source order for the visible chip. A combination is retained
+when at least two of its surface words can be identified; an unmatched fragment
+is ignored without rejecting the answer or any other combination. The first
+returned combination claims an occurrence when proposals overlap. Repeated
+surface words match the earliest still-unclaimed occurrence, which is the only
+deterministic rule available without indices. Every still-unclaimed source word
+becomes its own chip, so completeness does not depend on the model deciding which
+ordinary words matter.
+
+A text chip label keeps the exact inflected forms seen in the text; separated
+parts are joined for the label but are not converted to a dictionary form. A tap
+sends that visible label plus the submitted text. The unit answer then supplies
+the validated dictionary headword printed in the article and used by the note.
+The backend attaches the submitted text as context and sorts all chips by their
+first source occurrence. No source indices, chip labels, echoed context or
+standalone words enter the model contract. Repeated occurrences remain separate
+targets rather than being deduplicated by their label.
+
 - the prompt does not replace five with another numerical limit. It asks for
   every unit that clearly satisfies the conservative qualification, says not to
   pad the list, and makes an empty list explicitly correct. The backend already
@@ -324,13 +284,13 @@ The reproducible harness and prompt deltas are
   words and accepted combinations cannot overlap, so a text of `N` words can
   contain at most `floor(N / 2)` of them without the model counting anything
 - a set expression additionally returns the words it is made of, and the analysis
-  explains what it is made of and why it means what it does. Four shipped rules
-  block this and all four must move: "analyse it WHOLE. Never take it apart, and
-  never analyse one of its words on its own"; "when the input was itself one
-  unit, candidates holds that one unit and nothing else"; "the first is always
-  identical to word"; and `card._candidates`, which drops a candidate equal to
-  `analysed` and caps at `MAX_CANDIDATES`. Decide and record whether that cap
-  applies to the parts of an expression. Every part carries the first example
+  explains what it is made of and why it means what it does. Delete `candidates`,
+  `MAX_CANDIDATES`, `_candidates`, `ParsedCard.input_is_unit` and the four prompt
+  rules that make the whole input its only candidate. Component `segments`
+  include every word-shaped part without filtering by grammatical category;
+  particles and prepositions are examples, not an exhaustive allowlist. They
+  preserve the forms seen in the submitted expression and have no count cap
+  beyond the bounded answer itself. Every component carries the first example
   sentence of the expression's carded sense as its tap context
 - on a card request, the context comes back as the same highlighted/gapped pair
 - `context_sense` keeps its meaning
@@ -340,10 +300,16 @@ five. Do not replace them with another product cap. Parsing accepts every
 bounded combination object and normalizes harmless schema variation. Matching
 is case-insensitive and order-independent; it maps the model's words back to the
 actual source occurrences and derives the printed label there. A bad internal
-lookup hint or one unmatchable combination is local damage, not a reason to
-reject the other combinations or the answer. Payload-size limits, JSON types and
-HTML sanitization remain security and resource guards. Do not deduplicate equal
-visible labels because repeated occurrences are separate chips.
+lookup hint is discarded as metadata while a surface-matched combination stays;
+one unmatchable combination is ignored without rejecting the other combinations
+or the answer. Payload-size limits, JSON types and HTML sanitization remain
+security and resource guards. Do not deduplicate equal visible labels because
+repeated occurrences are separate chips.
+
+`Segment` gains its own `context`; text fill, expression components and sense
+chips all populate it explicitly. `parse_segments_payload` accepts the text
+branch's `combinations` key. The unit payload's component `segments` are parsed
+with the card rather than mistaken for a separate text payload.
 
 The full-word guarantee is backend work, not a broader LLM enumeration prompt.
 The existing production definition of a learnable combination remains the
@@ -354,8 +320,11 @@ model.
 
 ### No-cap, full-word and four-card bench — 2026-08-26
 
-The end-to-end harness is `experiments/one_note_bench.py`; its future text and
-vocabulary prompts are under `experiments/prompts/`. A fresh run in
+The downstream-branch harness is `experiments/one_note_bench.py`; the text and
+unit branch prompts used to isolate those behaviours are under
+`experiments/prompts/`. It assigns its fixtures to a known branch and therefore
+does not measure the verdict; Step 0 is the separate verdict measurement. A
+fresh run in
 `experiments/.bench-one-note-final/` made 41 real free-pool calls: 26 texts, nine
 bare vocabulary inputs and six chip taps. Twenty-one answers came from
 `google-gemini-3.5-flash-lite` and 20 from `groq-gpt-oss-120b`. Four chip calls
@@ -431,15 +400,51 @@ than as a backend rejection gate.
 
 **`src/echo_words/card.py`.**
 
-- `MAX_MEANINGS` stops rejecting an answer; keep a generous ceiling as a guard
-  against a malformed list
+- replace `ParsedCard` plus the separate segment payload with a parsed-answer
+  union keyed by `kind`. A text answer cannot expose a note; a unit answer cannot
+  expose text combinations. Delete `word_count` and `input_is_unit`
+- the unit answer's validated `word` is the dictionary headword used by `Note`,
+  Anki, card audio and sense-chip submissions. The raw submission remains the
+  history entry and prompt input; `suggestion` remains the only spelling-
+  correction control. An unusable returned headword makes the unit payload
+  unusable rather than silently putting the raw inflected chip label on a card
+- `MAX_MEANINGS` stops rejecting an answer. The whole-answer character bound is
+  already the resource guard; do not add another arbitrary sense-count cap
 - normalize harmless schema variation before deciding that data is missing:
   singular `translation` aliases `translations`, and a single translation or
   example object is wrapped as a one-item list
 - after normalization, a meaning with no usable translation or example is
-  dropped and the card is built from the rest; only an answer with no usable
-  meaning fails
-- the highlighted and gapped strings are parsed as ordinary printed fields
+  dropped and the card is built from the rest. A usable example includes its
+  non-empty highlighted and gapped strings, so every accepted note can make all
+  four cards; an answer with no usable meaning fails
+- dropping meanings remaps `context_sense` from the raw list to the retained
+  list. If the named meaning was dropped or the index was unusable, the first
+  retained meaning is carded
+- highlighted and gapped strings are parsed as ordinary printed fields. They are
+  sanitized and checked for a highlight/blank marker, not compared with the
+  source character by character
+
+## Step 2 — remove the surface router
+
+**`src/echo_words/shape.py`.** Delete `Shape`, `classify`, `word_count`,
+`MAX_UNIT_WORDS` and `INTERNAL_MARKS`; delete `tests/test_shape.py` and its test
+taxonomy entry. No surface-classification copy remains anywhere.
+
+**`src/echo_words/api.py`.** `WordSubmission.shape` becomes an optional request
+intent rather than a classification result. The submit box omits it and is
+validated with the running-text bounds, which also accept a word; the server
+promotes exactly one word to known unit intent without recreating a multi-word
+classifier. A chip sends `shape: "unit"` and is validated as a unit. The request
+type is therefore `Literal["unit"] | None`, not the deleted `Shape`. Do not
+accept a client-forced text result: absent on a multi-word input means the model
+decides, and the parsed answer supplies the entry's eventual `unit`/`text` kind.
+Request-id fingerprints include the effective intent.
+
+**`src/echo_words/pipeline.py`.** Build and stream the one prompt for every
+submission. The parser's answer kind, not punctuation, selects the text-fill or
+note path. A unit-intent response that claims to be text is an unusable payload
+and takes the ordinary paid fallback; it is not silently accepted as a different
+operation.
 
 ## Step 3 — the note type
 
@@ -453,11 +458,14 @@ than as a backend rejection gate.
   `ContextTranslations` collapse into one translations block plus the label
 - the fields become what the four cards read: the word, its audio, the label, the
   translations, the highlighted sentence and the gapped sentence
-- the bare fronts are guarded by the translations and the sentence fronts by the
-  sentence, so a note that arrived without a usable sentence is cards 1 and 2
 - `render_meanings` and `render_translations` are exported and directly tested.
-  `Note` carries the meanings list and the index of the one it is about — the
-  pipeline builds chips from `parsed.note.meanings`, so the list has to survive
+  `Note` carries the retained meanings list and the index of the one it is about;
+  the templates render only that sense, while the pipeline builds chips from the
+  whole list
+
+Every accepted note fills all six fields needed by all four templates and must
+generate exactly all four cards. Missing sentence data is a malformed meaning or
+answer handled before Anki, never a two-card note type variant.
 
 The note type changes shape, so `inv rebuild-note-type` is required before the
 next deploy and the following AnkiWeb sync will demand a one-way full sync.
@@ -471,7 +479,7 @@ four cards — `anki==26.8.1` is a project dependency.
 unless one of these says otherwise:
 
 - `job.lookup_only`
-- `job.shape == "text"`
+- the parsed answer has `kind: "text"`
 
 and it is about the sense `context_sense` names, or the first sense otherwise.
 
@@ -485,15 +493,49 @@ Chips, by what the answer said:
 - a text answer → every word in source order; the parts of a lexical combination
   are replaced by one chip for that combination. Its label uses the same forms
   the learner just saw, not a lemma; a tap sends that label plus the whole text
-  to the vocabulary prompt, whose answer supplies the dictionary headword
-- a set expression → the words it is made of; `_candidate_segments` prepends
-  `parsed.analysed`, which would otherwise put the expression itself first
+  with unit intent, whose answer supplies the dictionary headword
+- a set expression → the component `segments` returned by its unit answer, never
+  the whole expression prepended as its own component
 - a single word, or any card request → every sense of the word
 
-`segments_are_senses` is a boolean and there are now three sources with three
-headings, so it becomes a kind. `add.segments` and `add.senses` need a third
-sibling for the expression case in both `en.js` and `ru.js` — `i18n.test.js`
+The entry's public `shape` becomes `AnswerKind | None` and is populated from the
+parsed answer kind, not the request intent. `segments_are_senses` becomes a
+three-valued segment kind for text words/combinations, expression components and
+senses. Add the corresponding history field and event payload; serialize each
+segment's own `context` through both, and have `AddView.vue` submit that field
+directly instead of reconstructing context from the entry shape or surface.
+Remove `context_dropped` from `Entry`, `StoreResult`, events and the frontend.
+Update `useEntries.js` and `useEventStream.js` for the nullable answer kind,
+segment kind and segment context. `add.segments` and `add.senses` need a third
+sibling for the expression case in both `en.js` and `ru.js`; `i18n.test.js`
 asserts key-set parity.
+
+Pending entries have no result shape yet. Detail and rebuild availability, the
+text/no-card status, and frontend controls are set after parsing from the answer
+kind; replace every current `job.shape` branch rather than leaving a second
+implicit router in those paths.
+
+Rebuild and spelling-switch jobs exist only for a successfully parsed unit entry
+and always carry explicit unit intent; they do not ask the model to classify the
+same multi-word unit again. Detail lookup likewise uses the stored unit headword
+and context. Text entries expose none of these controls.
+
+Audio for a prospective unit cannot be finalized from the raw chip label before
+the model returns its dictionary headword. The submitted text can still be
+voiced for the PWA while the model runs. Reuse that audio when it equals
+`Note.word`; otherwise fetch card audio for the validated headword after parsing.
+Keep the two paths distinct when they differ: `Entry.audio_file` continues to
+voice exactly what was submitted in the PWA, while the separate path passed to
+Anki voices `Note.word`. A context chip may therefore have submitted-unit audio,
+context audio and different card media without exposing another player.
+Rebuild reuses audio only while the rebuilt `Note.word` is unchanged and fetches
+new audio when it changes; correction already fetches anew. Control state retains
+the carded headword so replacement note and audio stay aligned. Undo still acts
+by stored note id and needs no word inference.
+
+The four surviving template names need four distinct localized status labels.
+Do not map both context templates to one repeated “context” label when all four
+are reported.
 
 Text targets stay compact chips in this change. Rendering the submitted text
 itself as individually clickable words, including a visual treatment for
@@ -504,61 +546,91 @@ them.
 
 ## Step 5 — the specs and the docs
 
-- `spec/functional-description.md` — the routed text and card flows, the four
-  cases, the four cards; the "named on the line above" sentence goes.
+- `spec/functional-description.md` — the model-decided text and unit flows, the
+  four cases, all-word text chips and the four unconditional cards; the surface
+  router, conditional card catalogue and "named on the line above" text go. It
+  must distinguish raw submitted text from the validated dictionary headword
+  used by a unit note and its audio, preserve advisory-only spelling correction,
+  and make detail/rebuild/switch reuse the stored unit identity and unit intent
 - `spec/decision-card-shapes.md` — rewritten around one note and four cards; add
-  the payload-rejection numbers quoted under "Why"; drop the "named on the line
-  above" sentence.
-- `spec/decision-product.md` — one note per submission, and **amend "every recall
-  front carries a gapped example"**: that is card 4 now, and card 2 is
-  disambiguated by the label.
+  the payload-rejection numbers quoted under "Why"; drop the conditional
+  catalogue and the "named on the line above" sentence
+- `spec/decision-product.md` — one note per submission; replace the raw-input-as-
+  canonical-word rule with the validated unit answer's dictionary headword while
+  keeping `suggestion` advisory; and **amend "every recall front carries a gapped
+  example"**: that is card 4 now, and card 2 is disambiguated by the label. A
+  rebuild reuses audio only when the returned headword is unchanged
 - `spec/decision-phrases-and-sentences.md` — record Step 0's rejection of the
-  merged prompt; the router stays; the unit-offers-no-candidates rule is reversed;
-  the sentence-mode negative control is re-opened by offering chips on ordinary
-  words. Rewrite the status line and say plainly which numbers are now unbound.
+  zero-error gate and the accepted product trade-off; delete the surface router;
+  record the one-prompt verdict and recovery through all-word text chips. Rewrite
+  the status line and say plainly which prompt-bound numbers the final rerun
+  replaces
 - `spec/decision-answer-shape.md` — re-opened by a vocabulary-prompt revision, as
   its own "what would re-open this" says.
-- `README.md`, `docs/src/en/index.md`, `docs/src/ru/index.md` — all three
-  advertise "unrelated senses kept apart" and "a gapped example so the reverse
-  card asks a real question"; both stop being true.
+- `spec/decision-llm-backend.md` — update only measurements invalidated by the
+  merged prompt, including the Serbian slice; do not reopen the selected backend
+  kinds or deployment routing
+- `README.md`, `docs/src/en/index.md`, `docs/src/ru/index.md` — describe one
+  selected sense reviewed through four stimuli, with every sense available as a
+  chip, rather than the conditional catalogue. Preserve the true claims that
+  unrelated senses stay distinguishable and a gapped sentence asks production
+  in context. Remove any remaining claim that the compact answer names a part of
+  speech, which already contradicts `decision-answer-shape.md`
 - `webapp/src/views/AddView.vue` — `CARD_KIND_KEYS` loses `SenseRecall1..3`;
   `card.kind.sense` and `card.contextNotNeeded` leave both catalogues.
 
 ## Tests
 
-- `tests/test_card.py` — singular keys and singleton values normalize; a meaning
-  still missing usable content is dropped; an answer with no usable meaning
-  fails; a rich answer is not rejected by the ceiling; highlighted and gapped
-  strings parse without equality checks and are rejected only when empty or not
-  strings
+- `tests/test_prompt.py` — one prompt carries both neutral branches; submit-box
+  and explicit-unit instructions differ only by intent; no numerical combination
+  cap remains; the unit article still requires morphology when useful, usage,
+  origin and examples; dictionary-form normalization cannot silently apply a
+  spelling suggestion
+- `tests/test_card.py` — the answer-kind union rejects mixed branches; singular
+  keys and singleton values normalize; a meaning still missing usable content is
+  dropped; `context_sense` is remapped after drops; an answer with no usable
+  meaning fails; no sense-count ceiling rejects a bounded answer; highlighted
+  and gapped strings parse without equality checks and are rejected only when
+  empty or not strings; a validated returned lemma becomes `Note.word`
 - `tests/test_segments.py` — reordered, separated and differently capitalized
   surface words map back to their source occurrences; one unmatchable proposal
   does not reject the other combinations or prevent standalone-word fill; no
-  arbitrary count limit remains
+  arbitrary count limit remains; repeated words use distinct earliest-unclaimed
+  occurrences and the first overlapping proposal wins; every segment carries its
+  own context
 - `tests/test_anki.py` — a note generates exactly the four cards on a real
   throwaway collection; a separable verb's gapped front is
   `Er ___ jeden Morgen um sechs ___.` and its highlighted front marks both pieces;
-  a note without a sentence generates cards 1 and 2; the label is on the bare
-  fronts only when the answer holds several senses; the same word twice makes two
-  notes
-- `tests/test_pipeline.py` — a unit-routed request makes a note; `lookup_only`
-  withholds it; a text-routed request makes none and offers its units; a set
-  expression makes one and offers its words; a single word offers every sense
-- `tests/test_api.py` — the router remains pinned; an explicit unit chip is not
-  reclassified
+  the label is on the bare fronts only when the answer holds several senses; the
+  same word twice makes two notes; no accepted note produces fewer than four
+  cards
+- `tests/test_pipeline.py` — a model `unit` answer makes a note; `lookup_only`
+  withholds it; a model `text` answer makes none and offers every source word; a
+  set expression makes one and offers its words; a single word and a card request
+  offer every sense; unit intent refuses a text-kind payload; audio uses the
+  returned dictionary headword without replacing the PWA's submitted-text audio;
+  rebuild and spelling switch retain unit intent and the resulting headword
+- `tests/test_api.py` — no classifier is called; an ordinary submission has no
+  client intent and accepts text bounds; exactly one word is promoted to unit
+  intent; a multi-word submit remains undecided; a chip carries unit intent and
+  unit validation; request-id conflicts distinguish intent
+- `tests/test_history.py` and event assertions — parsed answer kind and segment
+  kind are public; `context_dropped` and `segments_are_senses` are absent
 - `webapp/tests/AddView.test.js` — a chip submits its own context; the three chip
-  headings
+  headings; all four card kinds have distinct status labels
 
 Delete rather than adapt every test pinning the per-sense split, the conditional
 card set, `context_dropped`, or the literal word search.
 
 ## Landing order
 
-Step 0 first; its outcome removed Step 2 from this plan.
+Step 0 is complete; its accepted outcome requires Step 2.
 
 Then `inv pre` and `inv test` green after each batch. Land Steps 1, 3 and 4
-together with their tests — the contracts, the note type and the derivation are
-one change and cannot be green apart. Then Step 5.
+together with Step 2, their tests and the source-of-truth spec changes in Step 5
+— the prompt, verdict, note identity, note type and derivation are one behaviour
+and cannot be green apart. User-facing README/docs wording may be the final
+batch, but no code commit may knowingly contradict `functional-description.md`.
 
 ## Verification
 
@@ -567,12 +639,36 @@ uv run inv pre     # every hook green, pyrefly 0 errors
 uv run inv test    # pytest all passed, frontend suite passed not skipped
 ```
 
-Then the measurements the new prompt owes. Step 0's gate is one of them and comes
-first. Beyond it: the routing and sentence-mode arms of
-`decision-phrases-and-sentences.md` and the sense gate of
-`decision-card-shapes.md`, re-run against the prompt as it ends up. Every
-prompt-bound number in those two documents and in `decision-answer-shape.md` is
-unbound until then, and the specs must say so.
+Then run the measurements the merged prompt owes, including the Step 0 verdict
+matrix. Before running, change `experiments/one_note_bench.py` to import the
+production prompt builder and production parsers/fill functions rather than keep
+a second implementation. Add undecided submit-box fixtures to its existing
+known-branch and click fixtures, so one report scores both the model verdict and
+the already-proven downstream flow. Assert that the branch prompts under
+`experiments/prompts/` have either been removed or are byte-for-byte fixtures of
+the production branches; prompt drift must fail loudly.
+
+Run a fresh directory because the merged production prompt has changed:
+
+```
+uv run python experiments/one_note_bench.py run \
+  --wait 180 --pace 2 --concurrency 3 \
+  --out experiments/.bench-one-note-post
+uv run python experiments/one_note_bench.py run-clicks --resume \
+  --wait 300 --pace 2 --concurrency 1 \
+  --out experiments/.bench-one-note-post
+uv run python experiments/one_note_bench.py report \
+  --out experiments/.bench-one-note-post
+```
+
+The report must retain the existing structural checks — all source words and
+function words offered, 21 registered lexical units detected, every retained
+meaning cardable, four cards ready, and exact click contexts — and add the Step 0
+verdict confusion matrix. Extra optional chips and article/verdict disagreements
+are reported rather than treated as a hidden backend veto. The routing and
+sentence-mode arms of `decision-phrases-and-sentences.md`, the sense gate of
+`decision-card-shapes.md`, and the affected answer-shape measurements are all
+replaced by this final-prompt run.
 
 Read the Serbian numbers of every re-run arm specifically, rather than only the
 totals: `decision-llm-backend.md` records Serbian already straining on the free
