@@ -852,7 +852,9 @@ def format_ok(analysis: str) -> bool:
     tags = {tag.casefold() for tag in re.findall(r"</?([A-Za-z][A-Za-z0-9]*)", analysis)}
     markdown = bool(
         re.search(
-            r"\*\*|\*[^*\n]+\*|^#{1,6} |^\s*[-*] |^\s*\d+[.)] ",
+            # A numbered or bulleted line is prose under pre-wrap and the prompt
+            # allows it; only what the prompt forbids counts as a violation.
+            r"\*\*|\*[^*\n]+\*|^#{1,6} ",
             analysis,
             re.MULTILINE,
         ),

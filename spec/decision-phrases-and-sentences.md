@@ -178,13 +178,20 @@ diagnostic.
 A registered unit also counts when the chip shares at least two words with it
 and drifts by at most one word in each direction — one expected word omitted,
 one extra word taken in — provided every omitted word is itself offered as a
-chip. This scores what the learner can actually reach rather than the exact
-string: the reader who sees `freue … auf` also sees `mich`, and one tap away
-from either is the same dictionary entry. It is the same trust boundary the
-chip rule already states, applied to the measurement. A chip which shares
-nothing with the registered unit, or which runs on past it, is still a miss,
-and the exact boundary stays a separate diagnostic so drift remains visible
-rather than invisible.
+chip. The count therefore measures whether the model located the unit at all,
+and it is not a claim that the drift is harmless.
+
+Tapping nine drifted chips reached the intended dictionary entry three times.
+Four returned the drifted surface itself as the headword and declared it a
+spelling correction, so the note carries the surface and the correction control
+offers to undo a spelling the reader never mistyped; two answers were rejected
+outright and fell to the paid fallback. Chips whose boundary is exact succeed
+six times in six. The exact boundary is therefore the number to watch, and it
+stays a separate diagnostic so the drift remains visible rather than absorbed
+into the gate.
+
+A chip which shares nothing with the registered unit, or which runs on past it,
+is still a miss.
 
 The append-only file currently contains six complete 157-fixture prompt arms.
 The raw verdict matrix and tolerant interpretation are:
