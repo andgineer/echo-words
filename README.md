@@ -19,17 +19,18 @@ explains; Anki makes you remember.
 
 What one word gets you:
 
-* **an explanation, not a translation** — every sense with its part of speech
-  and register, the collocations and prepositions the word takes, what it is
+* **an explanation, not a translation** — every target-language-distinct sense
+  with its register, the collocations and prepositions the word takes, what it is
   confused with, its origin, and examples with their translations; an idiom or
-  a phrase is explained whole, never taken apart
-* **a card built for review, not a word→translation pair** — recognition and
-  recall, unrelated senses kept apart, a gapped example so the reverse card
-  asks a real question, and the pronunciation inside the note
+  phrase is explained as a whole and also offers its component words as chips
+* **one selected sense, reviewed four ways** — the unit and its translations are
+  asked in both directions, then its example is asked once highlighted and once
+  gapped; every sense remains available as a chip for a separate note
 * **a real voice, not a robot** — natural-sounding audio, in the app and on the
   card
 * **a whole sentence gets a lesson instead** — translated, with what is hard in
-  it explained, and the expressions worth learning offered as cards of their own
+  it explained, and every word plus the expressions worth learning offered as
+  chips; tapping one creates its own four-card note
 * **a deeper entry when you want one** — one tap re-asks the strongest model for
   a lexicographer's article: every sense including the rare ones, etymology in
   depth, near-synonyms, the mistakes learners make

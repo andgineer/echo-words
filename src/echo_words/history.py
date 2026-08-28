@@ -3,8 +3,11 @@
 from collections import Counter, deque
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
+from typing import Literal
 
-from echo_words.shape import Shape
+from echo_words.card import AnswerKind
+
+type SegmentKind = Literal["text", "expression", "senses"]
 
 
 @dataclass
@@ -25,14 +28,14 @@ class Entry:
     created_at: datetime | None = None
     language: str = ""
     lookup_only: bool = False
-    shape: Shape = "unit"
+    shape: AnswerKind | None = None
     segments: list[dict] = field(default_factory=list)
-    segments_are_senses: bool = False
+    segment_kind: SegmentKind | None = None
     card_status: str | None = None
     card_kinds: list[str] = field(default_factory=list)
     card_error: str | None = None
-    context_dropped: bool = False
     no_audio: bool = False
+    no_card_audio: bool = False
     error: str | None = None
     model: str | None = None
     detail_available: bool = False
@@ -85,6 +88,7 @@ class UndoState:
     note_id: int | None = None
     media_filename: str | None = None
     audio_file: str | None = None
+    card_audio_file: str | None = None
     lookup_only: bool = False
 
 

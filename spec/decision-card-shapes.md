@@ -1,161 +1,136 @@
-# The card catalogue: which cards one note produces
+# One note, four cards
 
-A note is not two cards. It is a set of cards chosen for the word it is
-about, and the choice is made once, when the word is submitted. It is made
-by the backend, from two facts about the submission and its answer: whether
-a context came with the word, and how many senses the answer holds.
-
-## The decision
-
-| submission | senses in the answer | the note it makes |
-|---|---|---|
-| no context | one | the bare word, reviewed in both directions |
-| no context | several | the bare word, with each sense asked for on its own |
-| with context | several | the context narrows: the two context cards, for the sense used there |
-| with context | one | the context narrows nothing: it is **discarded**, and an ordinary bare note is made |
-
-The discard is not silent — the entry says the context was not needed, in
-the same line that names the cards. It is a decision the app made on the
-user's behalf, and a submission whose context vanished without a word would
-look like a bug.
+A successful vocabulary submission creates one note about one sense. Every such
+note carries two stimuli — the unit by itself and the unit in a sentence — and
+asks each in both directions. The card set is unconditional.
 
 ## The catalogue
 
-| kind | front | back | emitted when |
-|---|---|---|---|
-| Recognition | the word + its audio | the meaning block(s) | a bare note |
-| Recall | the translations + a gapped example | the word + its audio | a bare note of one sense |
-| SenseRecall 1–3 | one sense's translations + its gapped example | the word + its audio | a bare note of several senses |
-| ContextRecognition | the submitted context, the word marked in it | the sense used there, then the word + its audio | a context note |
-| ContextProduction | that sense's translations + the context gapped | the word + its audio | a context note whose word stands in the context verbatim |
+| kind | front | back |
+|---|---|---|
+| Recognition | word, optional short sense label, audio | translations |
+| Recall | translations, optional short sense label | word, audio |
+| ContextRecognition | sentence with every surface part highlighted | translations, word, audio |
+| ContextProduction | translations and the sentence with every surface part gapped | word, audio |
 
-Every front names what it is asking about. A context is a sentence, and a
-sentence on its own is a question about no word in particular, so the word
-under review is marked in it: in bold where it stands there, and on the line
-above the context where an inflected form or a separable prefix means it does
-not. The gapped front instead needs the word verbatim; where the context does
-not carry it, that one card is dropped and the recognition card stands alone.
+The label appears on the two bare fronts only when the answer retains several
+senses. A bare translation can fit several source words, so the label tells the
+reviewer which sense is expected. The sentence itself disambiguates the two
+context cards. This leaves card 2 genuinely bare while card 4 asks production
+under context rather than presenting the same question twice.
 
-A context note carries no bare front at all. The context has already narrowed
-the word to one sense, and a card asking for the word in general would be a
-different question wearing the same answer; the senses the context did not use
-are offered under the answer instead, one tap from a note of their own.
+The note's sentence is the supplied context for an explicit unit request and
+otherwise the first example of the selected sense. The model returns two
+complete finished forms:
 
-The word's own pronunciation sits on the back of both context cards. A front
-that spoke the sentence would give the gap away.
+    Er <b>steht</b> jeden Morgen um sechs <b>auf</b>.
+    Er ___ jeden Morgen um sechs ___.
 
-Nothing caps the set: a note is at most four cards — a bare note of three
-senses, recognition and one recall for each — and usually two.
+For a chip with context, the backend owns the safe exact case: it finds each
+submitted surface token in source order inside the exact carried context and
+constructs the bold and gapped forms. Separated pieces stay separated, and no
+neighbouring word can be absorbed. If exact mapping is impossible, the model's
+forms take the same validation path as generated examples.
 
-## The backend builds every front; the model only answers
+That validation requires the highlighted form to be exactly the plain example
+with one or more bold spans added; the backend then produces the gapped form by
+replacing those spans with `___`, so a model never supplies it. At least one source-language word must stay
+outside the spans, so a whole bold sentence or a sentence made entirely of
+blanks cannot silently become a context card. The backend does not infer a
+dictionary form or morphology for generated examples. Independently malformed
+examples are dropped; a meaning with no safe example is unusable. No accepted
+note can generate fewer than four cards.
 
-The model returns the senses of the word and, for a context submission, which
-one that context uses. Nothing else: no card is ever asked for, and no front
-is ever written by the model. Every front is assembled here, from the masking
-and labelling rules that already ship, and what a note leaves empty is what
-decides its cards — Anki generates a card exactly where a front renders
-non-empty. The one exception is the floor: a note that would generate no card
-at all gets one for its first template, blank front and all, so every note
-must fill the fields of at least one card.
+## Which sense the note selects
 
-The index is advisory, and every way of getting it wrong is cheap. Absent,
-not a number, or naming no sense at all reads as an answer that does not say
-which sense applies, and falls through to the bare note: a bare note is never
-wrong, only less specific. On a one-sense answer the index carries no
-information whatever its value, and is not read.
+A bare word selects the first retained meaning, ordered most common first. An
+explicit unit request with context selects the retained meaning the answer
+names as the one used in that context; a missing, malformed or dropped
+selection falls back to the first retained meaning. The context is never discarded.
 
-## What was measured
+The visible article and sense chips still carry every usable meaning. Senses
+are split for the configured language pair: they are distinctions which need
+different words in the target language, not every subdivision a monolingual
+dictionary records. A sense chip carries one of its examples unchanged when it
+fits the 500-character input/context bound, including for the sense just carded;
+a longer example produces a bare lookup instead of a permanently truncated
+sentence. A later tap creates another one-sense note. Equal words are
+deliberately not deduplicated.
 
-Asking the model which cards to make was measured over 72 answers across
-three classes that must differ — a polysemous word in a context that selects
-one sense, a one-sense word in an ordinary sentence, and a set expression with
-the text it came from. It asked for a context card in 86% / 81% / 95% of them.
-The judgement carried no information, and the pre-registered gate — under 25%
-on the one-sense control — failed at 90%.
+There is no sense-count ceiling. The 16,000-character complete-answer bound is
+the resource guard and is enforced before JSON decoding or segment filling. A
+malformed meaning is dropped independently after harmless schema variation is
+normalized. Only then are labels required when several cardable meanings remain,
+so a malformed sibling cannot erase a valid unlabeled singleton. The contextual
+index is remapped from the raw list to that retained list; an answer with no
+retained cardable meaning is unusable and takes the ordinary fallback.
 
-Deriving the same decision from the answer instead scored 0% on that control,
-but reached only 35% on the polysemous class. The cause was the question, not
-the model: a context that told the model to analyse the sense used there and
-not to substitute the nearest dictionary meaning brought 13 of 20 genuinely
-polysemous words back holding a single sense. The senses were forbidden, then
-measured absent. The same model splits a bare *bank* into «банк» / «берег»
-today, and a context now asks for the senses exactly as a bare submission
-does, plus which one it uses.
+## Why the note is not split by sense
 
-## The gate
+Replaying the recorded answers in
+`experiments/.bench-senses/extract.jsonl` through the split-sense parser left
+**6 of 24 polysemous submissions with no card at all**. Under the preceding
+contract, only **1 of 72 answers** was a genuine payload violation. Raising a
+three-sense cap merely moves that rejection wall; one note about the selected
+sense removes it.
 
-Both directions are lexical facts with ground truth, checkable against a
-dictionary, and both errors are cheap: a spurious extra sense costs a wordier
-card and a chip the reader ignores, while a missed sense costs nothing
-permanent, because the reader meets the word again and there is no duplicate
-check to refuse it.
+The production-flow benchmark in `experiments/one_note_bench.py` exercises nine
+bare vocabulary inputs and derives six context-chip inputs from the confirmed
+text branch. The production run uses aggregate model-quality thresholds: at
+least eight of nine bare fixtures must be cardable, at least five of six click
+cases must succeed, and at least two of three set expressions must return their
+components. Every click counted as successful still has exact target identity
+and kind, its carried context as example one, every selected part highlighted,
+no returned expression components and four-card readiness. Every counted
+expression has its exact ordered word-shaped components and exact backend-owned
+contexts.
 
-Measured per class on the free pool, over the same fixtures:
+Four-card readiness is not thresholded after a unit payload is accepted: every
+accepted unit note must still fill all four fronts. A wrong model verdict or an
+unusable provider answer counts in aggregate branch/usability quality instead of
+cascading into several missing-card structural failures.
 
-- **the polysemous class: several senses in at least 80%.** Below that the
-  context still suppresses the senses and the design does not work.
-- **the one-sense control: exactly one sense in at least 80%.** Below that the
-  context gets carded on words that do not need it.
-- **the set expressions report, they do not gate.** One unit with one sense
-  should behave like the control; several senses would mean the expression is
-  being read as its parts, which is a different defect.
+The v6 automated screen called all nine bare answers cardable and counted five
+of six clicks. Fresh semantic review superseded that conclusion: four bare cases
+and `click-de-function` were among 24 accepted unit results which highlighted
+context beyond the unit. The arm is blocked, and its raw answers are retained as
+the regression evidence for targeted sentence-form validation. Aggregate 8/9,
+5/6 and 2/3 model thresholds remain; zero tolerance now applies to every
+accepted note's sentence transformation and every accepted click's exact
+surface.
 
-How often the sense index is present and usable is recorded per class beside
-those numbers. It gates nothing — an unusable index falls through to the bare
-note by design — but a class where it is routinely missing indicts the
-wording of the question rather than the model.
+Qualitative linguistic mistakes remain visible model-quality errors. The
+backend rejects provable sentence-form corruption and exactly reconstructs a
+submitted click, but does not guess the boundary of an inflected generated
+example from grammar.
 
-**Both gates pass**, measured over the full 24 items per class:
+The v8 smoke contained one isolated bare-unit target error in `bare-de-rad`:
+the example text contained `Rad zu fahren` while the payload highlighted only
+`Rad zu`, leaving the unchanged submitted token `fahren` outside the target.
+That answer was structurally printable but semantically uncardable, so the
+tolerated bare result was eight of nine. Generated examples now reject this
+narrow provable case when a submitted token also occurs literally in the
+returned headword and example but not in the target. Differing surface tokens
+remain model-owned morphology rather than something the backend guesses.
 
-| class | holds several senses | holds one sense | names the sense used |
-|---|---|---|---|
-| polysemous | **83%** — PASS | 17% | 100% |
-| one-sense control | 12% | **88%** — PASS | 96% |
-| set expressions | 0% | 100% | 100% |
+## Trust and visibility
 
-The expressions behave like the control, so a set expression is not being read
-as its parts. The sense index is all but always usable, so the fall-through to
-a bare note is a safety net rather than a routine path.
-
-The run that takes those numbers is
-
-    python experiments/extract_bench.py run --variant v0 \
-        --klass pins adds_nothing expression --out experiments/.bench-senses
-
-followed by `extract_bench.py senses --out …`, which prints the share per class
-and the PASS or FAIL against each gate. Reading a recorded answer differently
-costs nothing, so a second wording iteration buys only the items that
-discriminate; only a change to what the prompt *asks for* has to be bought
-again. The gates read answers, not attempts: an answer the pool cuts off
-mid-stream holds no senses and would otherwise score as a miss against the
-model, so `--resume` re-buys it and the report counts it separately.
-
-## Why no cap, and what stands in for one
-
-The status line names the card set the moment the word is submitted — a
-count and the kinds, "✅ 2 карточки: контекст ×2" — so a set that came out
-wrong is visible at once rather than weeks later in the review queue, and
-undo removes the note with every card of it. That visibility is the whole
-mitigation. A cap would have to guess which card to drop, and the reviewer
-can already see and undo what was made.
+The model supplies linguistic content; the backend enforces structure and
+safety. It does not adjudicate whether a translation, inflection or example is
+linguistically correct. The entry reports the four distinct template kinds as
+soon as the note is stored, and undo removes the note with all four cards. A
+future setting may let the reader disable stimuli, but v0.1 always uses all
+four.
 
 ## The note type is rebuilt, not migrated
 
-The fields and templates are checked on every add and a mismatch raises
-rather than repairing itself: an app that rewrites a note type will one day
-rewrite one that mattered. Nothing deletes anything at startup.
+The six fields are the word, audio, label, translations, highlighted sentence
+and gapped sentence. The field and template names are checked on every add; a
+mismatch raises rather than silently rewriting a collection.
 
-Changing the card set therefore means dropping the note type and its notes,
-which `inv rebuild-note-type` does over ssh with the service stopped. It is
-the only destructive operation in the codebase, so it names what it will
-delete and how many notes and deletes nothing until that is confirmed; the
-console command behind it removes nothing without `--yes`, and the pass that
-only counts leaves the collection untouched. A rebuild that finds no
-collection where the service keeps one fails rather than reporting that there
-was nothing to do: a silent no-op there leaves every add failing while the
-operator believes the rebuild ran.
-
-Adding fields to a note type is an Anki schema change, so the next sync
-demands a one-way full sync. That is surfaced as `full-sync-required` and
-never resolved silently, because resolving it automatically would overwrite
-the user's other decks; resolving it once by hand is the documented cost.
+`inv rebuild-note-type` is the explicit destructive operation used before the
+next deploy of this schema. It names the note type and counts what would be
+deleted, changes nothing without confirmation, and fails if the expected
+collection is absent. The following AnkiWeb synchronization requires a manual
+one-way full sync because the note schema changed; the application surfaces
+that state and never chooses a destructive sync direction itself.

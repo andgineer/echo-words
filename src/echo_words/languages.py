@@ -93,6 +93,50 @@ def normalize_submission(text: str, lookup_only: bool = False) -> tuple[str, boo
     return normalized, lookup_only
 
 
+# Serbian is written in both scripts, so a model answer may come back transliterated
+# while the submitted text stays in the other script. Matching folds one onto the other.
+_SERBIAN_LATIN = {
+    "а": "a",
+    "б": "b",
+    "в": "v",
+    "г": "g",
+    "д": "d",
+    "ђ": "đ",
+    "е": "e",
+    "ж": "ž",
+    "з": "z",
+    "и": "i",
+    "ј": "j",
+    "к": "k",
+    "л": "l",
+    "љ": "lj",
+    "м": "m",
+    "н": "n",
+    "њ": "nj",
+    "о": "o",
+    "п": "p",
+    "р": "r",
+    "с": "s",
+    "т": "t",
+    "ћ": "ć",
+    "у": "u",
+    "ф": "f",
+    "х": "h",
+    "ц": "c",
+    "ч": "č",
+    "џ": "dž",
+    "ш": "š",
+}
+
+
+def fold_for_match(text: str, language: Language) -> str:
+    """Fold a string for comparison against another spelling of the same language."""
+    folded = unicodedata.normalize("NFC", text).casefold()
+    if language.script != "latin+cyrillic":
+        return folded
+    return "".join(_SERBIAN_LATIN.get(char, char) for char in folded)
+
+
 def split_words(text: str) -> list[str]:
     """Split into words, dropping the punctuation that hangs off their edges."""
     return [word for word in (_WORD_EDGES.sub("", part) for part in text.split()) if word]

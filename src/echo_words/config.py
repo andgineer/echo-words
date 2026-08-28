@@ -52,7 +52,7 @@ class Settings(BaseSettings):
 
     accent: Literal["us", "uk"] = "us"
     edge_tts_voice: str = ""
-    audio_timeout: int = 20
+    audio_timeout: int = 5
 
     @field_validator("target_lang", mode="before")
     @classmethod

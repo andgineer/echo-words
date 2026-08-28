@@ -43,11 +43,8 @@ async function submit() {
 
 async function analyseSegment(entry, segment) {
   if (busy.value) return;
-  // A running text is the context of every unit found in it; a sense chip instead
-  // carries the sentence that shows its own sense.
-  const context = entry.shape === "text" ? entry.word : segment.surface || entry.word;
   // The unit belongs to the text it was found in, whatever the selector shows now.
-  await sendWord(segment.label, lookupOnly.value, context, "unit", entry.lang);
+  await sendWord(segment.label, lookupOnly.value, segment.context || "", "unit", entry.lang);
 }
 
 async function sendWord(
@@ -115,20 +112,14 @@ const CARD_STATUS_KEYS = {
   added: "card.added",
   lookup_only: "card.lookupOnly",
   text: "card.text",
-  fragment: "card.fragment",
   failed: "card.failed",
 };
 
-// Two templates share a label: the pair a context produces reads as one thing
-// with a count, which is what the reviewer will meet in the queue.
 const CARD_KIND_KEYS = {
   Recognition: "card.kind.recognition",
   Recall: "card.kind.recall",
-  ContextRecognition: "card.kind.context",
-  ContextProduction: "card.kind.context",
-  SenseRecall1: "card.kind.sense",
-  SenseRecall2: "card.kind.sense",
-  SenseRecall3: "card.kind.sense",
+  ContextRecognition: "card.kind.contextRecognition",
+  ContextProduction: "card.kind.contextProduction",
 };
 
 function cardKindsText(kinds) {
@@ -152,11 +143,10 @@ function cardStatusLabel(entry) {
 
 function cardStatusText(entry) {
   if (!entry.card_status) return "";
-  let label = entry.card_error ? `⚠️ ${entry.card_error}` : cardStatusLabel(entry);
-  if (!entry.card_error && entry.context_dropped) {
-    label = `${label} · ${t("card.contextNotNeeded")}`;
-  }
-  return entry.no_audio ? `${label} · ${t("card.noAudio")}` : label;
+  const parts = [entry.card_error ? `⚠️ ${entry.card_error}` : cardStatusLabel(entry)];
+  if (entry.no_audio) parts.push(t("card.noAudio"));
+  if (entry.no_card_audio) parts.push(t("card.noCardAudio"));
+  return parts.join(" · ");
 }
 
 function errorText(error) {
@@ -242,7 +232,7 @@ async function undo() {
       </div>
       <div v-if="entry.segments?.length" class="segments">
         <p class="segments-title">
-          {{ t(entry.segments_are_senses ? "add.senses" : "add.segments") }}
+          {{ t(`add.${entry.segment_kind}`) }}
         </p>
         <div
           v-for="(segment, index) in entry.segments"
@@ -256,7 +246,6 @@ async function undo() {
           >
             {{ segment.label }}
           </button>
-          <span v-if="segment.surface" class="segment-surface">{{ segment.surface }}</span>
           <p v-if="segment.reason" class="segment-reason">{{ segment.reason }}</p>
         </div>
       </div>
@@ -277,14 +266,14 @@ async function undo() {
           }}
         </button>
         <button
-          v-if="entry.shape !== 'text'"
+          v-if="entry.shape === 'unit' && entry.card_status === 'added'"
           class="btn-inline rebuild"
           @click="entryAction(entry, 'rebuild')"
         >
           {{ t("add.rebuild") }}
         </button>
         <button
-          v-if="entry.shape !== 'text'"
+          v-if="entry.shape === 'unit'"
           class="btn-inline detail"
           :disabled="!entry.detail_available || !!entry.detail_html"
           @click="entryAction(entry, 'detail')"
@@ -340,12 +329,6 @@ async function undo() {
 
 .segment {
   margin-top: 0.4rem;
-}
-
-.segment-surface {
-  margin-left: 0.5rem;
-  font-size: 0.85rem;
-  color: var(--text-muted);
 }
 
 .segment-reason {

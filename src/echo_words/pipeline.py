@@ -3,32 +3,30 @@
 import asyncio
 import logging
 import time
+import unicodedata
 import uuid
 from collections.abc import Callable, Coroutine
 from contextlib import aclosing, suppress
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Literal, Protocol
 
 from echo_words.anki import Added
 from echo_words.backend import Cascade
 from echo_words.broker import BackendError
-from echo_words.card import Meaning, Note, ParsedCard
+from echo_words.card import Meaning, Note, ParsedAnswer, ParsedText, ParsedUnit
 from echo_words.events import EventHub
 from echo_words.history import Entry, History, UndoState
 from echo_words.i18n import DEFAULT_LOCALE, message
-from echo_words.languages import Language
+from echo_words.languages import MAX_CONTEXT_LENGTH, Language, split_words
 from echo_words.prompt import (
     CARD_DELIMITER,
     build_extended_prompt,
     build_prompt,
-    build_text_prompt,
-    extract_card,
-    extract_segments,
+    extract_answer,
 )
 from echo_words.sanitizer import sanitize_html
-from echo_words.segments import MAX_SURFACE_LENGTH, Segment, display_text
-from echo_words.shape import Shape
+from echo_words.segments import Segment, display_text
 
 UPDATE_INTERVAL_SECONDS = 0.5
 # Codes, not sentences: the client owns every user-facing wording, so a
@@ -37,9 +35,9 @@ ANALYSIS_FAILED_CODE = "analysis_failed"
 ADDED_STATUS = "added"
 LOOKUP_ONLY_STATUS = "lookup_only"
 TEXT_STATUS = "text"
-FRAGMENT_STATUS = "fragment"
 CARD_FAILED_STATUS = "failed"
 REQUEST_EXPIRED = "request expired"
+MAX_POST_GENERATION_AUDIO_WAIT_SECONDS = 5
 
 logger = logging.getLogger(__name__)
 
@@ -84,14 +82,17 @@ class Job:
     word: str
     lookup_only: bool
     context: str
-    shape: Shape = "unit"
+    intent: Literal["unit"] | None = None
     kind: JobKind = "submit"
     paid_only: bool = False
     kept_audio: Path | None = None
+    kept_card_audio: Path | None = None
+    carded_word: str | None = None
     kept_context_audio: Path | None = None
     replace_note_id: int | None = None
     replace_media: str | None = None
     replaced_audio: Path | None = None
+    replaced_card_audio: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -115,6 +116,8 @@ class ControlState:
     media_filename: str | None = None
     audio_path: Path | None = None
     context_audio_path: Path | None = None
+    card_audio_path: Path | None = None
+    carded_word: str | None = None
 
 
 @dataclass(frozen=True)
@@ -125,7 +128,6 @@ class StoreResult:
     media_filename: str | None = None
     error: str | None = None
     kinds: tuple[str, ...] = ()
-    context_dropped: bool = False
 
 
 QueueJob = Job | DetailJob
@@ -142,7 +144,7 @@ class WordPipeline:
         events: EventHub | None = None,
         anki: CardStore | None = None,
         audio: AudioFetcher = _no_audio,
-        audio_timeout: float = 20,
+        audio_timeout: float = 5,
         audio_dir: Path | None = None,
         history_size: int = 50,
         clock: Clock = time.monotonic,
@@ -187,20 +189,21 @@ class WordPipeline:
         word: str,
         lookup_only: bool,
         *,
-        shape: Shape = "unit",
+        intent: Literal["unit"] | None = None,
         context: str = "",
         entry_id: str | None = None,
         reuse_entry: str | None = None,
         kind: JobKind = "submit",
         paid_only: bool = False,
         kept_audio: Path | None = None,
+        kept_card_audio: Path | None = None,
+        carded_word: str | None = None,
         kept_context_audio: Path | None = None,
         replace_note_id: int | None = None,
         replace_media: str | None = None,
         replaced_audio: Path | None = None,
+        replaced_card_audio: Path | None = None,
     ) -> Entry:
-        if shape == "text":
-            lookup_only = True
         if reuse_entry is not None:
             entry = self._entries[reuse_entry]
             revision = self._revisions[reuse_entry] + 1
@@ -226,7 +229,7 @@ class WordPipeline:
                 lang=language.code,
                 language=language.name,
                 lookup_only=lookup_only,
-                shape=shape,
+                shape=None,
                 context=context,
             )
             self.history.add(entry)
@@ -248,14 +251,17 @@ class WordPipeline:
                 word,
                 lookup_only,
                 context,
-                shape,
+                intent,
                 kind,
                 paid_only,
                 kept_audio,
+                kept_card_audio,
+                carded_word,
                 kept_context_audio,
                 replace_note_id,
                 replace_media,
                 replaced_audio,
+                replaced_card_audio,
             ),
         )
         await self.events.publish("accepted", entry.public())
@@ -269,20 +275,25 @@ class WordPipeline:
 
     async def request_rebuild(self, entry_id: str, *, locale: str = DEFAULT_LOCALE) -> Entry:
         entry, state = self._active_control(entry_id)
-        if entry.shape == "text":
+        if entry.shape != "unit":
             raise BackendError(message("text.no_rebuild", locale))
+        if entry.action != "added" or state.note_id is None:
+            raise BackendError(message("card.no_rebuild", locale))
         refusal = await self._paid_refusal_fresh(state.language)
         if refusal is not None:
             raise BackendError(refusal)
         return await self.enqueue(
             state.language,
-            state.shown_spelling,
+            state.carded_word or state.shown_spelling,
             state.lookup_only,
+            intent="unit",
             context=state.context,
             reuse_entry=entry.entry_id,
             kind="rebuild",
             paid_only=True,
             kept_audio=state.audio_path,
+            kept_card_audio=state.card_audio_path,
+            carded_word=state.carded_word,
             kept_context_audio=state.context_audio_path,
             replace_note_id=state.note_id,
             replace_media=state.media_filename,
@@ -301,12 +312,14 @@ class WordPipeline:
             state.language,
             target,
             state.lookup_only,
+            intent="unit",
             context=state.context,
             reuse_entry=entry.entry_id,
             kind="switch",
             replace_note_id=state.note_id,
             replace_media=state.media_filename,
             replaced_audio=state.audio_path,
+            replaced_card_audio=state.card_audio_path,
         )
 
     async def request_detail(
@@ -316,7 +329,7 @@ class WordPipeline:
         locale: str = DEFAULT_LOCALE,
     ) -> dict[str, object]:
         entry, state = self._active_control(entry_id)
-        if entry.shape == "text":
+        if entry.shape != "unit":
             raise BackendError(message("text.no_detail", locale))
         if entry.detail_html:
             return {"entry_id": entry_id, "detail_html": entry.detail_html, "cached": True}
@@ -331,7 +344,7 @@ class WordPipeline:
                 entry_id,
                 self._detail_revisions[entry_id],
                 state.language,
-                state.shown_spelling,
+                state.carded_word or state.shown_spelling,
                 state.context,
             ),
         )
@@ -345,6 +358,8 @@ class WordPipeline:
             return None
         await self.anki.remove_note(state.note_id, state.media_filename)
         self._delete_audio(self._audio_path(state.audio_file))
+        if state.card_audio_file != state.audio_file:
+            self._delete_audio(self._audio_path(state.card_audio_file))
         self.history.undo.pop(language.code, None)
         for control in self._controls.values():
             if control.note_id == state.note_id:
@@ -406,20 +421,24 @@ class WordPipeline:
             if self.cascade is None:
                 await self._fail(job)
                 return
-            prompt = (
-                build_text_prompt(job.language, job.word, self.target_lang)
-                if job.shape == "text"
-                else build_prompt(job.language, job.word, self.target_lang, context=job.context)
+            prompt = build_prompt(
+                job.language,
+                job.word,
+                self.target_lang,
+                context=job.context,
+                unit_intent=job.intent == "unit",
             )
-            parsed: ParsedCard | None = None
-            segments: list[Segment] | None = None
+            parsed: ParsedAnswer | None = None
 
             def parse_payload(answer: str) -> bool:
-                nonlocal parsed, segments
-                if job.shape == "text":
-                    segments = extract_segments(answer, job.language)
-                    return segments is not None
-                parsed = extract_card(answer, job.word, job.language)
+                nonlocal parsed
+                parsed = extract_answer(
+                    answer,
+                    job.word,
+                    job.language,
+                    unit_intent=job.intent == "unit",
+                    context=job.context,
+                )
                 return parsed is not None
 
             try:
@@ -461,7 +480,12 @@ class WordPipeline:
                             last_published,
                             last_update_at,
                         )
-                    await completion.record_quality(1.0 if parse_payload(raw) else 0.0)
+                    if getattr(completion, "oversized", False):
+                        parsed = None
+                        quality = 0.0
+                    else:
+                        quality = 1.0 if parse_payload(raw) else 0.0
+                    await completion.record_quality(quality)
             except BackendError as exc:
                 if job.kind == "rebuild" and not entry_reset:
                     await self.events.publish(
@@ -473,39 +497,47 @@ class WordPipeline:
                 return
             if not self._is_current(job):
                 return
-            if audio_task is None:
-                audio_path = job.kept_audio
-            else:
-                audio_path = await self._await_audio(audio_task, job.language, job.word)
-                audio_task = None
-            if context_audio_task is None:
-                context_audio_path = job.kept_context_audio
-            else:
-                context_audio_path = await self._await_audio(
-                    context_audio_task,
-                    job.language,
-                    context,
-                )
-                context_audio_task = None
-            stored = await self._store_card(job, parsed, audio_path)
+            audio_path, context_audio_path, card_audio_path = await self._audio_paths(
+                job,
+                parsed,
+                audio_task,
+                context_audio_task,
+                context,
+            )
+            audio_task = None
+            context_audio_task = None
+            stored = await self._store_card(job, parsed, card_audio_path)
             if job.kind == "switch" and stored.action != "failed":
                 self._delete_audio(job.replaced_audio)
+                if job.replaced_card_audio != card_audio_path:
+                    self._delete_audio(job.replaced_card_audio)
             elif job.kind == "switch" and stored.action == "failed":
                 self._delete_audio(audio_path)
+                if card_audio_path != job.replaced_card_audio:
+                    self._delete_audio(card_audio_path)
                 audio_path = job.replaced_audio
             entry.audio_file = audio_path.name if audio_path else None
             entry.no_audio = audio_path is None
+            entry.no_card_audio = stored.action == "added" and card_audio_path is None
             entry.context_audio_file = context_audio_path.name if context_audio_path else None
             suggestion = self._correction_target(job, parsed)
-            chips = segments or _candidate_segments(parsed)
-            senses = _sense_segments(job, parsed) if not chips else []
-            entry.segments = [asdict(segment) for segment in chips or senses]
-            entry.segments_are_senses = bool(senses)
+            chips, segment_kind = _segments_for(parsed, job)
+            entry.segments = [asdict(segment) for segment in chips]
+            entry.segment_kind = segment_kind
+            entry.shape = parsed.kind if parsed is not None else None
             entry.model = getattr(completion, "llm_name", None)
             entry.detail_available = (
-                job.shape != "text" and await self._paid_refusal_fresh(job.language) is None
+                isinstance(parsed, ParsedUnit)
+                and await self._paid_refusal_fresh(job.language) is None
             )
-            self._update_state(job, parsed, stored, audio_path, context_audio_path)
+            self._update_state(
+                job,
+                parsed,
+                stored,
+                audio_path,
+                context_audio_path,
+                card_audio_path,
+            )
             await self._finish_entry(entry, raw, last_published, suggestion, stored)
         finally:
             for pending in (audio_task, context_audio_task):
@@ -551,51 +583,85 @@ class WordPipeline:
         finally:
             self._details_pending.discard(job.entry_id)
 
-    async def _await_audio(
+    async def _audio_paths(  # noqa: C901, PLR0912 - three roles share one deadline.
         self,
-        task: asyncio.Task[Path | None],
-        language: Language,
-        text: str,
-    ) -> Path | None:
-        done, _ = await asyncio.wait({task}, timeout=self.audio_timeout)
-        if not done:
-            logger.warning("pronunciation timed out for %s/%r", language.code, text)
-            _cancel_task(task)
-            return None
+        job: Job,
+        parsed: ParsedAnswer | None,
+        submitted_task: asyncio.Task[Path | None] | None,
+        context_task: asyncio.Task[Path | None] | None,
+        context: str,
+    ) -> tuple[Path | None, Path | None, Path | None]:
+        tasks: dict[asyncio.Task[Path | None], str] = {}
+        if submitted_task is not None:
+            tasks[submitted_task] = job.word
+        if context_task is not None:
+            tasks[context_task] = context
+
+        card_task: asyncio.Task[Path | None] | None = None
+        card_audio = None
+        if not job.lookup_only and isinstance(parsed, ParsedUnit):
+            headword = parsed.note.word
+            if job.carded_word and _same_text(job.carded_word, headword):
+                card_audio = job.kept_card_audio
+            elif _same_text(job.word, headword):
+                card_task = submitted_task
+                if card_task is None:
+                    card_audio = job.kept_audio
+            else:
+                card_task = asyncio.create_task(
+                    self.audio(headword, job.language),
+                    name=f"echo-words-card-audio-{job.entry_id}",
+                )
+                tasks[card_task] = headword
+
+        pending: set[asyncio.Task[Path | None]] = set()
         try:
-            return task.result()
-        except asyncio.CancelledError:
-            worker = asyncio.current_task()
-            if worker is not None and worker.cancelling():
-                raise
-            return None
-        except Exception:  # noqa: BLE001
-            logger.exception("pronunciation failed for %s/%r", language.code, text)
-            return None
+            if tasks:
+                _done, pending = await asyncio.wait(
+                    set(tasks),
+                    timeout=min(self.audio_timeout, MAX_POST_GENERATION_AUDIO_WAIT_SECONDS),
+                )
+        except BaseException:
+            for task in tasks:
+                _cancel_task(task)
+            raise
+        for task in pending:
+            logger.warning(
+                "pronunciation timed out for %s/%r",
+                job.language.code,
+                tasks[task],
+            )
+            _cancel_task(task)
+
+        submitted_audio = job.kept_audio
+        if submitted_task is not None and submitted_task not in pending:
+            submitted_audio = _audio_result(submitted_task, job.language, job.word)
+        context_audio = job.kept_context_audio
+        if context_task is not None and context_task not in pending:
+            context_audio = _audio_result(context_task, job.language, context)
+        # No task means card_audio is already the reused file chosen above; an
+        # identity test alone would call that case a shared submitted-word task.
+        if card_task is not None:
+            if card_task is submitted_task:
+                card_audio = submitted_audio
+            elif card_task not in pending:
+                card_audio = _audio_result(card_task, job.language, parsed.note.word)
+        return submitted_audio, context_audio, card_audio
 
     async def _store_card(
         self,
         job: Job,
-        parsed: ParsedCard | None,
+        parsed: ParsedAnswer | None,
         audio_path: Path | None,
     ) -> StoreResult:
-        if (
-            job.shape == "text"
-            or job.lookup_only
-            or (parsed is not None and not parsed.input_is_unit)
-        ):
+        if isinstance(parsed, ParsedText) or job.lookup_only:
             # Action "lookup" keeps the existing counters and lets undo answer
             # "nothing to undo" with no branch of its own.
-            if job.shape == "text":
-                status = TEXT_STATUS
-            elif job.lookup_only:
-                status = LOOKUP_ONLY_STATUS
-            else:
-                status = FRAGMENT_STATUS
+            status = TEXT_STATUS if isinstance(parsed, ParsedText) else LOOKUP_ONLY_STATUS
             return StoreResult(status, "lookup")
-        if parsed is None or self.anki is None:
+        if not isinstance(parsed, ParsedUnit) or self.anki is None:
             return StoreResult(CARD_FAILED_STATUS, "failed")
-        note = _note_for(job, parsed)
+        note = parsed.note
         try:
             if job.replace_note_id is not None:
                 result = await self.anki.replace_note(
@@ -616,7 +682,6 @@ class WordPipeline:
             result.note_id,
             result.media_filename,
             kinds=result.kinds,
-            context_dropped=bool(_voiced_context(job)) and note.narrowed_sense is None,
         )
 
     async def _finish_entry(  # noqa: PLR0913, PLR0917
@@ -635,7 +700,6 @@ class WordPipeline:
         entry.card_status = stored.status
         entry.card_kinds = list(stored.kinds)
         entry.card_error = stored.error
-        entry.context_dropped = stored.context_dropped
         entry.suggestion = suggestion
         entry.shown_spelling = entry.word
         control = self._controls.get(entry.entry_id)
@@ -654,10 +718,11 @@ class WordPipeline:
                 "card_status": stored.status,
                 "card_kinds": entry.card_kinds,
                 "card_error": stored.error,
-                "context_dropped": entry.context_dropped,
                 "no_audio": entry.no_audio,
+                "no_card_audio": entry.no_card_audio,
                 "segments": entry.segments,
-                "segments_are_senses": entry.segments_are_senses,
+                "segment_kind": entry.segment_kind,
+                "shape": entry.shape,
                 "audio_url": entry.audio_url,
                 "context_audio_url": entry.context_audio_url,
                 "model": entry.model,
@@ -668,13 +733,14 @@ class WordPipeline:
         self.history.trim()
         self._drop_evicted_state()
 
-    def _update_state(  # noqa: PLR0913 - the finished job's complete result is explicit.
+    def _update_state(  # noqa: PLR0913, PLR0917 - the complete result is explicit.
         self,
         job: Job,
-        parsed: ParsedCard | None,
+        parsed: ParsedAnswer | None,
         stored: StoreResult,
         audio_path: Path | None,
         context_audio_path: Path | None,
+        card_audio_path: Path | None,
     ) -> None:
         parsed_suggestion = _suggestion_from(parsed)
         existing = self._controls.get(job.entry_id)
@@ -691,13 +757,16 @@ class WordPipeline:
         elif job.kind == "submit":
             existing.input_word = job.word
             existing.suggestion = parsed_suggestion
-        existing.shown_spelling = job.word
+        if job.kind != "rebuild":
+            existing.shown_spelling = job.word
         existing.context_audio_path = context_audio_path
         replacement_failed = job.replace_note_id is not None and stored.action == "failed"
         if not replacement_failed:
             existing.note_id = stored.note_id
             existing.media_filename = stored.media_filename
             existing.audio_path = audio_path
+            existing.card_audio_path = card_audio_path
+            existing.carded_word = parsed.note.word if isinstance(parsed, ParsedUnit) else None
         if job.kind == "submit":
             self.history.bump(job.language.code, stored.action)
             if self._latest_submissions.get(job.language.code) == job.entry_id:
@@ -707,6 +776,7 @@ class WordPipeline:
                     note_id=stored.note_id,
                     media_filename=stored.media_filename,
                     audio_file=audio_path.name if audio_path else None,
+                    card_audio_file=card_audio_path.name if card_audio_path else None,
                     lookup_only=job.lookup_only,
                 )
         elif job.replace_note_id is not None and not replacement_failed:
@@ -718,10 +788,11 @@ class WordPipeline:
                     note_id=stored.note_id,
                     media_filename=stored.media_filename,
                     audio_file=audio_path.name if audio_path else None,
+                    card_audio_file=card_audio_path.name if card_audio_path else None,
                     lookup_only=job.lookup_only,
                 )
 
-    def _correction_target(self, job: Job, parsed: ParsedCard | None) -> str | None:
+    def _correction_target(self, job: Job, parsed: ParsedAnswer | None) -> str | None:
         if job.kind == "switch":
             state = self._controls.get(job.entry_id)
             if state is None or not state.suggestion:
@@ -732,9 +803,10 @@ class WordPipeline:
         if job.kind == "rebuild":
             state = self._controls.get(job.entry_id)
             if state is not None and state.suggestion:
+                # A rebuild carries the carded headword, not the spelling on screen.
                 return (
                     state.input_word
-                    if job.word.casefold() != state.input_word.casefold()
+                    if state.shown_spelling.casefold() != state.input_word.casefold()
                     else state.suggestion
                 )
         return _suggestion_from(parsed)
@@ -809,7 +881,8 @@ class WordPipeline:
         context: str,
         kind: JobKind,
     ) -> None:
-        entry.word = word
+        if kind != "rebuild":
+            entry.word = word
         entry.lang = language.code
         entry.language = language.name
         entry.lookup_only = lookup_only
@@ -819,8 +892,12 @@ class WordPipeline:
         entry.card_status = None
         entry.card_kinds = []
         entry.card_error = None
-        entry.context_dropped = False
+        entry.shape = None
+        entry.segments = []
+        entry.segment_kind = None
+        entry.detail_available = False
         entry.no_audio = False
+        entry.no_card_audio = False
         entry.error = None
         entry.model = None
         if kind != "rebuild":
@@ -865,57 +942,46 @@ def visible_analysis(raw: str) -> str:
     return raw
 
 
-def _candidate_segments(parsed: ParsedCard | None) -> list[Segment]:
-    """The units a vocabulary answer offers, in the shape the chip row already renders."""
-    if parsed is None or parsed.input_is_unit:
-        return []
-    return [
-        Segment(label=label, surface="", reason="")
-        for label in [parsed.analysed, *parsed.candidates]
-    ]
+def _suggestion_from(parsed: ParsedAnswer | None) -> str | None:
+    return parsed.suggestion if isinstance(parsed, ParsedUnit) else None
 
 
-def _suggestion_from(parsed: ParsedCard | None) -> str | None:
-    return parsed.suggestion if parsed is not None else None
+def _segments_for(
+    parsed: ParsedAnswer | None,
+    job: Job,
+) -> tuple[list[Segment], str | None]:
+    if isinstance(parsed, ParsedText):
+        return parsed.segments, "text"
+    if not isinstance(parsed, ParsedUnit):
+        return [], None
+    if job.intent == "unit" or len(split_words(job.word)) == 1:
+        return _sense_segments(parsed), "senses"
+    if parsed.segments:
+        return parsed.segments, "expression"
+    return _sense_segments(parsed), "senses"
 
 
-def _note_for(job: Job, parsed: ParsedCard) -> Note:
-    """The note this submission makes: carded under its context, or bare."""
-    carded = replace(parsed.note, context=_voiced_context(job), context_sense=parsed.context_sense)
-    return carded if carded.narrowed_sense is not None else parsed.note
-
-
-def _sense_segments(job: Job, parsed: ParsedCard | None) -> list[Segment]:
-    """The senses the context did not use, each a chip carrying a sentence that shows it.
-
-    A tap on one is an ordinary submission of the same word with that sentence as
-    its context, which is how a sense the answer led away from still reaches the deck.
-    """
-    if parsed is None or not parsed.input_is_unit:
-        return []
-    sense = _note_for(job, parsed).narrowed_sense
-    if sense is None:
-        return []
+def _sense_segments(parsed: ParsedUnit) -> list[Segment]:
+    """Offer every sense, including the one just carded, with its own example context."""
     return [
         Segment(
             label=parsed.note.word,
-            surface=_sense_sentence(meaning),
             reason=", ".join(meaning.translations),
+            context=_sense_sentence(meaning),
         )
-        for index, meaning in enumerate(parsed.note.meanings)
-        if index != sense
+        for meaning in parsed.note.meanings
     ]
 
 
 def _sense_sentence(meaning: Meaning) -> str:
-    """The sentence a tap submits as its context, or nothing when none is short enough.
+    """The sentence a tap submits as its context, or nothing beyond the context bound.
 
     Cutting one to length would card a mangled sentence forever; a chip without a
     sentence still reaches the deck, as an ordinary bare submission of the word.
     """
     for example in meaning.examples:
         text = display_text(example.text, None)
-        if text and len(text) <= MAX_SURFACE_LENGTH:
+        if text and len(text) <= MAX_CONTEXT_LENGTH:
             return text
     return ""
 
@@ -923,6 +989,24 @@ def _sense_sentence(meaning: Meaning) -> str:
 def _voiced_context(job: Job) -> str:
     """The text a unit came from, when the unit's own audio does not already cover it."""
     return job.context if job.context and job.context != job.word else ""
+
+
+def _same_text(left: str, right: str) -> bool:
+    """Compare already-normalized identities without folding meaningful case."""
+    return unicodedata.normalize("NFC", left) == unicodedata.normalize("NFC", right)
+
+
+def _audio_result(task: asyncio.Task[Path | None], language: Language, text: str) -> Path | None:
+    try:
+        return task.result()
+    except asyncio.CancelledError:
+        worker = asyncio.current_task()
+        if worker is not None and worker.cancelling():
+            raise
+        return None
+    except Exception:  # noqa: BLE001
+        logger.exception("pronunciation failed for %s/%r", language.code, text)
+        return None
 
 
 def _cancel_task(task: asyncio.Task[Path | None]) -> None:

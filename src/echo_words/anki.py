@@ -23,37 +23,39 @@ from anki.notes import NoteId
 from anki.sync import SyncAuth
 from anki.sync_pb2 import SyncCollectionResponse, SyncStatusResponse
 
-from echo_words.card import Meaning, Note
+from echo_words.card import Note
 from echo_words.config import Settings
 
 NOTE_TYPE_NAME = "EchoWords"
-SENSE_FIELDS = ("Sense1", "Sense2", "Sense3")
 FIELD_NAMES = (
     "Word",
-    "Translations",
-    "Meanings",
     "Audio",
-    "Context",
-    "ContextMeaning",
-    "ContextTranslations",
-    "ContextGapped",
-    *SENSE_FIELDS,
+    "Label",
+    "Translations",
+    "Highlighted",
+    "Gapped",
 )
-# (template, front, back). Every front is guarded by a field a declined card leaves
-# empty, Word included: Anki drops a card whose front renders empty, and falls back
-# to the first template only for a note that would otherwise get no card at all.
 _TEMPLATES: tuple[tuple[str, str, str], ...] = (
-    ("Recognition", "{{#Meanings}}{{Word}} {{Audio}}{{/Meanings}}", "{{Meanings}}"),
-    ("Recall", "{{Translations}}", "{{Word}} {{Audio}}"),
-    ("ContextRecognition", "{{Context}}", "{{ContextMeaning}}<br>{{Word}} {{Audio}}"),
     (
-        "ContextProduction",
-        "{{#ContextGapped}}{{ContextTranslations}}<br>{{ContextGapped}}{{/ContextGapped}}",
+        "Recognition",
+        "{{Word}}{{#Label}} ({{Label}}){{/Label}} {{Audio}}",
+        "{{Translations}}",
+    ),
+    (
+        "Recall",
+        "{{Translations}}{{#Label}} ({{Label}}){{/Label}}",
         "{{Word}} {{Audio}}",
     ),
-    ("SenseRecall1", "{{Sense1}}", "{{Word}} {{Audio}}"),
-    ("SenseRecall2", "{{Sense2}}", "{{Word}} {{Audio}}"),
-    ("SenseRecall3", "{{Sense3}}", "{{Word}} {{Audio}}"),
+    (
+        "ContextRecognition",
+        "{{Highlighted}}",
+        "{{Translations}}<br>{{Word}} {{Audio}}",
+    ),
+    (
+        "ContextProduction",
+        "{{Translations}}<br>{{Gapped}}",
+        "{{Word}} {{Audio}}",
+    ),
 )
 TEMPLATE_NAMES = tuple(name for name, _front, _back in _TEMPLATES)
 SYNC_INTERVAL_SECONDS = 5 * 60
@@ -684,32 +686,17 @@ def _ensure_note_type(collection: Collection) -> dict:
 
 
 def card_fields(note: Note, media_filename: str | None = None) -> dict[str, str]:
-    """Every field of one note. Which cards it produces follows from what is left empty."""
-    index = note.narrowed_sense
-    narrowed = note.meanings[index] if index is not None else None
-    senses = [] if narrowed else _sense_fronts(note)
-    fields = {
+    """Render all six fields required by the note's four unconditional cards."""
+    meaning = note.meaning
+    example = meaning.examples[0]
+    return {
         "Word": note.word,
-        # Several senses are asked for one at a time, and a narrowed context is
-        # asked for under that context, so the card that would ask for them all
-        # at once is replaced rather than joined.
-        "Translations": "" if narrowed or senses else render_translations(note),
-        "Meanings": "" if narrowed else render_meanings(note),
         "Audio": f"[sound:{media_filename}]" if media_filename else "",
-        "Context": _context_front(note) if narrowed else "",
-        "ContextMeaning": (
-            _render_meaning_block(narrowed, len(note.meanings) > 1) if narrowed else ""
-        ),
-        "ContextTranslations": (
-            _render_translation_block(narrowed, note.word, show_label=False, gapped_example=False)
-            if narrowed
-            else ""
-        ),
-        "ContextGapped": _context_gap(note) if narrowed else "",
+        "Label": html.escape(meaning.label) if len(note.meanings) > 1 else "",
+        "Translations": render_translations(note),
+        "Highlighted": example.highlighted,
+        "Gapped": example.gapped,
     }
-    fields.update(dict.fromkeys(SENSE_FIELDS, ""))
-    fields.update(dict(zip(SENSE_FIELDS, senses, strict=False)))
-    return fields
 
 
 def _ordered_fields(fields: dict[str, str]) -> list[str]:
@@ -721,106 +708,9 @@ def _created_kinds(model: dict, note: AnkiNote) -> tuple[str, ...]:
     return tuple(names[card.ord] for card in sorted(note.cards(), key=lambda card: card.ord))
 
 
-def _sense_fronts(note: Note) -> list[str]:
-    """One recall front per meaning, or none: a single meaning is not a split."""
-    if len(note.meanings) <= 1:
-        return []
-    return [
-        _render_translation_block(meaning, note.word, show_label=True)
-        for meaning in note.meanings[: len(SENSE_FIELDS)]
-    ]
-
-
-def _context_front(note: Note) -> str:
-    """The context with the word under review marked, so the card asks about one word."""
-    highlighted = _highlight_word(note.context, note.word)
-    if highlighted is not None:
-        return highlighted
-    # A word the context does not carry verbatim — an inflected form, a separable
-    # prefix — has nothing to mark, so it is named above the sentence instead.
-    return f"{html.escape(note.word)}<br>{html.escape(note.context)}"
-
-
-def _context_gap(note: Note) -> str:
-    """The context with the word blanked, or nothing when the word is not in it verbatim."""
-    masked = _mask_word(note.context, note.word)
-    return html.escape(masked) if masked is not None else ""
-
-
 def render_translations(note: Note) -> str:
-    """Render the recall front without ever leaking an unmasked source example."""
-    multiple = len(note.meanings) > 1
-    return "<br><br>".join(
-        _render_translation_block(meaning, note.word, show_label=multiple)
-        for meaning in note.meanings
-    )
-
-
-def _render_translation_block(
-    meaning: Meaning,
-    word: str,
-    *,
-    show_label: bool,
-    gapped_example: bool = True,
-) -> str:
-    parts = []
-    if show_label:
-        parts.append(f"<b>{html.escape(meaning.label)}</b>")
-    parts.append(", ".join(html.escape(value) for value in meaning.translations))
-    for example in meaning.examples if gapped_example else []:
-        masked = _mask_word(example.text, word)
-        if masked is not None:
-            parts.append(
-                f"<i>{html.escape(masked)}</i> — {html.escape(example.translation)}",
-            )
-            break
-    return "<br>".join(parts)
-
-
-def render_meanings(note: Note) -> str:
-    """Render compact recognition-card meaning blocks."""
-    multiple = len(note.meanings) > 1
-    blocks = [_render_meaning_block(meaning, multiple) for meaning in note.meanings]
-    if multiple:
-        return "<ol>" + "".join(f"<li>{block}</li>" for block in blocks) + "</ol>"
-    return blocks[0]
-
-
-def _render_meaning_block(meaning: Meaning, show_label: bool) -> str:
-    parts = []
-    if show_label:
-        parts.append(f"<b>{html.escape(meaning.label)}</b>")
-    parts.append(", ".join(html.escape(value) for value in meaning.translations))
-    parts.extend(
-        f"<i>{html.escape(example.text)}</i> — {html.escape(example.translation)}"
-        for example in meaning.examples
-    )
-    return "<br>".join(parts)
-
-
-def _word_pattern(word: str) -> re.Pattern[str]:
-    # Captured so that splitting on it keeps the word the match found.
-    return re.compile(rf"(?<!\w)({re.escape(word)})(?!\w)", re.IGNORECASE)
-
-
-def _mask_word(sentence: str, word: str) -> str | None:
-    pattern = _word_pattern(word)
-    if pattern.search(sentence) is None:
-        return None
-    return pattern.sub("___", sentence)
-
-
-def _highlight_word(sentence: str, word: str) -> str | None:
-    """The sentence escaped with the word in bold, or ``None`` when it is not in it."""
-    parts = _word_pattern(word).split(sentence)
-    if len(parts) == 1:
-        return None
-    # A captured split alternates context, word, context …, and each part is escaped
-    # on its own because escaping the finished string would eat the tags.
-    return "".join(
-        f"<b>{html.escape(part)}</b>" if index % 2 else html.escape(part)
-        for index, part in enumerate(parts)
-    )
+    """Render the selected sense's target-language translations."""
+    return ", ".join(html.escape(value) for value in note.meaning.translations)
 
 
 def _add_media(collection: Collection, word: str, audio_path: Path | None) -> str | None:

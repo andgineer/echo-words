@@ -505,24 +505,32 @@ async def test_sse_endpoint_frames_events_keeps_alive_and_cleans_up_subscribers(
     assert hub.subscriber_count == 0
 
 
-def test_a_sentence_is_accepted_and_routed_without_a_card(client: TestClient):
+def test_an_ordinary_multi_word_submission_has_no_client_intent(client: TestClient):
+    pipeline = client.app.state.pipeline
+    pipeline.enqueue = AsyncMock(wraps=pipeline.enqueue)
+
     entry_id = submit(client, word="Er steht jeden Morgen um sechs auf.", lang="de").json()[
         "entry_id"
     ]
+
+    assert pipeline.enqueue.await_args.args[1] == "Er steht jeden Morgen um sechs auf."
+    assert pipeline.enqueue.await_args.kwargs["intent"] is None
     entry = recent_entry(client, entry_id)
-    assert entry["word"] == "Er steht jeden Morgen um sechs auf."
-    assert entry["shape"] == "text"
-    assert entry["lookup_only"] is True
+    assert entry["shape"] is None
+    assert entry["lookup_only"] is False
 
 
-def test_a_shared_word_survives_the_punctuation_that_came_with_it(client: TestClient):
-    entry_id = submit(client, word="Straße.", lang="de").json()["entry_id"]
-    entry = recent_entry(client, entry_id)
-    assert entry["word"] == "Straße"
-    assert entry["shape"] == "unit"
+def test_exactly_one_word_is_promoted_to_known_unit_intent(client: TestClient):
+    pipeline = client.app.state.pipeline
+    pipeline.enqueue = AsyncMock(wraps=pipeline.enqueue)
 
-    quoted = submit(client, word="«Како?»", lang="sr").json()["entry_id"]
-    assert recent_entry(client, quoted)["word"] == "Како"
+    submit(client, word="Straße.", lang="de")
+    assert pipeline.enqueue.await_args.args[1] == "Straße"
+    assert pipeline.enqueue.await_args.kwargs["intent"] == "unit"
+
+    submit(client, word="«Како?»", lang="sr")
+    assert pipeline.enqueue.await_args.args[1] == "Како"
+    assert pipeline.enqueue.await_args.kwargs["intent"] == "unit"
 
 
 def test_punctuation_alone_is_refused_as_empty(client: TestClient):
@@ -531,24 +539,26 @@ def test_punctuation_alone_is_refused_as_empty(client: TestClient):
     assert response.json()["detail"] == "Enter a word."
 
 
-def test_a_collocation_is_accepted_whole(client: TestClient):
+def test_an_ordinary_collocation_remains_undecided(client: TestClient):
     pipeline = client.app.state.pipeline
     pipeline.enqueue = AsyncMock(wraps=pipeline.enqueue)
 
-    entry_id = submit(client, word="Rad fahren", lang="de").json()["entry_id"]
+    submit(client, word="Rad fahren", lang="de")
 
     assert pipeline.enqueue.await_args.args[1] == "Rad fahren"
-    assert pipeline.enqueue.await_args.kwargs["shape"] == "unit"
-    assert recent_entry(client, entry_id)["lookup_only"] is False
+    assert pipeline.enqueue.await_args.kwargs["intent"] is None
 
 
-def test_an_explicit_shape_overrides_the_classifier(client: TestClient):
+def test_a_chip_carries_unit_intent_and_no_client_forced_text_is_accepted(client: TestClient):
+    pipeline = client.app.state.pipeline
+    pipeline.enqueue = AsyncMock(wraps=pipeline.enqueue)
+
     accepted = submit(client, word="не пада ми на памет", lang="sr", shape="unit")
     assert accepted.status_code == 200
-    assert recent_entry(client, accepted.json()["entry_id"])["shape"] == "unit"
+    assert pipeline.enqueue.await_args.kwargs["intent"] == "unit"
 
-    classified = submit(client, word="не пада ми на памет", lang="sr")
-    assert recent_entry(client, classified.json()["entry_id"])["shape"] == "text"
+    rejected = submit(client, word="не пада ми на памет", lang="sr", shape="text")
+    assert rejected.status_code == 422
 
 
 def test_a_five_word_label_is_validated_as_a_word_when_the_tap_says_so(client: TestClient):

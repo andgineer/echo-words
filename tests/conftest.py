@@ -27,6 +27,11 @@ _DEFAULT_BEHAVIOR_BY_FILE: dict[str, tuple[str, str, str | None]] = {
     "test_i18n.py": (_PLATFORM, "Interface language", None),
     "test_languages.py": (_VOCABULARY, "Input and languages", None),
     "test_llm_backend.py": (_VOCABULARY, "LLM cascade", "Free pool attempt"),
+    "test_one_note_bench.py": (
+        _VOCABULARY,
+        "Answer delivery",
+        "Production prompt benchmark",
+    ),
     "test_events.py": (_PLATFORM, "Answer delivery", "Event fan-out"),
     "test_history.py": (_PLATFORM, "Answer delivery", "History"),
     "test_pipeline.py": (_VOCABULARY, "Answer delivery", "Streaming pipeline"),
@@ -34,7 +39,6 @@ _DEFAULT_BEHAVIOR_BY_FILE: dict[str, tuple[str, str, str | None]] = {
     "test_release_workflows.py": (_PLATFORM, "Health and deployment", "Release pipeline"),
     "test_sanitizer.py": (_PLATFORM, "Answer delivery", "Safe answer HTML"),
     "test_segments.py": (_VOCABULARY, "Answer delivery", "Suggested units"),
-    "test_shape.py": (_VOCABULARY, "Input and languages", "Input shape"),
     "test_swap_prep.py": (_PLATFORM, "Health and deployment", "Production deployment"),
     "test_tasks.py": (_PLATFORM, "Health and deployment", "Production deployment"),
 }

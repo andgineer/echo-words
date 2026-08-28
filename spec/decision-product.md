@@ -8,53 +8,37 @@ the work again. **Do not re-open any of it.**
 
 ## Product decisions (all questions resolved — do not re-open)
 
-- One note per submission. A word's genuinely unrelated meanings (bank
-  «банк» / bank «берег») become numbered blocks on the back of that one
-  note — at most three, split by the LLM; usually one. A submission never
-  produces two notes, and within one note two cards with an identical
-  front, which the reviewer could not tell apart, can never exist.
-- **The same word may be sent twice, and gets a second note.** There is
-  no duplicate check. Sending a word with a context is how a reader asks
-  for the sense it carries there, and offering the senses that context
-  did not use means the second sense arrives as a second submission of
-  the same word; a duplicate check would refuse exactly that and the
-  sense could never enter the deck. Two bare sends of one word therefore
-  make two identical notes — accepted deliberately, as the cheap side of
-  an error the reader can see and undo.
-- **Autocorrection is advisory only — hardcoded, no config flag.** The
-  canonical word is always the **raw input** — together with the source
-  language, it is the word the note is about and the key for stats and
-  undo. The same spelling in two languages is two notes in two decks. The LLM never silently swaps a misspelling: it
-  analyzes the word as typed and returns an optional `suggestion`. When
-  the suggestion differs from the input, a button on the entry switches to
-  the suggested word (and back), re-running the analysis and replacing the
-  note like a rebuild; only that path re-fetches audio. Because that tap
-  turns LLM output into a canonical word, a `suggestion` must pass the
-  same validation as typed input or it is dropped and no button appears.
-  Rationale: a silently swapped card looks correct but is wrong and would
-  poison the spaced-repetition deck without the user noticing — analyzing
-  as-typed keeps the note about the word the user sent, so a mistake
-  is visible on the first review. There is deliberately no on/off setting;
-  this behavior is the design, not an option.
-- Every note produces a card set chosen for that submission. A word sent
-  bare is reviewed in both directions — recognition (source→target) and
-  recall (target→source), the recall asked for one sense at a time when
-  the senses are several. A word sent with a context that narrows it to
-  one of several senses is instead carded under that context, and the
-  senses it did not use are offered under the answer. A context that
-  narrows nothing is discarded, and the note is the bare one. Every one of
-  those is a backend decision read off the answer; the model is never
-  asked which cards to make, and never writes a front. The catalogue, the
-  measurement behind it and the gate are in `decision-card-shapes.md`.
-- Every recall front — the single one, or one per sense — carries a
-  **gapped example**: that meaning's first example with the word replaced
-  by `___`, because a bare translation often fits several source words and
-  the reviewer cannot tell which one is being asked. The word is found by
-  a plain case-insensitive whole-word match on the input as typed; where
-  no example contains it verbatim the meaning stands on its translations
-  alone. Deliberately no stemming or per-language morphology: one rule
-  that behaves the same in every configured language beats a better
-  English front and an unpredictable Serbian one.
+- One successfully parsed unit submission creates one note about one selected
+  sense; a text answer creates none. A bare word selects its most common sense,
+  while explicit unit intent with context selects the retained contextual
+  sense. The visible article and chips keep every target-language-distinct
+  sense. There is no arbitrary sense-count ceiling.
+- **The same word may be sent twice, and gets a second note.** There is no
+  duplicate check. A sense chip is a new submission, so deduplication would
+  refuse exactly the route by which another sense enters the deck. Equal bare
+  sends making equal notes is the visible, undoable cost.
+- **Autocorrection is advisory only — hardcoded, no config flag.** The raw
+  submission remains the history and PWA-audio text. A unit answer's validated
+  dictionary headword is the identity used by the note and its card audio,
+  which legitimately normalizes an inflected chip. A suspected spelling
+  correction stays only in `suggestion`; it may not silently become the
+  returned headword. The correction control re-runs the analysis with explicit
+  unit intent, replaces the note, fetches audio for the new spelling, and is
+  reversible.
+- **Every accepted note generates exactly four cards.** The bare word and its
+  translations are asked both ways; the selected sense's sentence is asked
+  once with all unit parts highlighted and once with them gapped. A short sense
+  label appears on the two bare fronts only when the answer retains several
+  senses. The model returns both finished sentence forms. For an exact submitted
+  click the backend constructs them from the carried context; generated forms
+  are sanitized and accepted only as matching transformations which retain
+  context outside the unit. The backend does not infer generated morphology.
+- Card 2 is intentionally bare translations plus the optional label. A bare
+  translation may fit several source words, and the label disambiguates it.
+  The gapped example is card 4, which asks the separate production-in-context
+  question. The catalogue and measurements are in
+  `decision-card-shapes.md`.
+
 - **Anki without a GUI — final.** The backend maintains its own
   collection via the headless `anki` pylib and syncs it to AnkiWeb;
   AnkiConnect and Anki desktop are not part of the architecture. There
@@ -66,11 +50,14 @@ the work again. **Do not re-open any of it.**
 - Anki sync to AnkiWeb runs automatically after additions,
   debounced and retried; `ECHOWORDS_ANKI_SYNC=false` turns it off.
 - Lookup-only (the UI control or the `?` prefix): analysis and audio,
-  no Anki card.
+  no Anki card. Its unit entry may still request deeper detail, but cannot offer
+  rebuild because there is no note to replace.
 - Undo removes what the last send created and is an explicit no-op
   after a lookup-only send — it never deletes a note that existed before.
   A rebuild replaces the note the entry produced rather than adding a
-  second one. Both act per source language.
+  second one. Rebuild and detail use the stored unit headword and explicit
+  unit intent; rebuild reuses card audio only while the NFC-normalized returned
+  headword is exactly unchanged, including case. Both act per source language.
 - Multiple source languages via the **language selector**; the
   selection determines the deck. One deck per source language from the
   languages config, no per-word switching and no guessing the deck from
@@ -83,9 +70,14 @@ the work again. **Do not re-open any of it.**
   per-word choice.
 - Answer formatting IS in v0.1: HTML `<b>`/`<i>` only, enforced by the
   server-side sanitizer — the only HTML the client ever renders.
-- Everything submitted is voiced, a running text included; a card carries
-  only the audio of what is on it, and the surrounding text is offered
-  beside it in the app alone. Example sentences are never voiced (final).
+- Everything submitted is voiced, a running text included. The PWA keeps that
+  exact submitted-text audio; only an NFC-normalized, case-sensitive exact
+  headword match can reuse it for Anki. A different dictionary headword gets
+  separate audio. Submitted, context and newly known headword audio share one
+  concurrent post-generation wait capped at five seconds. The surrounding
+  context is offered in the app alone. Missing submitted-text audio and missing
+  card-headword audio are reported separately. Example sentences are never
+  voiced (final).
 - **TTS engines are settled by research, not deferred**
   (`spec/decision-tts.md`): Serbian → edge-tts (Piper's lone `sr_RS`
   model is Lower Sorbian, not Serbian — never use it; no other usable

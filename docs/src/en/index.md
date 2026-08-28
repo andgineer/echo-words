@@ -7,20 +7,21 @@ makes you remember.
 
 echo-words is a FastAPI backend and a Vue 3 PWA that gives you
 
-- **an explanation, not a translation** — every sense with its part of speech
-  and register, the collocations and prepositions the word takes, what it is
+- **an explanation, not a translation** — every target-language-distinct sense
+  with its register, the collocations and prepositions the word takes, what it is
   confused with, its origin, and examples with their translations; an idiom or
-  a phrase is explained whole, never taken apart
+  phrase is explained as a whole and also offers its component words as chips
 - **the sense you actually met** — a word looked up out of a text is explained
   in that text's sense, not replaced by the nearest dictionary meaning
-- **a card built for review, not a word→translation pair** — recognition and
-  recall, unrelated senses kept apart, a gapped example so the reverse card
-  asks a real question, and the pronunciation inside the note
+- **one selected sense, reviewed four ways** — the unit and its translations are
+  asked in both directions, then its example is asked once highlighted and once
+  gapped; every sense remains available as a chip for a separate note
 - **a real voice, not a robot** — natural-sounding audio, locally with Piper or
   online with edge-tts, in the app and on the card; whatever you send is voiced
   whole, so a word taken out of a sentence is played beside that sentence
 - **a whole sentence gets a lesson instead** — translated, with what is hard in
-  it explained, and the expressions worth learning offered as cards of their own
+  it explained, and every word plus the expressions worth learning offered as
+  chips; tapping one creates its own four-card note
 - **a deeper entry when you want one** — one tap re-asks the strongest model for
   a lexicographer's article: every sense including the rare ones, etymology in
   depth, near-synonyms, the mistakes learners make

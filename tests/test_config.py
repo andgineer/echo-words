@@ -17,7 +17,7 @@ def test_defaults_match_the_specification():
     assert settings.api_model == "gpt-fast"
     assert settings.api_daily_cap == 100
     assert settings.anki_sync is True
-    assert settings.audio_timeout == 20
+    assert settings.audio_timeout == 5
 
 
 def test_the_deployment_secrets_file_is_never_read_by_the_app():

@@ -1,267 +1,498 @@
 # Phrases and sentences — decision
 
-Status: **decided 2026-08-24 — a multi-word input is analysed whole and carded
-when it is one unit, and produces no note when it is a use of one; running text
-is translated and explained instead of being carded; the backend decides which
-shape an input is.** This document records the benchmark
-behind those defaults. Its harnesses are `experiments/backend_bench.py` with
-`experiments/bench_items.py` and `experiments/route.py` for routing and sentence
-mode, and `experiments/extract_bench.py` with `experiments/extract_items.py` and
-`experiments/extract_prompts.py` for whether a multi-word input is a unit.
+Status: **decided 2026-08-27 — one prompt analyses every submission; its
+answer says whether the input is a lexical unit or text containing units. A
+unit creates one note, while text creates no note and offers complete lookup
+chips.** The production-flow harness is `experiments/one_note_bench.py`; the
+verdict fixtures originate in `experiments/unit_verdict_bench.py`.
 
-## The problem
+## Why the model decides inside the answer
 
-Words do not always come one at a time. A collocation is a unit whose parts
-cannot be looked up separately, because the mapping between languages is not
-word-for-word: Russian «ездить на велосипеде» takes a preposition, German
-`Rad fahren` and Serbian `voziti bicikl` take a bare object. Asking which of
-those words the user meant has no good answer.
+Words do not always arrive one at a time. A multi-word string can be a unit
+whose mapping is not word-for-word, an inflected occurrence of such a unit, a
+fragment of a clause, or running text. The ambiguous cases share the same
+surface shape: German `von Zeit zu Zeit` and `Ich habe keine Zeit` have the
+same length and punctuation but require different outcomes. Serbian
+`чувам се.` can likewise be either a lexical target or a clause. No threshold
+over word count and punctuation can answer the linguistic question.
 
-Running text is a second shape again. What the reader wants there is the
-sentence rendered whole and the hard parts named — above all the units whose
-pieces stand apart, which no amount of word-by-word lookup will reach: a German
-separable prefix stranded at the clause end, a Serbian reflexive particle
-sitting in second position far from its verb.
+The old surface router therefore left the design with two prompts and still
+made errors in the irreducible middle band. The merged contract asks for one
+of two neutral branches in the same call that writes the article:
 
-## What was measured
+- `unit` returns the dictionary article, validated dictionary headword,
+  target-language-distinct meanings, examples ready for four cards, and the
+  component words of a set expression;
+- `text` returns the text translated and explained plus conservative
+  multi-word combinations. The backend maps their surface parts back to the
+  submitted text and supplies every remaining source word itself.
 
-- **Routing**, without any model: 147 labelled inputs over German and Serbian —
-  every benchmark word and collocation, every sentence fixture, plus an
-  adversarial middle of clauses short enough to look like lexemes and fixed
-  expressions long enough to look like clauses.
-- **Sentence mode**, 21 sentences over the two languages, each carrying the
-  units its answer is expected to surface, so the score is objective rather
-  than a judge's opinion. The fixtures are graded: units torn apart in the
-  surface, units merely inflected away from their dictionary form, and
-  trap-free sentences that serve as the negative control.
-- **The recovery path**, 32 fixed expressions pushed through the sentence
-  prompt on purpose — the misroute this design has to survive.
-- **Collocations as notes**, 16 non-idiomatic collocations through the
-  vocabulary prompt.
-- All of it on the free pool, paced as one person, under the production
-  complete-answer budget. The Serbian set mixes both scripts.
+A single submitted word is a unit by definition. Tapping any chip carries
+explicit unit intent, so the same prompt must return the unit branch or the
+answer is unusable and takes the ordinary fallback. An undecided multi-word
+submit trusts the returned branch. There is no preliminary classification
+call and no second prompt selected by punctuation or length.
 
-## Multi-word input was never the model's problem
+## What text produces
 
-160 multi-word runs were already on record from the backend benchmark, all of
-them idioms: the card contract came back clean on the paced pool in every
-language. The 16 non-idiomatic collocations added here scored 16 of 16 usable
-notes, formatting clean, the input echoed unchanged. German `Rad fahren` comes
-back as a unit, with «ездить на велосипеде» as its first translation and the
-compound-spelling trap named.
+Running text is translated and explained as a whole. It never creates an Anki
+note: a clause on the front would be unreviewable, and a paraphrase would ask
+the same question under a second front. Instead it offers a compact row of
+lookup chips in source order.
 
-So the gap was never the model's willingness to treat a phrase as one thing.
-It was that the interface refused to send one.
+The model names only multi-word lexical combinations worth learning. For each
+usable proposal the backend identifies at least two unclaimed source-word
+occurrences case-insensitively and without requiring contiguity or model order.
+It prints the actual inflected source forms, not the proposed dictionary
+label. The answer carries the unit twice — its dictionary form and the
+forms the text spells — and only the second is ever printed. The first is not
+redundant: it is what makes the second well defined. Asked for one form alone,
+the model returns the lemma. Dropping the dictionary form cut recovered units
+from 18 of 21 to 9 of 21 and clicks from six of six to four of six, because a
+chip carrying a lemma cannot be located in the text and is never built. Both
+forms therefore stay in the contract, with an explicit example of the two side
+by side, even though the product reads only one of them. The first overlapping proposal wins, repeated words use the earliest
+unclaimed occurrence, and an unmatchable proposal is ignored independently.
+Every source word then becomes its own chip too, including articles, particles
+and prepositions, and including the words a combination already claims: a chip
+row therefore offers both the phrase and each of its words. Consequently
+lookup completeness does not depend on the model deciding which ordinary words
+matter, and an imprecise phrase boundary cannot cost the learner a lookup.
 
-## Sentence mode: the pool is sufficient
+There is no numerical combination limit. Accepted combinations cannot overlap
+and each occupies at least two source occurrences, so a text of `N` words
+already has the structural bound `floor(N / 2)`. The prompt asks for every
+clearly qualifying unit, explicitly accepts an empty list, and tells the model
+not to pad it.
 
-21 sentences, German and Serbian, on the free pool:
+Every text chip owns the complete submitted text as its context. Tapping its
+visible source form submits that form with explicit unit intent; the resulting
+unit answer supplies the dictionary headword used by the note. A false-positive
+combination therefore costs only an optional chip. Deleting a coherent proposal
+would make a real lookup impossible, and the backend has no better lexical
+judge than the model.
 
-| measure | result |
-|---|---|
-| suggested-unit payload valid | 100% |
-| expected unit surfaced | 100% |
-| expected unit offered first | 95% |
-| suggested forms usable as a word | 100% |
-| formatting clean, answer on target | 100% |
-| trap-free sentence | 0 suggestions |
-| whole answer, median / p90 | 1.2 s / 1.6 s |
+## What a unit produces
 
-Every torn-apart unit was found: `aufstehen` out of *steht … auf*, `ausfallen`
-out of *fällt … aus*, `in Frage kommen` out of *kommt … in Frage*, `вратити се`
-out of *се … вратио*, `јавити се` out of *ми се … јавио*. The negative control
-is the result that matters most for the interface: on a sentence with nothing
-hard in it the model returns nothing rather than padding the list, so the
-suggestions are signal instead of decoration.
+A unit answer keeps the full article: translations first, useful forms shown as
+live phrases, usage, origin and examples. It creates one note about its selected
+sense and four cards. A bare input selects the most common retained sense; a
+chip with context selects the contextual sense. Every sense remains available
+as a chip for a separate note.
 
-The one case not offered first was Serbian *Данас ми се уопште не иде на посао*,
-where the model led with `ићи на посао` and put the impersonal reflexive second.
-Both are worth a look; the order is a preference, not an error.
+A set expression is analysed whole and additionally offers every word-shaped
+component in expression order, preserving its submitted surface form. Those
+chips carry the first example sentence of the selected sense, not the bare
+expression, because their contextual cards require a sentence.
+A word or sense chip carries its own example; a chip from text carries the
+source text. The frontend submits this chip-owned context directly.
 
-Latency is not a concern: a sentence answer is longer than a word answer and
-still lands an order of magnitude inside the budget.
+## The pre-merge verdict measurement
 
-## Routing: the middle band is irreducible, and that is the finding
+The deliberately strict Step 0 gate used 122 English, German and Serbian
+fixtures: 65 units and 57 clauses, fragments or sentences. Every answer was
+usable under the neutral schema, but the zero-error gate did not pass:
 
-A sentence never becomes a note, so the router decides whether the deck is
-touched at all. Its two errors are not symmetric, and the sweep over the
-labelled fixtures separates them:
+| result | first merged wording |
+|---|---:|
+| text-like input called a unit | 1 / 57 |
+| unit called text | 4 / 65 |
+| false-text unit recovered as first chip | 0 / 4 |
+| article contradicting JSON verdict | 3 / 122 |
+| context sense selected without a context | 0 / 122 |
 
-- Every sentence that arrives **looking like** a sentence — terminal or
-  internal punctuation, or more than a handful of words — routes correctly at
-  every setting. The path is never missed for text that reads as text.
-- Every error in either direction lives in one band: two to five words, no
-  punctuation. There, the two classes are indistinguishable by any surface
-  signal. German `von Zeit zu Zeit` and `Ich habe keine Zeit` are the same
-  length, the same shape, and opposite answers. No threshold separates them,
-  and none is defensible over another on accuracy alone.
+The false unit was `völlig durcheinander gebracht`. The four false text
+verdicts were `возим бицикл`, `донео одлуку`, `steht zur Verfügung` and
+`ide pešice`. Replacing a literal preferred value did not remove either class
+of mistake. A second wording removed the expensive false positive on the
+13-item regression slice but split three real inflected units and contradicted
+its verdict once. It therefore also failed the pre-registered zero-error gate.
 
-What settles it is the measured cost of each error. A fixed expression pushed
-into sentence mode comes back as its own first suggestion in **28 of 29** cases,
-so the recovery is one tap. A short clause pushed into lexeme mode becomes a
-note fronted with something like *Ich habe keine Zeit* or *Не знам* — a
-phrasebook card a learner would want. Neither error is expensive; both grow
-expensive with length, which is the one thing the threshold does control.
+The product accepts the measured trade-off. A false unit is visible, undoable
+and rare. A false text verdict cannot lose source words under the final
+backend-filled chip design, although recovering the intended combination may
+take more than one tap. Restoring the surface router would not resolve the
+linguistic ambiguity and would reintroduce two divergent prompts.
 
-So the boundary sits just above the longest fixed expressions that are common
-in practice and just below the length at which a clause stops making a usable
-card. Set lower, it taxes idioms — the app's whole subject — with an extra tap
-each. Set higher, it starts carding throwaway sentences. The rule:
+The benchmark does not pretend that this linguistic boundary has one exact
+answer. Its report always prints the raw fixture-by-verdict confusion matrix,
+then adds a tolerant interpretation without changing the recorded answers:
 
-- A single word is always analysed as a word, whatever punctuation trails it.
-- A comma, semicolon, colon or dash *inside* makes it running text. A mark that
-  merely ends the input does not: within the band a trailing mark carries no
-  information, because the selection an input was copied from carries the
-  punctuation of the sentence it was cut from — the same reason a single word
-  keeps its shape whatever trails it. Above the band the word count routes
-  anyway, so nothing that reads as a sentence changes shape.
-- Anything longer than the canonical-word limit is running text.
-- More than four words is running text.
-- Everything else is analysed whole, as one unit.
+- `correct` means the returned branch matches the fixture expectation;
+- `acceptable` is a useful whole-unit boundary even though a smaller boundary
+  is also plausible. In particular, `was rather reluctant about it` is useful
+  enough as one learnable chunk: `it` is dispensable and `rather` is debatable,
+  but neither makes the result an error;
+- `ambiguous/defensible` covers reusable short utterances on either reasonable
+  side of the boundary. `I have no idea`, `Ich weiß nicht`, `Das stimmt` and
+  `Не знам` are examples, not false-unit failures;
+- `hard error` is reserved for a clear loss of the requested operation, such as
+  treating a registered set expression as surrounding text or carding a whole
+  contextual sentence whose changing subject, time or arguments are not part
+  of its lexical unit.
 
-The single miss in the recovery arm is Serbian «не пада ми на памет», returned
-as `не падати на памет`: the model gave the dictionary form rather than the
-inflected one it was handed. As the front of a note that is the better of the
-two.
+`Пада киша` is an expected unit, not an ambiguous short-clause control. It is
+the conventional Serbian predicate whose Russian, English and German
+counterparts select different verbs: «дождь идёт», `it rains`, `es regnet`.
+Exact dictionary labels and exact surface grouping remain separate diagnostics;
+a reasonable headword form or useful unit boundary does not become a verdict
+error merely because it differs from one registered string.
 
-## What a sentence answer is, and what it is not
+## Merged-prompt measurements and current state
 
-- **A sentence never produces a note.** A whole clause on the front of a card
-  is unreviewable — a paraphrase of it is a different front asking the same
-  thing — and the reverse card would have to mask the entire sentence.
-  The deck stays a dictionary.
-- The answer is the text rendered whole in the target language, then a short
-  list of what is hard **in this particular text**: a construction, the word
-  order, a case or a mood, a set expression, a word that is not what it looks
-  like. Not a word-by-word walk-through.
-- Alongside it the backend returns the units worth learning whole, most useful
-  first and few in number. Each carries the form a dictionary would list, how
-  it actually appears in the text — with the pieces shown apart when they stand
-  apart — and one line on why it is worth a look.
-- **A suggested unit is one tap from being a canonical word**, so it is held to
-  exactly the rule a typed word is held to, and one that would have been
-  refused had the user typed it is dropped and never offered. This is the same
-  guard the spelling suggestion already lives under, for the same reason.
-- Tapping one is an ordinary submission of that unit, carrying the sentence as
-  its context. The note it makes is about the dictionary form and never about
-  the sentence; what the sentence can do is decide which cards that note makes
-  (`decision-card-shapes.md`).
+`experiments/one_note_bench.py` imports the production prompt builder, answer
+parser and segment filler. It groups append-only answers by prompt hash,
+preserves earlier arms for comparison, resumes provider or parse misses from the
+current production arm, and fails if either retired branch-prompt fixture
+reappears. A valid wrong-branch answer is retained as quality evidence rather
+than retried away. Its merged-prompt run combines the complete 122-item verdict
+matrix with 26 text flows, nine bare unit flows and six possible chip flows.
 
-## The shape of the input is decided by the backend
+All 157 initial fixture IDs must have a canonical attempt at the current prompt
+hash, but small provider or parse misses are allowed: at least 142 must yield a
+usable result. Availability and parseability are reported separately from
+semantic scores. Hard errors may be at most 10% of usable verdicts; acceptable
+and ambiguous/defensible boundaries do not count. The downstream quality
+thresholds are at least 23 of 26 known texts on the text branch, eight of nine
+cardable bare units, 18 of 21 distinct registered lexical units, five of six
+successful clicks and two of three successful expression-component cases.
+Every counted click still has exact identity and kind, carried context,
+highlights, no components and four-card readiness; every counted expression has
+the exact ordered component tuple and backend-owned context.
 
-Not by the app. The share-sheet path posts straight to the API, so a rule that
-lived in the frontend would have to be written twice and would drift; today it
-already is, and the iOS Shortcut carries a hand-built copy of the app's word
-picker. With the decision behind the API that whole apparatus collapses into
-posting the shared text.
+Zero tolerance is reserved for deterministic contracts: canonical current
+fixture/hash identity, no accepted mixed branch, bounded and sanitized accepted
+payloads, no context selector without context, four-card readiness for every
+accepted unit note, exact source-token preservation by backend fill for every
+accepted actual text payload, and carried-context preservation for accepted
+click payloads. A wrong verdict is a verdict/branch-quality error; it does not
+cascade into missing-token or missing-card structural failures.
 
-The alternative — asking the user which shape they meant before answering — was
-rejected. It charges a tap on every multi-word input, including the long pasted
-prose where choosing from a dozen words is worst, to prevent errors that are
-measurably cheap. Letting the model decide inside a single branching call was
-rejected too: it doubles a prompt that Serbian already strains, it hands the
-deck-safety decision to the model, and the shape stays unknown until the answer
-finishes streaming.
+One production-filled chip can recover at most one registered unit. A merged
+chip containing neighbouring registered material is reported as partial/merged
+recovery and cannot count once for each boundary it contains. Exact source
+boundaries and lookup labels, optional combinations, strict article format,
+article/verdict disagreements and tolerant verdict interpretation remain
+diagnostic.
 
-## A Serbian artefact worth knowing about
+A registered unit also counts when the chip shares at least two words with it
+and drifts by at most one word in each direction — one expected word omitted,
+one extra word taken in — provided every omitted word is itself offered as a
+chip. This scores what the learner can actually reach rather than the exact
+string: the reader who sees `freue … auf` also sees `mich`, and one tap away
+from either is the same dictionary entry. It is the same trust boundary the
+chip rule already states, applied to the measurement. A chip which shares
+nothing with the registered unit, or which runs on past it, is still a miss,
+and the exact boundary stays a separate diagnostic so drift remains visible
+rather than invisible.
 
-One Serbian answer in 34 mixed both scripts inside a single word (*возiti*) and
-leaked a Serbian word into the target-language prose. It stayed in the prose:
-no card payload and no suggested unit was affected, and the word rule rejects a
-mixed-script form anyway. It is consistent with the pool's known Serbian
-weaknesses (`decision-llm-backend.md`) and is not a reason to move the language
-to a metered backend.
+The append-only file currently contains six complete 157-fixture prompt arms.
+The raw verdict matrix and tolerant interpretation are:
+
+| arm | provider answers | usable verdicts | raw `unit→unit / unit→text / text→unit / text→text` | `correct / acceptable / ambiguous / hard / unusable` |
+|---|---:|---:|---:|---:|
+| first merged arm | 148 / 157 | 109 / 122 | 59 / 3 / 9 / 38 | 97 / 1 / 4 / 7 / 13 |
+| stricter exploratory arm | 33 / 157 | 17 / 122 | 6 / 1 / 3 / 7 | 13 / 0 / 0 / 4 / 105 |
+| complete semantic arm | 157 / 157 | 114 / 122 | 62 / 0 / 34 / 18 | 80 / 1 / 3 / 30 / 8 |
+| conservative-context arm | 155 / 157 | 112 / 122 | 62 / 0 / 18 / 32 | 94 / 0 / 4 / 14 / 10 |
+| embedded-unit arm (v5) | 156 / 157 | 115 / 122 | 60 / 0 / 8 / 47 | 107 / 0 / 4 / 4 / 7 |
+| production prompt (v6) | 157 / 157 | 122 / 122 | 62 / 4 / 5 / 51 | 113 / 0 / 2 / 7 / 0 |
+
+The stricter arm is not a quality comparison: 124 calls found no available
+model. The complete semantic arm carded every usable registered unit directly,
+and correctly treated `was rather reluctant about it` as the acceptable whole
+unit and `Пада киша` as an expected unit. It made 12 hard errors by carding
+whole contextual sentences. Corrected scoring exposes another 18 obvious
+over-broad unit verdicts among contextual fragments and ordinary short clauses
+rather than treating their whole fixture classes as ambiguous. The 30 hard
+errors are three English, 19 German and eight Serbian. That is why its numbers
+are retained as evidence rather than presented as the current prompt's final
+result.
+
+Its downstream figures expose the same problem without hiding it in the
+denominator: only 12 of 26 known-text fixtures reached the text branch, covering
+78 of 178 source words and 22 of 53 function words and recovering four of 21
+registered lexical units. Seven of nine bare-unit payloads were cardable and
+five of seven morphology controls included forms. No contextual click arm was
+run from that failed branch assignment.
+
+The conservative-context arm passed availability with 145 usable initial
+results, but failed the semantic thresholds. Fourteen of 112 usable verdicts
+were hard errors: none in English, nine in German and five in Serbian. Only 16
+of 26 known texts reached the text branch, so production-filled chips recovered
+8 of 21 registered units; the accepted text payloads still preserved all 102
+source tokens and all 29 function-word controls. All nine bare units were
+cardable and all three expressions returned exact components, but no clicks
+were run because the source text branches failed.
+
+The embedded-unit arm (v5) passed every deterministic contract, availability
+with 147 of 157 usable initial results, and verdict quality with four hard errors
+among 115 usable verdicts. Eight of nine bare units were cardable and all three
+expressions returned exact components. It nevertheless failed the downstream
+semantic gates: only 20 of 26 known texts reached the text branch and their
+production-filled chips recovered 13 of 21 distinct registered units, so the
+dependent click arm did not run and reported zero of six successes. Two of the
+six text misses were retriable parse misses. The other four were whole-unit
+verdicts for finite situational clauses: three German and one Serbian.
+
+Those four errors share one boundary rather than a surface shape. A fixed
+expression occupied most of each clause, and the model absorbed a freely chosen
+subject, object, complement, experiencer or subordinate proposition into the
+unit. The production prompt therefore defaults an uncertain whole-clause unit
+to text and returns its embedded expression separately. Only a conventional
+fixed formula whose whole wording is reusable as-is is excepted; genuinely
+borderline short formulas retain either reasonable branch.
+
+Its complete arm returned 157 of 157 usable initial results. Among 122 verdicts,
+113 were correct, two were ambiguous/defensible and seven were hard errors. The
+two gray-zone unit verdicts, `Das stimmt` and `Не знам`, are reusable short
+formulas for which either branch is defensible; the seven clear operation-loss
+cases remain hard errors. Twenty-five of 26 known texts reached text, every one
+of nine bare units was cardable, production fill recovered 18 of 21 distinct
+registered lexical units, and all three expression cases returned exact ordered
+components and backend-owned contexts. Five of six clicks met every registered
+success condition. The remaining click produced an unusable payload with an
+empty meaning label, not an accepted payload that broke a deterministic
+contract.
+
+The then-registered automated contracts passed. Exact dictionary labels were 14
+of 21 and exact source boundaries were 15 of 21; these remain diagnostics rather
+than being reclassified as semantic or structural failures. The Serbian slice
+returned 57 of 57 usable results, with 40 exact and three hard verdict errors
+among 44 verdict fixtures.
+
+The conservative-context arm's apparent sanitization failure was a harness
+error, not an accepted production-contract defect. The scorer sanitized the
+article and then required a second sanitizer pass to leave it unchanged, even
+though escaping an ampersand is intentionally not idempotent. Scoring the
+actual post-sanitizer article and parsed sentence fields structurally makes all
+of that arm's deterministic contracts pass. Strict raw article format remains
+the separate diagnostic it was registered as.
+
+The preceding isolated downstream run remains useful background, not a claim
+about the merged prompt. Its deterministic fill covered all 178 of 178 source
+words and all 53 of 53 function-word controls, recovered 21 of 21 registered
+lexical units, and retained every meaning with four non-empty fronts across
+nine bare and six click results. Nineteen of 21 combinations contained every
+registered source part; omitted pronouns remained as standalone chips. Three of
+six negative controls stayed empty, with `hat … angerufen`, `richtig schön`
+and `went outside` as the optional extras.
+
+Those figures name the scoring policy printed with that run. Raw JSONL is
+append-only and is not rewritten when the scorer changes. Current rescoring uses
+one-to-one recovery, so a single merged chip cannot preserve an older 21/21
+label by standing in for two distinct clickable units; the merged chip remains
+visible as useful boundary drift and the aggregate 18/21 threshold absorbs one
+such case.
+
+## Prompt-bound qualitative review and benchmark promotion
+
+**The v6 arm is BLOCKED.** Its aggregate automated screen passed the contracts
+registered at generation time, but a fresh semantic review of the accepted
+current-hash unit payloads found that **24 of 82 results highlighted contextual
+words beyond the lexical unit**. Twenty-two left no source-language word outside
+the bold spans at all, usually producing a sentence made almost entirely of
+blanks on ContextProduction:
+
+- `bare-en-reluctant`, `bare-de-bank`, `bare-sr-grad`, `bare-sr-umoran`;
+- `verdict:units:en:6`, `verdict:units:de:1`, `verdict:units:de:2`,
+  `verdict:units:de:10`, `verdict:units:de:11`;
+- `verdict:units:sr:1`, `verdict:units:sr:4`, `verdict:units:sr:8`,
+  `verdict:units:sr:10`, `verdict:units:sr:11`;
+- `verdict:inflected:en:3`, `verdict:inflected:de:1`,
+  `verdict:inflected:de:2`, `verdict:inflected:sr:3`;
+- `verdict:controls:de:1`, `verdict:controls:sr:0`,
+  `verdict:fragments:de:7`, `click-de-function`.
+
+The other two were `text-de-3`, which absorbed the subject and current object
+into `etwas unter die Lupe nehmen`, and `verdict:fragments:de:6`, which absorbed
+the subject and auxiliary into `sich bewerben`. Those two are linguistic
+boundary errors and remain review evidence; backend grammar guesses would be
+brittle. The 22 whole-sentence cases are structurally provable and are rejected
+by the parser. A supplied click is safer still: when its exact submitted surface
+tokens occur in the carried context, the backend constructs the highlighted and
+gapped forms from that surface and cannot expand it. The prompt independently
+states that subjects, objects, auxiliaries, modifiers and current arguments stay
+outside the unit.
+
+This review does not change the declared gray zone. `Пада киша` remains an
+expected unit; `was rather reluctant about it` remains an acceptable whole-unit
+boundary; `I have no idea`, `Ich weiß nicht`, `Das stimmt` and `Не знам` remain
+defensible reusable formulas on either branch. The stricter sentence-form rule
+asks each formula to occur inside a short context; it does not reclassify the
+formula itself.
+
+### v7 smoke review and current measurement state
+
+**The v7 smoke arm is BLOCKED only by its systematic typo failure: zero of
+three registered corrections succeeded.** `recieve` returned both `word` and
+`suggestion` as `receive`; `Strase` returned both as `Straße`. `мозда` retained
+`word` as submitted but left `suggestion` empty while its visible article
+silently opened on and analysed `можда`. The prompt told the model both to
+retain submitted spelling and to make `word` a clean dictionary headword. The
+correction behavior is therefore a prompt conflict, not three unrelated
+content slips. Typo retention now explicitly overrides every dictionary-lemma
+instruction, including the visible bold heading, and the parser rejects any
+valid non-empty suggestion unless `word` is the normalized submitted spelling.
+
+Fresh review found none of v6's whole-context highlighting pathology in any
+accepted v7 unit. All 21 registered-combination smoke texts reached the text
+branch and backend fill preserved every source token. Eight of nine bare units
+were cardable and five of six dependent clicks met their complete structural
+contract. `bare-en-give-up` was safely rejected: the provider put adjacent
+`<b>give</b> <b>up</b>` spans over one contiguous target but supplied one blank,
+so its raw forms did not match. This is a bounded provider/format miss, not an
+accepted unsafe card. The prompt now asks for one bold span around a contiguous
+multi-word unit, and the parser may normalize only whitespace-adjacent bold
+spans whose one-blank transformation is otherwise exact; the outside-context
+guard is unchanged.
+
+The automated v7 recovery scorer over-counted `text-de-1` and `text-de-9`.
+Their chips omitted fixed material: `freue … auf` omitted the reflexive `mich`,
+and `uns … beschränken` omitted governed `auf`. A dictionary label cannot repair
+missing clickable source pieces. Recovery now uses exact filled pieces,
+expanded boundaries which contain every required piece, or a named accepted
+surface alternative. The only such smoke alternative is the variable
+experiencer boundary `se čini` for `mi se čini`; it is explicit rather than
+inferred by token omission. Strict semantic recovery is consequently 18 of 21
+and still passes its aggregate threshold.
+
+Other reviewed v7 errors were bounded model-quality misses: optional expanded
+or reduced combination boundaries, one safely rejected bare payload, the one
+failed click derived from it, and article-level translation, morphology,
+formatting or explanatory slips. They remain visible evidence under the
+existing tolerant thresholds and are not blockers. In particular, numbered or
+bulleted article prose is already reported by the strict-format diagnostic and
+does not justify another parser rejection rule.
+
+The typo and contiguous-span wording changes created the v8 production prompt
+hash; the v7 result did not accept it.
+
+### v8 smoke review and current measurement state
+
+**Fresh semantic review BLOCKED v8.** All 30 canonical answers parsed, 20 of 21
+known texts chose text, all nine bare answers passed the structural screen, all
+six clicks and all three expressions passed, and the v6 whole-context failure
+was absent. The accepted typo gate nevertheless failed: `typo-sr-mozda`
+silently changed submitted `мозда` to visible and payload `можда` with an empty
+suggestion. Its two-of-three exact typo total cannot override that failure.
+
+Strict registered recovery was genuinely 16 of 21. The exact misses were
+`text-de-1` (fixed reflexive `mich` omitted), `text-de-4` (support verb `habe`
+omitted), `text-de-6` (the whole sentence returned as a unit instead of `in
+Frage kommen`), `text-sr-3` (`се` omitted while negation was absorbed), and
+`text-sr-4` (the experiencer construction omitted while destination `на посао`
+was absorbed). General prompt self-audit now requires every present fixed
+reflexive, particle, preposition and support verb, excludes current negation,
+destination and arguments, and reconciles the label with the surface. It does
+not encode these five fixture strings or revoke the approved variable-
+experiencer gray zones.
+
+The separate `bare-de-rad` answer contained `Rad zu fahren` but highlighted
+only `Rad zu`, leaving exact submitted token `fahren` unmarked. Semantic review
+therefore treated it as uncardable and the tolerated bare total as eight of
+nine. The parser now catches only this general literal-token case and still
+does not assume morphology when the submitted and example tokens differ.
+
+The schema asks the model to declare whether the unit word is the same
+submission, a morphology lemma or a typo. The parser reconciles that claim with
+the two spellings rather than refusing a payload which contradicts itself, so
+an admitted correction always ends up visible instead of discarded. The field
+still cannot prove that the model chose the right linguistic class: a spelling
+error can be mislabeled as morphology and believed. Registered typo fixtures and
+fresh review remain mandatory; an absolute distinction would require an
+independent judge. The harness marks an incomplete current-hash packet
+`unmeasured`; even a complete automated packet is only
+`pending_semantic_review`. Promotion restarts at smoke without substituting any
+earlier answer from the append-only store.
+
+## What the shorter prompt cost and bought
+
+Moving the derivable obligations into the parser let the prompt drop by about a
+quarter. The smoke arm for that shorter prompt clears every deterministic
+contract and every aggregate threshold, with exact typo correction and the
+click cases both complete. Cutting the surface-boundary rule out entirely was
+too far: without it the answers pulled negation, complementizers and current
+objects into a surface and lemmatised reflexive particles the sentence spelled
+differently, and two reflexive-verb sentences returned no combination at all.
+The rule is therefore stated once, inside the surface paragraph, naming what to
+exclude and requiring each fixed piece in the form the sentence gives it.
+
+Semantic review of that arm leaves seven concrete items. Two are tolerated: an
+impersonal reflexive whose experiencer is omitted, and a governed instrumental
+kept inside a Serbian surface. Five are genuine and remain review evidence: an
+omitted obligatory reflexive, a lemmatised reflexive with the current object
+swallowed, an auxiliary pulled into an English surface, an example whose
+highlight replaced an inflected verb with its infinitive, and one Serbian
+payload with unquoted JSON string values. Serbian JSON validity is the
+recurring availability-independent defect and is the first thing to watch on
+the next arm.
+
+The harness has three exact, append-only-resumable tiers. Every tier derives the
+same six click fixtures after their source texts succeed and runs at pacing two
+seconds with concurrency one:
+
+| tier | canonical manifest | typo manifest | clicks | maximum calls |
+|---|---:|---:|---:|---:|
+| smoke | 30 | 3 | 6 | 39 |
+| confirmation | 81 | 6 | 6 | 93 |
+| full | unchanged 157 | 6 | 6 | 169 |
+
+Smoke contains the 20 text fixtures with registered combinations, the
+standalone English click source and all nine bare cases. Confirmation contains
+all 35 downstream text/bare fixtures, the 38 distinct hard-verdict IDs observed
+across the five complete and comparable historical arms, and eight disjoint
+gray/stable anchors. The availability-collapsed v2 arm is not used to invent a
+39th historical-hard fixture. Exact IDs live in the harness; tests freeze the
+30/38/8/81 arithmetic.
+
+The six typo fixtures are `recieve` → `receive`, `Strase` → `Straße`, `мозда` →
+`можда`, `definately` → `definitely`, `vieleicht` → `vielleicht` and `podrska` →
+`podrška`. They are validated source-language inputs and always use explicit
+unit intent. Success requires the parsed headword to retain the exact submitted
+spelling and the suggestion to equal the registered correction. Smoke requires
+two of three; confirmation and full require five of six. The zero-tolerance
+contract binds the parsed note rather than the raw payload: a payload which puts
+the correction in `word` is reconciled into a visible suggestion, and no accepted
+note may carry a spelling the learner did not submit. This is typo coverage, not
+a morphology rule.
+
+Every report labels itself **AUTOMATED SCREEN** and writes a structured review
+packet containing every non-exact boundary/label, acceptable or ambiguous
+verdict, hard error, recovery path, click, typo and provider/unusable miss, with
+fixture ID, input, expected result, actual result and raw answer evidence. A
+passing screen is never semantic acceptance. A fresh agent must review those
+concrete errors and record the prompt-bound decision in this checked-in spec.
+
+Prompt work is promoted in order: smoke while iterating; confirmation for a
+candidate; fresh-agent packet review and a recorded decision; then the full
+169-call maximum immediately before commit. A failed semantic review returns to
+smoke. Full is the pre-commit measurement, not a substitute for review. Raw
+outputs remain append-only through every tier and prompt hash.
+
+## Trust boundary and Serbian
+
+The model supplies linguistic judgement; the backend enforces types, bounds,
+sanitization and the structure required to render or card the result. It does
+not overrule a JSON verdict from article prose, adjudicate whether an optional
+combination is lexically canonical, or repair translations and morphology.
+Those disagreements and qualitative errors remain visible benchmark evidence.
+
+Every rerun is read by language as well as in aggregate. Serbian mixes both
+scripts and is already the weakest morphology slice on the selected free pool;
+its measured arm figures are also recorded in `decision-llm-backend.md`. They
+can reopen prompt wording, but not silently change the selected backend kind.
+The Serbian slice reports availability, usable results, exact verdicts, hard
+errors and strict format; it has no separate zero-error gate.
 
 ## What would re-open this
 
-- A revision of either prompt: these numbers are prompt-bound, and the
-  sentence prompt in particular was measured in its first revision because the
-  first revision passed.
-- The pool's primary model changing: the whole sentence arm was answered by it,
-  and the measured fallbacks are not equivalent.
-- Suggested units turning out to be ignored in practice. The negative control
-  says they are not padding, but only use says whether they are tapped.
+- A revision of the merged production prompt or its unit/text schema: all
+  verdict and downstream figures are prompt-bound.
+- The free pool's primary model changing or disappearing.
+- Real use showing that false-positive combination chips obscure useful word
+  chips, or that users cannot recover false-text units through the complete
+  chip row.
 
-The harness is outside CI, calls real models, and its paid phase spends real
-money.
-
-
-## A multi-word input is not always a unit
-
-The router places an input in the unit band from punctuation and length, which
-cannot separate a fixed expression from a fragment of a clause — that is this
-document's own finding. What the router cannot decide, the answer can: the model
-is asked whether the text it was given is itself a lexical unit or a use of one,
-and answers under the headword it chose. The input echoed back means a unit; a
-different headword means a use. Only a multi-word input is read this way: a
-single word is a unit whatever headword the answer names, because an inflected
-word is answered under the dictionary form the card contract asks for.
-
-The measurement covers 81 inputs over English, German and Serbian in four
-classes — units that must survive whole, fragments whose focus has to be found,
-short clauses, and single-word controls — plus 22 inputs whose bare stem is a
-real word of the language (`aufstehen`/`stehen`, `вратити се`/`вратити`), which
-is what makes a lost prefix or reflexive particle invisible.
-
-| | free pool | metered |
-|---|---|---|
-| a unit survives whole | 100% | 100% |
-| a unit taken apart | **0%** | **0%** |
-| a prefix or reflexive particle lost | — | **0%** |
-| the focus of a fragment, offered first | 42% | 92% |
-| the focus of a fragment, offered at all | **100%** | 96% |
-| an ordinary single word left alone | 100% | 100% |
-
-Two results decide the design. **A unit is never taken apart** — not once, on
-either backend, in any language — so carding a multi-word input the model
-answered under its own name is safe. And **the focus of a fragment is offered
-somewhere in the answer every time on the free pool**, while it leads only two
-times in five. So the answer offers its units and a tap chooses; ranking them
-correctly is what a metered model would buy, and a tap already buys it.
-
-Auto-carding the model's first choice was rejected on those numbers: at 42% it
-would put a wrong note in the deck three times in five, and a wrong note that
-looks right is the one error nothing downstream catches.
-
-### What the decision is worth, measured on its own
-
-The extraction numbers above say the model finds the unit. They do not say how
-often the card decision that reads them lands, and the fixtures they were taken
-over could not: every unit in them was handed over already in its dictionary
-form, so the headword could always echo it. A reader types what they just read.
-Twenty inputs that are one unit in a form no dictionary lists — `fährt Rad`,
-`донео одлуку`, `пада ми на памет` — close that gap, on the free pool:
-
-| | free pool |
-|---|---|
-| a unit typed inflected, carded whole | 89% |
-| a fragment, carded whole | 50% |
-
-Over 18 and 24 answers. The first number is what the decision costs a reader:
-one unit in nine is withheld and has to be tapped for. The second is what it is
-worth: half the fragments the branch exists to catch are carded whole anyway,
-because the model answers under the input itself and the headword echoes. The
-discrimination is real, and it is far weaker than the extraction numbers
-suggest.
-
-Asking the model for the unit's surface in the input — the field the
-running-text prompt already carries, where it measured clean — was tried as the
-way out and rejected. Worded as *the part of the input the unit occupies*, it
-came back as the whole input for four fragments in five, which would card 82% of
-them. Tightened to name only the unit's own words and to leave out every word
-that is not part of it, it reached 89% of inflected units carded and 43% of
-fragments: the headword test's own two numbers, within one item on samples this
-size. It buys nothing measurable and costs a prompt revision, which moves every
-other prompt-bound number in this document. The field is therefore not in the
-shipped prompt; both wordings of it are kept in the harness as deltas against
-that prompt, so the comparison can be run again. The four numbers above were
-taken before the card catalogue joined the same prompt, and are bound to it as
-it then stood.
-
-A decision rule is read off an answer already recorded, so `extract_bench.py
-replay` scores every rule over the whole corpus without a single call. Only a
-change to what the prompt *asks for* has to be bought again, and `--resume` and
-`--only-wrong` keep that to the items that actually discriminate.
-
-What would re-open this: a revision of the vocabulary prompt, or the pool's
-primary model changing. Both numbers are bound to the prompt that produced them.
+The harness is outside CI and calls real models. Its free-pool phase is paced;
+any paid fallback phase spends real money.

@@ -56,13 +56,29 @@ it("keeps deeper analysis in its own appended block", () => {
 });
 
 it("clears deeper analysis when a correction switch resets the entry", () => {
-  entries.value = [{ entry_id: "one", text: "old", detail_html: "old detail" }];
+  entries.value = [{
+    entry_id: "one",
+    text: "old",
+    detail_html: "old detail",
+    shape: "unit",
+    segment_kind: "senses",
+    segments: [{ label: "word", context: "sentence" }],
+    card_status: "added",
+    card_kinds: ["Recognition"],
+  }];
   const source = new FakeEventSource();
   useEventStream({ EventSourceClass: class { constructor() { return source; } } }).start();
 
   source.emit("reset", { entry_id: "one", detail_html: "" });
 
   expect(entries.value[0].detail_html).toBe("");
+  expect(entries.value[0]).toMatchObject({
+    shape: null,
+    segment_kind: null,
+    segments: [],
+    card_status: null,
+    card_kinds: [],
+  });
 });
 
 it("surfaces a queued control refusal on its entry", () => {

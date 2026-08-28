@@ -87,50 +87,52 @@ The four requirements every design decision is weighed against:
 ## Core flow
 
 1. The user picks the source language (the selector remembers the last
-   choice) and submits a word or short phrase (idiom, phrasal verb,
-   collocation — anything that makes a valid flashcard). A lookup-only
-   request — the answer and audio arrive as usual but no Anki card is
-   created — is made with the lookup-only control next to the input;
-   prefixing the text with `?` ("? word") does the same as a typed
-   shortcut.
-   **A multi-word input is analysed whole when it is one unit.** A
-   collocation, an idiom or a phrasal verb is one unit whose parts cannot
-   be looked up separately, so the app never asks which of its words was
-   meant, and it becomes a note exactly as a single word does.
-   **A multi-word input that is a *use* of a unit produces no note.**
-   Typing a word with the words around it is how the reader asks for the
-   sense it carries there, so the answer is about the unit inside it —
-   but the submitted text would be an unreviewable card front, and the
-   unit is not what was typed. The answer therefore offers the units it
-   is about, and one tap on one of them makes the note. Which of the two
-   a multi-word input is, is the model's own judgement, read off the
-   headword it answered under: an answer about the input itself is a
-   unit, an answer about something else is a use. The question is asked
-   of a multi-word input only: a single word is a unit already, and one
-   submitted inflected is answered under its dictionary form, so its
-   note is made exactly as for a word typed in that form.
-   **Running text is a second shape.** A sentence or a longer passage is
-   translated and explained instead, and produces **no note**; alongside
-   the answer come the units of that text worth looking up on their own.
-   **Which of the two an input is, is decided by the backend**, from
-   punctuation and length alone and identically for every language, so
-   the iOS share-sheet path — which posts straight to the API — behaves
-   exactly like the app without a second copy of the rule. The boundary,
-   and the measured cost of placing it wrong, are in
-   `decision-phrases-and-sentences.md`.
-   **A suggested unit is one tap from an ordinary submission** of that
-   unit, carrying the text it came from as its context, so the analysis
-   *opens on the sense used there* and lets the word's other senses follow
-   it — which is the only way to reach a meaning that no dictionary lists,
-   because it is a term of art, a joke, a regionalism, or simply rare.
-   Because a suggested unit can become the front of a card, it is held to
-   exactly the rule a typed word is held to, and one that would have been
-   refused had the user typed it is never offered.
-   Context never changes what the note is *about*: the canonical word is
-   still the submitted unit exactly as written, so audio, statistics and
-   the deck are unaffected by it. It decides which cards that note makes —
-   see `decision-card-shapes.md` — but never makes a second note and never
-   a different headword.
+   choice) and submits exactly the word, expression, fragment or text they
+   want analysed. A lookup-only request — the answer and audio arrive as
+   usual but no Anki note is created — is made with the control next to the
+   input; prefixing the text with `?` does the same.
+   Every compact answer uses one prompt and one hidden discriminated payload.
+   A single source word is a known vocabulary unit. For an ordinary
+   multi-word submit-box request the model decides, in that same answer,
+   whether the input is one lexical `unit` or `text` containing units; no
+   punctuation or word-count classifier and no preliminary model call exist.
+   The boundary is semantic rather than grammatical and deliberately
+   conservative. An ordinary utterance with a freely chosen participant,
+   current argument, time, place, degree or other surrounding event detail is
+   text even when it contains a reusable lexical unit. A finite clause with a
+   particular subject, object, complement, experiencer or subordinate
+   proposition remains text even when a fixed expression occupies most of it;
+   the expression is offered separately as a combination. Uncertainty between
+   a whole-clause unit and text containing a unit resolves to text. The only
+   finite-clause exception is a conventional fixed formula whose whole wording
+   is reusable as-is; genuinely borderline reusable short formulas may still
+   reasonably take either branch.
+   Borderline reusable chunks are expected; the backend does not overrule the
+   returned branch from article wording or an exact dictionary-boundary check.
+   A unit answer shows the full dictionary article. A bare word shows every
+   target-language-distinct sense and cards the most common one; a set
+   expression explains both its meaning and its components and cards the
+   expression itself. A text answer translates and explains the whole text,
+   makes no note, and offers every source word as a chip, with a chip for each
+   non-overlapping lexical combination alongside them.
+   Tapping any chip submits the chip's visible label with explicit unit intent
+   and the context stored on that chip. A chip under text carries the complete
+   submitted text; a sense chip carries one of that sense's examples exactly
+   when it fits the 500-character context bound, and otherwise becomes a bare
+   lookup; component chips under a set expression preserve every word-shaped
+   part in expression order and carry the first example of the expression's
+   carded sense. The model must then return a unit answer. A context unit
+   answer leads with the sense used there, keeps the remaining senses below
+   it, and cards the named sense (the first retained sense if the index is
+   unusable). Every sense, including the one just carded, remains available as
+   a chip.
+   The raw submission remains the history entry and the PWA audio target. The
+   validated dictionary headword returned by a unit answer is the identity
+   used by the note and its Anki audio. This is what lets an inflected or
+   separated chip such as `gave up` become a note for `give up` without
+   rewriting what the user submitted. Spelling correction remains a separate,
+   advisory control.
+
 2. The backend validates the input against the selected language's
    allowed script (Latin with accented letters — café, naïve, Straße —
    for English and German; Latin or Cyrillic for Serbian) and length
@@ -138,8 +140,8 @@ The four requirements every design decision is weighed against:
    dropped before it is judged, because a shared selection carries it:
    “Straße.” is the word Straße. Running text is held to the same
    script rule word by word — so it keeps its commas, digits and
-   quotation marks — and to a longer length bound, the same one that
-   caps the context a suggested unit is submitted with. Anything else —
+   quotation marks — and to a longer 500-character length bound, the same one
+   that caps the context a suggested unit is submitted with. Anything else —
    including a language code not present in the configuration — gets a
    short hint instead of an LLM call. The language is always the user's
    explicit selection, never guessed from the word (auto-detecting the
@@ -157,10 +159,11 @@ The four requirements every design decision is weighed against:
    once and then kept going — and the user sees a slower answer, not an
    error; the pool being busy is the one thing the paid path exists to
    absorb. An answer that arrives in time but carries no usable hidden
-   payload — an unparseable card, or unparseable units for running text —
+   payload — an unusable unit or text branch, including a text verdict for an
+   explicit unit-intent request —
    is not complete either, and moves the request the same way: a free
    model that writes a good analysis and then botches the payload costs
-   the user the card, which is the point of the request. The pool call is
+   the user the requested result, which is the point of the request. The pool call is
    rated down before the paid model is asked, so the router learns which
    model does this. When the move happens mid-answer, or after a whole
    answer that turned out unusable, the text already shown is discarded
@@ -189,30 +192,42 @@ The four requirements every design decision is weighed against:
    deadline of its own.
 5. Words are processed one at a time, in the order submitted — never as
    parallel LLM runs.
-6. The LLM produces **both outputs in one generation**: the full
-   explanation for the answer view and a compact card payload. The card
-   payload is never shown to the user. The explanation uses light text
-   formatting (bold for the headword, italics for examples).
-7. In parallel with the LLM call (the input word is known before
-   generation starts), the backend obtains pronunciation audio for the
-   submitted text (see "Pronunciation audio"). The **canonical word** — the
-   word the note is about, and the key for statistics and undo — is
-   always the **raw input**, never silently replaced. If the input looks
-   misspelled the LLM does not swap it: it analyzes the word as typed and
-   only *suggests* a correction (see "Autocorrection: advisory only"), so
-   the speculative audio for the input is always the right one and is
-   never re-fetched in the normal flow. A card therefore always carries
-   the word the user actually sent — a correction is applied only when the
-   user asks for it, one tap away.
-8. When generation completes, the entry gains a playable pronunciation
-   (one tap to hear; played automatically where the browser allows),
-   the backend adds the note (with the audio attached) to the
-   collection, and a status line is appended to the entry naming the
-   cards it made: "✅ 2 карточки: узнавание, воспроизведение". The
-   collection lives in-process, so
-   adding a card cannot fail because "Anki is not running"; delivery to
-   the user's devices happens via the debounced AnkiWeb sync (see "Anki
-   cards").
+6. The LLM produces both outputs in one generation: the full visible
+   article and one hidden `unit` or `text` payload. The payload is never
+   shown. A unit payload contains the validated dictionary headword, its
+   claimed relation to the submitted spelling (`same`, `morphology` or
+   `typo`), the advisory spelling suggestion, every target-language-distinct
+   sense, a marked-up form for every example, the contextual sense when
+   applicable, and expression components. The plain sentence and the blanked
+   form are both derived from the marked-up one, so an example carries its
+   sentence once and the three forms cannot disagree. A text payload contains
+   only proposed multi-word lexical combinations. Each proposal keeps a distinct
+   unit separate and copies every lexical surface piece token for token from the
+   submitted text in its original script and capitalization. The backend builds
+   the visible chip list from those proposals **and** every submitted source
+   word, so a word which a combination also claims still gets its own chip.
+   A complete response is
+   limited to 16,000 characters before JSON decoding or chip filling. No
+   attempt exposes more than that prefix; excess output is drained so the pool
+   call settles and can be rated down. An oversized free-pool answer is unusable
+   and takes the ordinary paid fallback, while an oversized final attempt cannot
+   create a note from a valid-looking truncated prefix.
+7. In parallel with the LLM call, the backend obtains audio for exactly the
+   submitted text. Once a unit answer supplies its dictionary headword, that
+   audio is reused for Anki only when the NFC-normalized strings are exactly
+   equal, including case; otherwise the backend separately obtains audio for
+   the carded headword. Context audio is a third, independent path where a chip
+   carries surrounding text. After generation, every outstanding role is
+   resolved concurrently under one shared hard maximum of five seconds; a
+   timeout or failure yields the corresponding missing-audio status and cannot
+   hold storage or completion for the old per-role timeout.
+8. When generation completes, the entry gains its submitted-text
+   pronunciation. A usable unit answer creates one note unless the request is
+   lookup-only; a text answer creates none. Every accepted note generates all
+   four templates, and the status line names their four distinct localized
+   kinds. The collection lives in-process, so adding a note cannot fail because
+   Anki is not running; delivery to other devices happens through the debounced
+   AnkiWeb sync.
 
 Finished and in-progress entries live in a server-side history (see
 "UI actions"), so closing the app mid-generation, an interrupted event
@@ -248,11 +263,11 @@ The answer contains, in this order:
 
 Additional behavior:
 
-- If the input looks misspelled, the answer analyzes the word **as
-  typed** and adds a one-line suggestion ("✏️ Возможно: receive"). The
-  correction is never applied automatically — the card is built for the
-  word as typed, and a button on the entry lets the user switch to the
-  suggested word (and back). See "Autocorrection: advisory only".
+- If the input looks misspelled, the answer keeps that spelling in its
+  returned headword and exposes the correction only as a separate suggestion.
+  The correction is never applied automatically; a button on the entry lets
+  the user explicitly re-run the submission for the suggested spelling (and
+  switch back). See "Autocorrection: advisory only".
 - For idioms and phrasal verbs: the meaning, literal vs figurative sense,
   and typical situations where it is used.
 - The answer stays compact (~3,500 characters at most) — it is a
@@ -262,49 +277,48 @@ Additional behavior:
 in the target language, then a short list of what is hard *in this
 particular text* — a construction, the word order, a case or a mood, a
 set expression, a word that is not what it looks like. It is never a
-word-by-word walk-through. Alongside it come the units worth learning
-whole, most useful first and few in number; each carries the form a
-dictionary would list, how it actually appears in the text (with the
-pieces shown apart when they stand apart), and one line on why it is
-worth a look. A text with nothing hard in it comes back with no
-suggested units rather than with a padded list.
+word-by-word walk-through. Its hidden payload proposes every clear
+multi-word unit worth learning whole, with no numerical cap and an empty list
+when none qualifies. The backend maps each usable proposal to the source
+occurrences, displays those exact inflected forms in source order, ignores an
+unmatchable proposal, resolves overlap in favour of the first proposal, and
+adds every source word as its own chip whether or not a combination claims it.
+Repeated occurrences stay separate.
 
 ## Autocorrection: advisory only
 
-The system never silently rewrites a word. Auto-applying a correction is
-attractive for genuine typos but has an insidious failure mode: when the
-LLM "corrects" a word the user actually meant (a rare word, a proper noun,
-a dialectal or deliberately unusual form), the card looks correct yet is
-wrong, and — because every card enters a spaced-repetition deck — the user
-would drill the wrong word without noticing. Analyzing the word **as
-typed** keeps the note about the word the user sent, so a mistake is
-visible on the very first review, not hidden.
+The system never silently applies a spelling correction. Auto-applying one is
+attractive for genuine typos but dangerous for a rare word, proper noun,
+dialectal form or deliberate spelling: a plausible-looking wrong note would
+then enter spaced repetition unnoticed.
 
-Behavior — fixed, not configurable (there is no on/off setting):
+A unit answer classifies its returned word as `same`, `morphology` or `typo`
+and carries an advisory suggestion. The backend reconciles that claim against
+the two spellings instead of refusing the answer. A usable suggestion, or a
+returned word which differs from the submission under a `same` or `typo` claim,
+yields a `typo` whose headword is the submission itself and whose suggestion is
+the differing spelling. A word equal to the submission apart from case, or from
+the other Serbian script, is the same word. Any other difference with no
+suggestion is `morphology`. The headword carried by a suspected misspelling is
+therefore the submitted spelling by construction, not because the answer obeyed
+an instruction to copy it.
 
-- The LLM analyzes exactly the word the user typed. The **canonical word**
-  is always the raw input.
-- When the input looks like a typo, the LLM does **not** change it. It adds
-  a short suggestion line to the answer ("✏️ Возможно: receive") and
-  returns the suggested spelling as a separate field in the card payload
-  (`suggestion`); when nothing looks wrong, the suggestion is empty and no
-  button appears.
-- A suggested spelling is **LLM output that can become a canonical word**
-  — one tap makes it the word of a real card. It is therefore held to the
-  same rules as typed input: a suggestion that would have been rejected
-  had the user sent it is discarded and no button is offered.
-- The card (and its audio) is built for the word as typed and added to
-  Anki immediately, exactly as for any other word.
-- When a suggestion exists, a button is attached to the entry —
-  **[✏️ Исправить на «receive»]**. Tapping it re-runs the whole
-  analysis for the suggested word, replaces the note (delete + add, the
-  same way a rebuild replaces a note), re-fetches audio for the corrected
-  word, and flips the button to **[↩︎ Вернуть «recieve»]** — so switching
-  is reversible in both directions. A lookup-only request keeps its
-  lookup-only flag when switched (still no card, just a re-analysis).
-- The button acts on its own entry and is remembered in memory only
-  (like the undo state), so it stops working after a restart —
-  acceptable for a personal tool.
+This makes a silent correction visible whenever the payload contradicts itself;
+it does not independently prove linguistic intent. A model can still call a
+misspelling `morphology` and be believed. Exact registered typo fixtures and
+fresh semantic review therefore remain part of every prompt promotion gate; an
+absolute distinction would need a separate spelling judge.
+
+Behavior is fixed, not configurable:
+
+- The raw submission remains visible in history and is voiced as submitted.
+- A valid suggestion appears as **[✏️ Исправить на «receive»]**. It is held to
+  the same language and input rules as typed unit text.
+- Tapping the control re-runs the complete unit analysis for that spelling,
+  replaces the note and card audio, and changes the control to
+  **[↩︎ Вернуть «recieve»]**. Switching is reversible. Lookup-only stays
+  lookup-only.
+- The control acts on its own in-memory history entry and expires on restart.
 
 ## Pronunciation audio
 
@@ -342,86 +356,63 @@ both in the answer entry and on the flashcard.
     the unit's pronunciation starts by itself.
   - Anki: the audio of the carded unit is attached to the card front, so
     it plays during review. The audio of a surrounding text never is.
-- **Resilience**: audio lookup runs in parallel with the LLM call and
-  must never delay or fail the text answer. Because the canonical word is
-  always the raw input, the speculative audio is always the right one — no
-  re-fetch in the normal flow. Audio is fetched again only if the user
-  taps the correction button, which re-processes the word for the
-  suggested spelling (see "Autocorrection: advisory only"); that is the
-  one case where the pronunciation arrives noticeably later. If neither a
-  recording nor TTS is available, the card and answer go out without audio
-  and the status line says so.
+- **Resilience**: submitted-text audio starts in parallel with the LLM call
+  and must never fail the answer. After parsing, it is reused for the note only
+  when the validated dictionary headword is the same NFC-normalized,
+  case-sensitive text; otherwise card audio starts separately. Submitted,
+  context and newly known headword audio share one concurrent post-generation
+  wait capped at five seconds. Rebuild reuses card audio only while the returned
+  headword is exactly unchanged, and correction always fetches for the newly
+  selected spelling. A slow or failed role is cancelled independently, the note
+  and answer go out without that audio, and the status distinguishes missing
+  submitted-text audio in the PWA from missing headword audio on the Anki card.
 
 ## Anki cards
 
-- **Running text never produces a note.** A whole clause on the front of
-  a card is unreviewable — a paraphrase of it is a different front asking
-  the same thing — and the reverse card would have to mask the entire
-  sentence. The deck stays a dictionary; the units suggested under
-  a text answer are how it grows from one.
-- **One note per submission.** Usually the back carries a single meaning,
-  but when meanings are genuinely unrelated (bank «банк» / bank «берег»)
-  the LLM splits the back into numbered meaning blocks — at most three —
-  each with a short meaning label, its own translations, and its own
-  examples. A submission never produces more than one note, however many
-  cards that note goes on to make, and two cards with an identical front
-  (which the reviewer could not tell apart) can never exist within it.
-  **The same word may be submitted again and gets a second note**: there
-  is no duplicate check, because a second submission is how a sense the
-  first answer led away from reaches the deck at all.
-- **The card set is chosen per submission**, by the backend, from two
-  facts: whether a context came with the word, and how many senses the
-  answer holds. A word sent bare makes a recognition card and a recall
-  card — one recall per sense where the senses are several. A word sent
-  with a context that narrows it to one of several senses makes the two
-  context cards instead, and nothing else. A context that narrows nothing
-  is discarded and the note is the bare one. The model is never asked
-  which cards to make: it answers the senses, and which one the context
-  uses. The catalogue, the reasoning and the gate are in
-  `decision-card-shapes.md`. The status line names the set as soon as the
-  word is submitted — including when the context was dropped — so a set
-  that came out wrong is visible at once, and undo removes the note with
-  every card of it.
-- **Compact by design.** Recognition card — front: the word/phrase with
-  pronunciation audio; back: the meaning
-  block(s) — label (when there is more than one), the top 2–4
-  translations, plus 1–2 short examples. The long-form analysis
-  (etymology, full meaning list) stays in the app only — cards must
-  remain quick to review.
-- **Reverse (recall) card.** A bare note also produces a second card:
-  front — the translations (with meaning labels when there are several
-  blocks), each followed by one of that meaning's examples with the word
-  masked out ("I received a ___ from Amazon yesterday", with its
-  translation); back — the word/phrase with pronunciation audio.
-  A bare translation often matches several words of the source language
-  (посылка → parcel / package / shipment), and the reviewer cannot know
-  which one is expected; the gapped example pins it down without giving
-  the answer away. A meaning's example is used only when it contains the
-  word exactly as the user typed it; when no example of that meaning does
-  (an inflected form, a separable prefix), that meaning stands on its
-  translations alone — the front never carries an unmasked example. Each word
-  is therefore reviewed in both directions, from the same single note.
-  Several senses turn this one card into one per sense, each asking for
-  the word from that sense alone.
-- **Context cards.** When the submission carried the text the word was
-  taken from, and that text narrows a word of several senses to one of
-  them, the note is carded under the context instead of bare: a
-  recognition card fronted with the context, whose back is the sense used
-  there and the word with its pronunciation, and — where the word stands
-  in the context verbatim — a production card fronted with that sense's
-  translations above the context with the word gapped out. The
-  recognition front marks the word it is asking about — in bold where the
-  word stands in the context, named on the line above it where it does not
-  — because a sentence on its own asks about no word in particular. Where
-  the context does not carry the word verbatim there is no gap to make,
-  and the production card alone is dropped.
-- **The senses the context did not use are offered under the answer**,
-  each with its own translations so the reader can tell them apart, and
-  each one tap from an ordinary submission of the same word carrying a
-  sentence that shows that sense. That is how a reader meeting the word
-  for the first time learns it has other senses at all — which they
-  cannot see in an answer that opens on the one the context selected, and
-  must not be asked to judge.
+- **Running text never produces a note.** A sentence or clause is not one
+  stable vocabulary stimulus. Its all-word and combination chips are the path
+  from reading to a unit note.
+- **One submission creates at most one note, about one sense.** A bare word
+  cards its most common retained sense; explicit unit intent with context cards
+  the retained sense the answer names as the one used there, falling back to
+  the first.
+  Senses mean distinctions that need different target-language words, not every
+  subdivision a monolingual dictionary might list. The same word may be
+  submitted again and creates another note; there is no deduplication.
+- **Every accepted note generates exactly four cards:**
+  1. word, optional short sense label and audio → translations;
+  2. translations and optional short sense label → word and audio;
+  3. the complete sentence with every surface part of the unit highlighted →
+     translations, word and audio;
+  4. translations plus the complete sentence with every surface part replaced
+     by `___` → word and audio.
+  The label appears on the two bare fronts only when the unit answer retains
+  several cardable senses. Cardability is established before that requirement,
+  so a malformed sibling cannot make an otherwise valid singleton with an empty
+  label disappear. The sentence itself disambiguates the two contextual fronts.
+- The sentence is the supplied context for a chip/card request and otherwise
+  the first example of the carded sense. For supplied context, the backend maps
+  the exact submitted click surface into that exact context in source order and
+  constructs both fronts when every selected token can be found. This prevents
+  the model from expanding a selected word or combination to its subject,
+  object or surrounding clause. Otherwise the model returns the highlighted form
+  alone. The backend accepts it only when it is exactly the plain example with
+  one or more bold spans added and at least one source-language word remains
+  outside the unit, and then builds the gapped form by replacing those spans
+  with blanks. It does not infer
+  morphology or decide which words linguistically belong to a generated unit.
+  For an example generated without supplied context, there is one narrower
+  structural check: any submitted-unit token which also occurs in the returned
+  headword and literally occurs in the example must occur in the highlighted
+  target. This catches an unmarked unchanged component without assuming that a
+  differing token is an inflection of the unit.
+- The visible article remains the full dictionary explanation with all retained
+  senses, forms where useful, usage, origin and examples. The six Anki fields
+  contain only the selected sense's word, audio, optional label, translations,
+  highlighted sentence and gapped sentence.
+- The status line reports all four distinct template kinds. Undo removes the
+  note with all four cards.
+
 - **One deck per source language**, set in the languages configuration
   (e.g. `EchoWords: English`, `EchoWords: German`,
   `EchoWords: Serbian`). The language selected at submission determines
@@ -443,13 +434,11 @@ Kept minimal — everything beyond typing a word:
 - **About/help note** — what the app does, the two input shapes, the
   lookup-only control and `?` shortcut, and the ✏️ correction button for
   a suspected typo.
-- **Suggested units** — under an answer, the things worth looking up on
-  their own, each one tap from an ordinary submission. Under a running
-  text they are its units, submitted with the text as their context;
-  under a multi-word input that turned out to be a use of a unit, the
-  units it was about; and under a word a context narrowed, the senses
-  that context did not use, each submitted with a sentence that shows the
-  sense.
+- **Chips** — under a text answer, every source word plus one chip for each
+  accepted combination, each combination standing before its first word; under a set
+  expression, its component words; under a single word or any explicit card
+  request, every retained sense. Each chip submits its own stored context and
+  explicit unit intent rather than making the frontend reconstruct either.
 - **History** — the answer area shows recent words with their finished
   analyses, pronunciation, and status; in-progress entries appear with
   their text accumulated so far. History is served by the backend, so
@@ -471,11 +460,12 @@ Kept minimal — everything beyond typing a word:
   quietly answering from the pool: the user asked for the better model.
   It does not apply to running text, which has no single word to go
   deeper on.
-- **Rebuild the card** — on any entry in the history, ask the paid model
-  to build the note again: for a weak or plainly wrong card, and for the
+- **Rebuild the card** — on a unit entry that successfully added a note,
+  ask the paid model to build the note again: for a weak or plainly wrong card, and for the
   case the context was only understood afterwards. It uses the entry's
-  context when there is one, replaces the note that entry produced, and
-  keeps the audio, which belongs to the word rather than to the answer.
+  context when there is one, reuses the stored unit headword and explicit unit
+  intent, and replaces the note that entry produced. It reuses card audio only
+  when the rebuilt answer returns the same headword.
   Unlike the deeper analysis, this one *is* about the deck — it is the
   only control that rewrites a card, and it never fires on its own.
   Bounded by the same daily cap, and refused with a reason when the cap
@@ -513,8 +503,8 @@ to be last.
   the paid attempt a fresh budget of the same size, so a recovered request
   may take ~40–60 s end to end; requiring the paid model to consume only
   whatever time the failed pool left behind would not make it answer faster.
-  The card is added within ~5 s after generation ends. Audio is fetched
-  concurrently and must not extend any of these budgets.
+  The card is added within ~5 s after generation ends. Outstanding audio roles
+  are waited concurrently under that same hard maximum and cannot extend it.
   Time to the first token is deliberately not a requirement: it measures
   how quickly a model starts talking, not how long the user waits, and
   bounding it would prefer a model that trickles for a minute over one

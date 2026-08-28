@@ -1,269 +1,177 @@
-"""The vocabulary and running-text prompts, and the payloads their answers hide."""
+"""The merged language-analysis prompt and its hidden structured answer."""
 
 import logging
 
-from echo_words.card import CardParseError, ParsedCard, parse_card_payload
+from echo_words.card import CardParseError, ParsedAnswer, parse_answer_payload
 from echo_words.languages import Language
-from echo_words.segments import Segment, SegmentParseError, parse_segments_payload
 
 CARD_DELIMITER = "===CARD==="
-# A rejected payload is logged whole because nothing else keeps it: the answer it
-# came in is gone, and what the model got wrong is only visible here.
 PAYLOAD_LOG_LIMIT = 2000
+MAX_COMPLETE_ANSWER_CHARS = 16_000
 
 logger = logging.getLogger(__name__)
 
-_PROMPT = """You are a vocabulary tutor. The word below is in {source_lang}. Analyse
-this word or short phrase: {word}
+_PROMPT = """You are a language tutor. The request below concerns {source_lang}.
 
-WRITE YOUR ENTIRE ANSWER IN {target_lang}.
-This is absolute. Every part of the answer — the translations, the labels,
-the register marks, the usage notes, the origin, the explanations of the
-examples — is written in {target_lang}, and in no other language. These
-instructions are in English; that says nothing about the answer language.
-Do not answer in English unless {target_lang} IS English. Do not answer in
-{source_lang} unless {target_lang} IS {source_lang}. Two things, and only
-these two, stay in {source_lang}: the headword itself and the example
-sentences (each of which is followed by its {target_lang} translation).
+{request}
 
-{context_note}Be compact. No preamble, no closing remarks. {source_hints}
-The order of the sections is fixed:
+WRITE YOUR ENTIRE ANSWER IN {target_lang}. Explanations, translations, sense
+labels, usage notes, origin and reasons are in {target_lang}. Only a headword,
+quoted source text and source-language examples stay in {source_lang}.
+{source_hints}
 
-1. First line: the word being analysed, in bold.
-2. The translations, and nothing in front of them. Most frequent in
-   everyday speech first. NEVER name the part of speech — not here, not
-   anywhere in the answer. A register mark (colloquial, formal, slang,
-   vulgar) goes AFTER the translation it belongs to, and only where it
-   changes how the word is used.
-3. Forms — ONLY when this word actually changes shape in a way a learner
-   has to recognise or produce. An adverb, a preposition, a particle, an
-   invariable word and a fixed expression have none: for those, skip this
-   section completely — no table, no heading, no remark about forms
-   anywhere in the answer. When the word does change, give a table of at
-   most six rows: first cell a short everyday phrase in {source_lang}
-   using the form, second cell that phrase in {target_lang}.
-   The phrases carry the grammar, so name no person, number, gender, case
-   or tense — not inside the table, not on a line above or below it, not
-   anywhere near it. No labels, no abbreviations, no gender note. Choose
-   the forms that are irregular or that learners get wrong; leave out
-   whatever follows the regular pattern. For a verb: the present forms
-   whose stem changes, the past, and the participle. For a noun: the
-   plural, and an article or ending that shows its gender. For an
-   adjective: an irregular comparative.
-4. Usage: typical collocations and prepositions, what it is confused
-   with; countability where it matters.
-5. Origin: if the word was borrowed, 1-3 sentences on which language it
-   came from and how it travelled; for a native word, one line.
-6. Examples: 2-4 short everyday sentences, each followed by its translation.
+First decide whether the submission is ONE LEXICAL UNIT WORTH LEARNING WHOLE or
+text containing units. A single source word is a unit, and so is a multi-word
+expression whose whole wording is the reusable lookup target: an idiom,
+collocation, phrasal or separable verb or conventional formula. Its dictionary
+form may differ from the submitted one and its pieces may stand apart. Anything
+that reports a particular situation is text, even when a fixed expression fills
+most of it — return that expression separately in combinations rather than making
+its changing context part of a dictionary entry. If uncertain, choose text.
+{intent_rule}
 
-Give no phonetic transcription: pronunciation is delivered as audio.
+For a unit, write a complete compact dictionary article in this order:
+1. Begin with the unit heading in <b> tags, using the dictionary lemma; when you
+   suspect a misspelling, head the article with the submitted spelling instead.
+2. Give the translations, most frequent in everyday speech first. Never name the
+   part of speech. Put a register mark after the translation it qualifies.
+3. Forms only when useful to recognise or produce. Use a table of at most six
+   rows, each with a short {source_lang} form or phrase and its {target_lang}
+   rendering. Skip forms completely for invariable words and fixed expressions.
+4. Usage: collocations, governed prepositions, confusions, register and
+   countability where relevant.
+5. Origin: always include it; 1-3 sentences for a borrowing, one compact line for
+   a native word.
+6. Give 2-4 short everyday examples with translations.
+For a set expression, also explain what its parts contribute and why the whole
+means what it does. With supplied context, lead with the sense used there but
+keep all other senses below it.
 
-The input is either one lexical unit, or a single unit shown with the
-words around it. Decide which before you answer.
-- If the input is one lexical unit — an idiom, a collocation, a phrasal or
-  separable verb, a fixed expression — analyse it WHOLE. Never take it
-  apart, and never analyse one of its words on its own.
-- Otherwise the input is a use of one unit, given with its context.
-  Analyse THAT unit, in the sense it carries here, and treat the rest of
-  the input as context only.
-The unit you analyse is the headword of the first line and the value of
-the word field. Everything else in the answer is about that unit.
-Do not substitute a different word. If it looks
-like a typo, do not silently fix it:
-The test for one unit: its meaning does not follow from its words taken
-separately, or it is simply the fixed way the language says this. When the
-test passes, the whole input is the unit — a verb's object, a preposition
-the verb governs, an article inside a set phrase are PART of it, never
-context around it. When in doubt, keep the input whole: a unit carded whole
-is at worst too specific, while a unit taken apart is wrong.
-When the test fails, find the focus: the one word or unit a learner would
-have stopped at. Prefer the word carrying the meaning over grammar words;
-prefer a word with several senses over a transparent one; never pick a
-proper name, a number, or a word spelled nearly as in {target_lang}. If the
-focus is a verb bound to a reflexive particle, a separable prefix or a
-governed preposition, it is that whole verb in its dictionary form, never
-the bare stem.
-Give the SMALLEST form a dictionary would list on its own. A word that only
-modifies is never part of the unit and is dropped, however natural it sounds
-attached: degree adverbs and intensifiers, quantifiers, adverbs of time, and
-an auxiliary carrying no meaning of its own. "very tired" is not a unit and
-"tired" is; keep the modifier only when dropping it changes the meaning, as
-in a set phrase whose parts have stopped meaning what they say. add one short line beginning with ✏️
-and naming the likely intended spelling, and put that spelling in the
-suggestion field of the card JSON. If there is no typo, suggestion is an
-empty string.
-If it is an idiom or a phrasal verb, explain both the literal and the
-figurative sense and when it is used.
-ALL EMPHASIS IS HTML. Use these tags and no others: <b> around the
-headword, <i> around the {source_lang} example sentences and any
-{source_lang} form quoted inside the text, and <table>, <tr> and <td> for
-the forms section and nowhere else. No attributes on any tag. Emphasis
-punctuation of any kind is forbidden — no markdown, no headings, no
-bullet markers, no code fences.
-The whole analysis: at most 3500 characters.
+For text, begin with a natural translation of the whole submitted text. Then give
+2-5 compact notes about genuinely difficult constructions, word order, forms,
+set expressions or meanings. Do not write a dictionary entry about one selected
+word.
 
-After the analysis output the line ===CARD=== exactly, and immediately
-after it one line of JSON, with no commentary and no HTML tags inside the
-values:
-{{"word": "...", "suggestion": "...", "candidates": ["...", "..."],
- "context_sense": 0,
- "meanings": [{{"label": "...", "translations": ["...", "..."],
- "examples": [{{"text": "...", "translation": "..."}}]}}]}}
-word — the unit you analysed, in the form a dictionary lists it and the way
-it would be typed into a search box: letters, spaces, hyphens and
-apostrophes only, in the same script as the input. It is the whole input
-when the input was itself one unit, and the unit you found inside it
-otherwise. suggestion — the
-likely intended spelling of a typo, or an empty string.
-candidates — every unit of the input worth looking up on its own, most
-useful first, at most three, each in the dictionary form the word field is
-held to, and each able to stand as a headword alone. The first is always
-identical to word. When the input was itself one unit, candidates holds
-that one unit and nothing else.
-Order them by what the learner most likely did not know and put that one
-first. Never lead with the input restated.
+No phonetic transcription. Use only <b>, <i>, <table>, <tr>, and <td>, with no
+attributes; tables are only for forms. No Markdown emphasis, headings, code
+fences, preamble or closing remarks. The article is at most 3500 characters.
 
-context_sense — ONLY when a context was given above: the index into meanings,
-counting from zero, of the sense that context uses. Leave the field out
-entirely when you were given no context.
+After the article output ===CARD=== on its own line, followed immediately by one
+line of JSON matching ONE of these neutral schematic branches. Angle-bracketed
+values are placeholders, not strings to copy:
 
-meanings normally holds one element with an empty label. Split it into
-several (at most three) only when the senses are genuinely unrelated (like
-bank "financial institution" and bank "river edge"); then label is a
-1-3 word tag in {target_lang} telling the senses apart.
-translations — the 2-4 main {target_lang} translations of that sense;
-examples — the 1-2 shortest examples of that very sense: text is a
-sentence in {source_lang}, translation is its rendering in {target_lang}.
-In at least one example per sense, use the headword in exactly the form it
-was given, unless that makes the sentence unnatural.
+{{"kind": "unit", "word": "<dictionary lemma of the unit>",
+ "word_relation": "<same, morphology or typo>",
+ "suggestion": "<corrected spelling, or empty>",
+ "meanings": [{{"label": "<short target-language sense label or empty>",
+ "translations": ["<target-language translation>"],
+ "examples": [{{"highlighted": "<short source-language sentence, unit in b tags>",
+ "translation": "<target-language translation>"}}]}}],
+ "segments": [{{"label": "<component dictionary form>",
+ "surface": "<component form seen in the expression>",
+ "why": "<short target-language reason>"}}]{context_field}}}
 
-Before you answer, check two things once more. Is every word of it in
-{target_lang}, except the headword and the {source_lang} example sentences?
-And is every emphasis an HTML tag, with no punctuation used for emphasis
-anywhere?
+OR
+
+{{"kind": "text", "combinations": [{{"label": "<dictionary form of the unit>",
+ "surface": "<the same unit as the text spells it>",
+ "why": "<short target-language reason>"}}]}}
+
+word_relation is typo when the submission is misspelled, and then suggestion holds
+the correct spelling; morphology when word is a different dictionary form of a
+correctly spelled submission; same when word is the submission itself. suggestion
+is empty unless the relation is typo.
+
+meanings are the senses that need different words in {target_lang}, most common
+first; do not impose a numerical limit. Every meaning has 2-4 main translations
+and 1-2 examples. When several meanings remain, every label is a short
+{target_lang} tag distinguishing them; for one meaning its label is empty.
+Each highlighted example is a whole sentence carrying <b> tags around all and
+only the unit, since it becomes the front of a card. Mark a contiguous unit with
+one span and separated or reflexive pieces with one span each, in their original
+positions. Never mark a subject, object, auxiliary or argument merely because it
+occurs with the unit, and always leave at least one unmarked source-language word
+in the sentence. {context_rule}
+
+For a multi-word set expression, segments contains every word-shaped component,
+including particles and prepositions, with no count cap. Preserve the forms seen
+in the submitted expression. Do not repeat the whole expression as a component.
+
+For text, put every clear multi-word lookup target in combinations, even when one
+accounts for most of the utterance. It qualifies when its meaning does not follow
+from its words one at a time, or when its lexical pieces stand apart so no piece
+can be looked up alone: a separable or reflexive verb, governed combination,
+collocation or set expression. A single ordinary word and an arbitrary tense,
+negation or current argument do not qualify. Keep distinct non-overlapping units
+separate. Return every clear unit, do not pad the list, and use an empty list when
+nothing qualifies.
+
+label and surface are the same unit twice: label is its dictionary form, and
+surface holds its lexical pieces copied token for token out of the submitted
+text, in the same spelling, script and capitalization and in source order, with
+an ellipsis joining pieces which stand apart. So label may read `aufstehen`
+while surface reads `steht ... auf`. Copy surface out of the sentence: never
+translate, transliterate, correct or lemmatise it. Include every fixed piece —
+reflexive particle, separable particle, governed preposition, support verb — in
+the form it takes in this sentence, and leave out negation and the current
+subject, object or complement. Do not enumerate ordinary words: the backend
+gives every source word its own chip anyway. Text JSON contains no word,
+meanings, segments or other card fields.
+
+Check before answering that the JSON is valid, with every string in double
+quotes, and that a unit article begins with the bold heading its word names.
 """
 
-_TEXT_PROMPT = """You are a language tutor. The text below is in {source_lang}. It is running
-text — a sentence or a fragment of one — and not a dictionary entry: {word}
+_UNIT_INTENT = "The learner explicitly selected a unit, so kind must be unit."
+_OPEN_INTENT = "For this submit-box request, choose the branch yourself."
+_CONTEXT_RULE = (
+    "Use the supplied context as the first example of its sense and include "
+    '"context_sense": <zero-based index> in the unit object. In that example, '
+    "copy the submitted selected-unit surface exactly, mark those selected "
+    "tokens and no others, and do not expand the selection to neighbouring context."
+)
+_NO_CONTEXT_RULE = "Do not add a field selecting a contextual sense."
 
-WRITE YOUR ENTIRE ANSWER IN {target_lang}.
-This is absolute. Every part of the answer — the translation, the notes, the
-explanations — is written in {target_lang}, and in no other language. These
-instructions are in English; that says nothing about the answer language. Do
-not answer in English unless {target_lang} IS English. Do not answer in
-{source_lang} unless {target_lang} IS {source_lang}. One thing only stays in
-{source_lang}: the words and phrases you quote from the text itself.
+_EXTENDED_PROMPT = """You are a lexicographer. The word below is in {source_lang}.
+Analyse it in depth: {word}
 
-{source_hints}Be compact. No preamble, no closing remarks.
-The order of the sections is fixed:
+WRITE YOUR ENTIRE ANSWER IN {target_lang}, and in no other language. Only the
+headword and example sentences stay in {source_lang}, and every example is
+followed by its {target_lang} translation.
 
-1. A natural translation of the whole text into {target_lang}. One paragraph,
-   reading as {target_lang} rather than as a gloss of the original.
-2. What is hard here: 2-5 short notes, each on one thing a learner of
-   {source_lang} would stumble over in this very text — a construction, the
-   word order, a case or a mood, a set expression, a word that does not mean
-   what it looks like. Say what the difficulty is, not what the word means.
-   Leave out everything that is plain, and do not walk through the text word
-   by word.
-
-Give no phonetic transcription.
-ALL EMPHASIS IS HTML. Use exactly two tags and no others: <i> around anything
-quoted from the text in {source_lang}, <b> around a term you are naming.
-Emphasis punctuation of any kind is forbidden — no markdown, no headings, no
-bullet markers, no tables, no code fences.
-The whole answer: at most 3500 characters.
-
-After the answer output the line ===CARD=== exactly, and immediately after it
-one line of JSON, with no commentary and no HTML tags inside the values:
-{{"segments": [{{"label": "...", "surface": "...", "why": "..."}}]}}
-
-segments — the units of this text that are worth learning whole and looking up
-on their own, at most five, the most useful first. A unit qualifies when its
-meaning does not follow from its words taken one at a time, or when its parts
-stand apart in the text so that neither part can be looked up alone: a verb
-with a separable prefix, a verb bound to a reflexive particle, a verb bound to
-a preposition or to a case, a set expression. A single ordinary word never
-qualifies.
-label — the unit's dictionary form in {source_lang}, written the way a
-dictionary lists it and the way it would be typed into a search box: letters,
-spaces, hyphens and apostrophes, nothing else, and in the same script as the
-text you were given.
-surface — the unit as it actually stands in this text, in {source_lang}; when
-its parts stand apart, give them in the order they appear, joined by a space,
-an ellipsis character and a space.
-why — one short line in {target_lang} saying what makes the unit worth a look.
-If the text you were given is itself one such unit and not a sentence, return
-exactly one segment, whose label is that unit in its dictionary form.
-If nothing in the text qualifies, return an empty list.
-"""
-
-_CONTEXT_NOTE = """The word was met in this context: "{context}"
-Give the senses this word has exactly as you would with no context in front
-of you, and then name which of them this context uses. Lead the answer with
-that sense — the translations, the usage and the examples open on it — and
-let the other senses follow it. Never drop a sense because the context does
-not use it, and never invent one to fit the context: when the word has only
-the one sense, that single sense is the whole answer. If the sense used here
-is rare, domain-specific or not recorded in dictionaries at all, say so
-plainly and explain it rather than substituting the nearest dictionary
-meaning.
-
-"""
-
-_EXTENDED_PROMPT = """You are a lexicographer. The word below is in {source_lang}. Analyse this
-word or short phrase in depth: {word}
-
-WRITE YOUR ENTIRE ANSWER IN {target_lang}, and in no other language. These
-instructions are in English; that says nothing about the answer language.
-Only the headword and the example sentences stay in {source_lang}, and
-every example is followed by its {target_lang} translation.
-
-{context_note}The reader has already seen the short entry, so do not skimp
-on detail — but stay on the point in every section.
-
-1. First line: the word being analysed, in bold.
-2. EVERY sense, not only the frequent ones: figurative, domain-specific,
-   archaic, regional and slang alike. For each, the part of speech, the
-   register mark, and the field it belongs to. If a sense lives only in a
-   particular domain (law, medicine, sport, jargon), name that domain.
-3. Origin, in depth: the source language, the original form and meaning,
-   the route the word travelled, when it entered the language, related
-   words within the language and cognates elsewhere. For a native word,
-   the root and how it developed. Where the etymology is disputed, give
-   the competing accounts.
-4. Usage: set phrases, government, register, what it is confused with,
-   false friends, the mistakes learners typically make.
-5. Shades and near-synonyms: how it differs from them and which is apt
-   where.
-6. Examples: one or two per sense from section 2, each followed by its
-   translation.
-
-For emphasis use ONLY the HTML tags <b> and <i>: the headword in bold, the
-{source_lang} examples in italics. No markdown, no other tags. Give no
-phonetic transcription. No JSON and no delimiters of any kind — this is
-reading matter only.
+{context_note}The reader has already seen the short entry. Cover every sense,
+including domain-specific, archaic, regional and slang senses; origin and its
+route in depth; usage and common mistakes; shades and near-synonyms; and one or
+two examples per sense. Use only <b> and <i>, no Markdown. Give no phonetic
+transcription, JSON or delimiters.
 """
 
 
-def build_prompt(language: Language, word: str, target_lang: str, *, context: str = "") -> str:
-    """Build the compact analysis prompt."""
-    context_note = _CONTEXT_NOTE.format(context=context) if context else ""
+def build_prompt(
+    language: Language,
+    word: str,
+    target_lang: str,
+    *,
+    context: str = "",
+    unit_intent: bool = False,
+) -> str:
+    """Build the sole compact prompt; only the request intent varies."""
+    request = (
+        f'Make a card for this selected unit: "{word}"\nContext: "{context}"'
+        if unit_intent and context
+        else f'Make a card for this selected unit: "{word}"'
+        if unit_intent
+        else f'Analyse this submitted text: "{word}"'
+    )
+    context_field = ', "context_sense": <zero-based index>' if context else ""
     return _PROMPT.format(
         source_lang=language.name,
         target_lang=target_lang,
         source_hints=language.prompt_hints or "",
-        word=word,
-        context_note=context_note,
-    )
-
-
-def build_text_prompt(language: Language, text: str, target_lang: str) -> str:
-    """Build the running-text prompt: a translation, what is hard, and the units to look up."""
-    return _TEXT_PROMPT.format(
-        source_lang=language.name,
-        target_lang=target_lang,
-        source_hints=language.prompt_hints or "",
-        word=text,
+        request=request,
+        intent_rule=_UNIT_INTENT if unit_intent else _OPEN_INTENT,
+        context_field=context_field,
+        context_rule=_CONTEXT_RULE if context else _NO_CONTEXT_RULE,
     )
 
 
@@ -274,8 +182,8 @@ def build_extended_prompt(
     *,
     context: str = "",
 ) -> str:
-    """Build the card-free, paid deeper-analysis prompt."""
-    context_note = _CONTEXT_NOTE.format(context=context) if context else ""
+    """Build the card-free paid deeper-analysis prompt."""
+    context_note = f'The word was met in this context: "{context}"\n' if context else ""
     return _EXTENDED_PROMPT.format(
         source_lang=language.name,
         target_lang=target_lang,
@@ -284,46 +192,46 @@ def build_extended_prompt(
     )
 
 
-def extract_card(raw: str, word: str, language: Language) -> ParsedCard | None:
-    """Extract and validate the hidden card block, returning ``None`` when it is unusable."""
+def extract_answer(
+    raw: str,
+    submitted: str,
+    language: Language,
+    *,
+    unit_intent: bool = False,
+    context: str = "",
+) -> ParsedAnswer | None:
+    """Extract and validate the hidden answer, returning None when unusable."""
+    if len(raw) > MAX_COMPLETE_ANSWER_CHARS:
+        logger.warning(
+            "oversized answer for %s/%r: %s characters exceeds the %s-character bound",
+            language.code,
+            submitted,
+            len(raw),
+            MAX_COMPLETE_ANSWER_CHARS,
+        )
+        return None
     delimiter_at = raw.find(CARD_DELIMITER)
     if delimiter_at < 0:
         logger.warning(
-            "no card block for %s/%r: the answer never wrote the delimiter",
+            "no answer block for %s/%r: the answer never wrote the delimiter",
             language.code,
-            word,
+            submitted,
         )
         return None
     payload = raw[delimiter_at + len(CARD_DELIMITER) :]
     try:
-        return parse_card_payload(payload, word, language)
+        return parse_answer_payload(
+            payload,
+            submitted,
+            language,
+            unit_intent=unit_intent,
+            context=context,
+        )
     except CardParseError as exc:
         logger.warning(
-            "unusable card block for %s/%r: %s; payload %s",
+            "unusable answer block for %s/%r: %s; payload %s",
             language.code,
-            word,
-            exc,
-            _logged(payload),
-        )
-        return None
-
-
-def extract_segments(raw: str, language: Language) -> list[Segment] | None:
-    """Extract the suggested units, returning ``None`` when the payload is unusable."""
-    delimiter_at = raw.find(CARD_DELIMITER)
-    if delimiter_at < 0:
-        logger.warning(
-            "no segments block for %s: the answer never wrote the delimiter",
-            language.code,
-        )
-        return None
-    payload = raw[delimiter_at + len(CARD_DELIMITER) :]
-    try:
-        return parse_segments_payload(payload, language)
-    except SegmentParseError as exc:
-        logger.warning(
-            "unusable segments block for %s: %s; payload %s",
-            language.code,
+            submitted,
             exc,
             _logged(payload),
         )

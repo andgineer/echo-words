@@ -21,3 +21,25 @@ def test_history_updates_an_entry_in_place_instead_of_appending():
     assert history.recent() == [entry.public()]
     assert history.recent()[0]["status"] == "pending"
     assert history.recent()[0]["text"] == "partial"
+
+
+def test_public_history_carries_answer_and_segment_kinds_with_each_chip_context():
+    entry = Entry("one", "en", "The bank opens.")
+    entry.shape = "text"
+    entry.segment_kind = "text"
+    entry.segments = [
+        {
+            "label": "bank",
+            "surface": "",
+            "reason": "",
+            "context": "The bank opens.",
+        },
+    ]
+
+    public = entry.public()
+
+    assert public["shape"] == "text"
+    assert public["segment_kind"] == "text"
+    assert public["segments"][0]["context"] == "The bank opens."
+    assert "context_dropped" not in public
+    assert "segments_are_senses" not in public

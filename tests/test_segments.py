@@ -1,108 +1,171 @@
-import pytest
-
 from echo_words.segments import (
-    MAX_REASON_LENGTH,
-    MAX_SEGMENTS,
-    MAX_SURFACE_LENGTH,
     Segment,
-    SegmentParseError,
-    parse_segments_payload,
+    fill_text_segments,
+    parse_component_segments,
 )
 
 
-def payload(*segments: str) -> str:
-    return '{"segments": [' + ",".join(segments) + "]}"
-
-
-def test_a_well_formed_payload_becomes_suggested_units(languages):
-    parsed = parse_segments_payload(
-        payload(
-            '{"label":"aufstehen","surface":"steht … auf","why":"Trennbares Verb."}',
-            '{"label":"in Frage kommen","surface":"kommt … in Frage","why":"Feste Wendung."}',
-        ),
+def test_reordered_separated_and_capitalized_parts_map_to_source_order(languages):
+    segments = fill_text_segments(
+        [{"label": "aufstehen", "surface": "AUF … steht", "why": "Verb."}],
+        "Er steht jeden Morgen auf.",
         languages["de"],
     )
-    assert parsed == [
-        Segment("aufstehen", "steht … auf", "Trennbares Verb."),
-        Segment("in Frage kommen", "kommt … in Frage", "Feste Wendung."),
+
+    assert segments == [
+        Segment("Er", "", "Er steht jeden Morgen auf."),
+        Segment("steht auf", "Verb.", "Er steht jeden Morgen auf."),
+        Segment("steht", "", "Er steht jeden Morgen auf."),
+        Segment("jeden", "", "Er steht jeden Morgen auf."),
+        Segment("Morgen", "", "Er steht jeden Morgen auf."),
+        Segment("auf", "", "Er steht jeden Morgen auf."),
     ]
 
 
-def test_a_text_with_nothing_hard_in_it_yields_an_empty_list(languages):
-    assert parse_segments_payload('{"segments": []}', languages["de"]) == []
-
-
-def test_a_label_that_would_be_refused_as_input_is_dropped_with_its_neighbours_kept(languages):
-    parsed = parse_segments_payload(
-        payload(
-            '{"label":"vratiti се","surface":"се … вратио","why":"Повратна речца."}',
-            '{"label":"јавити се","surface":"ми се … јавио","why":"Повратни глагол."}',
-        ),
+def test_one_unmatchable_proposal_does_not_erase_other_combinations_or_words(languages):
+    segments = fill_text_segments(
+        [
+            {"label": "nope", "surface": "missing pieces"},
+            {"label": "javiti se", "surface": "се … јавио"},
+        ],
+        "Он ми се јавио.",
         languages["sr"],
     )
-    assert [segment.label for segment in parsed] == ["јавити се"]
+
+    assert [segment.label for segment in segments] == ["Он", "ми", "се јавио", "се", "јавио"]
 
 
-@pytest.mark.parametrize(
-    "entry",
-    ['{"label":""}', '{"label":42}', '{"surface":"steht … auf"}', '"aufstehen"', "null"],
-)
-def test_a_segment_without_a_usable_label_is_dropped(languages, entry):
-    assert parse_segments_payload(payload(entry), languages["de"]) == []
-
-
-def test_a_generous_model_is_truncated_rather_than_refused(languages):
-    labels = [f"wort{'e' * index}" for index in range(MAX_SEGMENTS + 2)]
-    entries = [f'{{"label":"{label}"}}' for label in labels]
-    parsed = parse_segments_payload(payload(*entries), languages["de"])
-    assert [segment.label for segment in parsed] == labels[:MAX_SEGMENTS]
-
-
-def test_the_same_unit_is_offered_once(languages):
-    parsed = parse_segments_payload(
-        payload(
-            '{"label":"aufstehen","surface":"steht … auf"}',
-            '{"label":"aufstehen","surface":"stand … auf"}',
-            '{"label":"ausfallen"}',
-        ),
-        languages["de"],
-    )
-    assert [segment.label for segment in parsed] == ["aufstehen", "ausfallen"]
-
-
-def test_a_dropped_label_does_not_spend_one_of_the_offered_slots(languages):
-    entries = ['{"label":"vratiti се"}'] + [
-        f'{{"label":"reč{"i" * index}"}}' for index in range(MAX_SEGMENTS)
+def test_no_arbitrary_combination_count_limit_remains(languages):
+    words = [f"word{chr(ord('a') + index)}" for index in range(14)]
+    proposals = [
+        {"surface": f"{words[index]} {words[index + 1]}"} for index in range(0, len(words), 2)
     ]
-    parsed = parse_segments_payload(payload(*entries), languages["sr"])
-    assert len(parsed) == MAX_SEGMENTS
+
+    segments = fill_text_segments(proposals, " ".join(words), languages["en"])
+
+    assert len(segments) == 21
 
 
-def test_display_fields_are_optional_trimmed_and_bounded(languages):
-    parsed = parse_segments_payload(
-        payload(
-            '{"label":"aufstehen","surface":"  steht … auf  ","why":42}',
-            f'{{"label":"ausfallen","surface":"{"s" * 300}","why":"{"w" * 300}"}}',
-        ),
+def test_repeated_words_claim_distinct_earliest_occurrences(languages):
+    segments = fill_text_segments(
+        [
+            {"surface": "go home", "why": "first"},
+            {"surface": "go home", "why": "second"},
+        ],
+        "go home then go home",
+        languages["en"],
+    )
+
+    assert [(item.label, item.reason) for item in segments] == [
+        ("go home", "first"),
+        ("go", ""),
+        ("home", ""),
+        ("then", ""),
+        ("go home", "second"),
+        ("go", ""),
+        ("home", ""),
+    ]
+
+
+def test_first_overlapping_proposal_wins(languages):
+    segments = fill_text_segments(
+        [{"surface": "take care"}, {"surface": "care of"}],
+        "take care of it",
+        languages["en"],
+    )
+
+    assert [item.label for item in segments] == ["take care", "take", "care", "of", "it"]
+
+
+def test_an_unusable_internal_label_does_not_delete_a_surface_match(languages):
+    segments = fill_text_segments(
+        [{"label": "вратити se!", "surface": "се вратио"}],
+        "Он се вратио",
+        languages["sr"],
+    )
+    assert [item.label for item in segments] == ["Он", "се вратио", "се", "вратио"]
+
+
+def test_expression_components_have_backend_owned_context_and_no_cap(languages):
+    values = [{"surface": f"word{letter}"} for letter in "abcdefgh"]
+    segments = parse_component_segments(values, languages["en"], context="Example sentence.")
+
+    assert len(segments) == 8
+    assert all(segment.context == "Example sentence." for segment in segments)
+
+
+def test_the_text_branch_combinations_fill_every_chip(languages):
+    segments = fill_text_segments(
+        [{"surface": "looks forward", "why": "phrasal verb"}],
+        "She looks forward to it.",
+        languages["en"],
+    )
+
+    assert [segment.label for segment in segments] == [
+        "She",
+        "looks forward",
+        "looks",
+        "forward",
+        "to",
+        "it",
+    ]
+    assert all(segment.context == "She looks forward to it." for segment in segments)
+
+
+def test_a_transliterated_serbian_surface_still_finds_its_words_in_the_text(languages):
+    segments = fill_text_segments(
+        [{"surface": "се играју", "why": "повратни глагол"}],
+        "Deca se igraju napolju ceo dan.",
+        languages["sr"],
+    )
+
+    assert [segment.label for segment in segments] == [
+        "Deca",
+        "se igraju",
+        "se",
+        "igraju",
+        "napolju",
+        "ceo",
+        "dan",
+    ]
+
+
+def test_script_folding_does_not_reach_a_single_script_language(languages):
+    segments = fill_text_segments(
+        [{"surface": "се вратио", "why": "повратни глагол"}],
+        "Er steht jeden Morgen auf.",
         languages["de"],
     )
-    assert parsed[0] == Segment("aufstehen", "steht … auf", "")
-    assert len(parsed[1].surface) == MAX_SURFACE_LENGTH
-    assert len(parsed[1].reason) == MAX_REASON_LENGTH
+
+    assert [segment.label for segment in segments] == ["Er", "steht", "jeden", "Morgen", "auf"]
 
 
-def test_junk_after_the_object_is_ignored(languages):
-    parsed = parse_segments_payload(
-        '{"segments":[{"label":"aufstehen"}]} and one closing remark',
-        languages["de"],
+def test_a_word_inside_a_combination_keeps_its_own_chip(languages):
+    segments = fill_text_segments(
+        [{"surface": "looks forward", "why": "phrasal verb"}],
+        "She looks forward to it.",
+        languages["en"],
     )
-    assert [segment.label for segment in parsed] == ["aufstehen"]
+
+    assert [segment.label for segment in segments] == [
+        "She",
+        "looks forward",
+        "looks",
+        "forward",
+        "to",
+        "it",
+    ]
+    assert segments[1].reason == "phrasal verb"
+    assert segments[2].reason == ""
 
 
-@pytest.mark.parametrize(
-    "broken",
-    ["{broken", '{"segments": {}}', '{"units": []}', '["aufstehen"]'],
-)
-def test_an_unusable_payload_is_an_error(languages, broken):
-    with pytest.raises(SegmentParseError):
-        parse_segments_payload(broken, languages["de"])
+def test_a_token_the_submission_endpoint_would_reject_gets_no_chip(languages):
+    segments = fill_text_segments([], "In 2024 the price was 30 euro", languages["en"])
+
+    assert [segment.label for segment in segments] == [
+        "In",
+        "the",
+        "price",
+        "was",
+        "euro",
+    ]

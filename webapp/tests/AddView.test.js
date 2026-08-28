@@ -36,20 +36,29 @@ afterEach(() => {
 });
 
 function textEntry(segments = [
-  { label: "aufstehen", surface: "steht … auf", reason: "Trennbares Verb." },
-  { label: "ausfallen", surface: "fällt … aus", reason: "Trennbares Verb." },
+  {
+    label: "steht auf",
+    reason: "Trennbares Verb.",
+    context: "Er steht jeden Morgen um sechs auf.",
+  },
+  {
+    label: "fällt aus",
+    reason: "Trennbares Verb.",
+    context: "Er steht jeden Morgen um sechs auf.",
+  },
 ]) {
   return {
     entry_id: "entry-1",
     word: "Er steht jeden Morgen um sechs auf.",
     lang: "de",
     language: "Deutsch",
-    lookup_only: true,
+    lookup_only: false,
     shape: "text",
     status: "done",
     text: "Он встаёт каждое утро в шесть.",
     card_status: "text",
     detail_available: false,
+    segment_kind: "text",
     segments,
   };
 }
@@ -65,12 +74,16 @@ function senseEntry() {
     status: "done",
     text: "берег",
     card_status: "added",
-    card_kinds: ["ContextRecognition", "ContextProduction"],
+    card_kinds: ["Recognition", "Recall", "ContextRecognition", "ContextProduction"],
     context: "We sat on the bank.",
-    segments_are_senses: true,
+    segment_kind: "senses",
     segments: [
-      { label: "bank", surface: "The bank opens at nine.", reason: "банк" },
-      { label: "bank", surface: "The bank of the hill is steep.", reason: "склон" },
+      { label: "bank", reason: "банк", context: "The bank opens at nine." },
+      {
+        label: "bank",
+            reason: "склон",
+        context: "The bank of the hill is steep.",
+      },
     ],
   };
 }
@@ -196,7 +209,7 @@ describe("AddView", () => {
     expect(wrapper.find(".entry-card-status").text()).toBe("✅ added to Anki");
   });
 
-  it("names the cards a note produced, counting the pair a context makes", async () => {
+  it("gives all four card kinds distinct localized status labels", async () => {
     await labelBehavior(EPIC.ANKI_CARDS, FEATURE.COLLECTION, "Card delivery status");
     entries.value = [{
       entry_id: "entry-1",
@@ -211,71 +224,14 @@ describe("AddView", () => {
     await flushPromises();
 
     expect(wrapper.find(".entry-card-status").text()).toBe(
-      "✅ 4 cards: recognition, recall, context ×2",
+      "✅ 4 cards: word → meaning, meaning → word, sentence → meaning, gap → word",
     );
 
     locale.value = "ru";
     await flushPromises();
 
     expect(wrapper.find(".entry-card-status").text()).toBe(
-      "✅ 4 карточки: узнавание, воспроизведение, контекст ×2",
-    );
-  });
-
-  it("counts a split into one card per sense, and one card in the singular", async () => {
-    await labelBehavior(EPIC.ANKI_CARDS, FEATURE.COLLECTION, "Card delivery status");
-    entries.value = [
-      {
-        entry_id: "entry-1",
-        word: "bank",
-        language: "English",
-        status: "done",
-        text: "meaning",
-        card_status: "added",
-        card_kinds: ["Recognition", "SenseRecall1", "SenseRecall2"],
-      },
-      {
-        entry_id: "entry-2",
-        word: "Wort",
-        language: "German",
-        status: "done",
-        text: "meaning",
-        card_status: "added",
-        card_kinds: ["Recognition"],
-      },
-    ];
-    locale.value = "ru";
-    const wrapper = mount(AddView);
-    await flushPromises();
-
-    const lines = wrapper.findAll(".entry-card-status").map((node) => node.text());
-    expect(lines[0]).toBe("✅ 3 карточки: узнавание, по значению ×2");
-    expect(lines[1]).toBe("✅ 1 карточка: узнавание");
-  });
-
-  it("counts five cards in the form Russian actually uses", async () => {
-    await labelBehavior(EPIC.ANKI_CARDS, FEATURE.COLLECTION, "Card delivery status");
-    entries.value = [{
-      entry_id: "entry-1",
-      word: "bank",
-      language: "English",
-      status: "done",
-      text: "meaning",
-      card_status: "added",
-      card_kinds: [
-        "Recognition",
-        "ContextRecognition",
-        "SenseRecall1",
-        "SenseRecall2",
-        "SenseRecall3",
-      ],
-    }];
-    locale.value = "ru";
-    const wrapper = mount(AddView);
-    await flushPromises();
-
-    expect(wrapper.find(".entry-card-status").text()).toBe(
-      "✅ 5 карточек: узнавание, контекст, по значению ×3",
+      "✅ 4 карточки: слово → значение, значение → слово, предложение → значение, пропуск → слово",
     );
   });
 
@@ -309,13 +265,34 @@ describe("AddView", () => {
     }];
     const wrapper = mount(AddView);
     await flushPromises();
-    expect(wrapper.find(".entry-card-status").text()).toBe("✅ added to Anki · 🔇 no audio");
+    expect(wrapper.find(".entry-card-status").text()).toBe(
+      "✅ added to Anki · 🔇 submitted text has no audio",
+    );
 
     locale.value = "ru";
     await flushPromises();
 
     expect(wrapper.find(".entry-card-status").text()).toBe(
-      "✅ добавлено в Anki · 🔇 без озвучки",
+      "✅ добавлено в Anki · 🔇 исходный текст без озвучки",
+    );
+  });
+
+  it("reports missing card audio separately from submitted-text audio", async () => {
+    entries.value = [{
+      entry_id: "entry-1",
+      word: "gave up",
+      language: "English",
+      status: "done",
+      text: "meaning",
+      card_status: "added",
+      no_audio: false,
+      no_card_audio: true,
+    }];
+    const wrapper = mount(AddView);
+    await flushPromises();
+
+    expect(wrapper.find(".entry-card-status").text()).toBe(
+      "✅ added to Anki · 🔇 Anki card has no audio",
     );
   });
 
@@ -462,6 +439,8 @@ describe("AddView", () => {
       correction_reversed: false,
       detail_available: true,
       model: "free-flash",
+      shape: "unit",
+      card_status: "added",
     }];
     const wrapper = mount(AddView);
     await flushPromises();
@@ -523,11 +502,10 @@ describe("AddView", () => {
     await flushPromises();
 
     expect(wrapper.findAll(".segment-label").map((button) => button.text())).toEqual([
-      "aufstehen",
-      "ausfallen",
+      "steht auf",
+      "fällt aus",
     ]);
-    expect(wrapper.find(".segments").text()).toContain("Worth looking up on their own");
-    expect(wrapper.find(".segment-surface").text()).toBe("steht … auf");
+    expect(wrapper.find(".segments").text()).toContain("Words and combinations");
     expect(wrapper.find(".segment-reason").text()).toBe("Trennbares Verb.");
     expect(wrapper.find(".entry-meta").text()).toContain("Deutsch · text — no card");
   });
@@ -550,7 +528,7 @@ describe("AddView", () => {
     expect(apiRequest).toHaveBeenCalledWith("/api/words", {
       method: "POST",
       body: {
-        word: "aufstehen",
+        word: "steht auf",
         lang: "de",
         lookup_only: false,
         context: "Er steht jeden Morgen um sechs auf.",
@@ -587,8 +565,7 @@ describe("AddView", () => {
       textEntry([
         {
           label: "<img src=x onerror=alert(1)>",
-          surface: "<b>steht</b>",
-          reason: "<script>alert(2)</script>",
+          reason: "<script>alert(2)</script><b>steht</b>",
         },
       ]),
     ];
@@ -617,20 +594,29 @@ describe("AddView", () => {
     expect(reasons).toEqual(["банк", "склон"]);
   });
 
-  it("heads the sense chips with what they are, not with the running-text heading", async () => {
+  it("uses distinct headings for text, expression and sense chips", async () => {
     await labelBehavior(EPIC.VOCABULARY_ANALYSIS, FEATURE.ANSWER_DELIVERY, "Suggested units");
     entries.value = [senseEntry()];
     const wrapper = mount(AddView);
     await flushPromises();
 
     expect(wrapper.find(".segments-title").text()).toBe(
-      "This word has other senses — tap one to analyse it:",
+      "Senses of this word — tap one to analyse it:",
     );
 
     entries.value = [textEntry()];
     await flushPromises();
 
-    expect(wrapper.find(".segments-title").text()).toBe("Worth looking up on their own:");
+    expect(wrapper.find(".segments-title").text()).toBe(
+      "Words and combinations — tap one to analyse it:",
+    );
+
+    entries.value = [{ ...senseEntry(), segment_kind: "expression" }];
+    await flushPromises();
+
+    expect(wrapper.find(".segments-title").text()).toBe(
+      "Words in this expression — tap one to analyse it:",
+    );
   });
 
   it("keeps the sense chips on a lookup-only answer, heading them without a card", async () => {
@@ -643,14 +629,14 @@ describe("AddView", () => {
 
     expect(wrapper.findAll(".segment-label")).toHaveLength(2);
     expect(wrapper.find(".segments-title").text()).toBe(
-      "This word has other senses — tap one to analyse it:",
+      "Senses of this word — tap one to analyse it:",
     );
 
     locale.value = "ru";
     await flushPromises();
 
     expect(wrapper.find(".segments-title").text()).toBe(
-      "У слова есть и другие значения — нажмите, чтобы разобрать:",
+      "Значения этого слова — нажмите, чтобы разобрать:",
     );
   });
 
@@ -681,33 +667,6 @@ describe("AddView", () => {
     });
   });
 
-  it("says the context was not needed beside the cards that were made", async () => {
-    await labelBehavior(EPIC.ANKI_CARDS, FEATURE.COLLECTION, "Card delivery status");
-    entries.value = [{
-      entry_id: "entry-1",
-      word: "elbow",
-      language: "English",
-      status: "done",
-      text: "meaning",
-      card_status: "added",
-      card_kinds: ["Recognition", "Recall"],
-      context_dropped: true,
-    }];
-    const wrapper = mount(AddView);
-    await flushPromises();
-
-    expect(wrapper.find(".entry-card-status").text()).toBe(
-      "✅ 2 cards: recognition, recall · the context was not needed",
-    );
-
-    locale.value = "ru";
-    await flushPromises();
-
-    expect(wrapper.find(".entry-card-status").text()).toBe(
-      "✅ 2 карточки: узнавание, воспроизведение · контекст не понадобился",
-    );
-  });
-
   it("offers neither rebuild nor deeper analysis on a running-text entry", async () => {
     await labelBehavior(EPIC.VOCABULARY_ANALYSIS, FEATURE.ANSWER_DELIVERY, "Suggested units");
     entries.value = [textEntry()];
@@ -716,5 +675,20 @@ describe("AddView", () => {
 
     expect(wrapper.find(".rebuild").exists()).toBe(false);
     expect(wrapper.find(".detail").exists()).toBe(false);
+  });
+
+  it("keeps detail but hides rebuild on a lookup-only unit", async () => {
+    entries.value = [{
+      ...senseEntry(),
+      lookup_only: true,
+      card_status: "lookup_only",
+      card_kinds: [],
+      detail_available: true,
+    }];
+    const wrapper = mount(AddView);
+    await flushPromises();
+
+    expect(wrapper.find(".rebuild").exists()).toBe(false);
+    expect(wrapper.find(".detail").exists()).toBe(true);
   });
 });

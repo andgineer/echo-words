@@ -16,6 +16,7 @@ from echo_words.backend import Cascade
 from echo_words.broker import BackendError, BudgetMissError
 from echo_words.config import Settings
 from echo_words.languages import Language
+from echo_words.prompt import MAX_COMPLETE_ANSWER_CHARS
 
 pytestmark = pytest.mark.anyio
 
@@ -113,6 +114,63 @@ async def test_a_pool_answer_the_caller_can_use_never_steps_up(settings, languag
     )
     assert await drain(completion) == ["free ", "answer"]
     assert cascade.broker.direct_calls == []
+
+
+async def test_an_oversized_pool_answer_is_bounded_and_steps_up(settings, languages):
+    oversized = "x" * (MAX_COMPLETE_ANSWER_CHARS + 500)
+    handle = FakeHandle([oversized])
+    cascade = fake_cascade(
+        settings,
+        handles=[handle],
+        client=FakeDirectClient(["paid answer"]),
+    )
+    reset = ResetHook()
+
+    deltas = await run(cascade, languages["en"], reset)
+
+    assert len(deltas[0]) == MAX_COMPLETE_ANSWER_CHARS
+    assert deltas[1] == "paid answer"
+    assert reset.calls == 1
+    assert cascade.broker.direct_calls == ["gpt-fast"]
+    assert handle.delivered == [oversized]
+    assert handle.settled is True
+    assert handle.scores == [0.0]
+
+
+async def test_an_oversized_paid_answer_is_bounded(settings, languages):
+    oversized = "x" * (MAX_COMPLETE_ANSWER_CHARS + 500)
+    cascade = fake_cascade(settings, client=FakeDirectClient([oversized]))
+
+    deltas = await drain(cascade.stream_paid("prompt", languages["en"]))
+
+    assert len(deltas) == 1
+    assert len(deltas[0]) == MAX_COMPLETE_ANSWER_CHARS
+
+
+async def test_an_answer_at_the_exact_bound_is_not_oversized(settings, languages):
+    answer = "x" * MAX_COMPLETE_ANSWER_CHARS
+    cascade = fake_cascade(settings, handles=[FakeHandle([answer])])
+    completion = cascade.stream_completion("prompt", languages["en"])
+
+    assert await drain(completion) == [answer]
+    assert completion.oversized is False
+
+
+async def test_an_extra_delta_after_the_bound_is_drained_but_never_exposed(settings, languages):
+    answer = "x" * MAX_COMPLETE_ANSWER_CHARS
+    handle = FakeHandle([answer, "excess"])
+    cascade = fake_cascade(
+        settings,
+        handles=[handle],
+        client=FakeDirectClient(["paid answer"]),
+    )
+
+    deltas = await run(cascade, languages["en"])
+
+    assert deltas == [answer, "paid answer"]
+    assert handle.delivered == [answer, "excess"]
+    assert handle.settled is True
+    assert handle.scores == [0.0]
 
 
 async def test_an_unusable_answer_stands_when_there_is_nothing_to_step_up_to(settings, languages):

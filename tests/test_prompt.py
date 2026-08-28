@@ -1,152 +1,178 @@
+import json
 import logging
-import re
 
+from echo_words.card import ParsedText, ParsedUnit
 from echo_words.prompt import (
+    MAX_COMPLETE_ANSWER_CHARS,
     PAYLOAD_LOG_LIMIT,
     build_extended_prompt,
     build_prompt,
-    build_text_prompt,
-    extract_card,
-    extract_segments,
+    extract_answer,
 )
 
 
-def test_prompt_carries_the_language_word_target_context_and_hints(languages):
+def unit_json():
+    return json.dumps(
+        {
+            "kind": "unit",
+            "word": "bank",
+            "word_relation": "same",
+            "suggestion": "",
+            "meanings": [
+                {
+                    "label": "",
+                    "translations": ["банк"],
+                    "examples": [
+                        {
+                            "text": "The bank opens.",
+                            "translation": "Банк открыт.",
+                            "highlighted": "The <b>bank</b> opens.",
+                            "gapped": "The ___ opens.",
+                        },
+                    ],
+                },
+            ],
+            "segments": [],
+        },
+    )
+
+
+def test_one_prompt_carries_both_neutral_branches(languages):
+    prompt = build_prompt(languages["sr"], "Он се вратио.", "Russian")
+
+    assert '"kind": "unit"' in prompt
+    assert '"kind": "text"' in prompt
+    assert "Српски" in prompt
+    assert "WRITE YOUR ENTIRE ANSWER IN Russian" in prompt
+    assert "for nouns give gender and plural" in prompt
+    assert "do not impose a numerical limit" in prompt
+    assert "at most five" not in prompt
+
+
+def test_submit_box_and_chip_prompts_differ_only_in_request_intent(languages):
+    open_prompt = build_prompt(languages["de"], "Rad fahren", "Russian")
+    unit_prompt = build_prompt(
+        languages["de"],
+        "Rad fahren",
+        "Russian",
+        context="Er fährt jeden Tag Rad.",
+        unit_intent=True,
+    )
+
+    assert "choose the branch yourself" in open_prompt
+    assert "kind must be unit" in unit_prompt
+    assert "context_sense" not in open_prompt
+    assert "context_sense" in unit_prompt
+
+
+def test_open_verdict_defaults_contextual_finite_clauses_to_text(languages):
+    prompt = build_prompt(
+        languages["en"],
+        "A colleague finally made up her mind after lunch.",
+        "Russian",
+    )
+
+    assert "Anything\nthat reports a particular situation is text" in prompt
+    assert "even when a fixed expression fills\nmost of it" in prompt
+    assert "return that expression separately in combinations" in prompt
+    assert "If uncertain, choose text" in prompt
+    assert "whose whole wording is the reusable lookup target" in prompt
+
+
+def test_text_combinations_preserve_separate_exact_source_units(languages):
     prompt = build_prompt(
         languages["sr"],
-        "глава",
+        "Sve mi se čini da nešto nije u redu.",
         "Russian",
-        context="прва глава књиге",
     )
-    assert "Српски" in prompt
-    assert "глава" in prompt
-    assert "WRITE YOUR ENTIRE ANSWER IN Russian" in prompt
-    assert "прва глава књиге" in prompt
-    assert "for nouns give gender and plural" in prompt
-    assert "===CARD===" in prompt
-    assert "label is a\n1-3 word tag in Russian" in prompt
-    assert "part of speech" not in prompt.replace("NEVER name the part of speech", "")
-    assert "text is a\nsentence in Српски, translation is its rendering in Russian" in prompt
-    assert "A register mark (colloquial, formal, slang,\n   vulgar) goes AFTER" in prompt
-    assert "If there is no typo, suggestion is an\nempty string." in prompt
-    assert "with no punctuation used for emphasis\nanywhere?" in prompt
+
+    assert "put every clear multi-word lookup target in combinations" in prompt
+    assert "Keep distinct non-overlapping units\nseparate" in prompt
+    assert "label and surface are the same unit twice" in prompt
+    assert "copied token for token out of the submitted\ntext" in prompt
+    assert "in the same spelling, script and capitalization" in prompt
+    assert "So label may read `aufstehen`\nwhile surface reads `steht ... auf`" in prompt
+    assert "Include every fixed piece —\nreflexive particle" in prompt
+    assert "in\nthe form it takes in this sentence" in prompt
+    assert "leave out negation and the current\nsubject, object or complement" in prompt
+    assert "the backend\ngives every source word its own chip anyway" in prompt
+    assert "never\ntranslate, transliterate, correct or lemmatise it" in prompt
 
 
-def test_the_card_contract_asks_for_the_senses_and_never_for_a_card(languages):
-    bare = build_prompt(languages["de"], "Bank", "Russian")
-    with_context = build_prompt(
+def test_unit_article_still_requires_forms_usage_origin_and_examples(languages):
+    prompt = build_prompt(languages["de"], "Bank", "Russian", unit_intent=True)
+    for section in ("Forms only when useful", "Usage:", "Origin:", "examples"):
+        assert section in prompt
+
+
+def test_unit_examples_target_only_the_lexical_surface(languages):
+    prompt = build_prompt(
         languages["de"],
-        "Bank",
+        "steht auf",
         "Russian",
-        context="Wir saßen auf der Bank im Park.",
+        context="Er steht jeden Morgen um sechs auf.",
+        unit_intent=True,
     )
 
-    assert '"context_sense": 0' in bare
-    assert "the index into meanings,\ncounting from zero, of the sense that context uses" in bare
-    # The senses are the only thing asked for: a prompt that also asked which
-    # cards to make measured as a decision carrying no information.
-    assert '"cards"' not in bare
-    assert "context_production" not in bare
-    assert "split_recall" not in bare
-    assert "Give the senses this word has exactly as you would with no context" in with_context
-    assert "Never drop a sense because the context does\nnot use it" in with_context
-    assert not re.search(r"\{[a-z_]+\}", with_context)
+    assert "<b> tags around all and\nonly the unit" in prompt
+    assert "Never mark a subject, object, auxiliary or argument" in prompt
+    assert "at least one unmarked source-language word" in prompt
+    assert "mark those selected tokens and no others" in prompt
+    assert "do not expand the selection to neighbouring context" in prompt
 
 
-def test_card_is_extracted_after_the_hidden_delimiter(languages):
-    raw = """<b>recieve</b>\n===CARD===
-{"word":"recieve","suggestion":"receive","meanings":[{"label":"","pos":"гл.",
-"translations":["получать"],"examples":[
-{"text":"I recieve it.","translation":"Я получаю это."}]}]}"""
-    parsed = extract_card(raw, "recieve", languages["en"])
-    assert parsed is not None
-    note, suggestion = parsed.note, parsed.suggestion
-    assert note.word == "recieve"
-    assert suggestion == "receive"
+def test_the_prompt_asks_for_the_spelling_relation_in_one_rule(languages):
+    prompt = build_prompt(languages["en"], "recieve", "Russian", unit_intent=True)
+
+    assert '"word_relation": "<same, morphology or typo>"' in prompt
+    assert "word_relation is typo when the submission is misspelled" in prompt
+    assert "suggestion\nis empty unless the relation is typo" in prompt
+    assert "when you\n   suspect a misspelling, head the article with the submitted spelling" in (
+        prompt
+    )
 
 
-def test_missing_delimiter_has_no_card(languages):
-    assert extract_card('{"word":"word"}', "word", languages["en"]) is None
+def test_contiguous_unit_uses_one_bold_span(languages):
+    prompt = build_prompt(languages["en"], "give up", "Russian", unit_intent=True)
+
+    assert "Mark a contiguous unit with\none span" in prompt
+    assert "separated or reflexive pieces with one span each" in prompt
 
 
-def test_malformed_json_after_the_delimiter_has_no_card(languages):
-    assert extract_card("analysis===CARD==={broken", "word", languages["en"]) is None
-
-
-def test_a_rejected_card_block_is_logged_with_its_reason_and_its_payload(languages, caplog):
-    raw = 'analysis===CARD==={"word":"word","meanings":[{"label":"","translations":[]}]}'
-    with caplog.at_level(logging.WARNING, logger="echo_words.prompt"):
-        assert extract_card(raw, "word", languages["en"]) is None
-    logged = caplog.text
-    assert "en/'word'" in logged
-    assert "translations must be a non-empty list" in logged
-    assert '"meanings"' in logged
-
-
-def test_a_missing_card_block_is_logged_as_such(languages, caplog):
-    with caplog.at_level(logging.WARNING, logger="echo_words.prompt"):
-        assert extract_card("analysis with no payload", "word", languages["en"]) is None
-    assert "never wrote the delimiter" in caplog.text
-
-
-def test_a_logged_payload_is_clipped_and_says_how_long_it_was(languages, caplog):
-    payload = '{"word":"word","junk":"' + "x" * (PAYLOAD_LOG_LIMIT * 2)
-    with caplog.at_level(logging.WARNING, logger="echo_words.prompt"):
-        assert extract_card(f"analysis===CARD==={payload}", "word", languages["en"]) is None
-    assert f"({len(payload)} chars)" in caplog.text
-    assert "x" * (PAYLOAD_LOG_LIMIT + 1) not in caplog.text
-
-
-def test_a_rejected_segments_block_is_logged_with_its_payload(languages, caplog):
-    with caplog.at_level(logging.WARNING, logger="echo_words.prompt"):
-        assert extract_segments('prose===CARD==={"segments":{}}', languages["de"]) is None
-    assert "unusable segments block for de" in caplog.text
-    assert '"segments"' in caplog.text
-
-
-def test_extended_prompt_carries_context_but_has_no_card_contract(languages):
-    prompt = build_extended_prompt(
+def test_answer_extraction_returns_the_discriminated_branch(languages):
+    unit = extract_answer(f"article===CARD==={unit_json()}", "bank", languages["en"])
+    text = extract_answer(
+        'translation===CARD==={"kind":"text","combinations":[]}',
+        "The bank opens.",
         languages["en"],
-        "bucket",
-        "Russian",
-        context="kick the bucket",
     )
+
+    assert isinstance(unit, ParsedUnit)
+    assert isinstance(text, ParsedText)
+
+
+def test_rejected_payload_is_logged_bounded(languages, caplog):
+    payload = '{"kind":"unit","junk":"' + "x" * (PAYLOAD_LOG_LIMIT * 2)
+    with caplog.at_level(logging.WARNING, logger="echo_words.prompt"):
+        assert extract_answer(f"article===CARD==={payload}", "word", languages["en"]) is None
+    assert f"({len(payload)} chars)" in caplog.text
+
+
+def test_oversized_complete_answer_is_rejected_before_payload_parsing(
+    languages,
+    monkeypatch,
+):
+    def should_not_parse(*_args, **_kwargs):
+        raise AssertionError("oversized answers must stop before JSON decoding")
+
+    monkeypatch.setattr("echo_words.prompt.parse_answer_payload", should_not_parse)
+    raw = "x" * (MAX_COMPLETE_ANSWER_CHARS + 1)
+
+    assert extract_answer(raw, "bank", languages["en"]) is None
+
+
+def test_extended_prompt_has_no_compact_contract(languages):
+    prompt = build_extended_prompt(languages["en"], "bank", "Russian", context="the bank")
     assert "lexicographer" in prompt
-    assert "kick the bucket" in prompt
-    assert "EVERY sense" in prompt
-    assert "No JSON and no delimiters" in prompt
+    assert "the bank" in prompt
     assert "===CARD===" not in prompt
-
-
-def test_the_text_prompt_carries_the_language_text_target_and_hints(languages):
-    prompt = build_text_prompt(languages["sr"], "Он се синоћ вратио кући.", "Russian")
-    assert "Српски" in prompt
-    assert "Он се синоћ вратио кући." in prompt
-    assert "WRITE YOUR ENTIRE ANSWER IN Russian" in prompt
-    assert "for nouns give gender and plural" in prompt
-    assert "why — one short line in Russian" in prompt
-    assert '{"segments": [{"label": "...", "surface": "...", "why": "..."}]}' in prompt
-    assert not re.search(r"\{[a-z_]+\}", prompt)
-
-
-def test_the_text_prompt_asks_for_no_card_and_no_transcription(languages):
-    prompt = build_text_prompt(languages["de"], "Er steht jeden Morgen um sechs auf.", "Russian")
-    assert "===CARD===" in prompt
-    assert '"meanings"' not in prompt
-    assert "Give no phonetic transcription." in prompt
-
-
-def test_segments_are_extracted_after_the_hidden_delimiter(languages):
-    raw = (
-        "Он вернулся домой.\n===CARD===\n"
-        '{"segments":[{"label":"вратити се","surface":"се … вратио","why":"Повратни глагол."}]}'
-    )
-    segments = extract_segments(raw, languages["sr"])
-    assert segments is not None
-    assert segments[0].label == "вратити се"
-
-
-def test_a_text_with_no_delimiter_has_no_segments_but_an_empty_list_is_an_answer(languages):
-    assert extract_segments("just prose", languages["de"]) is None
-    assert extract_segments("prose===CARD==={broken", languages["de"]) is None
-    assert extract_segments('prose===CARD==={"segments":[]}', languages["de"]) == []

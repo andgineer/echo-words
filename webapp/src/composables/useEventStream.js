@@ -42,6 +42,13 @@ export function useEventStream({
         text: "",
         status: "pending",
         error: null,
+        shape: null,
+        segments: [],
+        segment_kind: null,
+        card_status: null,
+        card_kinds: [],
+        no_audio: false,
+        no_card_audio: false,
         ...(Object.hasOwn(data, "detail_html") ? { detail_html: data.detail_html } : {}),
       });
     } else if (name === "done") {

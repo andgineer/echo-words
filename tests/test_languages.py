@@ -8,6 +8,7 @@ from echo_words.languages import (
     MAX_WORD_LENGTH,
     Language,
     LanguagesConfigError,
+    fold_for_match,
     load_languages,
     normalize_submission,
     plain_text,
@@ -258,3 +259,13 @@ def test_the_text_hints_have_a_russian_wording(languages):
     assert validate_text("a" * (MAX_TEXT_LENGTH + 1), languages["de"], "ru") == (
         f"Текст слишком длинный: не больше {MAX_TEXT_LENGTH} символов."
     )
+
+
+def test_serbian_folding_maps_both_scripts_onto_one_spelling(languages):
+    assert fold_for_match("Њихово", languages["sr"]) == fold_for_match("njihovo", languages["sr"])
+    assert fold_for_match("ЉУБАВ", languages["sr"]) == fold_for_match("ljubav", languages["sr"])
+
+
+def test_folding_a_single_script_language_only_folds_case(languages):
+    assert fold_for_match("Straße", languages["de"]) == fold_for_match("STRASSE", languages["de"])
+    assert fold_for_match("Он", languages["en"]) == "он"

@@ -1,8 +1,10 @@
 import asyncio
+import json
 from collections.abc import AsyncIterator, Iterable
 
 from fakes import FakeDirectClient, FakeHandle, fake_cascade
 
+from echo_words import pipeline as pipeline_module
 from echo_words.anki import Added, MisconfiguredNoteTypeError
 from echo_words.broker import BackendError
 from echo_words.events import Event, EventHub
@@ -10,11 +12,11 @@ from echo_words.pipeline import (
     ADDED_STATUS,
     ANALYSIS_FAILED_CODE,
     CARD_FAILED_STATUS,
-    FRAGMENT_STATUS,
     LOOKUP_ONLY_STATUS,
     TEXT_STATUS,
     WordPipeline,
 )
+from echo_words.prompt import MAX_COMPLETE_ANSWER_CHARS
 
 pytest = __import__("pytest")
 pytestmark = pytest.mark.anyio
@@ -143,14 +145,15 @@ async def test_deltas_are_throttled_cut_sanitized_and_finished(languages):
                 "card_status": CARD_FAILED_STATUS,
                 "card_kinds": [],
                 "card_error": None,
-                "context_dropped": False,
                 "no_audio": True,
+                "no_card_audio": False,
                 "segments": [],
-                "segments_are_senses": False,
+                "segment_kind": None,
+                "shape": None,
                 "audio_url": None,
                 "context_audio_url": None,
                 "model": None,
-                "detail_available": True,
+                "detail_available": False,
                 "correction_reversed": False,
             },
         )
@@ -182,9 +185,11 @@ async def test_card_parse_quality_and_suggestion_are_published_after_completion(
     completion = Completion(
         [
             "analysis===CARD===",
-            '{"word":"recieve","suggestion":"receive","meanings":',
+            '{"kind":"unit","word":"recieve","word_relation":"typo",',
+            '"suggestion":"receive","meanings":',
             '[{"label":"","translations":["получать"],"examples":',
-            '[{"text":"I recieve it.","translation":"Я получаю это."}]}]}',
+            '[{"text":"I recieve it.","translation":"Я получаю это.",',
+            '"highlighted":"I <b>recieve</b> it.","gapped":"I ___ it."}]}],"segments":[]}',
         ],
     )
     cascade = ScriptedCascade([completion])
@@ -207,10 +212,17 @@ async def test_card_parse_quality_and_suggestion_are_published_after_completion(
                 "card_status": CARD_FAILED_STATUS,
                 "card_kinds": [],
                 "card_error": None,
-                "context_dropped": False,
                 "no_audio": True,
-                "segments": [],
-                "segments_are_senses": False,
+                "no_card_audio": False,
+                "segments": [
+                    {
+                        "label": "recieve",
+                        "reason": "получать",
+                        "context": "I recieve it.",
+                    },
+                ],
+                "segment_kind": "senses",
+                "shape": "unit",
                 "audio_url": None,
                 "context_audio_url": None,
                 "model": None,
@@ -226,8 +238,9 @@ async def test_card_without_examples_is_rated_as_a_failure_without_losing_analys
     completion = Completion(
         [
             "analysis===CARD===",
-            '{"word":"word","meanings":[{"label":"","translations":["слово"],',
-            '"examples":[]}]}',
+            '{"kind":"unit","word":"word","word_relation":"same",',
+            '"suggestion":"","meanings":[{"label":"",',
+            '"translations":["слово"],"examples":[]}],"segments":[]}',
         ],
     )
     cascade = ScriptedCascade([completion])
@@ -251,14 +264,15 @@ async def test_card_without_examples_is_rated_as_a_failure_without_losing_analys
                 "card_status": CARD_FAILED_STATUS,
                 "card_kinds": [],
                 "card_error": None,
-                "context_dropped": False,
                 "no_audio": True,
+                "no_card_audio": False,
                 "segments": [],
-                "segments_are_senses": False,
+                "segment_kind": None,
+                "shape": None,
                 "audio_url": None,
                 "context_audio_url": None,
                 "model": None,
-                "detail_available": True,
+                "detail_available": False,
                 "correction_reversed": False,
             },
         )
@@ -279,29 +293,100 @@ class RecordingAnki:
         return None
 
 
-def valid_card(word):
-    return (
-        f'analysis===CARD==={{"word":"{word}","meanings":[{{'
-        '"label":"","translations":["перевод"],"examples":'
-        f'[{{"text":"Use {word} now.","translation":"Перевод."}}]}}]}}'
+def example(word, *, translation="Перевод."):
+    return {
+        "text": f"Use {word} now.",
+        "translation": translation,
+        "highlighted": f"Use <b>{word}</b> now.",
+        "gapped": "Use ___ now.",
+    }
+
+
+def valid_card(word, *, segments=None, context=None, word_relation="same"):
+    meanings = None
+    if context is not None:
+        meanings = [
+            {
+                "label": "",
+                "translations": ["перевод"],
+                "examples": [
+                    {
+                        "text": context,
+                        "translation": "Перевод.",
+                        "highlighted": _highlighted_context(word, context),
+                        "gapped": _gapped_context(word, context),
+                    },
+                ],
+            },
+        ]
+    return card_with(
+        word,
+        meanings=meanings,
+        segments=segments or [],
+        word_relation=word_relation,
     )
 
 
-TWO_MEANINGS = (
-    '{"label":"учреждение","translations":["банк"],'
-    '"examples":[{"text":"The bank opens at nine.","translation":"Банк открывается в девять."}]},'
-    '{"label":"берег","translations":["берег"],'
-    '"examples":[{"text":"We sat on the bank.","translation":"Мы сидели на берегу."}]}'
-)
+def _highlighted_context(word, context):
+    if "steht" in context and "auf" in context and word == "aufstehen":
+        return context.replace("steht", "<b>steht</b>").replace("auf.", "<b>auf</b>.")
+    surface = "gave up" if word == "give up" and "gave up" in context else word
+    return context.replace(surface, f"<b>{surface}</b>")
+
+
+def _gapped_context(word, context):
+    if "steht" in context and "auf" in context and word == "aufstehen":
+        return context.replace("steht", "___").replace("auf.", "___.")
+    surface = "gave up" if word == "give up" and "gave up" in context else word
+    return context.replace(surface, "___")
+
+
+TWO_MEANINGS = [
+    {
+        "label": "учреждение",
+        "translations": ["банк"],
+        "examples": [
+            {
+                "text": "The bank opens at nine.",
+                "translation": "Банк открывается в девять.",
+                "highlighted": "The <b>bank</b> opens at nine.",
+                "gapped": "The ___ opens at nine.",
+            },
+        ],
+    },
+    {
+        "label": "берег",
+        "translations": ["берег"],
+        "examples": [
+            {
+                "text": "We sat on the bank.",
+                "translation": "Мы сидели на берегу.",
+                "highlighted": "We sat on the <b>bank</b>.",
+                "gapped": "We sat on the ___.",
+            },
+        ],
+    },
+]
 
 
 def card_with(word, meanings=None, **fields):
-    blocks = meanings or (
-        '{"label":"","translations":["перевод"],'
-        f'"examples":[{{"text":"Use {word} now.","translation":"Перевод."}}]}}'
-    )
-    named = "".join(f'"{name}":{value},' for name, value in fields.items())
-    return f'analysis===CARD==={{"word":"{word}",{named}"meanings":[{blocks}]}}'
+    answer = {
+        "kind": "unit",
+        "word": word,
+        "word_relation": "same",
+        "suggestion": "",
+        "meanings": meanings
+        or [
+            {
+                "label": "",
+                "translations": ["перевод"],
+                "examples": [example(word)],
+            },
+        ],
+        "segments": [],
+        **fields,
+    }
+    return f"analysis===CARD==={json.dumps(answer, ensure_ascii=False)}"
 
 
 async def stored_note(languages, answer, anki, **submission):
@@ -315,115 +400,147 @@ async def stored_note(languages, answer, anki, **submission):
     return entry
 
 
-async def test_a_sense_index_without_a_context_leaves_the_note_bare(languages):
-    anki = RecordingAnki(Added(1, None, ("Recognition", "SenseRecall1", "SenseRecall2")))
+async def test_context_sense_selects_one_note_and_every_sense_stays_a_chip(languages):
+    kinds = ("Recognition", "Recall", "ContextRecognition", "ContextProduction")
+    anki = RecordingAnki(Added(1, None, kinds))
     answer = card_with("bank", meanings=TWO_MEANINGS, context_sense=1)
 
-    entry = await stored_note(languages, answer, anki)
+    entry = await stored_note(
+        languages,
+        answer,
+        anki,
+        context="We sat on the bank.",
+        intent="unit",
+    )
 
     note = anki.calls[0][0]
     assert note.word == "bank"
-    assert note.context == ""
-    assert note.context_sense is None
-    assert entry.context_dropped is False
-
-
-async def test_a_context_equal_to_the_word_narrows_nothing(languages):
-    anki = RecordingAnki(Added(1, None, ("Recognition", "SenseRecall1", "SenseRecall2")))
-    answer = card_with("bank", meanings=TWO_MEANINGS, context_sense=1)
-
-    await stored_note(languages, answer, anki, context="bank")
-
-    assert anki.calls[0][0].context_sense is None
-
-
-async def test_several_meanings_card_the_context_under_the_sense_it_uses(languages):
-    anki = RecordingAnki(Added(1, None, ("ContextRecognition", "ContextProduction")))
-    answer = card_with("bank", meanings=TWO_MEANINGS, context_sense=1)
-
-    entry = await stored_note(languages, answer, anki, context="We sat on the bank.")
-
-    note = anki.calls[0][0]
-    assert note.context == "We sat on the bank."
-    assert note.context_sense == 1
-    assert entry.context_dropped is False
-
-
-async def test_one_meaning_drops_the_context_and_says_so(languages):
-    """The context narrows nothing, and the app decided that on the user's behalf."""
-    anki = RecordingAnki(Added(1, None, ("Recognition", "Recall")))
-    answer = card_with("bank", context_sense=0)
-
-    entry = await stored_note(languages, answer, anki, context="The bank opens at nine.")
-
-    note = anki.calls[0][0]
-    assert note.context == ""
-    assert note.context_sense is None
-    assert entry.card_status == ADDED_STATUS
-    assert entry.context_dropped is True
-
-
-async def test_an_unusable_sense_index_falls_through_to_the_bare_note(languages):
-    anki = RecordingAnki(Added(1, None, ("Recognition", "SenseRecall1", "SenseRecall2")))
-    answer = card_with("bank", meanings=TWO_MEANINGS, context_sense=7)
-
-    entry = await stored_note(languages, answer, anki, context="We sat on the bank.")
-
-    assert anki.calls[0][0].context == ""
-    assert entry.context_dropped is True
-
-
-async def test_the_senses_the_context_did_not_use_are_offered_as_chips(languages):
-    anki = RecordingAnki(Added(1, None, ("ContextRecognition", "ContextProduction")))
-    answer = card_with("bank", meanings=TWO_MEANINGS, context_sense=1)
-
-    entry = await stored_note(languages, answer, anki, context="We sat on the bank.")
-
+    assert note.sense == 1
+    assert note.meaning.translations == ["берег"]
+    assert entry.segment_kind == "senses"
     assert entry.segments == [
         {
             "label": "bank",
-            "surface": "The bank opens at nine.",
             "reason": "банк",
+            "context": "The bank opens at nine.",
+        },
+        {
+            "label": "bank",
+            "reason": "берег",
+            "context": "We sat on the bank.",
         },
     ]
-    assert entry.segments_are_senses is True
 
 
-async def test_a_sense_sentence_too_long_for_a_context_is_left_off_its_chip(languages):
-    """Cutting it to length would card a mangled sentence; without one the tap is an
-    ordinary bare send of the word, which still brings that sense into the deck."""
-    long_example = "The bank opens at nine " + "and closes at five " * 10
-    meanings = (
-        '{"label":"учреждение","translations":["банк"],'
-        f'"examples":[{{"text":"{long_example}","translation":"Банк."}}]}},'
-        '{"label":"берег","translations":["берег"],'
-        '"examples":[{"text":"We sat on the bank.","translation":"Мы сидели на берегу."}]}'
+async def test_one_meaning_keeps_the_context_example_and_all_four_cards(languages):
+    kinds = ("Recognition", "Recall", "ContextRecognition", "ContextProduction")
+    anki = RecordingAnki(Added(1, None, kinds))
+    context_example = {
+        "text": "The bank opens at nine.",
+        "translation": "Банк открывается в девять.",
+        "highlighted": "The <b>bank</b> opens at nine.",
+        "gapped": "The ___ opens at nine.",
+    }
+    answer = card_with(
+        "bank",
+        meanings=[{"label": "", "translations": ["банк"], "examples": [context_example]}],
+        context_sense=0,
     )
-    anki = RecordingAnki(Added(1, None, ("ContextRecognition", "ContextProduction")))
+
+    entry = await stored_note(
+        languages,
+        answer,
+        anki,
+        context="The bank opens at nine.",
+        intent="unit",
+    )
+
+    assert anki.calls[0][0].meaning.examples[0].text == "The bank opens at nine."
+    assert entry.card_status == ADDED_STATUS
+    assert entry.card_kinds == list(kinds)
+
+
+async def test_an_unusable_context_sense_falls_back_to_the_first(languages):
+    anki = RecordingAnki(Added(1, None))
+    answer = card_with("bank", meanings=TWO_MEANINGS, context_sense=7)
+
+    await stored_note(
+        languages,
+        answer,
+        anki,
+        context="The bank opens at nine.",
+        intent="unit",
+    )
+
+    assert anki.calls[0][0].sense == 0
+
+
+async def test_a_sense_sentence_within_the_context_bound_is_kept_exactly(languages):
+    long_example = "The bank opens at nine " + " ".join(["and closes at five"] * 10)
+    meanings = [
+        {
+            "label": "учреждение",
+            "translations": ["банк"],
+            "examples": [
+                {
+                    "text": long_example,
+                    "translation": "Банк.",
+                    "highlighted": long_example.replace("bank", "<b>bank</b>", 1),
+                    "gapped": long_example.replace("bank", "___", 1),
+                },
+            ],
+        },
+        TWO_MEANINGS[1],
+    ]
+    anki = RecordingAnki(Added(1, None))
     answer = card_with("bank", meanings=meanings, context_sense=1)
 
-    entry = await stored_note(languages, answer, anki, context="We sat on the bank.")
+    entry = await stored_note(languages, answer, anki, intent="unit")
 
-    assert entry.segments == [{"label": "bank", "surface": "", "reason": "банк"}]
-
-
-async def test_a_context_that_narrowed_nothing_offers_no_chips(languages):
-    anki = RecordingAnki(Added(1, None, ("Recognition", "Recall")))
-    answer = card_with("bank", context_sense=0)
-
-    entry = await stored_note(languages, answer, anki, context="The bank opens at nine.")
-
-    assert entry.segments == []
+    assert 120 < len(long_example) <= 500
+    assert entry.segments[0]["context"] == long_example
+    assert entry.segments[1]["context"] == "We sat on the bank."
 
 
-async def test_the_status_names_the_kinds_the_collection_actually_made(languages):
-    kinds = ("ContextRecognition", "ContextProduction")
+async def test_a_sense_sentence_beyond_the_context_bound_falls_back_to_bare_lookup(
+    languages,
+):
+    long_example = "The bank " + "stays open " * 50
+    answer = card_with(
+        "bank",
+        meanings=[
+            {
+                "label": "",
+                "translations": ["банк"],
+                "examples": [
+                    {
+                        "text": long_example,
+                        "translation": "Банк.",
+                        "highlighted": long_example.replace("bank", "<b>bank</b>", 1),
+                        "gapped": long_example.replace("bank", "___", 1),
+                    },
+                ],
+            },
+        ],
+    )
+
+    entry = await stored_note(
+        languages,
+        answer,
+        RecordingAnki(Added(1, None)),
+        intent="unit",
+    )
+
+    assert len(long_example) > 500
+    assert entry.segments[0]["context"] == ""
+
+
+async def test_the_status_names_all_four_kinds_the_collection_made(languages):
+    kinds = ("Recognition", "Recall", "ContextRecognition", "ContextProduction")
     anki = RecordingAnki(Added(1, None, kinds))
     hub = EventHub()
     pipeline = WordPipeline(
-        ScriptedCascade(
-            [Completion([card_with("bank", meanings=TWO_MEANINGS, context_sense=0)])],
-        ),
+        ScriptedCascade([Completion([card_with("bank", meanings=TWO_MEANINGS)])]),
         target_lang="ru",
         events=hub,
         anki=anki,
@@ -431,12 +548,7 @@ async def test_the_status_names_the_kinds_the_collection_actually_made(languages
     pipeline.start()
     try:
         async with hub.subscribe() as subscriber:
-            entry = await pipeline.enqueue(
-                languages["en"],
-                "bank",
-                False,
-                context="The bank opens at nine.",
-            )
+            entry = await pipeline.enqueue(languages["en"], "bank", False, intent="unit")
             await pipeline.join()
             events = drain(subscriber)
     finally:
@@ -445,123 +557,111 @@ async def test_the_status_names_the_kinds_the_collection_actually_made(languages
     done = [event for event in events if event.name == "done"][-1]
     assert done.data["card_status"] == "added"
     assert done.data["card_kinds"] == list(kinds)
-    assert done.data["context_dropped"] is False
     assert entry.card_kinds == list(kinds)
     assert entry.public()["card_kinds"] == list(kinds)
 
 
-async def test_a_rebuild_carries_the_card_set_into_the_replacement(languages):
-    replaced_kinds = ("ContextRecognition", "ContextProduction")
-    anki = MutableAnki(
-        [Added(1, None, ("Recognition", "Recall")), Added(2, None, replaced_kinds)],
-    )
+async def test_a_rebuild_retains_unit_intent_and_replaces_with_the_returned_headword(languages):
+    kinds = ("Recognition", "Recall", "ContextRecognition", "ContextProduction")
+    anki = MutableAnki([Added(1, None, kinds), Added(2, None, kinds)])
     cascade = ScriptedCascade(
         [
-            Completion([valid_card("bank")]),
-            Completion([card_with("bank", meanings=TWO_MEANINGS, context_sense=0)]),
+            Completion(
+                [
+                    valid_card(
+                        "give up",
+                        context="She gave up yesterday.",
+                        word_relation="morphology",
+                    ),
+                ],
+            ),
+            Completion(
+                [
+                    valid_card(
+                        "give up",
+                        context="She gave up yesterday.",
+                        word_relation="morphology",
+                    ),
+                ],
+            ),
         ],
     )
-    hub = EventHub()
-    pipeline = WordPipeline(
-        cascade,
-        target_lang="ru",
-        events=hub,
-        anki=anki,
-    )
+    pipeline = WordPipeline(cascade, target_lang="ru", anki=anki)
     pipeline.start()
     try:
-        async with hub.subscribe() as subscriber:
-            entry = await pipeline.enqueue(
-                languages["en"],
-                "bank",
-                False,
-                context="The bank opens at nine.",
-            )
-            await pipeline.join()
-            await pipeline.request_rebuild(entry.entry_id)
-            await pipeline.join()
-            events = drain(subscriber)
-    finally:
-        await pipeline.close()
-
-    _note_id, note, _deck, _audio_path, _media = anki.replaced[0]
-    assert note.context == "The bank opens at nine."
-    assert note.context_sense == 0
-    done = [event for event in events if event.name == "done"][-1]
-    assert done.data["card_kinds"] == list(replaced_kinds)
-    assert entry.card_kinds == list(replaced_kinds)
-
-
-async def test_a_fragment_makes_no_note_and_offers_the_unit_it_is_about(languages):
-    # The submitted text was a use of a unit, so its front would be unreviewable;
-    # the unit is offered instead and one tap on it makes the note.
-    anki = RecordingAnki(Added(1, None))
-    hub = EventHub()
-    answer = (
-        'analysis===CARD==={"word":"allein","candidates":["allein","einsam"],"meanings":[{'
-        '"label":"","translations":["один"],"examples":'
-        '[{"text":"Er ist allein.","translation":"Он один."}]}]}'
-    )
-    pipeline = WordPipeline(
-        ScriptedCascade([Completion([answer])]),
-        target_lang="ru",
-        events=hub,
-        anki=anki,
-    )
-    pipeline.start()
-    try:
-        entry = await pipeline.enqueue(languages["de"], "ist allein im Restaurant", False)
+        entry = await pipeline.enqueue(
+            languages["en"],
+            "gave up",
+            False,
+            intent="unit",
+            context="She gave up yesterday.",
+        )
         await pipeline.join()
-        assert anki.calls == []
-        assert entry.card_status == FRAGMENT_STATUS
-        assert [segment["label"] for segment in entry.segments] == ["allein", "einsam"]
+        await pipeline.request_rebuild(entry.entry_id)
+        await pipeline.join()
     finally:
         await pipeline.close()
 
+    assert "kind must be unit" in cascade.prompts[0]
+    assert "kind must be unit" in cascade.prompts[1]
+    assert anki.calls[0][0].word == "give up"
+    assert anki.replaced[0][1].word == "give up"
+    assert entry.word == "gave up"
 
-async def test_a_unit_still_becomes_a_note_and_offers_nothing(languages):
+
+async def test_a_set_expression_makes_one_note_and_offers_its_component_words(languages):
+    anki = RecordingAnki(Added(1, None))
+    answer = valid_card(
+        "kick the bucket",
+        segments=[
+            {"label": "kick", "surface": "kick", "why": "глагол"},
+            {"label": "the", "surface": "the", "why": "артикль"},
+            {"label": "bucket", "surface": "bucket", "why": "существительное"},
+        ],
+    )
+    pipeline = WordPipeline(ScriptedCascade([Completion([answer])]), target_lang="ru", anki=anki)
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(languages["en"], "kick the bucket", False)
+        await pipeline.join()
+    finally:
+        await pipeline.close()
+
+    assert len(anki.calls) == 1
+    assert entry.segment_kind == "expression"
+    assert [segment["label"] for segment in entry.segments] == ["kick", "the", "bucket"]
+    assert {segment["context"] for segment in entry.segments} == {"Use kick the bucket now."}
+
+
+async def test_an_inflected_single_word_uses_the_returned_dictionary_headword(languages):
     anki = RecordingAnki(Added(1, None))
     pipeline = WordPipeline(
-        ScriptedCascade([Completion([valid_card("Rad fahren")])]),
+        ScriptedCascade(
+            [Completion([valid_card("одржавати", word_relation="morphology")])],
+        ),
         target_lang="ru",
         anki=anki,
     )
     pipeline.start()
     try:
-        entry = await pipeline.enqueue(languages["de"], "Rad fahren", False)
+        entry = await pipeline.enqueue(languages["sr"], "одржава", False, intent="unit")
         await pipeline.join()
-        assert len(anki.calls) == 1
-        assert entry.card_status == ADDED_STATUS
-        assert entry.segments == []
     finally:
         await pipeline.close()
 
-
-async def test_an_inflected_single_word_still_becomes_a_note(languages):
-    # The answer names the dictionary form of a word that was submitted inflected;
-    # that is the same unit, not a unit found inside a longer input.
-    anki = RecordingAnki(Added(1, None))
-    pipeline = WordPipeline(
-        ScriptedCascade([Completion([valid_card("одржавати")])]),
-        target_lang="ru",
-        anki=anki,
-    )
-    pipeline.start()
-    try:
-        entry = await pipeline.enqueue(languages["sr"], "одржава", False)
-        await pipeline.join()
-        assert [note.word for note, *_ in anki.calls] == ["одржава"]
-        assert entry.card_status == ADDED_STATUS
-        assert entry.segments == []
-    finally:
-        await pipeline.close()
+    assert [note.word for note, *_ in anki.calls] == ["одржавати"]
+    assert entry.word == "одржава"
+    assert entry.card_status == ADDED_STATUS
+    assert entry.segment_kind == "senses"
 
 
 async def test_lookup_only_skips_anki_and_reports_it_in_done(languages):
     anki = RecordingAnki(Added(1, None))
     hub = EventHub()
     pipeline = WordPipeline(
-        ScriptedCascade([Completion([valid_card("word")])]),
+        ScriptedCascade(
+            [Completion([valid_card("word", word_relation="morphology")])],
+        ),
         target_lang="ru",
         events=hub,
         anki=anki,
@@ -577,6 +677,24 @@ async def test_lookup_only_skips_anki_and_reports_it_in_done(languages):
         assert entry.no_audio is True
         assert events[-1].data["card_status"] == LOOKUP_ONLY_STATUS
         assert events[-1].data["no_audio"] is True
+        assert events[-1].data["no_card_audio"] is False
+    finally:
+        await pipeline.close()
+
+
+async def test_lookup_only_unit_has_detail_but_no_card_to_rebuild(languages):
+    pipeline = WordPipeline(
+        ScriptedCascade([Completion([valid_card("word")])]),
+        target_lang="ru",
+    )
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(languages["en"], "word", True)
+        await pipeline.join()
+
+        assert entry.detail_available is True
+        with pytest.raises(BackendError, match="no card to rebuild"):
+            await pipeline.request_rebuild(entry.entry_id)
     finally:
         await pipeline.close()
 
@@ -650,6 +768,348 @@ async def test_audio_is_speculative_used_once_and_attached_to_the_note(languages
         assert entry.card_status == ADDED_STATUS
     finally:
         await pipeline.close()
+
+
+async def test_card_audio_uses_the_returned_headword_without_replacing_pwa_audio(
+    languages,
+    tmp_path,
+):
+    submitted_audio = tmp_path / "submitted.mp3"
+    context_audio = tmp_path / "context.mp3"
+    card_audio = tmp_path / "card.mp3"
+    for path in (submitted_audio, context_audio, card_audio):
+        path.write_bytes(b"audio")
+    paths = {
+        "gave up": submitted_audio,
+        "She gave up yesterday.": context_audio,
+        "give up": card_audio,
+    }
+    audio_calls = []
+
+    async def fetch_audio(text, _language):
+        audio_calls.append(text)
+        return paths[text]
+
+    anki = RecordingAnki(Added(10, "media.mp3"))
+    pipeline = WordPipeline(
+        ScriptedCascade(
+            [
+                Completion(
+                    [
+                        valid_card(
+                            "give up",
+                            context="She gave up yesterday.",
+                            word_relation="morphology",
+                        ),
+                    ],
+                ),
+            ],
+        ),
+        target_lang="ru",
+        anki=anki,
+        audio=fetch_audio,
+    )
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(
+            languages["en"],
+            "gave up",
+            False,
+            intent="unit",
+            context="She gave up yesterday.",
+        )
+        await pipeline.join()
+    finally:
+        await pipeline.close()
+
+    assert sorted(audio_calls) == sorted(paths)
+    assert entry.word == "gave up"
+    assert entry.audio_url == f"/api/audio/{submitted_audio.name}"
+    assert entry.context_audio_url == f"/api/audio/{context_audio.name}"
+    note, _deck, stored_audio = anki.calls[0]
+    assert note.word == "give up"
+    assert stored_audio == card_audio
+    assert entry.no_audio is False
+    assert entry.no_card_audio is False
+
+
+async def test_three_hanging_audio_roles_use_one_shared_wait_budget(  # noqa: PLR0915
+    languages,
+    monkeypatch,
+    caplog,
+):
+    context = "She gave up yesterday."
+    started = []
+    cancelled = []
+    blocked = asyncio.Event()
+    release = asyncio.Event()
+    finished = asyncio.Event()
+    finished_count = 0
+    waits = []
+
+    async def fetch_audio(text, _language):
+        nonlocal finished_count
+        started.append(text)
+        try:
+            await blocked.wait()
+        except asyncio.CancelledError:
+            cancelled.append(text)
+            await release.wait()
+            raise RuntimeError(f"late audio failure: {text}") from None
+        finally:
+            finished_count += 1
+            if finished_count == 3:
+                finished.set()
+
+    async def record_wait(tasks, *, timeout):
+        pending = set(tasks)
+        while len(started) < len(pending):
+            await asyncio.sleep(0)
+        waits.append((sorted(task.get_name() for task in pending), timeout))
+        return set(), pending
+
+    monkeypatch.setattr(pipeline_module.asyncio, "wait", record_wait)
+    anki = RecordingAnki(Added(10, None))
+    pipeline = WordPipeline(
+        ScriptedCascade(
+            [
+                Completion(
+                    [
+                        valid_card(
+                            "give up",
+                            context=context,
+                            word_relation="morphology",
+                        ),
+                    ],
+                ),
+            ],
+        ),
+        target_lang="ru",
+        anki=anki,
+        audio=fetch_audio,
+        audio_timeout=4.25,
+    )
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(
+            languages["en"],
+            "gave up",
+            False,
+            intent="unit",
+            context=context,
+        )
+        await pipeline.join()
+        release.set()
+        await finished.wait()
+        await asyncio.sleep(0)
+    finally:
+        release.set()
+        await pipeline.close()
+
+    assert sorted(started) == sorted(["gave up", context, "give up"])
+    assert sorted(cancelled) == sorted(started)
+    assert len(waits) == 1
+    names, timeout = waits[0]
+    assert len(names) == 3
+    assert any(name.startswith("echo-words-audio-") for name in names)
+    assert any(name.startswith("echo-words-context-audio-") for name in names)
+    assert any(name.startswith("echo-words-card-audio-") for name in names)
+    assert timeout == 4.25
+    assert entry.status == "done"
+    assert entry.no_audio is True
+    assert entry.no_card_audio is True
+    assert anki.calls[0][2] is None
+    consumed = [
+        record
+        for record in caplog.records
+        if record.getMessage() == "abandoned pronunciation task failed"
+    ]
+    assert len(consumed) == 3
+    assert all(
+        record.exc_info is not None and str(record.exc_info[1]).startswith("late audio failure:")
+        for record in consumed
+    )
+
+
+async def test_an_nfc_equivalent_headword_reuses_submitted_audio(languages, tmp_path):
+    decomposed = "cafe\N{COMBINING ACUTE ACCENT}"
+    composed = "caf\N{LATIN SMALL LETTER E WITH ACUTE}"
+    submitted_audio = tmp_path / "submitted.mp3"
+    submitted_audio.write_bytes(b"audio")
+    audio_calls = []
+
+    async def fetch_audio(text, _language):
+        audio_calls.append(text)
+        return submitted_audio
+
+    anki = RecordingAnki(Added(10, "media.mp3"))
+    pipeline = WordPipeline(
+        ScriptedCascade([Completion([valid_card(composed)])]),
+        target_lang="ru",
+        anki=anki,
+        audio=fetch_audio,
+    )
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(languages["en"], decomposed, False, intent="unit")
+        await pipeline.join()
+    finally:
+        await pipeline.close()
+
+    assert audio_calls == [decomposed]
+    assert entry.audio_url == f"/api/audio/{submitted_audio.name}"
+    note, _deck, stored_audio = anki.calls[0]
+    assert note.word == composed
+    assert stored_audio == submitted_audio
+
+
+async def test_a_case_changed_headword_fetches_distinct_card_audio(languages, tmp_path):
+    submitted_audio = tmp_path / "submitted.mp3"
+    card_audio = tmp_path / "card.mp3"
+    for path in (submitted_audio, card_audio):
+        path.write_bytes(b"audio")
+    paths = {"Word": submitted_audio, "word": card_audio}
+    audio_calls = []
+
+    async def fetch_audio(text, _language):
+        audio_calls.append(text)
+        return paths[text]
+
+    anki = RecordingAnki(Added(10, "media.mp3"))
+    pipeline = WordPipeline(
+        ScriptedCascade(
+            [Completion([valid_card("word", word_relation="morphology")])],
+        ),
+        target_lang="ru",
+        anki=anki,
+        audio=fetch_audio,
+    )
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(languages["en"], "Word", False, intent="unit")
+        await pipeline.join()
+    finally:
+        await pipeline.close()
+
+    assert sorted(audio_calls) == ["Word", "word"]
+    assert entry.audio_url == f"/api/audio/{submitted_audio.name}"
+    assert anki.calls[0][2] == card_audio
+
+
+async def test_returned_headword_audio_failure_is_distinct_from_submitted_audio_success(
+    languages,
+    tmp_path,
+):
+    submitted_audio = tmp_path / "submitted.mp3"
+    submitted_audio.write_bytes(b"audio")
+
+    async def fetch_audio(text, _language):
+        return submitted_audio if text == "gave up" else None
+
+    anki = RecordingAnki(Added(10, None))
+    pipeline = WordPipeline(
+        ScriptedCascade(
+            [Completion([valid_card("give up", word_relation="morphology")])],
+        ),
+        target_lang="ru",
+        anki=anki,
+        audio=fetch_audio,
+    )
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(
+            languages["en"],
+            "gave up",
+            False,
+            intent="unit",
+        )
+        await pipeline.join()
+    finally:
+        await pipeline.close()
+
+    assert entry.audio_url == f"/api/audio/{submitted_audio.name}"
+    assert entry.no_audio is False
+    assert entry.no_card_audio is True
+    assert anki.calls[0][2] is None
+
+
+async def test_delayed_headword_audio_cannot_hold_card_storage_or_done(languages, tmp_path):
+    submitted_audio = tmp_path / "submitted.mp3"
+    submitted_audio.write_bytes(b"audio")
+    card_cancelled = asyncio.Event()
+
+    async def fetch_audio(text, _language):
+        if text == "gave up":
+            return submitted_audio
+        try:
+            await asyncio.Event().wait()
+        finally:
+            card_cancelled.set()
+
+    anki = RecordingAnki(Added(10, None))
+    pipeline = WordPipeline(
+        ScriptedCascade(
+            [Completion([valid_card("give up", word_relation="morphology")])],
+        ),
+        target_lang="ru",
+        anki=anki,
+        audio=fetch_audio,
+        audio_timeout=0.01,
+    )
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(
+            languages["en"],
+            "gave up",
+            False,
+            intent="unit",
+        )
+        await asyncio.wait_for(pipeline.join(), timeout=0.2)
+    finally:
+        await pipeline.close()
+
+    assert card_cancelled.is_set()
+    assert entry.status == "done"
+    assert entry.card_status == ADDED_STATUS
+    assert entry.no_audio is False
+    assert entry.no_card_audio is True
+    assert anki.calls[0][2] is None
+
+
+async def test_failing_headword_tts_still_stores_and_finishes(languages, tmp_path):
+    submitted_audio = tmp_path / "submitted.mp3"
+    submitted_audio.write_bytes(b"audio")
+
+    async def fetch_audio(text, _language):
+        if text == "gave up":
+            return submitted_audio
+        raise RuntimeError("tts failed")
+
+    anki = RecordingAnki(Added(10, None))
+    pipeline = WordPipeline(
+        ScriptedCascade(
+            [Completion([valid_card("give up", word_relation="morphology")])],
+        ),
+        target_lang="ru",
+        anki=anki,
+        audio=fetch_audio,
+    )
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(
+            languages["en"],
+            "gave up",
+            False,
+            intent="unit",
+        )
+        await asyncio.wait_for(pipeline.join(), timeout=0.2)
+    finally:
+        await pipeline.close()
+
+    assert entry.status == "done"
+    assert entry.card_status == ADDED_STATUS
+    assert entry.no_card_audio is True
+    assert anki.calls[0][2] is None
 
 
 async def test_audio_deadline_cancels_a_wedged_task_and_does_not_stall_done(languages):
@@ -950,12 +1410,15 @@ class MutableAnki:
         return self.results.pop(0)
 
 
-def corrected_card(word, suggestion=""):
-    return (
-        f'analysis for {word}===CARD==={{"word":"{word}","suggestion":"{suggestion}",'
-        '"meanings":[{"label":"","translations":["перевод"],"examples":'
-        f'[{{"text":"Use {word} now.","translation":"Перевод."}}]}}]}}'
+def corrected_card(word, suggestion="", *, context=None, word_relation="same"):
+    value = valid_card(
+        word,
+        context=context,
+        word_relation="typo" if suggestion else word_relation,
     )
+    if suggestion:
+        value = value.replace('"suggestion": ""', f'"suggestion": "{suggestion}"', 1)
+    return value.replace("analysis", f"analysis for {word}", 1)
 
 
 async def test_a_rebuild_keeps_the_audio_of_the_unit_and_of_its_text(languages, tmp_path):
@@ -970,7 +1433,10 @@ async def test_a_rebuild_keeps_the_audio_of_the_unit_and_of_its_text(languages, 
         return unit_audio if word == "aufstehen" else text_audio
 
     cascade = ScriptedCascade(
-        [Completion([valid_card("aufstehen")]), Completion([corrected_card("aufstehen")])],
+        [
+            Completion([valid_card("aufstehen", context=SENTENCE)]),
+            Completion([corrected_card("aufstehen", context=SENTENCE)]),
+        ],
     )
     pipeline = WordPipeline(
         cascade,
@@ -1024,9 +1490,46 @@ async def test_rebuild_replaces_the_note_keeps_audio_and_reuses_the_entry(langua
         await pipeline.close()
 
 
+async def test_rebuild_fetches_new_card_audio_when_headword_case_changes(languages, tmp_path):
+    original_audio = tmp_path / "original.mp3"
+    rebuilt_audio = tmp_path / "rebuilt.mp3"
+    for path in (original_audio, rebuilt_audio):
+        path.write_bytes(b"audio")
+    audio_calls = []
+
+    async def fetch(word, _language):
+        audio_calls.append(word)
+        return original_audio if word == "Word" else rebuilt_audio
+
+    anki = MutableAnki([Added(1, "old.mp3"), Added(2, "new.mp3")])
+    cascade = ScriptedCascade(
+        [
+            Completion([valid_card("Word")]),
+            Completion([corrected_card("word", word_relation="morphology")]),
+        ],
+    )
+    pipeline = WordPipeline(cascade, target_lang="Russian", anki=anki, audio=fetch)
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(languages["en"], "Word", False, intent="unit")
+        await pipeline.join()
+        await pipeline.request_rebuild(entry.entry_id)
+        await pipeline.join()
+    finally:
+        await pipeline.close()
+
+    assert audio_calls == ["Word", "word"]
+    assert [call[2] for call in anki.calls] == [original_audio, rebuilt_audio]
+    assert anki.replaced[0][1].word == "word"
+
+
 async def test_rebuild_refused_by_the_cap_changes_nothing(languages):
     cascade = ScriptedCascade([Completion([valid_card("word")])])
-    pipeline = WordPipeline(cascade, target_lang="Russian")
+    pipeline = WordPipeline(
+        cascade,
+        target_lang="Russian",
+        anki=RecordingAnki(Added(1, None)),
+    )
     pipeline.start()
     try:
         entry = await pipeline.enqueue(languages["en"], "word", False)
@@ -1066,6 +1569,35 @@ async def test_detail_appends_is_cached_and_cuts_a_stray_card_block(languages):
         cached = await pipeline.request_detail(entry.entry_id)
         assert cached["cached"] is True
         assert cascade.paid_calls == 1
+    finally:
+        await pipeline.close()
+
+
+async def test_detail_is_refused_when_a_completed_entry_has_no_parsed_shape(languages):
+    cascade = ScriptedCascade(
+        [
+            Completion(
+                [
+                    (
+                        "analysis===CARD==="
+                        '{"kind":"unit","word":"word","word_relation":"same",'
+                        '"suggestion":"","meanings":'
+                        '[{"label":"","translations":["слово"],"examples":[]}]}'
+                    ),
+                ],
+            ),
+        ],
+    )
+    pipeline = WordPipeline(cascade, target_lang="Russian")
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(languages["en"], "word", False)
+        await pipeline.join()
+
+        assert entry.shape is None
+        with pytest.raises(BackendError, match="not for running text"):
+            await pipeline.request_detail(entry.entry_id)
+        assert cascade.paid_calls == 0
     finally:
         await pipeline.close()
 
@@ -1362,7 +1894,10 @@ SENTENCE = "Er steht jeden Morgen um sechs auf."
 
 
 def text_answer(*segments: str) -> str:
-    return "Он встаёт каждое утро в шесть.===CARD===" + '{"segments":[' + ",".join(segments) + "]}"
+    return (
+        "Он встаёт каждое утро в шесть.===CARD==="
+        '{"kind":"text","combinations":[' + ",".join(segments) + "]}"
+    )
 
 
 AUFSTEHEN = '{"label":"aufstehen","surface":"steht … auf","why":"Trennbares Verb."}'
@@ -1397,7 +1932,7 @@ async def test_running_text_is_voiced_whole_and_still_makes_no_card(languages, t
     )
     pipeline.start()
     try:
-        entry = await pipeline.enqueue(languages["de"], SENTENCE, False, shape="text")
+        entry = await pipeline.enqueue(languages["de"], SENTENCE, False)
         await pipeline.join()
 
         assert audio_calls == [(SENTENCE, "de")]
@@ -1406,7 +1941,7 @@ async def test_running_text_is_voiced_whole_and_still_makes_no_card(languages, t
         assert entry.no_audio is False
         assert entry.audio_url == f"/api/audio/{spoken.name}"
         assert entry.context_audio_url is None
-        assert entry.lookup_only is True
+        assert entry.lookup_only is False
         assert entry.detail_available is False
         assert entry.suggestion is None
     finally:
@@ -1420,7 +1955,7 @@ async def test_a_text_that_cannot_be_voiced_says_so(languages):
     )
     pipeline.start()
     try:
-        entry = await pipeline.enqueue(languages["de"], SENTENCE, False, shape="text")
+        entry = await pipeline.enqueue(languages["de"], SENTENCE, False)
         await pipeline.join()
 
         assert entry.card_status == TEXT_STATUS
@@ -1444,7 +1979,7 @@ async def test_a_unit_taken_from_a_text_is_voiced_beside_the_whole_text(language
     anki = RecordingAnki(Added(7, "media.mp3"))
     hub = EventHub()
     pipeline = WordPipeline(
-        ScriptedCascade([Completion([valid_card("aufstehen")])]),
+        ScriptedCascade([Completion([valid_card("aufstehen", context=SENTENCE)])]),
         target_lang="ru",
         events=hub,
         anki=anki,
@@ -1484,7 +2019,7 @@ async def test_a_context_that_is_the_word_itself_is_not_voiced_twice(languages, 
         return audio
 
     pipeline = WordPipeline(
-        ScriptedCascade([Completion([valid_card("aufstehen")])]),
+        ScriptedCascade([Completion([valid_card("aufstehen", context="aufstehen")])]),
         target_lang="ru",
         anki=RecordingAnki(Added(7, "media.mp3")),
         audio=fetch_audio,
@@ -1515,21 +2050,33 @@ async def test_segments_reach_the_done_event_and_the_history(languages):
     pipeline.start()
     try:
         async with hub.subscribe() as subscriber:
-            entry = await pipeline.enqueue(languages["de"], SENTENCE, False, shape="text")
+            entry = await pipeline.enqueue(languages["de"], SENTENCE, False)
             await pipeline.join()
             events = drain(subscriber)
         suggested = [
-            {"label": "aufstehen", "surface": "steht … auf", "reason": "Trennbares Verb."},
+            {"label": "Er", "reason": "", "context": SENTENCE},
+            {
+                "label": "steht auf",
+                "reason": "Trennbares Verb.",
+                "context": SENTENCE,
+            },
+            {"label": "steht", "reason": "", "context": SENTENCE},
+            {"label": "jeden", "reason": "", "context": SENTENCE},
+            {"label": "Morgen", "reason": "", "context": SENTENCE},
+            {"label": "um", "reason": "", "context": SENTENCE},
+            {"label": "sechs", "reason": "", "context": SENTENCE},
+            {"label": "auf", "reason": "", "context": SENTENCE},
         ]
         assert entry.segments == suggested
         assert events[-1].data["segments"] == suggested
         assert entry.public()["segments"] == suggested
-        assert entry.public()["segments_are_senses"] is False
+        assert entry.public()["segment_kind"] == "text"
+        assert entry.public()["shape"] == "text"
     finally:
         await pipeline.close()
 
 
-async def test_a_trap_free_text_finishes_with_no_segments_and_still_rates_as_good(
+async def test_a_trap_free_text_offers_every_word_and_still_rates_as_good(
     languages,
     tmp_path,
 ):
@@ -1545,11 +2092,16 @@ async def test_a_trap_free_text_finishes_with_no_segments_and_still_rates_as_goo
             languages["de"],
             "Heute ist das Wetter schön.",
             False,
-            shape="text",
         )
         await pipeline.join()
 
-        assert entry.segments == []
+        assert [segment["label"] for segment in entry.segments] == [
+            "Heute",
+            "ist",
+            "das",
+            "Wetter",
+            "schön",
+        ]
         assert entry.card_status == TEXT_STATUS
         assert completion.scores == [1.0]
     finally:
@@ -1561,7 +2113,7 @@ async def test_an_unparsable_text_payload_rates_as_a_failure_without_losing_the_
     pipeline = WordPipeline(ScriptedCascade([completion]), target_lang="ru")
     pipeline.start()
     try:
-        entry = await pipeline.enqueue(languages["de"], SENTENCE, False, shape="text")
+        entry = await pipeline.enqueue(languages["de"], SENTENCE, False)
         await pipeline.join()
 
         assert entry.text == "<b>Разбор</b> текста."
@@ -1571,7 +2123,7 @@ async def test_an_unparsable_text_payload_rates_as_a_failure_without_losing_the_
         await pipeline.close()
 
 
-async def test_a_label_that_would_be_refused_as_input_never_becomes_a_segment(languages):
+async def test_an_unusable_internal_label_does_not_erase_a_surface_combination(languages):
     completion = Completion(
         [
             text_answer(
@@ -1587,11 +2139,18 @@ async def test_a_label_that_would_be_refused_as_input_never_becomes_a_segment(la
             languages["sr"],
             "Он ми се јуче јавио телефоном.",
             False,
-            shape="text",
         )
         await pipeline.join()
 
-        assert [segment["label"] for segment in entry.segments] == ["јавити се"]
+        assert [segment["label"] for segment in entry.segments] == [
+            "Он",
+            "ми се јавио",
+            "ми",
+            "се",
+            "јуче",
+            "јавио",
+            "телефоном",
+        ]
     finally:
         await pipeline.close()
 
@@ -1604,7 +2163,7 @@ async def test_rebuild_and_detail_are_refused_on_a_text_entry(languages, tmp_pat
     )
     pipeline.start()
     try:
-        entry = await pipeline.enqueue(languages["de"], SENTENCE, False, shape="text")
+        entry = await pipeline.enqueue(languages["de"], SENTENCE, False)
         await pipeline.join()
 
         with pytest.raises(BackendError, match="nothing to rebuild"):
@@ -1659,6 +2218,79 @@ async def test_an_answer_whose_card_block_is_broken_is_replaced_by_the_paid_mode
     assert [event.name for event in events].count("reset") == 1
 
 
+async def test_unit_intent_rejects_a_text_verdict_and_uses_the_paid_fallback(
+    settings,
+    languages,
+):
+    handle = FakeHandle([text_answer(AUFSTEHEN)])
+    cascade = fake_cascade(
+        settings,
+        handles=[handle],
+        client=FakeDirectClient([valid_card("aufstehen", context=SENTENCE)]),
+    )
+    anki = RecordingAnki(Added(7, None))
+    pipeline = WordPipeline(cascade, target_lang="Russian", anki=anki)
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(
+            languages["de"],
+            "aufstehen",
+            False,
+            intent="unit",
+            context=SENTENCE,
+        )
+        await pipeline.join()
+    finally:
+        await pipeline.close()
+
+    assert handle.scores == [0.0]
+    assert cascade.broker.direct_calls == ["gpt-fast"]
+    assert entry.shape == "unit"
+    assert entry.card_status == ADDED_STATUS
+    assert [note.word for note, _deck, _audio in anki.calls] == ["aufstehen"]
+
+
+async def test_mismatched_context_example_uses_the_paid_fallback(settings, languages):
+    context = "The bank opens at nine."
+    wrong = valid_card("bank")
+    contextual = {
+        "text": context,
+        "translation": "Банк открывается в девять.",
+        "highlighted": "The <b>bank</b> opens at nine.",
+        "gapped": "The ___ opens at nine.",
+    }
+    right = card_with(
+        "bank",
+        meanings=[{"label": "", "translations": ["банк"], "examples": [contextual]}],
+        context_sense=0,
+    )
+    handle = FakeHandle([wrong])
+    cascade = fake_cascade(
+        settings,
+        handles=[handle],
+        client=FakeDirectClient([right]),
+    )
+    anki = RecordingAnki(Added(7, None))
+    pipeline = WordPipeline(cascade, target_lang="Russian", anki=anki)
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(
+            languages["en"],
+            "bank",
+            False,
+            intent="unit",
+            context=context,
+        )
+        await pipeline.join()
+    finally:
+        await pipeline.close()
+
+    assert handle.scores == [0.0]
+    assert cascade.broker.direct_calls == ["gpt-fast"]
+    assert entry.card_status == ADDED_STATUS
+    assert anki.calls[0][0].meaning.examples[0].text == context
+
+
 async def test_a_broken_card_block_stands_when_no_paid_model_can_replace_it(settings, languages):
     handle = FakeHandle([BROKEN_CARD])
     cascade = fake_cascade(
@@ -1690,7 +2322,7 @@ async def test_a_unit_answer_is_judged_by_its_card_and_a_text_answer_by_its_segm
     try:
         await pipeline.enqueue(languages["en"], "word", False)
         await pipeline.join()
-        await pipeline.enqueue(languages["de"], SENTENCE, False, shape="text")
+        await pipeline.enqueue(languages["de"], SENTENCE, False)
         await pipeline.join()
     finally:
         await pipeline.close()
@@ -1722,3 +2354,106 @@ async def test_a_card_block_the_paid_model_breaks_too_ends_the_request(settings,
     assert cascade.calls_today == 1
     assert entry.card_status == CARD_FAILED_STATUS
     assert entry.no_audio is True
+
+
+async def test_an_oversized_paid_answer_cannot_card_its_bounded_prefix(settings, languages):
+    bounded_prefix = valid_card("word")
+    oversized = bounded_prefix + "x" * MAX_COMPLETE_ANSWER_CHARS
+    cascade = fake_cascade(
+        settings,
+        handles=[FakeHandle([BROKEN_CARD])],
+        client=FakeDirectClient([oversized]),
+    )
+    anki = RecordingAnki(Added(7, None))
+    pipeline = WordPipeline(cascade, target_lang="Russian", anki=anki)
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(languages["en"], "word", False)
+        await pipeline.join()
+    finally:
+        await pipeline.close()
+
+    assert anki.calls == []
+    assert len(entry.text) <= MAX_COMPLETE_ANSWER_CHARS
+    assert entry.shape is None
+    assert entry.card_status == CARD_FAILED_STATUS
+
+
+async def test_a_rebuild_keeps_the_card_audio_of_a_headword_it_did_not_change(
+    languages,
+    tmp_path,
+):
+    submitted_audio = tmp_path / "submitted.mp3"
+    headword_audio = tmp_path / "headword.mp3"
+    for path in (submitted_audio, headword_audio):
+        path.write_bytes(b"audio")
+
+    async def fetch(word, _language):
+        return submitted_audio if word == "gave up" else headword_audio
+
+    anki = MutableAnki([Added(1, "old.mp3"), Added(2, "new.mp3")])
+    cascade = ScriptedCascade(
+        [
+            Completion([corrected_card("give up", word_relation="morphology")]),
+            Completion([corrected_card("give up", word_relation="morphology")]),
+        ],
+    )
+    pipeline = WordPipeline(cascade, target_lang="Russian", anki=anki, audio=fetch)
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(languages["en"], "gave up", False, intent="unit")
+        await pipeline.join()
+        await pipeline.request_rebuild(entry.entry_id)
+        await pipeline.join()
+    finally:
+        await pipeline.close()
+
+    assert [call[2] for call in anki.calls] == [headword_audio, headword_audio]
+
+
+async def test_a_running_text_entry_is_refused_as_text_not_as_a_missing_card(languages):
+    pipeline = WordPipeline(
+        ScriptedCascade([Completion([text_answer()])]),
+        target_lang="ru",
+    )
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(languages["en"], "The book is on the table.", False)
+        await pipeline.join()
+
+        with pytest.raises(BackendError, match="Running text makes no card"):
+            await pipeline.request_rebuild(entry.entry_id)
+    finally:
+        await pipeline.close()
+
+
+async def test_undo_also_removes_the_card_audio_of_a_different_headword(
+    languages,
+    tmp_path,
+):
+    submitted = tmp_path / "pronunciation-aabbccddeeff00112233.mp3"
+    headword = tmp_path / "pronunciation-1122334455667788990a.mp3"
+    for path in (submitted, headword):
+        path.write_bytes(b"audio")
+
+    async def fetch(word, _language):
+        return submitted if word == "gave up" else headword
+
+    anki = MutableAnki([Added(7, "media.mp3")])
+    pipeline = WordPipeline(
+        ScriptedCascade([Completion([corrected_card("give up", word_relation="morphology")])]),
+        target_lang="Russian",
+        anki=anki,
+        audio=fetch,
+        audio_dir=tmp_path,
+    )
+    pipeline.start()
+    try:
+        await pipeline.enqueue(languages["en"], "gave up", False, intent="unit")
+        await pipeline.join()
+        assert await pipeline.undo(languages["en"]) == "gave up"
+    finally:
+        await pipeline.close()
+
+    assert not submitted.exists()
+    assert not headword.exists()

@@ -55,8 +55,11 @@ documents them one by one; these are the ones you are likely to change.
 | `ECHOWORDS_ANKIWEB_USER` / `_PASSWORD` | AnkiWeb credentials | required when sync is on |
 | `ECHOWORDS_SYNC_ENDPOINT` | self-hosted Anki sync server instead of AnkiWeb | empty |
 | `ECHOWORDS_ACCENT` | `us` or `uk` for English audio | `us` |
-| `ECHOWORDS_AUDIO_TIMEOUT` | seconds to wait for pronunciation before sending without it | `20` |
+| `ECHOWORDS_AUDIO_TIMEOUT` | shared post-generation seconds to wait for pronunciation before sending without it | `5` |
 | `ECHOWORDS_HOST` / `ECHOWORDS_PORT` | bind address; keep it on loopback and let Tailscale be the front door | `127.0.0.1:8080` |
+
+Pronunciation roles share this one post-generation wait. Values below five
+seconds shorten it; values above five seconds cannot extend the hard cap.
 
 The **interface language** of the PWA is not an environment variable. It is a
 per-device choice in the header (EN/RU), remembered in the browser, and it does

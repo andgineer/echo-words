@@ -1,67 +1,156 @@
 # The shape of an answer — decision
 
-Status: **decided 2026-08-24 — the answer opens on the meaning, never names a
-part of speech, and shows how a word inflects as a table of live phrases when
-and only when the word inflects.** The harness is `experiments/forms_bench.py`,
-with `experiments/forms_items.py` and `experiments/forms_prompts.py`.
+Status: **decided 2026-08-27 — one neutral contract returns either a full
+dictionary article for a unit or a translation and explanation for text. Unit
+articles open on meaning, never name a part of speech, and show useful
+inflection as live phrases.** The production-prompt harness is
+`experiments/one_note_bench.py`; the original forms study remains in
+`experiments/forms_bench.py`.
 
 ## The problem
 
 An answer that opened `наречие, разговорное: позавчера` made the reader work
-past two pieces of metadata to reach the one thing they asked for. The part of
-speech is the worse of the two: a reader who typed a word can see it is an
-adverb, and the label earns none of the space it takes at the top.
+past metadata to reach the thing they asked for. The part of speech is the
+worse piece: it takes the most prominent space while adding little a reader
+cannot infer.
 
-The forms are the opposite case — genuinely wanted and genuinely absent. What a
-learner of German needs from `nehmen` is that the vowel changes in `du nimmst`,
-and what they need from an English irregular verb is `brought`, not `bringed`.
-Naming those forms in grammatical terms («третье лицо множественное число»)
-delivers the label instead of the knowledge: the phrase teaches, the term does
-not.
+Forms are the opposite case — genuinely wanted and easy to state badly. A
+learner of German needs to recognise `du nimmst`, and a learner of English
+needs `brought`, not a grammatical inventory. A short phrase teaches the form;
+the terminology does not.
 
-## What the answer does
+The same input box also accepts running text. It needs a coherent translation
+and explanation, not a dictionary article or a card payload. Selecting one of
+two prompts before asking the model reproduced a classification problem that
+surface punctuation and length cannot solve, so branch selection now belongs
+to the answer itself.
 
-- The translations come first, with nothing in front of them. A register mark
-  follows the translation it belongs to, where it changes how the word is used.
-- The part of speech is never named anywhere.
-- A **forms** section appears only when the word changes shape in a way the
-  reader must recognise or produce, and is a table whose cells are short
-  everyday phrases with their translations. No person, number, gender, case or
-  tense is named — not inside the table, not beside it. Invariable words get no
-  table at all.
-- The answer may therefore use `<table>`, `<tr>` and `<td>` alongside `<b>` and
-  `<i>`. No tag ever carries an attribute; the sanitizer matches whole literals,
-  so the answer has no way to express one.
+## The one answer contract
+
+Every attempt uses the same production prompt and ends with a bounded JSON
+object whose neutral `kind` is `unit` or `text`.
+
+- A unit article starts with the meanings that require different words in the
+  configured target language, ordered most common first. A register mark
+  follows the translation it qualifies. Usage, origin and examples follow;
+  a set expression also explains its parts and why the whole means what it
+  does.
+- A forms section appears only when a changing shape is useful to recognise or
+  produce. It is a table of short everyday phrases with translations. Person,
+  number, gender, case, tense and part-of-speech headings are not printed.
+  Invariable units get no table.
+- A text article translates and explains the submission as a whole, focusing
+  on what is difficult in that text rather than walking through every word.
+  Its JSON names only conservative multi-word combinations; the backend adds a
+  chip for every source word alongside them.
+- Unit JSON carries the validated dictionary headword, its claimed `same`,
+  `morphology` or `typo` relation to the submitted spelling, advisory spelling
+  suggestion, all retained meanings, finished highlighted examples, optional
+  contextual-sense index and expression components. Text JSON carries
+  none of those card fields. Mixed branches are unusable.
+
+The visible article may use `<b>`, `<i>`, `<table>`, `<tr>` and `<td>`. No tag
+has attributes. JSON sentence strings use only the allowed emphasis and blank
+marker required for the four cards. The sanitizer matches whole literals, so
+the model has no general HTML surface.
 
 ## What was measured
 
-29 inputs over English, German and Serbian: 22 whose informative forms are
-recorded exactly, and 7 invariable words that must produce no table. Each of the
-22 also names its **trap** — the regularised shape a model invents when it does
-not know (`bekommte`, `childs`, `човеци`) — because a wrong form is the one part
-of the answer the reader cannot check, having asked precisely because they did
-not know it.
+The original, vocabulary-only forms study covered 29 English, German and
+Serbian inputs: 22 with recorded informative forms and seven invariable
+controls. Its free pool returned a table for every inflecting unit, included at
+least one informative form in 94%, every expected form in 89%, invented no
+registered trap form, and added no table to an invariable control. That result
+motivated the phrase-table design, but the merged production prompt supersedes
+its prompt-bound percentages.
 
-| | free pool | metered |
-|---|---|---|
-| a table when the word inflects | 100% | 100% |
-| informative forms present | 94% | 98% |
-| every informative form present | 89% | 95% |
-| **an invented form** | **0** | **0** |
-| a table where there should be none | 0% | 0% |
-| a part of speech leading the answer | 4% | 3% |
-| a tag or attribute outside the allowed set | 0 | 0 |
-| whole answer, median | 1.6 s | 19.8 s |
+The append-only production-flow run in
+`experiments/.bench-one-note-post/` measures nine bare unit flows alongside the
+unit/text verdict matrix and derives six contextual chip flows only after the
+text branch is confirmed. The v6 prompt returned a usable result for all 157
+initial fixtures. Its 122 usable verdicts comprised 113 correct, two
+ambiguous/defensible and seven hard errors. Its automated scorer sent 25 of 26
+known texts to the text branch, called all nine bare units cardable, recovered 18 of 21 distinct
+registered lexical units, and returned exact components and backend-owned
+contexts for all three expression cases. Exact raw dictionary labels were 14
+of 21 and exact source boundaries were 15 of 21; both remain diagnostics because
+useful headword normalization and boundary variation do not break the answer
+contract. The Serbian slice returned 57 of 57 usable results, with 40 exact and
+three hard errors among its 44 verdict fixtures.
 
-**No invented form appeared on either backend.** The pool's documented weakness
-is morphology (`decision-llm-backend.md`), and it shows here as *fewer* forms
-rather than *wrong* ones: a thin table is visible and harmless, an invented one
-is neither. Twelve times the latency buys six points of completeness and no
-correctness, so the free pool serves this section like every other.
+The automated v6 screen initially counted five of six dependent clicks and all
+nine bare cases as cardable. Fresh semantic review blocked that arm: many of
+those nominally complete card fronts marked context beyond the requested unit.
+The prompt and structural parser therefore changed, and those aggregate v6
+figures are evidence for the failure rather than acceptance evidence for the
+current prompt.
+
+The production gate does not require a perfect model sample. Its smoke,
+confirmation and full tiers contain 39, 93 and at most 169 calls respectively;
+the full tier keeps the canonical 157 unchanged and adds six click and six typo
+calls. Aggregate availability and semantic thresholds tolerate bounded model
+misses. Every accepted unit still has four-card readiness and safe targeted
+sentence forms, every counted click has exact target identity/kind, context,
+surface and empty components, and every accepted typo retains its submitted
+spelling. Strict article format, morphology, usage and origin percentages remain
+diagnostics, including in the Serbian slice. A fresh-agent review of the
+structured error packet is mandatory even when the automated screen passes.
+
+Sanitization alone is insufficient for card sentence fields. Accepted forms
+must also be exact transformations of the plain example and must retain a real
+word of sentence context outside the unit. The post-sanitizer structural check
+remains distinct from strict raw article formatting.
+
+Qualitative linguistic mistakes stay visible evidence rather than being
+silently repaired by deterministic code. A prompt arm with invalid or missing
+answers is reported as such; availability misses are never counted as content
+quality and an earlier hash is never substituted for the current prompt.
+
+## Trust boundary
+
+The parser normalizes harmless singular/list variation, drops an independently
+malformed meaning and sanitizes the printed strings. The highlighted form must
+be the plain example with bold spans added and nothing else changed, and must
+not consume the entire sentence; the blanked form is then derived from it, so
+the two cannot disagree. Adjacent bold spans separated only by whitespace are
+merged into one contiguous span in preference to keeping them apart, and the
+same outside-context guard applies to the result, so splitting every word
+cannot bypass whole-sentence rejection. The claimed word relation is
+reconciled rather than enforced: any admission of a correction, and any
+contradiction between a `same` claim and a differing word, produces a typo
+carrying the submitted spelling as its headword. That makes retention of the
+submitted spelling structural, so neither the suggestion itself nor a third
+headword can become the headword. It is a consistency boundary, not an
+independent spelling judge: a model can still call a misspelling morphology, so
+registered typo fixtures and fresh review remain required. For an explicit context request,
+the selected meaning's first plain example must equal the supplied context. Where
+the submitted click surface can be matched token-for-token in that context, the
+backend constructs the two forms itself; otherwise the model's forms must pass
+the same structural checks. The parser does not verify morphology, infer the
+linguistic boundary of a generated example, or decide whether prose agrees with
+`kind`. The complete response is bounded at
+16,000 characters before JSON decoding and segment filling. Streaming exposes
+at most that prefix while draining any excess to provider settlement; the
+settled pool call is rated as unusable, and a final oversized attempt cannot
+make a note from its truncated prefix.
 
 ## What would re-open this
 
-A revision of the vocabulary prompt, or the pool's primary model changing. One
-known residue: on the pool a table row is occasionally filler rather than a form
-of the word asked about, which the fixtures do not detect — they check that the
-informative forms are present, not that every row earns its place.
+- Another production-prompt revision, because both the branch and answer-shape
+  measurements are prompt-bound.
+- The pool's primary model changing.
+- Repeated learner-visible invented forms. The first response should be prompt
+  and model evaluation, not hardcoded morphology.
+
+## Why a combination never consumes its words
+
+A word which a combination claims keeps its own chip, so the chip list holds
+both the phrase and each of its parts. Tapping the phrase looks up the whole
+construction; tapping a part looks up that word alone. Both are useful, and the
+learner chooses.
+
+This is what makes an imprecise phrase boundary cheap. When an answer omits an
+obligatory reflexive particle, drags in an auxiliary or lemmatises a piece, the
+phrase chip is merely less good — no lookup disappears, because every word is
+still there on its own. The prompt therefore states the surface rule once and
+does not spend paragraphs defending a boundary whose cost is now bounded.

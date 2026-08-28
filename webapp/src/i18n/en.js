@@ -24,26 +24,27 @@ export default {
   "add.textNoCard": "text — no card",
   "add.analysisFailed": "Could not get the analysis. Try sending the word again.",
   "add.contextAudio": "The whole text",
-  "add.segments": "Worth looking up on their own:",
-  "add.senses": "This word has other senses — tap one to analyse it:",
+  "add.text": "Words and combinations — tap one to analyse it:",
+  "add.expression": "Words in this expression — tap one to analyse it:",
+  "add.senses": "Senses of this word — tap one to analyse it:",
   "add.aboutHide": "Hide",
   "add.aboutShow": "What this is and how to use it",
   "add.aboutIntro":
     "echo-words analyses a word or a whole expression in the language you pick: translation, " +
-    "senses, usage, origin and examples — and adds a compact card to Anki by itself, so the " +
-    "word enters your reviews. An expression is analysed as one thing: you are never asked " +
-    "which of its words you meant.",
+    "senses, usage, origin and examples — and adds one selected sense to Anki as four cards, " +
+    "so it is reviewed from both bare and sentence prompts. An expression is analysed as one thing, " +
+    "and its component words remain available as separate chips.",
   "add.aboutText":
     "<b>A sentence or a longer text</b> gets a different answer: it is translated and its hard " +
     "parts are explained, and it makes no card — a whole sentence is not reviewable. Under the " +
-    "answer come the units worth looking up on their own; one tap analyses such a unit as an " +
-    "ordinary word, with the text kept as its context.",
+    "answer comes every source word, with multi-word combinations kept together; one tap " +
+    "analyses that chip as a unit, with the text kept as its context.",
   "add.aboutLookup":
     "<b>Look up only.</b> The checkbox next to the input gives you the analysis and the " +
     "pronunciation without creating a card. A leading <b>?</b> does the same: “? word”.",
   "add.aboutCorrection":
-    "<b>✏️ Correct.</b> A word is always analysed exactly as typed, and reaches the card that " +
-    "way. When it looks like a typo, a ✏️ button with the corrected spelling appears under the " +
+    "<b>✏️ Correct.</b> The submitted text stays in the history; a unit card uses the validated " +
+    "dictionary headword returned by the analysis. When the input looks like a typo, a ✏️ button with the corrected spelling appears under the " +
     "analysis — it is analysed again for that spelling, and one tap brings the original back.",
 
   "card.added": "✅ added to Anki",
@@ -52,16 +53,15 @@ export default {
   "card.addedCount.few": "✅ {count} cards: {kinds}",
   "card.addedCount.many": "✅ {count} cards: {kinds}",
   "card.addedCount.other": "✅ {count} cards: {kinds}",
-  "card.kind.recognition": "recognition",
-  "card.kind.recall": "recall",
-  "card.kind.context": "context",
-  "card.kind.sense": "by sense",
-  "card.contextNotNeeded": "the context was not needed",
+  "card.kind.recognition": "word → meaning",
+  "card.kind.recall": "meaning → word",
+  "card.kind.contextRecognition": "sentence → meaning",
+  "card.kind.contextProduction": "gap → word",
   "card.lookupOnly": "👁 lookup only",
   "card.text": "👁 text — no card",
-  "card.fragment": "👁 fragment — no card",
   "card.failed": "⚠️ card failed",
-  "card.noAudio": "🔇 no audio",
+  "card.noAudio": "🔇 submitted text has no audio",
+  "card.noCardAudio": "🔇 Anki card has no audio",
 
   "stats.title": "Stats",
   "stats.today": "Today: {count}",

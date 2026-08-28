@@ -1,26 +1,34 @@
-"""Validated, compact note data extracted from an LLM answer."""
+"""Validated compact data extracted from a merged language-model answer."""
 
+import itertools
 import json
+import re
 import unicodedata
+from collections import Counter
+from contextlib import suppress
 from dataclasses import dataclass
-from typing import Any
+from html import escape, unescape
+from typing import Any, Literal
 
-from echo_words.languages import Language, validate_word
-from echo_words.shape import word_count
+from echo_words.languages import Language, fold_for_match, validate_word
+from echo_words.sanitizer import sanitize_html
+from echo_words.segments import Segment, fill_text_segments, parse_component_segments
 
-MAX_MEANINGS = 3
 MAX_EXAMPLES_PER_MEANING = 2
-MAX_CANDIDATES = 3
+type AnswerKind = Literal["unit", "text"]
+type WordRelation = Literal["same", "morphology", "typo"]
 
 
 class CardParseError(ValueError):
-    """The card payload is not usable as a vocabulary note."""
+    """The hidden answer payload is not usable."""
 
 
 @dataclass(frozen=True)
 class Example:
     text: str
     translation: str
+    highlighted: str
+    gapped: str
 
 
 @dataclass(frozen=True)
@@ -34,194 +42,427 @@ class Meaning:
 class Note:
     word: str
     meanings: list[Meaning]
-    # A context the note is carded under, and the meaning it narrows to. Set
-    # together or not at all: neither one alone makes a context card.
-    context: str = ""
-    context_sense: int | None = None
+    sense: int = 0
 
     @property
-    def narrowed_sense(self) -> int | None:
-        """The meaning this note's context narrows it to, or ``None`` when it narrows none.
-
-        The one place that decides whether a note is a context note; every caller
-        that builds or renders one reads the answer here rather than restating it.
-        """
-        index = self.context_sense
-        if not self.context or index is None or len(self.meanings) <= 1:
-            return None
-        return index if 0 <= index < len(self.meanings) else None
+    def meaning(self) -> Meaning:
+        return self.meanings[self.sense]
 
 
 @dataclass(frozen=True)
-class ParsedCard:
+class ParsedUnit:
+    kind: Literal["unit"]
     note: Note
+    word_relation: WordRelation
     suggestion: str | None
-    # The unit the answer is actually about. It differs from the submitted text
-    # when that text was a use of a unit rather than a unit itself, and the
-    # difference is what tells the two apart — nothing else in the answer does.
-    analysed: str
-    candidates: list[str]
-    # Which of the meanings the submitted context uses; ``None`` whenever the
-    # answer does not say, which reads as a context that narrows nothing.
-    context_sense: int | None = None
-
-    @property
-    def input_is_unit(self) -> bool:
-        # Only a multi-word input can be a use of a unit; a single word is one already.
-        if word_count(self.note.word) <= 1:
-            return True
-        return _fold(self.analysed) == _fold(self.note.word)
+    segments: list[Segment]
 
 
-def _fold(text: str) -> str:
-    return " ".join(unicodedata.normalize("NFC", text).casefold().split())
+@dataclass(frozen=True)
+class ParsedText:
+    kind: Literal["text"]
+    segments: list[Segment]
+
+
+type ParsedAnswer = ParsedUnit | ParsedText
+
+_UNIT_FIELDS = frozenset(
+    {"word", "word_relation", "suggestion", "meanings", "context_sense", "segments"},
+)
+_TEXT_FIELDS = frozenset({"combinations"})
+_BOLD_SPAN = re.compile(r"<b>([^<>]+)</b>")
+_ADJACENT_BOLD_SPANS = re.compile(r"</b>(\s+)<b>")
+_BOLD_TAG = re.compile(r"</?b>")
+# The colon must close a key, or the repair would also fire inside a string value.
+_BARE_VALUE = re.compile(r'(?<=")(:\s*)(?![\s"\[{\d-]|true|false|null)([^,}\]\n"]*[^\s,}\]\n"])')
+_FULL_STOP_SEPARATOR = re.compile(r'([}\]])\s*\.\s*(")')
+_NON_ESCAPE = re.compile(r'\\(?=[^\\"/bfnrtu])')
+_SOURCE_TOKEN = re.compile(r"[^\W\d_]+(?:[-'’][^\W\d_]+)*", re.UNICODE)
+
+
+def parse_answer_payload(  # noqa: C901, PLR0912 - the answer discriminator boundary.
+    payload: str,
+    submitted: str,
+    language: Language,
+    *,
+    unit_intent: bool = False,
+    context: str = "",
+) -> ParsedAnswer:
+    """Parse the first JSON object and enforce the answer branch and request intent."""
+    try:
+        value = _decoded(payload)
+    except (json.JSONDecodeError, TypeError) as exc:
+        raise CardParseError(f"answer payload is not valid JSON: {exc}") from exc
+    card = _object(value, "answer")
+    kind = card.get("kind")
+    if kind == "text":
+        if unit_intent:
+            raise CardParseError("a unit-intent request returned text")
+        if any(key in card for key in _UNIT_FIELDS):
+            raise CardParseError("a text answer contains unit fields")
+        try:
+            segments = fill_text_segments(card.get("combinations"), submitted, language)
+        except Exception as exc:
+            raise CardParseError(str(exc)) from exc
+        return ParsedText("text", segments)
+    if kind != "unit":
+        raise CardParseError("answer.kind must be unit or text")
+    if any(key in card for key in _TEXT_FIELDS):
+        raise CardParseError("a unit answer contains text combinations")
+
+    headword = _headword(card.get("word"), language)
+    word_relation, headword, suggestion = _word_relation(
+        card.get("word_relation"),
+        card.get("suggestion"),
+        headword,
+        submitted,
+        language,
+    )
+    raw_meanings = card.get("meanings")
+    if not isinstance(raw_meanings, list) or not raw_meanings:
+        raise CardParseError("answer.meanings must be a non-empty list")
+    candidates: list[tuple[int, Meaning]] = []
+    for raw_index, item in enumerate(raw_meanings):
+        meaning = _parse_meaning(
+            item,
+            context=context,
+            selected_surface=submitted,
+            target_lexeme=headword,
+        )
+        if meaning is None:
+            continue
+        candidates.append((raw_index, meaning))
+    labelled = [item for item in candidates if item[1].label]
+    # Labels tell several senses apart; with none returned they cannot, and dropping
+    # every sense over a missing label would throw away an otherwise usable answer.
+    if len(candidates) > 1 and labelled:
+        candidates = labelled
+    retained: list[Meaning] = []
+    remap: dict[int, int] = {}
+    for raw_index, meaning in candidates:
+        remap[raw_index] = len(retained)
+        retained.append(meaning)
+    if not retained:
+        raise CardParseError("answer.meanings contains no usable meaning")
+    raw_sense = _context_sense(card.get("context_sense"), len(raw_meanings))
+    sense = remap.get(raw_sense, 0)
+    note = Note(headword, retained, sense)
+    if context and note.meaning.examples[0].text != context:
+        raise CardParseError("selected context example must equal the supplied context")
+    try:
+        segments = parse_component_segments(
+            card.get("segments"),
+            language,
+            context=note.meaning.examples[0].text,
+        )
+    except Exception as exc:
+        raise CardParseError(str(exc)) from exc
+    return ParsedUnit(
+        "unit",
+        note,
+        word_relation,
+        suggestion,
+        segments,
+    )
+
+
+def _decoded(payload: str) -> Any:
+    """Decode the payload, repairing only punctuation slips a model makes under load.
+
+    A repair is a guess about intent, so it stands only when it yields valid JSON;
+    the value it produces still faces every check below.
+    """
+    text = payload.lstrip()
+    try:
+        return json.JSONDecoder().raw_decode(text)[0]
+    except (json.JSONDecodeError, TypeError) as first:
+        error = first
+    repairs = (_quote_bare_values, _comma_for_full_stop, _drop_stray_escape)
+    # Fewest repairs first, and each combination starts from the original text: a
+    # repair which does not apply must not corrupt the input of the one which does.
+    for size in range(1, len(repairs) + 1):
+        for combination in itertools.combinations(repairs, size):
+            repaired = text
+            for repair in combination:
+                repaired = repair(repaired)
+            with suppress(json.JSONDecodeError, TypeError):
+                return json.JSONDecoder().raw_decode(repaired)[0]
+    raise error
+
+
+def _quote_bare_values(text: str) -> str:
+    """Put quotes back around a bare string value: ``"label": ити се``."""
+    return _BARE_VALUE.sub(lambda match: f'{match.group(1)}"{match.group(2)}"', text)
+
+
+def _comma_for_full_stop(text: str) -> str:
+    """Restore a comma typed as a full stop between two items: ``}]}]. "segments"``."""
+    return _FULL_STOP_SEPARATOR.sub(r"\1, \2", text)
+
+
+def _drop_stray_escape(text: str) -> str:
+    """Drop a backslash which escapes nothing: ``"\\прекратить"``."""
+    return _NON_ESCAPE.sub("", text)
+
+
+def parse_card_payload(
+    payload: str,
+    word: str,
+    language: Language,
+    *,
+    context: str = "",
+) -> ParsedUnit:
+    """Parse a payload which the caller already knows must be a unit."""
+    parsed = parse_answer_payload(
+        payload,
+        word,
+        language,
+        unit_intent=True,
+        context=context,
+    )
+    if not isinstance(parsed, ParsedUnit):
+        raise CardParseError("answer is not a unit")
+    return parsed
+
+
+def _headword(value: Any, language: Language) -> str:
+    if not isinstance(value, str):
+        raise CardParseError("answer.word must be a non-empty string")
+    headword = unicodedata.normalize("NFC", value).strip()
+    if not headword or validate_word(headword, language) is not None:
+        raise CardParseError("answer.word is not a usable dictionary headword")
+    return headword
+
+
+def _parse_meaning(
+    value: Any,
+    *,
+    context: str,
+    selected_surface: str,
+    target_lexeme: str,
+) -> Meaning | None:
+    if not isinstance(value, dict) or not isinstance(value.get("label"), str):
+        return None
+    label = value["label"]
+    translations_value = value.get("translations", value.get("translation"))
+    if isinstance(translations_value, str):
+        translations_value = [translations_value]
+    if not isinstance(translations_value, list):
+        return None
+    translations = [
+        item.strip() for item in translations_value if isinstance(item, str) and item.strip()
+    ]
+    if not translations:
+        return None
+    examples = _usable_examples(
+        value.get("examples"),
+        context=context,
+        selected_surface=selected_surface,
+        target_lexeme=target_lexeme,
+    )
+    if not examples:
+        return None
+    return Meaning(label.strip(), translations, examples)
+
+
+def _usable_examples(
+    value: Any,
+    *,
+    context: str,
+    selected_surface: str,
+    target_lexeme: str,
+) -> list[Example]:
+    values = [value] if isinstance(value, dict) else value
+    if not isinstance(values, list):
+        return []
+    examples: list[Example] = []
+    for item in values:
+        if example := _parse_example(
+            item,
+            context=context,
+            selected_surface=selected_surface,
+            target_lexeme=target_lexeme,
+        ):
+            examples.append(example)
+        if len(examples) == MAX_EXAMPLES_PER_MEANING:
+            break
+    return examples
+
+
+def _parse_example(
+    value: Any,
+    *,
+    context: str,
+    selected_surface: str,
+    target_lexeme: str,
+) -> Example | None:
+    if not isinstance(value, dict):
+        return None
+    translation = _plain(value.get("translation"))
+    highlighted_raw = value.get("highlighted")
+    marked = _plain(highlighted_raw) if isinstance(highlighted_raw, str) else ""
+    # The sentence is the highlight without its marks, so no other markup may appear
+    # there: sanitizing it away would leave the escaped residue inside the sentence.
+    if not translation or not marked or any(char in _BOLD_TAG.sub("", marked) for char in "<>"):
+        return None
+    text = _BOLD_SPAN.sub(lambda match: match.group(1), marked)
+    if not text:
+        return None
+    if context and text == context:
+        contextual = _context_sentence_forms(context, selected_surface)
+        if contextual is not None:
+            highlighted, gapped = contextual
+            return Example(text, translation, highlighted, gapped)
+    sentence_forms = _normalized_sentence_forms(sanitize_html(marked))
+    if sentence_forms is None or (
+        not context
+        and not _generated_target_covers_submitted_tokens(
+            text,
+            sentence_forms[0],
+            selected_surface,
+            target_lexeme,
+        )
+    ):
+        return None
+    return Example(text, translation, *sentence_forms)
+
+
+def _normalized_sentence_forms(highlighted: str) -> tuple[str, str] | None:
+    # Neighbouring spans are tried merged first: one contiguous unit earns one blank.
+    for candidate in (_ADJACENT_BOLD_SPANS.sub(r"\1", highlighted), highlighted):
+        if _marked_sentence_usable(candidate):
+            return candidate, _BOLD_SPAN.sub("___", candidate)
+    return None
+
+
+def _marked_sentence_usable(highlighted: str) -> bool:
+    spans = list(_BOLD_SPAN.finditer(highlighted))
+    if not spans or "___" in highlighted:
+        return False
+    outside = _BOLD_SPAN.sub("", highlighted)
+    return bool(
+        "<" not in outside
+        and any(char.isalpha() for char in unescape(outside))
+        and all(any(char.isalpha() for char in unescape(match.group(1))) for match in spans),
+    )
+
+
+def _context_sentence_forms(context: str, selected_surface: str) -> tuple[str, str] | None:
+    wanted = [_fold(match.group()) for match in _SOURCE_TOKEN.finditer(selected_surface)]
+    if not wanted:
+        return None
+    matches = list(_SOURCE_TOKEN.finditer(context))
+    selected = []
+    cursor = 0
+    for token in wanted:
+        found = next(
+            (
+                match
+                for match in matches
+                if match.start() >= cursor and _fold(match.group()) == token
+            ),
+            None,
+        )
+        if found is None:
+            return None
+        selected.append(found)
+        cursor = found.end()
+    highlighted: list[str] = []
+    gapped: list[str] = []
+    cursor = 0
+    for match in selected:
+        before = escape(context[cursor : match.start()])
+        form = escape(context[match.start() : match.end()])
+        highlighted.extend((before, "<b>", form, "</b>"))
+        gapped.extend((before, "___"))
+        cursor = match.end()
+    tail = escape(context[cursor:])
+    highlighted.append(tail)
+    gapped.append(tail)
+    result = "".join(highlighted), "".join(gapped)
+    return result if _marked_sentence_usable(result[0]) else None
+
+
+def _generated_target_covers_submitted_tokens(
+    text: str,
+    highlighted: str,
+    selected_surface: str,
+    target_lexeme: str,
+) -> bool:
+    target_tokens = {_fold(match.group()) for match in _SOURCE_TOKEN.finditer(target_lexeme)}
+    submitted = Counter(
+        token
+        for match in _SOURCE_TOKEN.finditer(selected_surface)
+        if (token := _fold(match.group())) in target_tokens
+    )
+    in_text = Counter(_fold(match.group()) for match in _SOURCE_TOKEN.finditer(text))
+    in_target = Counter(
+        _fold(token.group())
+        for span in _BOLD_SPAN.findall(highlighted)
+        for token in _SOURCE_TOKEN.finditer(unescape(span))
+    )
+    return all(
+        in_target[token] >= min(count, in_text[token])
+        for token, count in submitted.items()
+        if in_text[token]
+    )
 
 
 def _context_sense(value: Any, meanings: int) -> int | None:
-    """The meaning the context uses, or ``None`` when the answer names none usably.
-
-    Nothing here is fatal: an index the model spoiled costs the narrowing, never
-    the note, and a note without it is only less specific.
-    """
     if not isinstance(value, int) or isinstance(value, bool) or not 0 <= value < meanings:
         return None
     return value
 
 
-def parse_card_payload(payload: str, word: str, language: Language) -> ParsedCard:
-    """Parse one JSON object, ignoring text after it, and keep ``word`` canonical."""
-    try:
-        value, _end = json.JSONDecoder().raw_decode(payload.lstrip())
-    except (json.JSONDecodeError, TypeError) as exc:
-        raise CardParseError(f"card payload is not valid JSON: {exc}") from exc
-    card = _object(value, "card")
-    # The model's echo is required by the contract but never trusted for identity.
-    _non_empty_string(card.get("word"), "card.word")
-    meanings_value = card.get("meanings")
-    if not isinstance(meanings_value, list):
-        raise CardParseError("card.meanings must be a list")
-    if not 1 <= len(meanings_value) <= MAX_MEANINGS:
-        raise CardParseError("card.meanings must contain between one and three meanings")
-    meanings = [
-        _parse_meaning(item, index, require_label=len(meanings_value) > 1)
-        for index, item in enumerate(meanings_value)
-    ]
-    suggestion = _usable_suggestion(card.get("suggestion"), word, language)
-    analysed = _analysed_unit(card.get("word"), word, language)
-    return ParsedCard(
-        note=Note(word=word, meanings=meanings),
-        suggestion=suggestion,
-        analysed=analysed,
-        candidates=_candidates(card.get("candidates"), analysed, language),
-        context_sense=_context_sense(card.get("context_sense"), len(meanings)),
-    )
+def _word_relation(
+    relation_value: Any,
+    suggestion_value: Any,
+    headword: str,
+    submitted: str,
+    language: Language,
+) -> tuple[WordRelation, str, str | None]:
+    """Reconcile the declared relation with the spellings; return the relation and headword."""
+    declared = relation_value if relation_value in {"same", "morphology", "typo"} else None
+    submitted_spelling = _submitted_spelling(submitted)
+    differs = fold_for_match(headword, language) != fold_for_match(submitted_spelling, language)
+    suggestion = _usable_suggestion(suggestion_value, submitted_spelling, language)
+    # A typo claim which corrected the spelling in word instead of suggestion, and a same
+    # claim contradicted by a different word, both mean the answer analysed a spelling the
+    # learner never submitted. Show that correction rather than swapping the headword.
+    if suggestion is None and differs and declared in {"typo", "same"}:
+        suggestion = headword if validate_word(headword, language) is None else None
+    if suggestion is None:
+        return ("same" if not differs else "morphology"), headword, None
+    if validate_word(submitted_spelling, language) is not None:
+        return "typo", headword, suggestion
+    return "typo", submitted_spelling, suggestion
 
 
-def _analysed_unit(value: Any, word: str, language: Language) -> str:
-    """What the answer is about: the model's own headword, or the input when it is unusable.
-
-    Falling back to the input is deliberate. A headword that would have been
-    refused had the user typed it must never reach the deck, and treating the
-    input as the analysed unit keeps today's behaviour rather than inventing new.
-    """
-    if not isinstance(value, str):
-        return word
-    analysed = unicodedata.normalize("NFC", value).strip()
-    if not analysed or validate_word(analysed, language) is not None:
-        return word
-    return analysed
-
-
-def _candidates(value: Any, analysed: str, language: Language) -> list[str]:
-    """The units worth looking up, held to the rule typed input is held to.
-
-    One tap turns a candidate into the front of a real note, so a candidate that
-    would have been refused had the user typed it is dropped and never offered.
-    """
-    if not isinstance(value, list):
-        return []
-    picked: list[str] = []
-    seen = {_fold(analysed)}
-    for item in value:
-        if not isinstance(item, str):
-            continue
-        candidate = unicodedata.normalize("NFC", item).strip()
-        if not candidate or validate_word(candidate, language) is not None:
-            continue
-        if _fold(candidate) in seen:
-            continue
-        seen.add(_fold(candidate))
-        picked.append(candidate)
-        if len(picked) == MAX_CANDIDATES:
-            break
-    return picked
-
-
-def _parse_meaning(value: Any, index: int, *, require_label: bool) -> Meaning:
-    path = f"card.meanings[{index}]"
-    meaning = _object(value, path)
-    translations_value = meaning.get("translations")
-    if not isinstance(translations_value, list) or not translations_value:
-        raise CardParseError(f"{path}.translations must be a non-empty list")
-    translations = [
-        _non_empty_string(item, f"{path}.translations[{translation_index}]")
-        for translation_index, item in enumerate(translations_value)
-    ]
-    examples_value = meaning.get("examples")
-    if (
-        not isinstance(examples_value, list)
-        or not 1 <= len(examples_value) <= MAX_EXAMPLES_PER_MEANING
-    ):
-        raise CardParseError(f"{path}.examples must contain between one and two examples")
-    examples = [
-        _parse_example(item, f"{path}.examples[{example_index}]")
-        for example_index, item in enumerate(examples_value)
-    ]
-    return Meaning(
-        label=(
-            _non_empty_string(meaning.get("label"), f"{path}.label")
-            if require_label
-            else _required_string(meaning, "label", path)
-        ),
-        translations=translations,
-        examples=examples,
-    )
-
-
-def _parse_example(value: Any, path: str) -> Example:
-    example = _object(value, path)
-    return Example(
-        text=_non_empty_string(example.get("text"), f"{path}.text"),
-        translation=_non_empty_string(example.get("translation"), f"{path}.translation"),
-    )
-
-
-def _usable_suggestion(value: Any, word: str, language: Language) -> str | None:
-    # Suggestion is advisory UI state, so a bad one never invalidates an otherwise good note.
+def _usable_suggestion(value: Any, submitted_spelling: str, language: Language) -> str | None:
     if not isinstance(value, str):
         return None
     suggestion = unicodedata.normalize("NFC", value).strip()
-    if not suggestion or suggestion.casefold() == word.casefold():
+    if not suggestion or fold_for_match(suggestion, language) == fold_for_match(
+        submitted_spelling,
+        language,
+    ):
         return None
-    if validate_word(suggestion, language) is not None:
-        return None
-    return suggestion
+    return suggestion if validate_word(suggestion, language) is None else None
+
+
+def _submitted_spelling(value: str) -> str:
+    return unicodedata.normalize("NFC", value).strip()
+
+
+def _fold(value: str) -> str:
+    return unicodedata.normalize("NFC", value).casefold()
+
+
+def _plain(value: Any) -> str:
+    return value.strip() if isinstance(value, str) else ""
 
 
 def _object(value: Any, path: str) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise CardParseError(f"{path} must be an object")
-    return value
-
-
-def _required_string(value: dict[str, Any], key: str, path: str) -> str:
-    item = value.get(key)
-    if not isinstance(item, str):
-        raise CardParseError(f"{path}.{key} must be a string")
-    return item
-
-
-def _non_empty_string(value: Any, path: str) -> str:
-    if not isinstance(value, str) or not value.strip():
-        raise CardParseError(f"{path} must be a non-empty string")
     return value

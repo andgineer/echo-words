@@ -12,12 +12,15 @@ from echo_words.broker import BackendError, BudgetMissError, paid_alias
 from echo_words.config import Settings
 from echo_words.languages import Language
 from echo_words.llm_backend import PoolStream, open_pool_stream
+from echo_words.prompt import MAX_COMPLETE_ANSWER_CHARS
 
 if TYPE_CHECKING:
     from llmbroker import AsyncBroker
 
 ResetHook = Callable[[], Awaitable[None]]
 AnswerCheck = Callable[[str], bool]
+
+logger = logging.getLogger(__name__)
 
 
 def utc_today() -> date:
@@ -63,6 +66,7 @@ class Completion:
         self._pool: PoolStream | None = None
         self._pool_answered = False
         self._rated = False
+        self._oversized = False
         self.llm_name: str | None = None
         self.paid = paid_only
 
@@ -70,6 +74,11 @@ class Completion:
         if self._deltas is None:
             self._deltas = self._recorded()
         return self._deltas
+
+    @property
+    def oversized(self) -> bool:
+        """Whether the final attempted answer exceeded the complete-answer bound."""
+        return self._oversized
 
     async def aclose(self) -> None:
         if self._deltas is not None:
@@ -110,14 +119,14 @@ class Completion:
     async def _answer(self) -> AsyncIterator[str]:
         if self._paid_only:
             async with aclosing(self._paid_deltas()) as paid:
-                async for delta in paid:
+                async for delta in self._bounded_deltas(paid):
                     yield delta
             return
         delivered: list[str] = []
         miss: BudgetMissError | None = None
         try:
             async with aclosing(self._pool_deltas()) as pool:
-                async for delta in pool:
+                async for delta in self._bounded_deltas(pool):
                     delivered.append(delta)
                     yield delta
         except BudgetMissError as exc:
@@ -128,13 +137,18 @@ class Completion:
         # pipeline is told to drop it before the second step starts.
         if delivered and self._request.on_reset is not None:
             await self._request.on_reset()
+        self._oversized = False
         async with aclosing(self._paid_deltas()) as paid:
-            async for delta in paid:
+            async for delta in self._bounded_deltas(paid):
                 yield delta
 
     async def _steps_up(self, miss: BudgetMissError | None, answer: str) -> bool:
         """Whether the paid model takes the request over from the pool."""
-        if miss is None and (self._request.usable is None or self._request.usable(answer)):
+        if (
+            miss is None
+            and not self._oversized
+            and (self._request.usable is None or self._request.usable(answer))
+        ):
             return False
         refusal = self._cascade.paid_refusal(self._request.language)
         if miss is not None:
@@ -145,6 +159,24 @@ class Completion:
         # arrived: it is rated down here, and stands only when nothing can replace it.
         await self.record_quality(0.0)
         return refusal is None
+
+    async def _bounded_deltas(self, stream: AsyncIterator[str]) -> AsyncIterator[str]:
+        remaining = MAX_COMPLETE_ANSWER_CHARS
+        async for delta in stream:
+            if self._oversized:
+                # Drain to settlement without retaining or exposing more output.
+                # A settled pool call can then receive the required quality score.
+                continue
+            bounded = delta[:remaining]
+            if bounded:
+                yield bounded
+                remaining -= len(bounded)
+            if len(bounded) != len(delta):
+                self._oversized = True
+                logger.warning(
+                    "LLM answer exceeded the %s-character complete-answer bound",
+                    MAX_COMPLETE_ANSWER_CHARS,
+                )
 
     async def _pool_deltas(self) -> AsyncIterator[str]:
         pool = open_pool_stream(

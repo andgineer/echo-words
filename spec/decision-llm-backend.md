@@ -219,6 +219,165 @@ under the alias `gpt-fast`. Paid models are named by curated alias and
 never by model id, so that llmbroker can re-point the alias at the next
 model generation on its own.
 
+## Merged production-prompt recheck — 2026-08-27–28
+
+The one-prompt unit/text contract invalidates the original prompt's contract
+percentages, but not the selected backend kinds. Its append-only recheck uses
+157 fixtures per arm: the 122-item verdict set, 26 known texts and nine bare
+units. The Serbian slice has 57 fixtures, 44 of them undecided verdicts.
+
+| arm | all provider answers | all parseable payloads | Serbian answers | Serbian parseable | Serbian usable verdicts | Serbian exact / hard errors | Serbian strict article format |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| first merged arm | 148 / 157 | 144 / 157 | 55 / 57 | 54 / 57 | 41 / 44 | 37 / 41, 3 | 10 / 57 |
+| stricter exploratory arm | 33 / 157 | 31 / 157 | 12 / 57 | 11 / 57 | 8 / 44 | 7 / 8, 1 | 2 / 57 |
+| complete semantic arm | 157 / 157 | 147 / 157 | 57 / 57 | 52 / 57 | 40 / 44 | 32 / 40, 8 | 24 / 57 |
+| conservative-context arm | 155 / 157 | 145 / 157 | 57 / 57 | 53 / 57 | 41 / 44 | 35 / 41, 5 | 21 / 57 |
+| embedded-unit arm (v5) | 156 / 157 | 147 / 157 | 56 / 57 | 51 / 57 | 39 / 44 | 38 / 39, 0 | 23 / 57 |
+| production prompt (v6) | 157 / 157 | 157 / 157 | 57 / 57 | 57 / 57 | 44 / 44 | 40 / 44, 3 | 19 / 57 |
+
+The middle row is availability evidence, not a model-quality score: 124 calls
+found no free slot. In the complete semantic arm,
+`google-gemini-3.5-flash-lite` answered 152 fixtures and
+`groq-gpt-oss-120b` answered five. The raw total verdict matrix was
+`62 / 0 / 34 / 18` for unit→unit, unit→text, text→unit and text→text.
+Tolerant interpretation left 80 correct, one acceptable boundary, three
+ambiguous/defensible boundaries, 30 hard errors and eight unusable verdicts.
+Those hard errors were over-broad unit verdicts for contextual fragments,
+ordinary clauses and whole sentences, not Serbian morphology or an inability
+to return the merged schema. Eight were Serbian.
+
+The conservative-context arm improved the preceding over-broad result but still
+failed its semantic gate: 14 hard verdict errors among 112 usable verdicts,
+including nine German and five Serbian errors, while only 16 of 26 known texts
+reached the text branch.
+
+The embedded-unit arm (v5) passed every deterministic contract, produced 147 of
+157 usable initial results and reduced hard verdict errors to four of 115. Its
+Serbian slice had 56 provider answers, 51 usable results, 38 exact verdicts and
+no hard verdict errors among 39 usable verdicts. The arm still failed downstream
+quality: 20 of 26 known texts chose text and only 13 of 21 distinct registered
+units were recovered; eight of nine bare units and all three expressions passed,
+but clicks could not run and reported zero of six successes. Two text misses
+were parse failures. Four semantic misses carded a finite situational clause
+whole when a fixed expression occupied most of it.
+
+The v6 prompt returned and parsed all 157 initial fixtures. All 122
+verdict payloads were usable: 113 were correct, two were
+ambiguous/defensible and seven were hard errors. The two gray-zone unit verdicts
+were the reusable short formulas `Das stimmt` and `Не знам`; keeping them out of
+the hard-error count does not excuse the seven clear losses of the requested
+operation. The Serbian slice returned 57 of 57 usable results, with 40 exact and
+three hard verdict errors among its 44 verdict fixtures. Nineteen of its 57
+articles met the strict formatting diagnostic.
+
+The same arm passed the automated contracts and aggregate quality gates
+registered before its run: 25 of 26 known texts chose text, all nine bare units
+were called cardable, production fill recovered 18 of 21 distinct registered
+units, all three expressions succeeded, and five of six dependent clicks were
+counted. Fresh qualitative review then found contextual over-highlighting in 24
+of 82 accepted unit results, including four bare cases and one accepted click.
+The v6 prompt is therefore **BLOCKED**; the quantitative figures are retained as
+backend evidence, not prompt acceptance.
+
+The subsequent v7 smoke removed that arm's accepted whole-context highlighting
+failure and met the tolerant text, bare, registered-unit and click thresholds,
+but failed all three typo cases because its headword instructions competed with
+submitted-spelling retention. That prompt is blocked.
+
+The prompt-bound fresh review of v8 also **BLOCKED** promotion. All 30 canonical
+answers parsed, 20 of 21 known texts chose text, all nine bare results were
+structurally cardable, all six clicks and all three expressions passed, and the
+v6 whole-context failure did not recur. Exact typo correction was only two of
+three: `typo-sr-mozda` silently changed submitted `мозда` to visible and payload
+`можда` with an empty suggestion. The tolerated typo threshold cannot override
+that accepted semantic correction failure.
+
+Strict registered-unit recovery was 16 of 21, below the 18-unit threshold. The
+five exact misses were: `text-de-1`, which omitted fixed reflexive `mich` from
+`sich freuen auf`; `text-de-4`, which omitted support verb `habe` from `die Nase
+voll haben`; `text-de-6`, which returned the whole sentence as a unit instead
+of recovering `in Frage kommen`; `text-sr-3`, which omitted `се` and absorbed
+negation into `изненадити се`; and `text-sr-4`, which omitted the variable
+experiencer construction while absorbing destination `на посао`. Previously
+approved variable-experiencer alternatives remain gray rather than being
+converted into fixture-string rules. Separately, `bare-de-rad` highlighted
+`Rad zu` in an example containing `Rad zu fahren`, leaving the exact submitted
+token `fahren` unmarked; semantic review therefore tolerated only eight of nine
+bare units.
+
+The production contract asks for a same/morphology/typo relation and reconciles
+it with the submitted and returned spellings, derives each blanked example form
+from its highlighted one, folds the two Serbian scripts onto one spelling when
+locating a surface in the submitted text, and rejects the narrow provable
+generated-example token omission. Moving those obligations out of the prompt and
+into the parser is what lets the prompt stay short enough for the free pool to
+follow it. The relation field cannot itself prove spelling semantics because a
+model can misclassify a typo as morphology; registered typo fixtures plus fresh
+semantic review remain the promotion gate, while an absolute distinction would
+need an independent judge. This does not change the selected backend: the
+remaining failures are prompt-bound quality evidence, and undecodable JSON is a
+generation weakness of the whole free pool rather than a reason to route Serbian
+differently.
+
+## Undecodable JSON is escaping, not Cyrillic — 2026-08-28
+
+Across the 1377 recorded answers that carried a payload, 25 failed to decode:
+15 of 513 Serbian (2.9%), 7 of 570 German (1.2%) and 3 of 294 English (1.0%).
+
+The distinguishing cause is not the source script but `\uXXXX` escaping, which
+the model applies to the target language instead of writing plain UTF-8. Each
+escape is four consecutive low-probability hexadecimal tokens, and the model
+derails inside one of them — a Serbian answer produced Japanese katakana in the
+middle of a sequence, a German one Hungarian text, and that German answer broke
+inside a *Russian* field rather than in its German source. Serbian breaks most
+often because both its source text and its target text are non-ASCII, so the
+surface exposed to escaping is twice as large.
+
+Four failures break inside such a sequence. The rest are punctuation discipline
+lost on a long generation: a string value left unquoted (10), a full stop typed
+where a comma separates two items (6), a truncated string (4) and a backslash
+escaping nothing (1).
+
+The parser repairs the three punctuation classes, and a repair stands only when
+it yields valid JSON; the repaired value then faces every ordinary check.
+Measured against these recorded failures it recovers 10 of the 25 — fewer than
+the three classes number, because a long answer often breaks more than once. A
+truncated answer and a derailed escape carry no recoverable intent and take the
+ordinary fallback.
+
+Provider-side structured output would make an invalid payload impossible, but it
+is not available here: an answer is one generation of article, separator and
+JSON, so it is not a single JSON document, and splitting it would either cost a
+second call or end the article streaming the reader watches. The pool is also
+heterogeneous — five models from four providers answered during the measurement —
+and support differs between them, so sending the parameter blindly would trade
+parse failures for provider rejections and skewed routing.
+
+These results leave the backend decision unchanged. The historical failures
+show a prompt-bound branching problem and the already measured free-pool
+availability tail, not a reason to make the paid backend mandatory or to route
+Serbian differently. Availability misses remain separate from content quality.
+The production harness promotes a prompt through sequential smoke and
+confirmation screens before the full pre-commit run. Full keeps all 157
+canonical current-hash IDs and adds six clicks and six typo cases; it need not
+make all 157 canonical cases usable, and retains the 142-result floor. `--resume`
+improves availability and parse misses without replacing a usable semantic
+disagreement with a lucky retry. Every screen emits a structured error packet,
+and fresh-agent semantic review recorded in the prompt-bound decision spec is
+mandatory before acceptance.
+
+Semantic quality is aggregate: obvious hard verdict errors may be at most 10%
+of usable verdict results, while acceptable and ambiguous/defensible boundaries
+are not errors. Known-text, bare-unit, registered-unit, click and expression
+flows use the documented 23/26, 8/9, 18/21, 5/6 and 2/3 thresholds. The Serbian
+availability, usable-result, verdict-error and formatting slice remains visible
+but has no separate zero-error requirement. Deterministic bounds, sanitization,
+branch isolation, exact context-click surface, targeted sentence
+transformations, typo spelling preservation, source-token fill and four-card
+readiness remain zero-tolerance contracts for accepted payloads. Exact tier
+manifests, pacing and promotion procedure are recorded in
+`decision-phrases-and-sentences.md`.
+
 ## Decisions for v0.1
 
 - **Fallback backend kind: the free `llmbroker` pool.** The spike

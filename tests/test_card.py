@@ -3,331 +3,646 @@ import json
 import pytest
 
 from echo_words.card import (
-    MAX_CANDIDATES,
     CardParseError,
     Example,
-    Meaning,
-    Note,
-    parse_card_payload,
+    ParsedText,
+    ParsedUnit,
+    parse_answer_payload,
 )
 
 
-def _note(payload_text, word, language):
-    return parse_card_payload(payload_text, word, language).note
+def example(word="bank"):
+    return {
+        "text": f"The {word} opens.",
+        "translation": "Перевод.",
+        "highlighted": f"The <b>{word}</b> opens.",
+        "gapped": "The ___ opens.",
+    }
 
 
-def payload(**changes) -> str:
+def meaning(label="", **changes):
+    value = {"label": label, "translations": ["банк"], "examples": [example()]}
+    value.update(changes)
+    return value
+
+
+def payload(**changes):
     value = {
+        "kind": "unit",
         "word": "bank",
+        "word_relation": "same",
         "suggestion": "",
-        "meanings": [
-            {
-                "label": "",
-                "translations": ["банк", "банковское учреждение"],
-                "examples": [
-                    {
-                        "text": "The bank opens at nine.",
-                        "translation": "Банк открывается в девять.",
-                    },
-                ],
-            },
-        ],
+        "meanings": [meaning()],
+        "segments": [],
     }
     value.update(changes)
     return json.dumps(value)
 
 
-def test_valid_single_meaning_payload_uses_the_canonical_input_word(languages):
-    parsed = parse_card_payload(payload(word="untrusted"), "bank", languages["en"])
-    note, suggestion = parsed.note, parsed.suggestion
-    assert note == Note(
-        word="bank",
-        meanings=[
-            Meaning(
-                label="",
-                translations=["банк", "банковское учреждение"],
-                examples=[
-                    Example(
-                        text="The bank opens at nine.",
-                        translation="Банк открывается в девять.",
-                    ),
-                ],
-            ),
-        ],
+def test_a_unit_uses_the_validated_returned_dictionary_headword(languages):
+    parsed = parse_answer_payload(
+        payload(
+            word="give up",
+            word_relation="morphology",
+            meanings=[meaning(examples=[example("gave up")])],
+        ),
+        "gave up",
+        languages["en"],
+        unit_intent=True,
     )
-    assert suggestion is None
+
+    assert isinstance(parsed, ParsedUnit)
+    assert parsed.note.word == "give up"
+    assert parsed.note.meaning.examples[0] == Example(
+        "The gave up opens.",
+        "Перевод.",
+        "The <b>gave up</b> opens.",
+        "The ___ opens.",
+    )
 
 
-@pytest.mark.parametrize("count", [2, 3])
-def test_valid_multi_meaning_payload_keeps_each_labeled_meaning(languages, count):
-    meanings = [
-        {
-            "label": f"значение {index}",
-            "pos": "сущ.",
-            "translations": [f"перевод {index}"],
-            "examples": [
-                {"text": f"Bank example {index}.", "translation": f"Пример {index}."},
+def test_unit_and_text_branches_cannot_mix(languages):
+    with pytest.raises(CardParseError, match="text answer contains unit fields"):
+        parse_answer_payload(
+            json.dumps({"kind": "text", "combinations": [], "word": "bank"}),
+            "The bank opens.",
+            languages["en"],
+        )
+    with pytest.raises(CardParseError, match="unit answer contains text combinations"):
+        parse_answer_payload(
+            payload(combinations=[{"surface": "bank opens"}]),
+            "bank",
+            languages["en"],
+        )
+
+
+def test_explicit_unit_intent_refuses_a_text_verdict(languages):
+    with pytest.raises(CardParseError, match="unit-intent"):
+        parse_answer_payload(
+            json.dumps({"kind": "text", "combinations": []}),
+            "Rad fahren",
+            languages["de"],
+            unit_intent=True,
+        )
+
+
+def test_singular_keys_and_singletons_are_normalized(languages):
+    parsed = parse_answer_payload(
+        payload(
+            meanings=[
+                {
+                    "label": "",
+                    "translation": "банк",
+                    "examples": example(),
+                },
             ],
-        }
-        for index in range(count)
-    ]
-    note = parse_card_payload(payload(meanings=meanings), "bank", languages["en"]).note
-    assert [meaning.label for meaning in note.meanings] == [
-        f"значение {index}" for index in range(count)
-    ]
-
-
-def test_payload_with_trailing_garbage_uses_the_first_json_object(languages):
-    note = _note(
-        f"{payload()} trailing model commentary",
+        ),
         "bank",
         languages["en"],
     )
-    assert note.word == "bank"
+
+    assert isinstance(parsed, ParsedUnit)
+    assert parsed.note.meaning.translations == ["банк"]
+    assert len(parsed.note.meaning.examples) == 1
+
+
+def test_bad_meanings_are_dropped_and_context_sense_is_remapped(languages):
+    parsed = parse_answer_payload(
+        payload(
+            meanings=[
+                meaning("учреждение"),
+                meaning("сломано", translations=[]),
+                meaning("берег", translations=["берег"]),
+            ],
+            context_sense=2,
+        ),
+        "bank",
+        languages["en"],
+    )
+
+    assert isinstance(parsed, ParsedUnit)
+    assert [item.label for item in parsed.note.meanings] == ["учреждение", "берег"]
+    assert parsed.note.sense == 1
+
+
+def test_an_empty_singleton_label_survives_after_a_malformed_sibling_is_dropped(
+    languages,
+):
+    parsed = parse_answer_payload(
+        payload(
+            meanings=[
+                meaning("broken", translations=[]),
+                meaning("", translations=["банк"]),
+            ],
+            context_sense=1,
+        ),
+        "bank",
+        languages["en"],
+    )
+
+    assert isinstance(parsed, ParsedUnit)
+    assert [item.label for item in parsed.note.meanings] == [""]
+    assert parsed.note.sense == 0
+
+
+def test_a_dropped_or_unusable_context_sense_falls_back_to_the_first(languages):
+    parsed = parse_answer_payload(
+        payload(
+            meanings=[meaning("first"), meaning("bad", examples=[])],
+            context_sense=1,
+        ),
+        "bank",
+        languages["en"],
+    )
+
+    assert isinstance(parsed, ParsedUnit)
+    assert parsed.note.sense == 0
+
+
+def test_an_answer_with_no_usable_meaning_fails(languages):
+    with pytest.raises(CardParseError, match="no usable meaning"):
+        parse_answer_payload(
+            payload(meanings=[meaning(translations=[]), meaning(examples=[])]),
+            "bank",
+            languages["en"],
+        )
+
+
+def test_invalid_examples_do_not_spend_the_two_retained_example_slots(languages):
+    valid = example()
+    parsed = parse_answer_payload(
+        payload(
+            meanings=[
+                meaning(
+                    examples=[
+                        {"text": "broken"},
+                        {"translation": "broken"},
+                        valid,
+                    ],
+                ),
+            ],
+        ),
+        "bank",
+        languages["en"],
+    )
+
+    assert isinstance(parsed, ParsedUnit)
+    assert parsed.note.meaning.examples == [
+        Example(
+            valid["text"],
+            valid["translation"],
+            valid["highlighted"],
+            valid["gapped"],
+        ),
+    ]
+
+
+def test_no_sense_count_ceiling_rejects_a_bounded_answer(languages):
+    meanings = [meaning(f"sense {index}") for index in range(9)]
+    parsed = parse_answer_payload(payload(meanings=meanings), "bank", languages["en"])
+
+    assert isinstance(parsed, ParsedUnit)
+    assert len(parsed.note.meanings) == 9
+
+
+def test_markup_leaking_into_the_plain_example_is_unwrapped(languages):
+    marked = example()
+    marked["text"] = "The <b>bank</b> opens."
+
+    parsed = parse_answer_payload(
+        payload(meanings=[meaning(examples=[marked])]),
+        "bank",
+        languages["en"],
+    )
+
+    assert isinstance(parsed, ParsedUnit)
+    assert parsed.note.meaning.examples[0].text == "The bank opens."
+    assert parsed.note.meaning.examples[0].gapped == "The ___ opens."
 
 
 @pytest.mark.parametrize(
-    "broken",
+    "changes",
     [
-        "not JSON",
-        payload(meanings=[]),
-        payload(
-            meanings=[
-                {
-                    "label": "",
-                    "translations": [],
-                    "examples": [
-                        {"text": "The bank is open.", "translation": "Банк открыт."},
-                    ],
-                },
-            ],
-        ),
-        payload(
-            meanings=[
-                {
-                    "label": "",
-                    "translations": ["банк"],
-                    "examples": [],
-                },
-            ],
-        ),
-        payload(
-            meanings=[
-                {
-                    "label": "",
-                    "translations": ["банк"],
-                    "examples": [
-                        {"text": f"Bank example {index}.", "translation": f"Пример {index}."}
-                        for index in range(3)
-                    ],
-                },
-            ],
-        ),
-        payload(
-            meanings=[
-                {
-                    "label": str(index),
-                    "translations": ["перевод"],
-                    "examples": [
-                        {"text": "Bank example.", "translation": "Пример."},
-                    ],
-                }
-                for index in range(4)
-            ],
-        ),
-        payload(
-            meanings=[
-                {
-                    "translations": ["перевод"],
-                    "examples": [{"text": "Bank example.", "translation": "Пример."}],
-                },
-            ],
-        ),
-        payload(word=""),
-        payload(word=" \t"),
-    ],
-    ids=[
-        "malformed-json",
-        "empty-meanings",
-        "empty-translations",
-        "empty-examples",
-        "three-examples",
-        "four-meanings",
-        "missing-label",
-        "empty-echoed-word",
-        "whitespace-echoed-word",
+        {"highlighted": ""},
+        {"highlighted": 4},
+        {"highlighted": "The bank opens."},
     ],
 )
-def test_invalid_payload_is_rejected(languages, broken):
-    with pytest.raises(CardParseError):
-        parse_card_payload(broken, "bank", languages["en"])
+def test_an_unmarked_or_unprintable_highlight_sinks_its_example(languages, changes):
+    broken = example()
+    broken.update(changes)
+    with pytest.raises(CardParseError, match="no usable meaning"):
+        parse_answer_payload(
+            payload(meanings=[meaning(examples=[broken])]),
+            "bank",
+            languages["en"],
+        )
 
 
-def test_a_broken_payload_carries_what_the_json_decoder_objected_to(languages):
-    # The free pool's own failure: escaping stops halfway through a \uXXXX sequence.
-    with pytest.raises(CardParseError, match=r"Invalid \\uXXXX escape"):
-        parse_card_payload('{"word": "bank", "pos": "\\u04гл."}', "bank", languages["en"])
+@pytest.mark.parametrize("gapped", ["", 4, "The ___ closes.", "The <b>___</b> opens."])
+def test_the_blanked_form_is_derived_and_a_returned_one_is_ignored(languages, gapped):
+    supplied = example()
+    supplied["gapped"] = gapped
 
-
-@pytest.mark.parametrize("label", ["", " \t"])
-def test_multi_meaning_payload_requires_non_empty_labels(languages, label):
-    meanings = [
-        {
-            "label": label,
-            "translations": ["банк"],
-            "examples": [{"text": "The bank is open.", "translation": "Банк открыт."}],
-        },
-        {
-            "label": "берег",
-            "translations": ["берег"],
-            "examples": [{"text": "Sit on the bank.", "translation": "Сядь на берегу."}],
-        },
-    ]
-
-    with pytest.raises(CardParseError):
-        parse_card_payload(payload(meanings=meanings), "bank", languages["en"])
-
-
-@pytest.mark.parametrize("suggestion", [None, "", "BANK"])
-def test_absent_empty_or_same_suggestion_does_not_affect_the_note(languages, suggestion):
-    value = json.loads(payload())
-    if suggestion is None:
-        value.pop("suggestion")
-    else:
-        value["suggestion"] = suggestion
-    parsed = parse_card_payload(json.dumps(value), "bank", languages["en"])
-    note, parsed_suggestion = parsed.note, parsed.suggestion
-    assert note.word == "bank"
-    assert parsed_suggestion is None
-
-
-def test_valid_different_suggestion_is_returned_alongside_the_note(languages):
-    parsed = parse_card_payload(
-        payload(suggestion="receive"),
-        "recieve",
-        languages["en"],
-    )
-    note, suggestion = parsed.note, parsed.suggestion
-    assert note.word == "recieve"
-    assert suggestion == "receive"
-
-
-def test_suggestion_that_fails_the_language_gate_is_dropped_but_the_note_parses(languages):
-    parsed = parse_card_payload(
-        payload(suggestion="получать"),
-        "recieve",
-        languages["en"],
-    )
-    note, suggestion = parsed.note, parsed.suggestion
-    assert note.word == "recieve"
-    assert suggestion is None
-
-
-def test_analysed_unit_is_the_models_headword_when_it_passes_the_word_rule(languages):
-    parsed = parse_card_payload(payload(word="allein"), "ist allein im Restaurant", languages["de"])
-    assert parsed.analysed == "allein"
-    assert parsed.note.word == "ist allein im Restaurant"
-    assert not parsed.input_is_unit
-
-
-def test_input_is_the_unit_when_the_model_echoes_it(languages):
-    parsed = parse_card_payload(payload(word="Rad  fahren"), "Rad fahren", languages["de"])
-    assert parsed.input_is_unit
-
-
-def test_a_single_word_is_its_own_unit_even_under_a_dictionary_headword(languages):
-    # An inflected word is answered under the form a dictionary lists, which is
-    # the same unit, not a unit found inside a longer input.
-    parsed = parse_card_payload(payload(word="одржавати"), "одржава", languages["sr"])
-    assert parsed.analysed == "одржавати"
-    assert parsed.input_is_unit
-
-
-@pytest.mark.parametrize("headword", ["bank!", "банк", "a" * 60])
-def test_headword_that_fails_the_word_rule_falls_back_to_the_input(languages, headword):
-    # It would be one tap from the front of a note, so it is held to the rule a
-    # typed word is held to; failing it means the answer is about the input after all.
-    parsed = parse_card_payload(payload(word=headword), "bank", languages["en"])
-    assert parsed.analysed == "bank"
-    assert parsed.input_is_unit
-
-
-def test_candidates_are_held_to_the_rule_typed_input_is_held_to(languages):
-    parsed = parse_card_payload(
-        payload(word="allein", candidates=["allein", "Restaurant!", "", "einsam", 7, "allein"]),
-        "ist allein im Restaurant",
-        languages["de"],
-    )
-    # "allein" is the analysed unit and never repeated; the rest are dropped or kept
-    # exactly as validate_word would decide for a typed word.
-    assert parsed.candidates == ["einsam"]
-
-
-def test_candidates_are_capped(languages):
-    parsed = parse_card_payload(
-        payload(word="allein", candidates=["a", "b", "c", "d", "e"]),
-        "ist allein im Restaurant",
-        languages["de"],
-    )
-    assert len(parsed.candidates) == MAX_CANDIDATES
-
-
-def test_absent_or_broken_candidates_are_an_empty_list(languages):
-    for value in (None, "nope", 5, {}):
-        parsed = parse_card_payload(payload(candidates=value), "bank", languages["en"])
-        assert parsed.candidates == []
-
-
-def two_meanings() -> list[dict]:
-    return [
-        {
-            "label": "учреждение",
-            "translations": ["банк"],
-            "examples": [{"text": "The bank is open.", "translation": "Банк открыт."}],
-        },
-        {
-            "label": "берег",
-            "translations": ["берег"],
-            "examples": [{"text": "Sit on the bank.", "translation": "Сядь на берегу."}],
-        },
-    ]
-
-
-def test_a_payload_without_a_sense_index_narrows_nothing(languages):
-    parsed = parse_card_payload(payload(), "bank", languages["en"])
-
-    assert parsed.context_sense is None
-
-
-def test_the_sense_the_context_uses_is_read_off_the_payload(languages):
-    parsed = parse_card_payload(
-        payload(meanings=two_meanings(), context_sense=1),
+    parsed = parse_answer_payload(
+        payload(meanings=[meaning(examples=[supplied])]),
         "bank",
         languages["en"],
     )
 
-    assert parsed.context_sense == 1
+    assert isinstance(parsed, ParsedUnit)
+    assert parsed.note.meaning.examples[0].gapped == "The ___ opens."
+
+
+def test_the_plain_sentence_comes_from_the_highlight_not_from_a_returned_field(languages):
+    varied = example()
+    varied["highlighted"] = "Yesterday, the <b>bank</b> opened!"
+    varied["text"] = "Something else entirely."
+
+    parsed = parse_answer_payload(
+        payload(meanings=[meaning(examples=[varied])]),
+        "bank",
+        languages["en"],
+    )
+
+    assert isinstance(parsed, ParsedUnit)
+    assert parsed.note.meaning.examples[0].text == "Yesterday, the bank opened!"
+    assert parsed.note.meaning.examples[0].gapped == "Yesterday, the ___ opened!"
+
+
+def test_selected_context_example_must_equal_the_supplied_context(languages):
+    with pytest.raises(CardParseError, match="must equal the supplied context"):
+        parse_answer_payload(
+            payload(context_sense=0),
+            "bank",
+            languages["en"],
+            unit_intent=True,
+            context="We sat on the bank.",
+        )
+
+
+def test_context_forms_are_built_from_the_exact_selected_surface(languages):
+    context = "We sat on the bank."
+    contextual = example()
+    contextual.update(highlighted="<b>We sat</b> on the <b>bank</b>.")
+
+    parsed = parse_answer_payload(
+        payload(meanings=[meaning(examples=[contextual])], context_sense=0),
+        "bank",
+        languages["en"],
+        unit_intent=True,
+        context=context,
+    )
+
+    assert isinstance(parsed, ParsedUnit)
+    assert parsed.note.meaning.examples[0] == Example(
+        context,
+        "Перевод.",
+        "We sat on the <b>bank</b>.",
+        "We sat on the ___.",
+    )
+
+
+def test_separated_context_surface_is_marked_in_source_order(languages):
+    context = "Er steht jeden Morgen um sechs auf."
+    contextual = {
+        "text": context,
+        "translation": "Он встаёт каждое утро в шесть.",
+        "highlighted": f"<b>{context}</b>",
+        "gapped": "___",
+    }
+
+    parsed = parse_answer_payload(
+        payload(
+            word="aufstehen",
+            word_relation="morphology",
+            meanings=[meaning(examples=[contextual])],
+            context_sense=0,
+        ),
+        "steht auf",
+        languages["de"],
+        unit_intent=True,
+        context=context,
+    )
+
+    assert isinstance(parsed, ParsedUnit)
+    assert parsed.note.meaning.examples[0].highlighted == (
+        "Er <b>steht</b> jeden Morgen um sechs <b>auf</b>."
+    )
+    assert parsed.note.meaning.examples[0].gapped == "Er ___ jeden Morgen um sechs ___."
+
+
+def test_invalid_returned_headword_fails_instead_of_using_the_submission(languages):
+    with pytest.raises(CardParseError, match="dictionary headword"):
+        parse_answer_payload(payload(word="bank!"), "banked", languages["en"])
+
+
+def test_a_correct_spelling_suggestion_retains_the_submitted_word(languages):
+    parsed = parse_answer_payload(
+        payload(word="recieve", word_relation="typo", suggestion="receive"),
+        "  recieve  ",
+        languages["en"],
+    )
+
+    assert isinstance(parsed, ParsedUnit)
+    assert parsed.note.word == "recieve"
+    assert parsed.word_relation == "typo"
+    assert parsed.suggestion == "receive"
 
 
 @pytest.mark.parametrize(
-    "sense",
-    [1, -1, 9, "0", True, None, [0], {"sense": 0}],
+    ("word", "suggestion", "expected_suggestion"),
+    [
+        ("receive", "receive", "receive"),
+        ("receiving", "receive", "receive"),
+        ("receive", "", "receive"),
+    ],
 )
-def test_a_sense_index_that_names_no_meaning_falls_through_to_the_bare_note(languages, sense):
-    """A JSON null is in here too: defaulting any of these to the first meaning would
-    card the context under a sense it need not be about, and it would look right."""
-    parsed = parse_card_payload(payload(context_sense=sense), "bank", languages["en"])
+def test_a_spelling_suggestion_never_becomes_the_headword(
+    languages,
+    word,
+    suggestion,
+    expected_suggestion,
+):
+    parsed = parse_answer_payload(
+        payload(word=word, word_relation="typo", suggestion=suggestion),
+        "recieve",
+        languages["en"],
+    )
 
-    assert parsed.context_sense is None
+    assert isinstance(parsed, ParsedUnit)
+    assert parsed.note.word == "recieve"
+    assert parsed.word_relation == "typo"
+    assert parsed.suggestion == expected_suggestion
 
 
-def test_a_boolean_sense_index_names_no_meaning_where_it_would_index_one(languages):
-    """``True`` is in range of two meanings, so only the bool guard keeps it out: read
-    as an index it would card the context under the second sense, silently."""
-    parsed = parse_card_payload(
-        payload(meanings=two_meanings(), context_sense=True),
+def test_a_same_relation_contradicted_by_the_word_becomes_a_visible_correction(languages):
+    parsed = parse_answer_payload(
+        payload(word="можда", word_relation="same", suggestion=""),
+        "мозда",
+        languages["sr"],
+    )
+
+    assert isinstance(parsed, ParsedUnit)
+    assert parsed.note.word == "мозда"
+    assert parsed.word_relation == "typo"
+    assert parsed.suggestion == "можда"
+
+
+def test_a_headword_differing_from_the_submission_only_in_case_stays_the_same_word(
+    languages,
+):
+    parsed = parse_answer_payload(
+        payload(word="он", word_relation="same", suggestion=""),
+        "Он",
+        languages["sr"],
+    )
+
+    assert isinstance(parsed, ParsedUnit)
+    assert parsed.note.word == "он"
+    assert parsed.word_relation == "same"
+    assert parsed.suggestion is None
+
+
+def test_a_headword_transliterated_into_the_other_serbian_script_is_not_a_typo(languages):
+    parsed = parse_answer_payload(
+        payload(word="можда", word_relation="same", suggestion=""),
+        "možda",
+        languages["sr"],
+    )
+
+    assert isinstance(parsed, ParsedUnit)
+    assert parsed.word_relation == "same"
+    assert parsed.suggestion is None
+
+
+def test_morphology_can_change_the_headword_without_a_spelling_suggestion(languages):
+    parsed = parse_answer_payload(
+        payload(word="receive", word_relation="morphology", suggestion=""),
+        "received",
+        languages["en"],
+    )
+
+    assert isinstance(parsed, ParsedUnit)
+    assert parsed.note.word == "receive"
+    assert parsed.word_relation == "morphology"
+    assert parsed.suggestion is None
+
+
+@pytest.mark.parametrize("word_relation", [None, "", "correction", 4])
+def test_an_unusable_relation_label_falls_back_to_the_spellings(languages, word_relation):
+    parsed = parse_answer_payload(
+        payload(word_relation=word_relation),
         "bank",
         languages["en"],
     )
 
-    assert parsed.context_sense is None
+    assert isinstance(parsed, ParsedUnit)
+    assert parsed.word_relation == "same"
+    assert parsed.suggestion is None
+
+
+@pytest.mark.parametrize(
+    ("word_relation", "word", "suggestion", "expected"),
+    [
+        ("same", "banks", "", ("typo", "bank", "banks")),
+        ("same", "bank", "banks", ("typo", "bank", "banks")),
+        ("morphology", "bank", "banks", ("typo", "bank", "banks")),
+        ("typo", "bank", "", ("same", "bank", None)),
+        ("typo", "banks", "bank", ("typo", "bank", "banks")),
+        ("morphology", "banks", "", ("morphology", "banks", None)),
+    ],
+)
+def test_inconsistent_word_and_suggestion_combinations_are_reconciled(
+    languages,
+    word_relation,
+    word,
+    suggestion,
+    expected,
+):
+    parsed = parse_answer_payload(
+        payload(word_relation=word_relation, word=word, suggestion=suggestion),
+        "bank",
+        languages["en"],
+    )
+
+    assert isinstance(parsed, ParsedUnit)
+    assert (parsed.word_relation, parsed.note.word, parsed.suggestion) == expected
+
+
+def test_generated_example_marks_every_submitted_token_that_occurs_verbatim(languages):
+    incomplete = {
+        "text": "Es macht Spaß, Rad zu fahren.",
+        "translation": "Ездить на велосипеде весело.",
+        "highlighted": "Es macht Spaß, <b>Rad zu</b> fahren.",
+        "gapped": "Es macht Spaß, ___ fahren.",
+    }
+
+    with pytest.raises(CardParseError, match="no usable meaning"):
+        parse_answer_payload(
+            payload(
+                word="Rad fahren",
+                meanings=[meaning(examples=[incomplete])],
+            ),
+            "Rad fahren",
+            languages["de"],
+        )
+
+
+def test_generated_example_token_check_does_not_assume_matching_morphology(languages):
+    inflected = {
+        "text": "Ich fahre jeden Tag Rad.",
+        "translation": "Я каждый день езжу на велосипеде.",
+        "highlighted": "Ich <b>fahre</b> jeden Tag <b>Rad</b>.",
+        "gapped": "Ich ___ jeden Tag ___.",
+    }
+
+    parsed = parse_answer_payload(
+        payload(word="Rad fahren", meanings=[meaning(examples=[inflected])]),
+        "Rad fahren",
+        languages["de"],
+    )
+
+    assert isinstance(parsed, ParsedUnit)
+
+
+def test_adjacent_bold_target_spans_are_normalized_for_one_blank(languages):
+    split = example("give up")
+    split["highlighted"] = "The <b>give</b> <b>up</b> opens."
+    split["gapped"] = "The ___ opens."
+
+    parsed = parse_answer_payload(
+        payload(word="give up", meanings=[meaning(examples=[split])]),
+        "give up",
+        languages["en"],
+    )
+
+    assert isinstance(parsed, ParsedUnit)
+    assert parsed.note.meaning.examples[0].highlighted == "The <b>give up</b> opens."
+
+
+def test_adjacent_bold_normalization_does_not_allow_a_whole_sentence(languages):
+    split = example()
+    split["highlighted"] = "<b>The</b> <b>bank</b> <b>opens</b>."
+    split["gapped"] = "___."
+
+    with pytest.raises(CardParseError, match="no usable meaning"):
+        parse_answer_payload(
+            payload(meanings=[meaning(examples=[split])]),
+            "bank",
+            languages["en"],
+        )
+
+
+def test_markup_other_than_the_unit_mark_makes_the_example_unusable(languages):
+    varied = example()
+    varied["highlighted"] = "<script>x</script>The <b>bank</b> opens."
+
+    with pytest.raises(CardParseError, match="no usable meaning"):
+        parse_answer_payload(
+            payload(meanings=[meaning(examples=[varied])]),
+            "bank",
+            languages["en"],
+        )
+
+
+@pytest.mark.parametrize(
+    "highlighted",
+    [
+        "<b>The bank opens.</b>",
+        "<b>The</b> <b>bank</b> <b>opens</b>.",
+    ],
+)
+def test_a_highlight_covering_the_whole_sentence_is_rejected(languages, highlighted):
+    broken = example()
+    broken.update(highlighted=highlighted)
+
+    with pytest.raises(CardParseError, match="no usable meaning"):
+        parse_answer_payload(
+            payload(meanings=[meaning(examples=[broken])]),
+            "bank",
+            languages["en"],
+        )
+
+
+def test_text_answer_is_structurally_distinct(languages):
+    parsed = parse_answer_payload(
+        json.dumps({"kind": "text", "combinations": []}),
+        "The bank opens.",
+        languages["en"],
+    )
+    assert isinstance(parsed, ParsedText)
+    assert [segment.label for segment in parsed.segments] == ["The", "bank", "opens"]
+
+
+def test_a_bare_string_value_is_requoted(languages):
+    broken = payload().replace('"word_relation": "same"', '"word_relation": same')
+
+    parsed = parse_answer_payload(broken, "bank", languages["en"])
+
+    assert isinstance(parsed, ParsedUnit)
+    assert parsed.word_relation == "same"
+
+
+def test_a_full_stop_between_two_items_is_read_as_a_comma(languages):
+    broken = payload().replace('], "segments"', ']. "segments"')
+
+    parsed = parse_answer_payload(broken, "bank", languages["en"])
+
+    assert isinstance(parsed, ParsedUnit)
+    assert parsed.note.word == "bank"
+
+
+def test_a_backslash_escaping_nothing_is_dropped(languages):
+    value = json.loads(payload(meanings=[meaning(translations=["прекратить"])]))
+    broken = json.dumps(value, ensure_ascii=False).replace(
+        '"прекратить"',
+        r'"\прекратить"',
+    )
+
+    parsed = parse_answer_payload(broken, "bank", languages["en"])
+
+    assert isinstance(parsed, ParsedUnit)
+    assert parsed.note.meaning.translations == ["прекратить"]
+
+
+def test_a_payload_no_repair_can_decode_still_fails(languages):
+    with pytest.raises(CardParseError, match="not valid JSON"):
+        parse_answer_payload('{"kind": "unit", "word"', "bank", languages["en"])
+
+
+def test_a_repair_which_does_not_apply_cannot_corrupt_the_one_which_does(languages):
+    value = json.loads(payload(meanings=[meaning(translations=["прекратить"])]))
+    value["meanings"][0]["examples"][0]["translation"] = "значит: остановить"
+    broken = json.dumps(value, ensure_ascii=False).replace(
+        '"прекратить"',
+        r'"\прекратить"',
+    )
+
+    parsed = parse_answer_payload(broken, "bank", languages["en"])
+
+    assert isinstance(parsed, ParsedUnit)
+    assert parsed.note.meaning.translations == ["прекратить"]
+    assert parsed.note.meaning.examples[0].translation == "значит: остановить"
+
+
+def test_senses_that_all_lack_a_label_are_kept_rather_than_dropped(languages):
+    parsed = parse_answer_payload(
+        payload(meanings=[meaning(), meaning(translations=["берег"])]),
+        "bank",
+        languages["en"],
+    )
+
+    assert isinstance(parsed, ParsedUnit)
+    assert [item.translations for item in parsed.note.meanings] == [["банк"], ["берег"]]
+
+
+def test_an_unlabelled_sense_still_yields_to_a_labelled_one(languages):
+    parsed = parse_answer_payload(
+        payload(meanings=[meaning(), meaning("о реке", translations=["берег"])]),
+        "bank",
+        languages["en"],
+    )
+
+    assert isinstance(parsed, ParsedUnit)
+    assert [item.label for item in parsed.note.meanings] == ["о реке"]

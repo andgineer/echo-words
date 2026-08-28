@@ -10,6 +10,7 @@ from contextlib import asynccontextmanager
 from dataclasses import asdict
 from datetime import datetime
 from functools import partial
+from typing import Literal
 from uuid import UUID
 
 from fastapi import FastAPI, HTTPException, Query, Request
@@ -36,12 +37,12 @@ from echo_words.languages import (
     plain_text,
     plain_unit,
     sanitize_context,
+    split_words,
     unknown_language_hint,
     validate_text,
     validate_word,
 )
 from echo_words.pipeline import WordPipeline
-from echo_words.shape import Shape, classify
 
 # Transport guards only, kept far above the real limits so that the short
 # localized hints stay the rejection a user actually meets.
@@ -53,7 +54,7 @@ logger = logging.getLogger(__name__)
 SSE_KEEP_ALIVE_SECONDS = 15
 SUBMISSION_RECEIPT_TTL_SECONDS = 7 * 24 * 60 * 60
 SUBMISSION_RECEIPT_LIMIT = 4096
-SubmissionFingerprint = tuple[str, str, bool, str, str]
+SubmissionFingerprint = tuple[str, str, bool, str, Literal["unit"] | None]
 Clock = Callable[[], float]
 SubmissionReceipt = tuple[SubmissionFingerprint, str, float]
 
@@ -193,9 +194,8 @@ class WordSubmission(BaseModel):
     word: str = Field(max_length=_MAX_WORD_INPUT)
     lang: str = Field(max_length=_MAX_LANG_INPUT)
     lookup_only: bool = False
-    # Absent means "classify it"; a suggested unit sends "unit" so that its own
-    # length can never route it back into another running-text answer.
-    shape: Shape | None = None
+    # Only a chip may force the unit branch; ordinary submissions leave it undecided.
+    shape: Literal["unit"] | None = None
     context: str = Field(default="", max_length=_MAX_CONTEXT_INPUT)
     request_id: UUID | None = None
 
@@ -229,17 +229,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:  # noqa: C901, PLR0
         locale = pick_locale(request.headers.get("accept-language"))
         language = _resolve_language(request.app.state.languages, submission.lang, locale)
         word, lookup_only = normalize_submission(submission.word, submission.lookup_only)
-        shape = submission.shape or classify(word)
-        if shape == "text":
-            word = plain_text(word)
-            hint = validate_text(word, language, locale)
-        else:
+        intent = submission.shape
+        if intent == "unit":
             word = plain_unit(word)
             hint = validate_word(word, language, locale)
+        else:
+            word = plain_text(word)
+            hint = validate_text(word, language, locale)
+            if len(split_words(word)) == 1:
+                word = plain_unit(word)
+                intent = "unit"
+                hint = validate_word(word, language, locale)
         if hint:
             raise HTTPException(status_code=400, detail=hint)
         context = sanitize_context(submission.context)
-        fingerprint = (language.code, word, lookup_only, context, shape)
+        fingerprint = (language.code, word, lookup_only, context, intent)
         try:
             entry_id = await request.app.state.submissions.accept(
                 submission.request_id,
@@ -249,7 +253,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:  # noqa: C901, PLR0
                     language,
                     word,
                     lookup_only,
-                    shape=shape,
+                    intent=intent,
                     context=context,
                 ),
             )
