@@ -345,13 +345,36 @@ the three classes number, because a long answer often breaks more than once. A
 truncated answer and a derailed escape carry no recoverable intent and take the
 ordinary fallback.
 
-Provider-side structured output would make an invalid payload impossible, but it
-is not available here: an answer is one generation of article, separator and
-JSON, so it is not a single JSON document, and splitting it would either cost a
-second call or end the article streaming the reader watches. The pool is also
-heterogeneous — five models from four providers answered during the measurement —
-and support differs between them, so sending the parameter blindly would trade
-parse failures for provider rejections and skewed routing.
+Provider-side structured output would remove the class rather than 60% of it,
+because grammar-constrained decoding cannot emit an invalid payload at all. It
+is not adopted for v0.1, and the obstacle is the answer's shape before it is the
+broker's. One generation carries the article, a separator and the payload, so it
+is not a single JSON document: constraining it means either a second call, which
+doubles consumption of the scarce free pool, or carrying the article as a field
+inside the payload, which keeps streaming only if the article is parsed out of
+the growing JSON incrementally.
+
+The broker is the second obstacle. Its chat request carries no such parameter,
+and threading one through is small; what is missing is per-model capability
+data. The pool is heterogeneous — five models from four providers answered
+during the measurement — and support differs between them, so sending the
+parameter blindly would trade parse failures for provider rejections and skewed
+routing. All three pieces are needed together; none helps alone.
+
+Its value is also smaller than the parse numbers suggest, because the other
+classes it would remove are already absorbed at no cost. The parser normalized a
+singular translation key 50 times across 1609 decoded payloads with no visible
+effect, and a click answer returning component parts it was told to omit — half
+of them do — changes nothing either, since an explicit unit request builds its
+chips from the senses and never reads those parts. What grammar cannot constrain
+is the only class that reaches the learner: a wrong gender, a missing plural, an
+invented usage, a translation of the wrong word. Constrained decoding is also
+known to cost content quality on small models, so the trade would be paid in
+exactly the quality that matters.
+
+What would re-open this: a residual failure rate materially above the measured
+one, a pool narrow enough that its capabilities are known, or a schema violation
+that reaches the reader instead of being absorbed.
 
 These results leave the backend decision unchanged. The historical failures
 show a prompt-bound branching problem and the already measured free-pool
