@@ -98,6 +98,25 @@ A milestone is done only when both are green.
 - Never present changes as ready, or ask for permission to commit, before
   both commands have completed successfully.
 
+### Nothing that touches the model ships unmeasured
+
+Anything that changes what the app says to an LLM or what it does with the
+answer — a prompt, a prompt fragment, a switch that varies one, the payload
+contract, the parser that reads it — is **not done until it has been run
+against real models** through `experiments/one_note_bench.py`, with fixtures
+covering the new behavior, and the results read.
+
+Mocks prove that our code does what we wrote; they cannot prove a model obeys
+an instruction. Shipping a prompt change on a green mocked suite is releasing
+untested code into the only part of the system whose behavior we do not
+control. There is no "the sentence is only added on a new path, so the
+canonical prompt is unchanged" exemption: the new path is the change.
+
+If running the bench needs something only the operator has — API budget, a
+manifest decision, time — say so and ask. Never present the work as finished
+with the measurement outstanding, and never let a repo rule about bench gates
+become the excuse for skipping it.
+
 ---
 
 ## Tests

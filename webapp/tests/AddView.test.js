@@ -209,6 +209,80 @@ describe("AddView", () => {
     expect(wrapper.find(".entry-card-status").text()).toBe("✅ added to Anki");
   });
 
+  it("offers both spellings and no card while a typo is held", async () => {
+    await labelBehavior(EPIC.ANKI_CARDS, FEATURE.COLLECTION, "Card delivery status");
+    entries.value = [{
+      entry_id: "entry-1",
+      word: "fricolous",
+      language: "English",
+      status: "done",
+      text: "meaning",
+      card_status: "spelling",
+      suggestion: "frivolous",
+      shown_spelling: "fricolous",
+    }];
+    const wrapper = mount(AddView);
+    await flushPromises();
+
+    expect(wrapper.find(".entry-card-status").text()).toBe("✏️ looks like a typo — no card yet");
+    expect(wrapper.find(".correction").text()).toBe("✏️ Correct to “frivolous”");
+    expect(wrapper.find(".keep").text()).toBe("✓ Keep “fricolous”");
+    // Nothing was carded, so there is nothing to rebuild.
+    expect(wrapper.find(".rebuild").exists()).toBe(false);
+
+    await wrapper.find(".keep").trigger("click");
+    await flushPromises();
+
+    expect(apiRequest).toHaveBeenCalledWith("/api/words/entry-1/keep", { method: "POST" });
+  });
+
+  it("keeps both spellings on offer when the model refuses the kept one", async () => {
+    await labelBehavior(EPIC.ANKI_CARDS, FEATURE.COLLECTION, "Card delivery status");
+    entries.value = [{
+      entry_id: "entry-1",
+      word: "fricolous",
+      language: "English",
+      status: "done",
+      text: "meaning",
+      card_status: "spelling_refused",
+      suggestion: "frivolous",
+      shown_spelling: "fricolous",
+    }];
+    const wrapper = mount(AddView);
+    await flushPromises();
+
+    expect(wrapper.find(".entry-card-status").text()).toBe(
+      "⚠️ the model will not analyse this spelling as a word",
+    );
+    // A refusal is not a dead end: both spellings can still be asked for.
+    expect(wrapper.find(".keep").exists()).toBe(true);
+    expect(wrapper.find(".correction").exists()).toBe(true);
+  });
+
+  it("says the card it could not replace is still there, and still offers it", async () => {
+    await labelBehavior(EPIC.ANKI_CARDS, FEATURE.COLLECTION, "Card delivery status");
+    entries.value = [{
+      entry_id: "entry-1",
+      word: "fricolous",
+      language: "English",
+      status: "done",
+      shape: "unit",
+      text: "meaning",
+      card_status: "spelling_refused",
+      card_kept: true,
+      suggestion: "frivolous",
+      shown_spelling: "fricolous",
+    }];
+    const wrapper = mount(AddView);
+    await flushPromises();
+
+    expect(wrapper.find(".entry-card-status").text()).toBe(
+      "⚠️ the model will not analyse this spelling as a word · the card you had is untouched",
+    );
+    // The note still exists, so the control that manages it cannot disappear.
+    expect(wrapper.find(".rebuild").exists()).toBe(true);
+  });
+
   it("gives all four card kinds distinct localized status labels", async () => {
     await labelBehavior(EPIC.ANKI_CARDS, FEATURE.COLLECTION, "Card delivery status");
     entries.value = [{
@@ -391,7 +465,7 @@ describe("AddView", () => {
     expect(wrapper.find(".context-audio-title").exists()).toBe(false);
   });
 
-  it("documents both lookup shortcuts and the reversible correction control", async () => {
+  it("documents both lookup shortcuts and the spelling choice a typo asks for", async () => {
     const wrapper = mount(AddView);
     await flushPromises();
 
@@ -399,7 +473,7 @@ describe("AddView", () => {
 
     expect(wrapper.find(".about-text").text()).toContain("“? word”");
     expect(wrapper.find(".about-text").text()).toContain("✏️ Correct");
-    expect(wrapper.find(".about-text").text()).toContain("brings the original back");
+    expect(wrapper.find(".about-text").text()).toContain("no card is created until you choose");
   });
 
   it("passes punctuation on a direct single-word submission to server validation", async () => {

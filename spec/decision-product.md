@@ -22,9 +22,13 @@ the work again. **Do not re-open any of it.**
   dictionary headword is the identity used by the note and its card audio,
   which legitimately normalizes an inflected chip. A suspected spelling
   correction stays only in `suggestion`; it may not silently become the
-  returned headword. The correction control re-runs the analysis with explicit
-  unit intent, replaces the note, fetches audio for the new spelling, and is
-  reversible.
+  returned headword. **A note is stored only for the spelling its answer
+  analysed**: where the parser put the submission back over a replaced headword,
+  the note would carry their spelling above the other word's meanings, examples
+  and gap, so it is not stored at all. Either spelling is then carded by
+  analysing it — the correction control for the suggested one, and, for the
+  submitted one, a re-run that tells the model the spelling is deliberate. An
+  answer that overrides a confirmed spelling anyway cards nothing.
 - **Every accepted note generates exactly four cards.** The bare word and its
   translations are asked both ways; the selected sense's sentence is asked
   once with all unit parts highlighted and once with them gapped. A short sense

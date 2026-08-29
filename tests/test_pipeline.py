@@ -12,7 +12,9 @@ from echo_words.pipeline import (
     ADDED_STATUS,
     ANALYSIS_FAILED_CODE,
     CARD_FAILED_STATUS,
+    HELD_SPELLING_STATUS,
     LOOKUP_ONLY_STATUS,
+    SPELLING_REFUSED_STATUS,
     TEXT_STATUS,
     WordPipeline,
 )
@@ -147,6 +149,7 @@ async def test_deltas_are_throttled_cut_sanitized_and_finished(languages):
                 "card_error": None,
                 "no_audio": True,
                 "no_card_audio": False,
+                "card_kept": False,
                 "segments": [],
                 "segment_kind": None,
                 "shape": None,
@@ -214,6 +217,7 @@ async def test_card_parse_quality_and_suggestion_are_published_after_completion(
                 "card_error": None,
                 "no_audio": True,
                 "no_card_audio": False,
+                "card_kept": False,
                 "segments": [
                     {
                         "label": "recieve",
@@ -266,6 +270,7 @@ async def test_card_without_examples_is_rated_as_a_failure_without_losing_analys
                 "card_error": None,
                 "no_audio": True,
                 "no_card_audio": False,
+                "card_kept": False,
                 "segments": [],
                 "segment_kind": None,
                 "shape": None,
@@ -387,6 +392,236 @@ def card_with(word, meanings=None, **fields):
         **fields,
     }
     return f"analysis===CARD==={json.dumps(answer, ensure_ascii=False)}"
+
+
+def typo_card(corrected):
+    """The production shape of a suspected typo: the model corrects the spelling in
+    ``word`` and its examples are about the corrected word, not the submitted one."""
+    return card_with(
+        corrected,
+        meanings=[
+            {
+                "label": "",
+                "translations": ["перевод"],
+                "examples": [example(corrected)],
+            },
+        ],
+        word_relation="typo",
+        suggestion=corrected,
+    )
+
+
+async def test_a_suspected_typo_holds_the_card_until_the_learner_keeps_the_spelling(languages):
+    """Keeping the spelling analyses it as a word of its own: the answer in hand
+    described the other spelling, so nothing in it could be carded as this one."""
+    anki = RecordingAnki(Added(11, None, ("Recognition",)))
+    cascade = ScriptedCascade(
+        [
+            Completion([typo_card("frivolous")]),
+            Completion([valid_card("fricolous")]),
+        ],
+    )
+    pipeline = WordPipeline(cascade, target_lang="ru", anki=anki)
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(languages["en"], "fricolous", False)
+        await pipeline.join()
+
+        assert (entry.card_status, entry.action) == (HELD_SPELLING_STATUS, "held")
+        assert entry.suggestion == "frivolous"
+        assert anki.calls == []
+
+        await pipeline.keep_spelling(entry.entry_id)
+        await pipeline.join()
+
+        assert (entry.card_status, entry.action) == (ADDED_STATUS, "added")
+        assert entry.card_kinds == ["Recognition"]
+        assert [note.word for note, _deck, _audio in anki.calls] == ["fricolous"]
+        assert pipeline.history.undo["en"].note_id == 11
+    finally:
+        await pipeline.close()
+
+
+async def test_keeping_a_spelling_tells_the_model_it_was_confirmed(languages):
+    cascade = ScriptedCascade(
+        [
+            Completion([typo_card("frivolous")]),
+            Completion([valid_card("fricolous")]),
+        ],
+    )
+    pipeline = WordPipeline(
+        cascade,
+        target_lang="ru",
+        anki=RecordingAnki(Added(11, None, ("Recognition",))),
+    )
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(languages["en"], "fricolous", False)
+        await pipeline.join()
+        await pipeline.keep_spelling(entry.entry_id)
+        await pipeline.join()
+    finally:
+        await pipeline.close()
+
+    # The submission asks nothing of the spelling; only the learner's claim does.
+    assert "confirmed this spelling" not in cascade.prompts[0]
+    assert "confirmed this spelling" in cascade.prompts[1]
+
+
+async def test_keeping_a_spelling_leaves_the_pronunciation_it_reuses_on_disk(
+    languages,
+    tmp_path,
+):
+    """Confirming a spelling switches the entry to the word it already showed, so both
+    sides of that switch are one cached file. Deleting the old one deletes the new."""
+    audio = tmp_path / "pronunciation-aabbccddeeff00112233.mp3"
+
+    async def fetch(_word, _language):
+        audio.write_bytes(b"audio")
+        return audio
+
+    cascade = ScriptedCascade(
+        [
+            Completion([typo_card("frivolous")]),
+            Completion([valid_card("fricolous")]),
+        ],
+    )
+    pipeline = WordPipeline(
+        cascade,
+        target_lang="ru",
+        anki=RecordingAnki(Added(11, None, ("Recognition",))),
+        audio=fetch,
+        audio_dir=tmp_path,
+    )
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(languages["en"], "fricolous", False)
+        await pipeline.join()
+        await pipeline.keep_spelling(entry.entry_id)
+        await pipeline.join()
+
+        assert entry.card_status == ADDED_STATUS
+        assert entry.audio_file == audio.name
+        assert audio.exists()
+        assert entry.no_audio is False
+    finally:
+        await pipeline.close()
+
+
+async def test_a_refusal_says_the_card_it_could_not_replace_is_still_there(
+    languages,
+    tmp_path,
+):
+    """Reverting a correction the model will not accept must not report a deck it
+    still holds a note in as having none."""
+    audio = tmp_path / "pronunciation-aabbccddeeff00112233.mp3"
+
+    async def fetch(_word, _language):
+        audio.write_bytes(b"audio")
+        return audio
+
+    anki = MutableAnki([Added(1, "one.mp3"), Added(2, "two.mp3")])
+    cascade = ScriptedCascade(
+        [
+            Completion([typo_card("frivolous")]),
+            Completion([valid_card("frivolous")]),
+            Completion([typo_card("frivolous")]),
+        ],
+    )
+    pipeline = WordPipeline(
+        cascade,
+        target_lang="ru",
+        anki=anki,
+        audio=fetch,
+        audio_dir=tmp_path,
+    )
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(languages["en"], "fricolous", False)
+        await pipeline.join()
+        await pipeline.request_switch(entry.entry_id)
+        await pipeline.join()
+        assert entry.card_status == ADDED_STATUS
+        assert pipeline.history.undo["en"].note_id == 1
+
+        # Reverting confirms the submitted spelling; this model will not analyse it.
+        await pipeline.request_switch(entry.entry_id)
+        await pipeline.join()
+
+        assert entry.card_status == SPELLING_REFUSED_STATUS
+        assert entry.card_kept is True
+        assert anki.removed == []
+        assert pipeline.history.undo["en"].note_id == 1
+        assert audio.exists()
+    finally:
+        await pipeline.close()
+
+
+async def test_a_model_that_will_not_analyse_the_kept_spelling_cards_nothing(languages):
+    """Holding again would loop the learner through a choice they already made."""
+    anki = RecordingAnki(Added(11, None, ("Recognition",)))
+    cascade = ScriptedCascade(
+        [
+            Completion([typo_card("frivolous")]),
+            Completion([typo_card("frivolous")]),
+        ],
+    )
+    pipeline = WordPipeline(cascade, target_lang="ru", anki=anki)
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(languages["en"], "fricolous", False)
+        await pipeline.join()
+        await pipeline.keep_spelling(entry.entry_id)
+        await pipeline.join()
+
+        assert (entry.card_status, entry.action) == (SPELLING_REFUSED_STATUS, "refused")
+        assert anki.calls == []
+    finally:
+        await pipeline.close()
+
+
+async def test_correcting_a_held_entry_cards_the_corrected_spelling_alone(languages):
+    anki = RecordingAnki(Added(12, None, ("Recognition",)))
+    pipeline = WordPipeline(
+        ScriptedCascade(
+            [
+                Completion([typo_card("frivolous")]),
+                Completion([valid_card("frivolous")]),
+            ],
+        ),
+        target_lang="ru",
+        anki=anki,
+    )
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(languages["en"], "fricolous", False)
+        await pipeline.join()
+        await pipeline.request_switch(entry.entry_id)
+        await pipeline.join()
+
+        assert entry.card_status == ADDED_STATUS
+        assert [note.word for note, _deck, _audio in anki.calls] == ["frivolous"]
+        # The correction wrote the first note of this entry, so undo has to reach it.
+        assert pipeline.history.undo["en"].note_id == 12
+    finally:
+        await pipeline.close()
+
+
+async def test_a_held_entry_has_nothing_to_undo(languages):
+    anki = RecordingAnki(Added(13, None, ("Recognition",)))
+    pipeline = WordPipeline(
+        ScriptedCascade([Completion([typo_card("frivolous")])]),
+        target_lang="ru",
+        anki=anki,
+    )
+    pipeline.start()
+    try:
+        await pipeline.enqueue(languages["en"], "fricolous", False)
+        await pipeline.join()
+
+        assert await pipeline.undo(languages["en"]) is None
+    finally:
+        await pipeline.close()
 
 
 async def stored_note(languages, answer, anki, **submission):
@@ -1676,6 +1911,9 @@ async def test_correction_switch_is_reversible_replaces_notes_and_updates_undo(
     try:
         entry = await pipeline.enqueue(languages["en"], "recieve", False)
         await pipeline.join()
+        # This answer analysed the spelling it heads, so the note it makes is coherent
+        # and the correction stays an offer rather than a question to answer first.
+        assert entry.card_status == ADDED_STATUS
         entry.detail_html = "details for the misspelling"
         await pipeline.request_switch(entry.entry_id)
         await pipeline.join()
@@ -1698,6 +1936,9 @@ async def test_correction_switch_is_reversible_replaces_notes_and_updates_undo(
             (2, "two.mp3"),
         ]
         assert pipeline.history.undo["en"].note_id == 3
+        # Going back to the submitted spelling is the learner confirming it.
+        assert "confirmed this spelling" in cascade.prompts[2]
+        assert "confirmed this spelling" not in cascade.prompts[1]
         assert not paths["receive"].exists()
     finally:
         await pipeline.close()

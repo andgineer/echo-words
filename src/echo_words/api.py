@@ -278,6 +278,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:  # noqa: C901, PLR0
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         return {"entry_id": entry.entry_id, "queued": True}
 
+    @app.post("/api/words/{entry_id}/keep")
+    async def keep_word(request: Request, entry_id: str) -> dict[str, object]:
+        try:
+            entry = await request.app.state.pipeline.keep_spelling(entry_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=410, detail="request expired") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return {"entry_id": entry.entry_id, "queued": True}
+
     @app.post("/api/words/{entry_id}/rebuild")
     async def rebuild_word(request: Request, entry_id: str) -> dict[str, object]:
         locale = pick_locale(request.headers.get("accept-language"))

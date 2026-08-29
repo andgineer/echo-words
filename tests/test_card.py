@@ -348,6 +348,24 @@ def test_a_correct_spelling_suggestion_retains_the_submitted_word(languages):
     assert parsed.note.word == "recieve"
     assert parsed.word_relation == "typo"
     assert parsed.suggestion == "receive"
+    # This answer headed the article with the spelling it was given, so everything
+    # under it describes that spelling and the note it makes is one word throughout.
+    assert parsed.analysed_as_carded is True
+
+
+def test_a_headword_put_back_over_the_analysed_one_is_not_a_cardable_answer(languages):
+    """The note would read as the submitted spelling over another word's meanings,
+    examples and gap; only the answer's own headword names what was analysed."""
+    parsed = parse_answer_payload(
+        payload(word="receive", word_relation="typo", suggestion=""),
+        "recieve",
+        languages["en"],
+    )
+
+    assert isinstance(parsed, ParsedUnit)
+    assert parsed.note.word == "recieve"
+    assert parsed.analysed_word == "receive"
+    assert parsed.analysed_as_carded is False
 
 
 @pytest.mark.parametrize(

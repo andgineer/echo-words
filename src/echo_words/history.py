@@ -36,6 +36,8 @@ class Entry:
     card_error: str | None = None
     no_audio: bool = False
     no_card_audio: bool = False
+    # This answer stored nothing, and the note the entry already had still stands.
+    card_kept: bool = False
     error: str | None = None
     model: str | None = None
     detail_available: bool = False

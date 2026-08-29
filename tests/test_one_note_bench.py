@@ -197,6 +197,9 @@ def _passing_quality_counts() -> dict[str, int]:
         "click_success": bench.MIN_CLICK_SUCCESS,
         "expression_success": bench.MIN_EXPRESSION_SUCCESS,
         "typo_success": 5,
+        "confirmed_attempted": 6,
+        "confirmed_cardable": 4,
+        "confirmed_success": 0,
     }
 
 
@@ -213,6 +216,7 @@ def test_quality_thresholds_fail_immediately_below_each_minimum():
         "click_success",
         "expression_success",
         "typo_success",
+        "confirmed_cardable",
     )
     for key in keys:
         counts = _passing_quality_counts()
@@ -230,9 +234,12 @@ def test_tier_manifests_have_frozen_non_overlapping_counts():
     assert len(bench.CONFIRMATION_ANCHOR_IDS) == 8
     assert len(bench.canonical_ids_for_tier("confirmation")) == 81
     assert len(bench.canonical_ids_for_tier("full")) == 157
-    assert len(bench.initial_jobs_for_tier("smoke")) + len(bench.CLICK_IDS) == 39
-    assert len(bench.initial_jobs_for_tier("confirmation")) + len(bench.CLICK_IDS) == 93
-    assert len(bench.initial_jobs_for_tier("full")) + len(bench.CLICK_IDS) == 169
+    assert len(bench.initial_jobs_for_tier("smoke")) + len(bench.CLICK_IDS) == 42
+    assert len(bench.initial_jobs_for_tier("confirmation")) + len(bench.CLICK_IDS) == 99
+    assert len(bench.initial_jobs_for_tier("full")) + len(bench.CLICK_IDS) == 175
+    assert len(bench.confirmed_ids_for_tier("smoke")) == 3
+    assert len(bench.confirmed_ids_for_tier("full")) == 6
+    assert not bench.CONFIRMED_IDS & bench.TYPO_IDS
     assert "verdict:clauses:sr:0" in bench.HISTORICAL_HARD_IDS
     assert "verdict:fragments:en:1" in bench.CONFIRMATION_ANCHOR_IDS
 

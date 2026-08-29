@@ -309,16 +309,40 @@ misspelling `morphology` and be believed. Exact registered typo fixtures and
 fresh semantic review therefore remain part of every prompt promotion gate; an
 absolute distinction would need a separate spelling judge.
 
+**A note is stored only for the spelling its answer actually analysed.** When the
+answer headed its article with the submitted spelling, everything under it —
+meanings, examples, gap — describes that spelling, and it is carded with the
+correction offered beside it. When the parser had to put the submission back over
+a headword the answer replaced, the two halves belong to different words: that
+note would teach a word no sentence on the card contains. It is not stored, and
+the entry waits for the learner to say which word was meant.
+
+Neither spelling can be carded from an answer about the other, so choosing one
+re-runs the analysis for it:
+
+- **[✏️ Исправить на «receive»]** analyses the suggested spelling.
+- **[✓ Оставить «recieve»]** analyses the submitted one, telling the model the
+  spelling is deliberate so it describes that word rather than correcting it
+  again — for the rare word, proper noun or dialectal form the first answer
+  mistook for a misspelling. Reverting a correction makes the same claim and is
+  the same request.
+- An answer that still replaces a spelling the learner has confirmed cards
+  nothing and says so, rather than asking the same question again. Where that
+  entry already had a note, the note stands, and the entry says that too: a
+  status which reports that nothing was stored may never stand alone over a
+  card the deck still holds.
+
 Behavior is fixed, not configurable:
 
 - The raw submission remains visible in history and is voiced as submitted.
-- A valid suggestion appears as **[✏️ Исправить на «receive»]**. It is held to
-  the same language and input rules as typed unit text.
-- Tapping the control re-runs the complete unit analysis for that spelling,
-  replaces the note and card audio, and changes the control to
-  **[↩︎ Вернуть «recieve»]**. Switching is reversible. Lookup-only stays
-  lookup-only.
-- The control acts on its own in-memory history entry and expires on restart.
+- A valid suggestion is held to the same language and input rules as typed unit
+  text. Switching is reversible, and lookup-only stays lookup-only.
+- A switch replaces the note and card audio it had, and a switch that stores
+  nothing leaves the previous note and its media exactly as they were.
+- The controls act on their own in-memory history entry and expire on restart. A
+  spelling awaiting a choice expires with it: a restart leaves it uncarded.
+- An entry waiting for a choice counts as neither added nor looked up, and undo
+  has nothing to remove until one of the controls stores a note.
 
 ## Pronunciation audio
 

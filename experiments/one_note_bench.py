@@ -175,6 +175,17 @@ TYPO_BY_ID = {case.shot_id: case for case in TYPO_CASES}
 TYPO_IDS = frozenset(TYPO_BY_ID)
 SMOKE_TYPO_IDS = frozenset(case.shot_id for case in TYPO_CASES[:3])
 
+# The same six spellings, submitted by a learner who says the correction is wrong.
+# These are the hardest cases for the confirmation instruction on purpose: a model
+# that wants to correct them anyway leaves a note with nothing to card.
+CONFIRMED_CASES = tuple(
+    TypoCase(case.shot_id.replace("typo-", "confirmed-", 1), case.lang, case.submitted, "")
+    for case in TYPO_CASES
+)
+CONFIRMED_BY_ID = {case.shot_id: case for case in CONFIRMED_CASES}
+CONFIRMED_IDS = frozenset(CONFIRMED_BY_ID)
+SMOKE_CONFIRMED_IDS = frozenset(case.shot_id for case in CONFIRMED_CASES[:3])
+
 # Every smoke ID is named: the 20 registered-combination texts, the standalone
 # English click source, and all nine bare/card examples which caught the v6 bug.
 SMOKE_CANONICAL_IDS = frozenset(
@@ -398,7 +409,7 @@ def tokens(value: object, lang: str = "") -> list[str]:
 
 
 def _unit_intent(shot: Shot) -> bool:
-    return shot.kind in {"context", "typo"} or len(split_words(shot.source)) == 1
+    return shot.kind in {"context", "typo", "confirmed"} or len(split_words(shot.source)) == 1
 
 
 def prompt_for(shot: Shot) -> str:
@@ -408,6 +419,7 @@ def prompt_for(shot: Shot) -> str:
         TARGET_NAME,
         context=shot.context,
         unit_intent=_unit_intent(shot),
+        spelling_confirmed=shot.kind == "confirmed",
     )
 
 
@@ -508,6 +520,19 @@ def typo_shots() -> list[Shot]:
     return rows
 
 
+def confirmed_shots() -> list[Shot]:
+    return [
+        Shot(
+            case.shot_id,
+            "confirmed",
+            case.lang,
+            case.submitted,
+            expected_kind="unit",
+        )
+        for case in CONFIRMED_CASES
+    ]
+
+
 def canonical_ids_for_tier(tier: str) -> frozenset[str]:
     if tier == "smoke":
         return SMOKE_CANONICAL_IDS
@@ -523,11 +548,19 @@ def typo_ids_for_tier(tier: str) -> frozenset[str]:
     return SMOKE_TYPO_IDS if tier == "smoke" else TYPO_IDS
 
 
+def confirmed_ids_for_tier(tier: str) -> frozenset[str]:
+    return SMOKE_CONFIRMED_IDS if tier == "smoke" else CONFIRMED_IDS
+
+
 def initial_jobs_for_tier(tier: str) -> list[Shot]:
-    wanted = canonical_ids_for_tier(tier) | typo_ids_for_tier(tier)
+    wanted = (
+        canonical_ids_for_tier(tier)
+        | typo_ids_for_tier(tier)
+        | confirmed_ids_for_tier(tier)
+    )
     return [
         shot
-        for shot in (*initial_shots(), *typo_shots())
+        for shot in (*initial_shots(), *typo_shots(), *confirmed_shots())
         if shot.shot_id in wanted
     ]
 
@@ -983,6 +1016,10 @@ def vocab_metrics(shot: Shot, parsed: ParsedUnit, analysis: str) -> dict:
     typo_word_exact = typo_case is None or note.word == typo_case.submitted
     typo_relation_exact = typo_case is None or parsed.word_relation == "typo"
     typo_suggestion_exact = typo_case is None or parsed.suggestion == typo_case.suggestion
+    confirmed_case = CONFIRMED_BY_ID.get(shot.shot_id)
+    confirmed_word_exact = confirmed_case is None or note.word == confirmed_case.submitted
+    confirmed_relation_exact = confirmed_case is None or parsed.word_relation == "same"
+    confirmed_no_suggestion = confirmed_case is None or not parsed.suggestion
     return {
         "word_valid": bool(note.word),
         "meanings": len(note.meanings),
@@ -1035,6 +1072,19 @@ def vocab_metrics(shot: Shot, parsed: ParsedUnit, analysis: str) -> dict:
         "typo_suggestion_exact": typo_suggestion_exact,
         "typo_success": (
             typo_word_exact and typo_relation_exact and typo_suggestion_exact
+        ),
+        "confirmed_word_exact": confirmed_word_exact,
+        "confirmed_relation_exact": confirmed_relation_exact,
+        "confirmed_no_suggestion": confirmed_no_suggestion,
+        # The product question behind the arm: is the answer one word throughout, so
+        # that a card made from it carries the spelling its sentences actually spell?
+        "confirmed_cardable": parsed.analysed_as_carded,
+        "confirmed_success": confirmed_case is None
+        or (
+            confirmed_word_exact
+            and confirmed_relation_exact
+            and confirmed_no_suggestion
+            and parsed.analysed_as_carded
         ),
         "card_fronts": [
             note.word,
@@ -1324,7 +1374,7 @@ async def run(args, out: Path) -> None:
             requested = set(args.shot)
             jobs = [
                 shot
-                for shot in (*initial_shots(), *typo_shots())
+                for shot in (*initial_shots(), *typo_shots(), *confirmed_shots())
                 if shot.shot_id in requested
             ]
             missing = requested - {shot.shot_id for shot in jobs}
@@ -1392,6 +1442,7 @@ def quality_counts(initial_rows: list[Shot], context_rows: list[Shot]) -> dict[s
     text_rows = [row for row in initial_rows if row.kind == "text"]
     bare_rows = [row for row in initial_rows if row.kind == "bare"]
     typo_rows = [row for row in initial_rows if row.kind == "typo"]
+    confirmed_rows = [row for row in initial_rows if row.kind == "confirmed"]
     actual_text_rows = [
         row
         for row in text_rows
@@ -1399,7 +1450,9 @@ def quality_counts(initial_rows: list[Shot], context_rows: list[Shot]) -> dict[s
     ]
     return {
         "usable_initial": sum(
-            usable_result(row) for row in initial_rows if row.kind != "typo"
+            usable_result(row)
+            for row in initial_rows
+            if row.kind not in {"typo", "confirmed"}
         ),
         "usable_verdicts": len(usable_verdicts),
         "hard_verdict_errors": sum(
@@ -1425,6 +1478,13 @@ def quality_counts(initial_rows: list[Shot], context_rows: list[Shot]) -> dict[s
         "typo_success": len(
             {row.shot_id for row in typo_rows if row.metrics.get("typo_success")},
         ),
+        "confirmed_attempted": len({row.shot_id for row in confirmed_rows}),
+        "confirmed_cardable": len(
+            {row.shot_id for row in confirmed_rows if row.metrics.get("confirmed_cardable")},
+        ),
+        "confirmed_success": len(
+            {row.shot_id for row in confirmed_rows if row.metrics.get("confirmed_success")},
+        ),
     }
 
 
@@ -1432,6 +1492,11 @@ def quality_gates(counts: dict[str, int], tier: str) -> dict[str, bool]:
     usable_min = {"smoke": 27, "confirmation": 73, "full": MIN_USABLE_INITIAL}[tier]
     text_min = 19 if tier == "smoke" else MIN_TEXT_BRANCH
     typo_min = 2 if tier == "smoke" else 5
+    # Measured on the free pool: the confirmation instruction carries these six
+    # deliberate misspellings at ~5/6, and the same prompt without it at 1/6. The
+    # floor sits where those two are furthest apart — an instruction that stopped
+    # working fails it, and a single stubborn orthographic norm does not.
+    confirmed_min = 2 if tier == "smoke" else 4
     return {
         "usable initial results": counts["usable_initial"] >= usable_min,
         "obvious hard verdict errors": not counts["usable_verdicts"]
@@ -1447,6 +1512,12 @@ def quality_gates(counts: dict[str, int], tier: str) -> dict[str, bool]:
         "successful expression cases": counts["expression_success"]
         >= MIN_EXPRESSION_SUCCESS,
         "exact typo correction cases": counts["typo_success"] >= typo_min,
+        # A confirmed spelling that comes back replaced cards nothing at all. That is
+        # the outcome the product depends on, so it is the one that gates; whether the
+        # answer also drops its typo relation is reported and left ungated, because a
+        # kept spelling still cards when the model goes on calling it a misspelling.
+        "confirmed spellings stay cardable": counts["confirmed_cardable"]
+        >= confirmed_min,
     }
 
 
@@ -1480,17 +1551,19 @@ def deterministic_gates(
     accepted_typos = [row for row in accepted_initial if row.kind == "typo"]
     expected_canonical = {30: "smoke", 81: "confirmation", 157: "full"}
     expected_typo_count = 3 if tier == "smoke" else 6
+    expected_confirmed_count = 3 if tier == "smoke" else 6
     return {
         "all tier manifest fixtures attempted": len(initial_rows) == len(canonical)
         and {row.shot_id for row in initial_rows} == expected_ids,
         "tier manifests have frozen call counts": expected_canonical[
-            len(canonical) - expected_typo_count
+            len(canonical) - expected_typo_count - expected_confirmed_count
         ]
         == tier
         and sum(row.kind == "typo" for row in canonical) == expected_typo_count
+        and sum(row.kind == "confirmed" for row in canonical) == expected_confirmed_count
         and len(CLICK_IDS) == CLICK_FIXTURES
         and len(canonical) + len(CLICK_IDS)
-        == {"smoke": 39, "confirmation": 93, "full": 169}[tier],
+        == {"smoke": 42, "confirmation": 99, "full": 175}[tier],
         "accepted payloads contain one branch": all(
             not row.metrics.get("mixed_branch") for row in accepted
         ),
@@ -1686,6 +1759,16 @@ def review_packet(
             actual["word_relation"] = shot.payload.get("word_relation")
             actual["suggestion"] = shot.payload.get("suggestion")
             actual["success"] = shot.metrics.get("typo_success")
+        if shot.kind == "confirmed":
+            categories.add("confirmed")
+            expected["word"] = shot.source
+            expected["word_relation"] = "same"
+            expected["suggestion"] = ""
+            actual["word"] = shot.payload.get("word")
+            actual["word_relation"] = shot.payload.get("word_relation")
+            actual["suggestion"] = shot.payload.get("suggestion")
+            actual["cardable"] = shot.metrics.get("confirmed_cardable")
+            actual["success"] = shot.metrics.get("confirmed_success")
         if categories:
             items.append(_review_item(shot, categories, expected=expected, actual=actual))
     expected_ids = {shot.shot_id for shot in expected_rows}
@@ -1762,7 +1845,8 @@ def report(out: Path, tier: str) -> None:
     quality = quality_gates(counts, tier)
     canonical_total = len(canonical_ids_for_tier(tier))
     typo_total = len(typo_ids_for_tier(tier))
-    initial_total = canonical_total + typo_total
+    confirmed_total = len(confirmed_ids_for_tier(tier))
+    initial_total = canonical_total + typo_total + confirmed_total
     usable_min = {"smoke": 27, "confirmation": 73, "full": 142}[tier]
 
     print(f"AUTOMATED SCREEN — {tier.upper()} TIER")
@@ -1843,6 +1927,12 @@ def report(out: Path, tier: str) -> None:
             typo_total,
             f">= {2 if tier == 'smoke' else 5}",
         ),
+        (
+            "confirmed spellings stay cardable",
+            counts["confirmed_cardable"],
+            confirmed_total,
+            f">= {2 if tier == 'smoke' else 4}",
+        ),
     )
     for name, numerator, denominator, threshold in quality_lines:
         passed = quality[name]
@@ -1906,6 +1996,13 @@ def report(out: Path, tier: str) -> None:
     print(f"  submitted spelling retained   {ratio(typo_rows, 'typo_word_exact')}")
     print(f"  typo relation declared        {ratio(typo_rows, 'typo_relation_exact')}")
     print(f"  expected suggestion returned  {ratio(typo_rows, 'typo_suggestion_exact')}\n")
+
+    confirmed_rows = [row for row in current_initial if row.kind == "confirmed"]
+    print("CONFIRMED SPELLING DETAIL")
+    print(f"  submitted spelling analysed   {ratio(confirmed_rows, 'confirmed_word_exact')}")
+    print(f"  same relation declared        {ratio(confirmed_rows, 'confirmed_relation_exact')}")
+    print(f"  no suggestion returned        {ratio(confirmed_rows, 'confirmed_no_suggestion')}")
+    print(f"  answer is cardable            {ratio(confirmed_rows, 'confirmed_cardable')}\n")
 
     serbian = [row for row in current_initial if row.lang == "sr" and row.kind != "typo"]
     serbian_verdicts = [row for row in serbian if row.kind == "verdict"]

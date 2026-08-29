@@ -124,6 +124,14 @@ quotes, and that a unit article begins with the bold heading its word names.
 
 _UNIT_INTENT = "The learner explicitly selected a unit, so kind must be unit."
 _OPEN_INTENT = "For this submit-box request, choose the branch yourself."
+# Appended to the intent line rather than placed on its own, so the prompt every
+# other request sends stays byte for byte what the benchmark measured.
+_CONFIRMED_SPELLING = (
+    "The learner has confirmed this spelling deliberately, so treat it as correct: "
+    "analyse exactly the submitted spelling, copy it into word unchanged, set "
+    "word_relation to same, leave suggestion empty, and spell it that way in every "
+    "example and heading."
+)
 _CONTEXT_RULE = (
     "Use the supplied context as the first example of its sense and include "
     '"context_sense": <zero-based index> in the unit object. In that example, '
@@ -147,13 +155,14 @@ transcription, JSON or delimiters.
 """
 
 
-def build_prompt(
+def build_prompt(  # noqa: PLR0913 - one prompt, and every switch that varies it.
     language: Language,
     word: str,
     target_lang: str,
     *,
     context: str = "",
     unit_intent: bool = False,
+    spelling_confirmed: bool = False,
 ) -> str:
     """Build the sole compact prompt; only the request intent varies."""
     request = (
@@ -164,12 +173,15 @@ def build_prompt(
         else f'Analyse this submitted text: "{word}"'
     )
     context_field = ', "context_sense": <zero-based index>' if context else ""
+    intent_rule = _UNIT_INTENT if unit_intent else _OPEN_INTENT
+    if spelling_confirmed:
+        intent_rule = f"{intent_rule} {_CONFIRMED_SPELLING}"
     return _PROMPT.format(
         source_lang=language.name,
         target_lang=target_lang,
         source_hints=language.prompt_hints or "",
         request=request,
-        intent_rule=_UNIT_INTENT if unit_intent else _OPEN_INTENT,
+        intent_rule=intent_rule,
         context_field=context_field,
         context_rule=_CONTEXT_RULE if context else _NO_CONTEXT_RULE,
     )

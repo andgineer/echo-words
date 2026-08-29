@@ -17,6 +17,7 @@ export default {
   "add.empty": "Word analyses will appear here.",
   "add.revert": "↩︎ Revert to “{word}”",
   "add.correct": "✏️ Correct to “{word}”",
+  "add.keep": "✓ Keep “{word}”",
   "add.rebuild": "Rebuild the card",
   "add.detailReady": "Full analysis ready",
   "add.detail": "More detail",
@@ -44,8 +45,10 @@ export default {
     "pronunciation without creating a card. A leading <b>?</b> does the same: “? word”.",
   "add.aboutCorrection":
     "<b>✏️ Correct.</b> The submitted text stays in the history; a unit card uses the validated " +
-    "dictionary headword returned by the analysis. When the input looks like a typo, a ✏️ button with the corrected spelling appears under the " +
-    "analysis — it is analysed again for that spelling, and one tap brings the original back.",
+    "dictionary headword returned by the analysis. When the input looks like a typo, no card is " +
+    "created until you choose a spelling: under the analysis a ✏️ button offers the corrected " +
+    "spelling and a ✓ button asks for yours to be analysed as a word. Either way the card is " +
+    "made from the spelling that was actually analysed.",
 
   "card.added": "✅ added to Anki",
   "card.addedCount.one": "✅ 1 card: {kinds}",
@@ -60,6 +63,9 @@ export default {
   "card.lookupOnly": "👁 lookup only",
   "card.text": "👁 text — no card",
   "card.failed": "⚠️ card failed",
+  "card.spelling": "✏️ looks like a typo — no card yet",
+  "card.spellingRefused": "⚠️ the model will not analyse this spelling as a word",
+  "card.kept": "the card you had is untouched",
   "card.noAudio": "🔇 submitted text has no audio",
   "card.noCardAudio": "🔇 Anki card has no audio",
 

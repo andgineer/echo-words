@@ -36,6 +36,8 @@ ADDED_STATUS = "added"
 LOOKUP_ONLY_STATUS = "lookup_only"
 TEXT_STATUS = "text"
 CARD_FAILED_STATUS = "failed"
+HELD_SPELLING_STATUS = "spelling"
+SPELLING_REFUSED_STATUS = "spelling_refused"
 REQUEST_EXPIRED = "request expired"
 MAX_POST_GENERATION_AUDIO_WAIT_SECONDS = 10
 
@@ -93,6 +95,7 @@ class Job:
     replace_media: str | None = None
     replaced_audio: Path | None = None
     replaced_card_audio: Path | None = None
+    spelling_confirmed: bool = False
 
 
 @dataclass(frozen=True)
@@ -203,6 +206,7 @@ class WordPipeline:
         replace_media: str | None = None,
         replaced_audio: Path | None = None,
         replaced_card_audio: Path | None = None,
+        spelling_confirmed: bool = False,
     ) -> Entry:
         if reuse_entry is not None:
             entry = self._entries[reuse_entry]
@@ -262,6 +266,7 @@ class WordPipeline:
                 replace_media,
                 replaced_audio,
                 replaced_card_audio,
+                spelling_confirmed,
             ),
         )
         await self.events.publish("accepted", entry.public())
@@ -303,11 +308,8 @@ class WordPipeline:
         entry, state = self._active_control(entry_id)
         if not state.suggestion:
             raise ValueError("no correction is available")
-        target = (
-            state.input_word
-            if state.shown_spelling.casefold() != state.input_word.casefold()
-            else state.suggestion
-        )
+        reverting = state.shown_spelling.casefold() != state.input_word.casefold()
+        target = state.input_word if reverting else state.suggestion
         return await self.enqueue(
             state.language,
             target,
@@ -316,6 +318,35 @@ class WordPipeline:
             context=state.context,
             reuse_entry=entry.entry_id,
             kind="switch",
+            # Going back to what the learner typed is the same claim keeping it makes:
+            # this spelling is the word, so it has to be analysed as itself.
+            spelling_confirmed=reverting,
+            replace_note_id=state.note_id,
+            replace_media=state.media_filename,
+            replaced_audio=state.audio_path,
+            replaced_card_audio=state.card_audio_path,
+        )
+
+    async def keep_spelling(self, entry_id: str) -> Entry:
+        """Analyse the submitted spelling as a word in its own right, and card that.
+
+        Nothing already in hand describes it: the answer that suspected a misspelling
+        described the other spelling throughout. Only the learner can settle which
+        word was meant, so their answer is what the model is finally told.
+        """
+        entry, state = self._active_control(entry_id)
+        if not state.suggestion:
+            raise ValueError("no spelling is waiting to be confirmed")
+        return await self.enqueue(
+            state.language,
+            # The spelling on screen is the one the control names and the learner reads.
+            state.shown_spelling,
+            state.lookup_only,
+            intent="unit",
+            context=state.context,
+            reuse_entry=entry.entry_id,
+            kind="switch",
+            spelling_confirmed=True,
             replace_note_id=state.note_id,
             replace_media=state.media_filename,
             replaced_audio=state.audio_path,
@@ -427,6 +458,7 @@ class WordPipeline:
                 self.target_lang,
                 context=job.context,
                 unit_intent=job.intent == "unit",
+                spelling_confirmed=job.spelling_confirmed,
             )
             parsed: ParsedAnswer | None = None
 
@@ -507,18 +539,24 @@ class WordPipeline:
             audio_task = None
             context_audio_task = None
             stored = await self._store_card(job, parsed, card_audio_path)
-            if job.kind == "switch" and stored.action != "failed":
-                self._delete_audio(job.replaced_audio)
+            if job.kind == "switch" and not _kept_previous_note(job, stored):
+                # Confirming a spelling switches an entry to the word it already
+                # showed, and one cached file then serves both sides of the switch.
+                if job.replaced_audio != audio_path:
+                    self._delete_audio(job.replaced_audio)
                 if job.replaced_card_audio != card_audio_path:
                     self._delete_audio(job.replaced_card_audio)
-            elif job.kind == "switch" and stored.action == "failed":
-                self._delete_audio(audio_path)
-                if card_audio_path != job.replaced_card_audio:
+            elif job.kind == "switch":
+                if audio_path != job.replaced_audio:
+                    self._delete_audio(audio_path)
+                if card_audio_path not in (job.replaced_card_audio, job.replaced_audio):
                     self._delete_audio(card_audio_path)
                 audio_path = job.replaced_audio
             entry.audio_file = audio_path.name if audio_path else None
             entry.no_audio = audio_path is None
             entry.no_card_audio = stored.action == "added" and card_audio_path is None
+            # A status that says nothing was carded must not stand over a surviving note.
+            entry.card_kept = _kept_previous_note(job, stored)
             entry.context_audio_file = context_audio_path.name if context_audio_path else None
             suggestion = self._correction_target(job, parsed)
             chips, segment_kind = _segments_for(parsed, job)
@@ -661,6 +699,13 @@ class WordPipeline:
             return StoreResult(status, "lookup")
         if not isinstance(parsed, ParsedUnit) or self.anki is None:
             return StoreResult(CARD_FAILED_STATUS, "failed")
+        if not parsed.analysed_as_carded:
+            # The note would carry the submitted spelling over the meanings, examples
+            # and gap of the word the answer actually analysed. Nothing here is worth
+            # storing: either spelling has to be analysed as itself first.
+            if job.spelling_confirmed:
+                return StoreResult(SPELLING_REFUSED_STATUS, "refused")
+            return StoreResult(HELD_SPELLING_STATUS, "held")
         note = parsed.note
         try:
             if job.replace_note_id is not None:
@@ -720,6 +765,7 @@ class WordPipeline:
                 "card_error": stored.error,
                 "no_audio": entry.no_audio,
                 "no_card_audio": entry.no_card_audio,
+                "card_kept": entry.card_kept,
                 "segments": entry.segments,
                 "segment_kind": entry.segment_kind,
                 "shape": entry.shape,
@@ -760,7 +806,7 @@ class WordPipeline:
         if job.kind != "rebuild":
             existing.shown_spelling = job.word
         existing.context_audio_path = context_audio_path
-        replacement_failed = job.replace_note_id is not None and stored.action == "failed"
+        replacement_failed = _kept_previous_note(job, stored)
         if not replacement_failed:
             existing.note_id = stored.note_id
             existing.media_filename = stored.media_filename
@@ -779,9 +825,21 @@ class WordPipeline:
                     card_audio_file=card_audio_path.name if card_audio_path else None,
                     lookup_only=job.lookup_only,
                 )
-        elif job.replace_note_id is not None and not replacement_failed:
+        elif not replacement_failed:
             undo = self.history.undo.get(job.language.code)
-            if undo is not None and undo.note_id == job.replace_note_id:
+            # A held spelling has no note to replace, so the control that resolves it
+            # writes the first undo state this entry ever had.
+            resolves_hold = (
+                job.replace_note_id is None
+                and stored.note_id is not None
+                and self._latest_submissions.get(job.language.code) == job.entry_id
+            )
+            replaces_undone_note = (
+                job.replace_note_id is not None
+                and undo is not None
+                and undo.note_id == job.replace_note_id
+            )
+            if resolves_hold or replaces_undone_note:
                 self.history.undo[job.language.code] = UndoState(
                     word=job.word,
                     action=stored.action,
@@ -898,6 +956,7 @@ class WordPipeline:
         entry.detail_available = False
         entry.no_audio = False
         entry.no_card_audio = False
+        entry.card_kept = False
         entry.error = None
         entry.model = None
         if kind != "rebuild":
@@ -984,6 +1043,11 @@ def _sense_sentence(meaning: Meaning) -> str:
         if text and len(text) <= MAX_CONTEXT_LENGTH:
             return text
     return ""
+
+
+def _kept_previous_note(job: Job, stored: StoreResult) -> bool:
+    """A job meant to replace a note stored none, so the note it had still stands."""
+    return job.replace_note_id is not None and stored.note_id is None
 
 
 def _voiced_context(job: Job) -> str:

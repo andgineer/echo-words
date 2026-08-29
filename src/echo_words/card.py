@@ -56,6 +56,14 @@ class ParsedUnit:
     word_relation: WordRelation
     suggestion: str | None
     segments: list[Segment]
+    # The headword the answer actually analysed. A suspected misspelling keeps the
+    # submitted spelling on the note, and then the meanings, examples and gap below
+    # it describe this other word instead.
+    analysed_word: str
+
+    @property
+    def analysed_as_carded(self) -> bool:
+        return self.analysed_word == self.note.word
 
 
 @dataclass(frozen=True)
@@ -110,7 +118,8 @@ def parse_answer_payload(  # noqa: C901, PLR0912 - the answer discriminator boun
     if any(key in card for key in _TEXT_FIELDS):
         raise CardParseError("a unit answer contains text combinations")
 
-    headword = _headword(card.get("word"), language)
+    analysed_word = _headword(card.get("word"), language)
+    headword = analysed_word
     word_relation, headword, suggestion = _word_relation(
         card.get("word_relation"),
         card.get("suggestion"),
@@ -163,6 +172,7 @@ def parse_answer_payload(  # noqa: C901, PLR0912 - the answer discriminator boun
         word_relation,
         suggestion,
         segments,
+        analysed_word,
     )
 
 

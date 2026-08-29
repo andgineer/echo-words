@@ -113,6 +113,8 @@ const CARD_STATUS_KEYS = {
   lookup_only: "card.lookupOnly",
   text: "card.text",
   failed: "card.failed",
+  spelling: "card.spelling",
+  spelling_refused: "card.spellingRefused",
 };
 
 const CARD_KIND_KEYS = {
@@ -144,6 +146,7 @@ function cardStatusLabel(entry) {
 function cardStatusText(entry) {
   if (!entry.card_status) return "";
   const parts = [entry.card_error ? `⚠️ ${entry.card_error}` : cardStatusLabel(entry)];
+  if (entry.card_kept) parts.push(t("card.kept"));
   if (entry.no_audio) parts.push(t("card.noAudio"));
   if (entry.no_card_audio) parts.push(t("card.noCardAudio"));
   return parts.join(" · ");
@@ -266,7 +269,14 @@ async function undo() {
           }}
         </button>
         <button
-          v-if="entry.shape === 'unit' && entry.card_status === 'added'"
+          v-if="entry.card_status === 'spelling' || entry.card_status === 'spelling_refused'"
+          class="btn-inline keep"
+          @click="entryAction(entry, 'keep')"
+        >
+          {{ t("add.keep", { word: entry.shown_spelling }) }}
+        </button>
+        <button
+          v-if="entry.shape === 'unit' && (entry.card_status === 'added' || entry.card_kept)"
           class="btn-inline rebuild"
           @click="entryAction(entry, 'rebuild')"
         >

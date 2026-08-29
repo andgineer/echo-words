@@ -247,7 +247,7 @@ def test_context_is_capped(client: TestClient):
 
 
 def test_unknown_control_entries_are_expired(client: TestClient):
-    for action in ("switch", "rebuild", "detail"):
+    for action in ("switch", "rebuild", "detail", "keep"):
         response = client.post(f"/api/words/unknown/{action}")
         assert response.status_code == 410
         assert response.json()["detail"] == "request expired"
