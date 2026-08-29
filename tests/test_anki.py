@@ -21,10 +21,13 @@ from echo_words.anki import (
     SYNC_INTERVAL_SECONDS,
     TEMPLATE_NAMES,
     Added,
+    AnkiError,
     AnkiStore,
     CollectionAbsentError,
+    MergeFailedError,
     MisconfiguredNoteTypeError,
     PylibSyncBackend,
+    UploadFailedError,
     _wait_past_millisecond,
     card_fields,
     collection_path,
@@ -674,20 +677,26 @@ class FakeSyncBackend:
         required: list[int | Exception],
         *,
         full_download_error: Exception | None = None,
+        full_upload_error: Exception | None = None,
         status_required: int = SyncCollectionResponse.NO_CHANGES,
     ) -> None:
         self.required = deque(required)
         self.full_download_error = full_download_error
+        self.full_upload_error = full_upload_error
         self.status_required = status_required
         self.login_calls: list[tuple[str, str, str | None]] = []
         self.auths: list[SyncAuth] = []
         self.full_downloads: list[tuple[str, int]] = []
+        self.full_uploads: list[tuple[str, int]] = []
+        # Order matters on its own: a merge after a deletion would carry none of it.
+        self.calls: list[str] = []
 
     def login(self, _collection, username, password, endpoint):
         self.login_calls.append((username, password, endpoint))
         return SyncAuth(hkey="persisted-key", endpoint=endpoint or "https://login/")
 
     def sync_collection(self, _collection, auth):
+        self.calls.append("sync")
         self.auths.append(auth)
         required = self.required.popleft() if self.required else SyncCollectionResponse.NO_CHANGES
         if isinstance(required, Exception):
@@ -702,9 +711,17 @@ class FakeSyncBackend:
         return SyncCollectionResponse(required=self.status_required)
 
     def full_download(self, _collection, auth, server_usn):
+        self.calls.append("download")
         self.full_downloads.append((auth.endpoint, server_usn))
         if self.full_download_error is not None:
             error, self.full_download_error = self.full_download_error, None
+            raise error
+
+    def full_upload(self, _collection, auth, server_usn):
+        self.calls.append("upload")
+        self.full_uploads.append((auth.endpoint, server_usn))
+        if self.full_upload_error is not None:
+            error, self.full_upload_error = self.full_upload_error, None
             raise error
 
 
@@ -875,6 +892,180 @@ async def test_auth_error_discards_persisted_key_and_relogs_in(tmp_path):
         assert len(backend.auths) == 2
     finally:
         await store.close()
+
+
+async def test_a_confirmed_rebuild_merges_ankiweb_in_before_it_deletes_and_uploads(tmp_path):
+    """The upload replaces every deck on AnkiWeb, so this copy has to hold everything
+    AnkiWeb knows before it is sent — and the deletion has to happen after that."""
+    await with_one_note(tmp_path)
+    backend = FakeSyncBackend(
+        [SyncCollectionResponse.NO_CHANGES, SyncCollectionResponse.FULL_SYNC],
+    )
+
+    summary = rebuild_note_type(
+        synced_settings(tmp_path),
+        confirmed=True,
+        sync_backend=backend,
+    )
+
+    assert summary.startswith("deleted")
+    assert "uploaded the collection to AnkiWeb" in summary
+    assert backend.calls == ["sync", "sync", "upload"]
+    assert backend.full_uploads == [("https://shard/", 42)]
+
+
+async def test_a_rebuild_that_cannot_merge_takes_the_ankiweb_copy_first(tmp_path):
+    """All this collection can hold that AnkiWeb does not is what is being deleted, so
+    where a merge is refused the remote copy wins and no review history is rolled back."""
+    await with_one_note(tmp_path)
+    backend = FakeSyncBackend(
+        [SyncCollectionResponse.FULL_SYNC, SyncCollectionResponse.FULL_SYNC],
+    )
+
+    rebuild_note_type(synced_settings(tmp_path), confirmed=True, sync_backend=backend)
+
+    assert backend.calls == ["sync", "download", "sync", "upload"]
+
+
+@pytest.mark.parametrize(
+    "settled",
+    [SyncCollectionResponse.NO_CHANGES, SyncCollectionResponse.NORMAL_SYNC],
+)
+async def test_a_rebuild_uploads_nothing_ankiweb_did_not_ask_for(tmp_path, settled):
+    """A full upload replaces every deck on AnkiWeb, so nothing but a demanded
+    one-way sync may trigger one."""
+    await with_one_note(tmp_path)
+    backend = FakeSyncBackend([SyncCollectionResponse.NO_CHANGES, settled])
+
+    summary = rebuild_note_type(
+        synced_settings(tmp_path),
+        confirmed=True,
+        sync_backend=backend,
+    )
+
+    assert "without a one-way sync" in summary
+    assert backend.full_uploads == []
+
+
+async def test_a_rebuild_that_cannot_reach_ankiweb_deletes_nothing(tmp_path):
+    """Deleting first and discovering the network second is what strands a collection."""
+    await with_one_note(tmp_path)
+    backend = FakeSyncBackend([RuntimeError("AnkiWeb is unreachable")])
+
+    with pytest.raises(MergeFailedError, match="AnkiWeb is unreachable") as failure:
+        rebuild_note_type(synced_settings(tmp_path), confirmed=True, sync_backend=backend)
+
+    assert "nothing was changed" in str(failure.value)
+    survivors = await surviving_note_types(local_settings(tmp_path))
+    assert survivors.note_type is not None
+    assert survivors.notes == 1
+
+
+async def test_a_rebuild_whose_upload_fails_says_the_collection_already_changed(tmp_path):
+    await with_one_note(tmp_path)
+    backend = FakeSyncBackend(
+        [SyncCollectionResponse.NO_CHANGES, SyncCollectionResponse.FULL_SYNC],
+        full_upload_error=RuntimeError("AnkiWeb is unreachable"),
+    )
+
+    with pytest.raises(UploadFailedError, match="AnkiWeb is unreachable") as failure:
+        rebuild_note_type(synced_settings(tmp_path), confirmed=True, sync_backend=backend)
+
+    assert "run the rebuild again" in str(failure.value)
+    survivors = await surviving_note_types(local_settings(tmp_path))
+    assert survivors.note_type is None
+
+
+async def test_a_rebuild_after_a_failed_upload_finishes_it_without_deleting_twice(tmp_path):
+    await with_one_note(tmp_path)
+    with pytest.raises(UploadFailedError):
+        rebuild_note_type(
+            synced_settings(tmp_path),
+            confirmed=True,
+            sync_backend=FakeSyncBackend(
+                [SyncCollectionResponse.NO_CHANGES, SyncCollectionResponse.FULL_SYNC],
+                full_upload_error=RuntimeError("AnkiWeb is unreachable"),
+            ),
+        )
+    backend = FakeSyncBackend(
+        [SyncCollectionResponse.FULL_SYNC, SyncCollectionResponse.FULL_SYNC],
+    )
+
+    summary = rebuild_note_type(
+        synced_settings(tmp_path),
+        confirmed=True,
+        sync_backend=backend,
+    )
+
+    assert "uploaded the collection to AnkiWeb" in summary
+    assert backend.full_uploads == [("https://shard/", 42)]
+
+
+async def test_a_rebuild_relogs_in_when_the_persisted_key_expired(tmp_path):
+    await with_one_note(tmp_path)
+    backend = FakeSyncBackend(
+        [
+            SyncError("expired", None, None, None, SyncErrorKind.AUTH),
+            SyncCollectionResponse.NO_CHANGES,
+            SyncCollectionResponse.FULL_SYNC,
+        ],
+    )
+
+    summary = rebuild_note_type(
+        synced_settings(tmp_path),
+        confirmed=True,
+        sync_backend=backend,
+    )
+
+    assert "uploaded the collection to AnkiWeb" in summary
+    assert len(backend.login_calls) == 2
+
+
+async def test_a_rebuild_without_ankiweb_credentials_deletes_nothing(tmp_path):
+    """With no way to upload it, a deletion only strands the collection."""
+    await with_one_note(tmp_path)
+    settings = synced_settings(tmp_path, ankiweb_password="")
+
+    with pytest.raises(AnkiError, match="ECHOWORDS_ANKIWEB"):
+        rebuild_note_type(settings, confirmed=True)
+
+    survivors = await surviving_note_types(local_settings(tmp_path))
+    assert survivors.note_type is not None
+    assert survivors.notes == 1
+
+
+async def test_a_rebuild_with_sync_off_changes_this_collection_alone(tmp_path):
+    settings = await with_one_note(tmp_path)
+
+    summary = rebuild_note_type(settings, confirmed=True)
+
+    assert summary.startswith("deleted")
+    assert "sync is off" in summary
+
+
+async def test_the_pass_that_changes_nothing_names_the_sync_it_would_do(tmp_path):
+    """A confirmed run syncs even when it deletes nothing, so the operator confirms
+    a sync as well as a deletion."""
+    settings = synced_settings(tmp_path)
+    await with_one_note(tmp_path)
+
+    summary = rebuild_note_type(settings, confirmed=False)
+
+    assert "would merge AnkiWeb in, delete" in summary
+    assert "upload the result to AnkiWeb" in summary
+
+    rebuild_note_type(
+        settings,
+        confirmed=True,
+        sync_backend=FakeSyncBackend(
+            [SyncCollectionResponse.NO_CHANGES, SyncCollectionResponse.FULL_SYNC],
+        ),
+    )
+
+    assert "a confirmed run still settles the sync" in rebuild_note_type(
+        settings,
+        confirmed=False,
+    )
 
 
 async def test_transient_sync_failure_retries_on_the_next_debounce_tick(tmp_path, caplog):

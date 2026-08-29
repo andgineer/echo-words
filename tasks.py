@@ -44,8 +44,8 @@ ExecStartPre={TAILSCALE_WAIT}
 ExecStart={REMOTE_ROOT}/.venv/bin/uvicorn echo_words.api:app --host 127.0.0.1 --port 8080
 Restart=always
 RestartSec=5
-MemoryHigh=400M
-MemoryMax=500M
+MemoryHigh=600M
+MemoryMax=700M
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=read-only
@@ -481,29 +481,21 @@ def status(c: Context):
     _ssh(c, _status_script())
 
 
-def _remote_data_dir() -> str:
-    """The data dir the service resolves, read here from the file systemd hands it.
+def _rebuild_note_type_script(*, confirmed: bool) -> str:
+    """Delete with the service down, under the very settings systemd hands it.
 
-    Read rather than sourced on the VM: a shell would execute a backtick or a
-    ``$(...)`` inside a password, and an unbalanced quote a line earlier would
-    swallow this value and send the CLI to a dev default. Empty when the file
-    names none, and the CLI then falls back to the default the service does.
+    The CLI reads that file itself rather than a shell sourcing it here: a shell
+    would execute a backtick or a ``$(...)`` inside a password, and passing the
+    AnkiWeb credentials on a command line would put them in front of the upload.
     """
-    if not DEPLOY_ENV.is_file():
-        raise RuntimeError(f"Create {DEPLOY_ENV} from {DEPLOY_ENV_EXAMPLE} before deploying.")
-    return (dotenv_values(DEPLOY_ENV).get("ECHOWORDS_DATA_DIR") or "").strip()
-
-
-def _rebuild_note_type_script(*, confirmed: bool, data_dir: str) -> str:
-    """Delete with the service down, under the data dir the service itself uses."""
     flag = " --yes" if confirmed else ""
-    setting = f"ECHOWORDS_DATA_DIR={shlex.quote(data_dir)} " if data_dir else ""
     return (
         "set -euo pipefail; "
         f"cd {REMOTE_ROOT}; "
         f"sudo systemctl stop {SERVICE_NAME}; "
         "source /home/ubuntu/.local/bin/env; "
-        f"{setting}uv run --no-dev echo-words rebuild-note-type{flag}"
+        "uv run --no-dev echo-words rebuild-note-type "
+        f"--env-file {REMOTE_DEPLOY_ENV}{flag}"
     )
 
 
@@ -513,16 +505,17 @@ def rebuild_note_type(c: Context):
 
     The only destructive operation here: it names what it will delete and how
     many notes, and deletes nothing until that is confirmed by typing "yes".
+    The confirmed run merges AnkiWeb in, deletes, and uploads the result, because
+    the deletion exists in no other copy.
     """
     _deploy_host()
-    data_dir = _remote_data_dir()
     deleted = False
     try:
-        _ssh(c, _rebuild_note_type_script(confirmed=False, data_dir=data_dir))
+        _ssh(c, _rebuild_note_type_script(confirmed=False))
         if input('Delete them? Type "yes" to confirm: ').strip() != "yes":
             print("Nothing deleted.")
             return
-        _ssh(c, _rebuild_note_type_script(confirmed=True, data_dir=data_dir))
+        _ssh(c, _rebuild_note_type_script(confirmed=True))
         deleted = True
     finally:
         # The confirmation sits between the stop and the start, so an answer of no,
@@ -531,8 +524,9 @@ def rebuild_note_type(c: Context):
         _health_check(c)
     if deleted:
         print(
-            "Adding fields is an Anki schema change: the next sync will demand a "
-            "one-way full sync, which has to be resolved by hand.",
+            "The collection was uploaded to AnkiWeb: open every Anki app and "
+            "confirm the download it offers. A device with reviews it never "
+            "synced loses them there.",
         )
 
 

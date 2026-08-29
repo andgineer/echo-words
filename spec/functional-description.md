@@ -218,7 +218,7 @@ The four requirements every design decision is weighed against:
    equal, including case; otherwise the backend separately obtains audio for
    the carded headword. Context audio is a third, independent path where a chip
    carries surrounding text. After generation, every outstanding role is
-   resolved concurrently under one shared hard maximum of five seconds; a
+   resolved concurrently under one shared hard maximum of ten seconds; a
    timeout or failure yields the corresponding missing-audio status and cannot
    hold storage or completion for the old per-role timeout.
 8. When generation completes, the entry gains its submitted-text
@@ -361,7 +361,7 @@ both in the answer entry and on the flashcard.
   when the validated dictionary headword is the same NFC-normalized,
   case-sensitive text; otherwise card audio starts separately. Submitted,
   context and newly known headword audio share one concurrent post-generation
-  wait capped at five seconds. Rebuild reuses card audio only while the returned
+  wait capped at ten seconds. Rebuild reuses card audio only while the returned
   headword is exactly unchanged, and correction always fetches for the newly
   selected spelling. A slow or failed role is cancelled independently, the note
   and answer go out without that audio, and the status distinguishes missing

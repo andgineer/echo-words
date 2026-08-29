@@ -53,12 +53,13 @@ removes the memory constraints.)
   (`SystemMaxUse=200M`) and by age (`MaxRetentionSec=3month`), so a quiet
   box does not keep records past the horizon llmbroker's own call journal
   holds itself to.
-- **The unit stays memory-bounded anyway** — `MemoryHigh=400M` /
-  `MemoryMax=500M`. Not to protect a neighbour, there is none, but so a
+- **The unit stays memory-bounded anyway** — `MemoryHigh=600M` /
+  `MemoryMax=700M`. Not to protect a neighbour, there is none, but so a
   runaway is killed as itself instead of taking the box down and
   stranding dinary's replica target. The budget is ~70 MB uvicorn plus
-  the collection plus a Piper peak, and the pylib term is measured:
-  103 MB peak on this box with the real collection.
+  the collection plus every configured Piper voice held loaded, and both
+  terms are measured on this box: 103 MB peak for pylib with the real
+  collection, and ~110 MB for a loaded medium voice.
 - **Tailscale is the front door.** The backend binds `127.0.0.1:8080`
   and `tailscale serve --bg 8080` publishes that port at the node's
   tailnet root, so the backend itself never handles TLS or auth and

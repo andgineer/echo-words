@@ -7,11 +7,13 @@ import logging
 import os
 import re
 import tempfile
+import threading
 import wave
 from collections.abc import Iterable
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
+from typing import Any
 from urllib.parse import quote
 
 import edge_tts
@@ -26,6 +28,14 @@ HTTP_TIMEOUT_SECONDS = 10
 _DICTIONARY_URL = "https://api.dictionaryapi.dev/api/v2/entries/{lang}/{word}"
 _VOICE_BASE_URL = "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0"
 _AUDIO_NAME_PATTERN = re.compile(r"pronunciation-[0-9a-f]{20}\.mp3")
+
+# Loading a voice costs seconds and around 110 MB, synthesizing with a loaded one
+# costs a fraction of a second, so every configured voice is kept for the process's
+# life and the service's memory limits are sized for all of them at once. One lock
+# per voice, because a shared voice is used from several synthesis threads at once.
+_VOICES: dict[Path, Any] = {}
+_VOICE_LOCKS: dict[Path, threading.Lock] = {}
+_VOICES_LOCK = threading.Lock()
 
 _SERBIAN_DIGRAPHS = (
     ("dž", "џ"),
@@ -132,7 +142,7 @@ async def prepare_configured_voices(
     *,
     client: httpx.AsyncClient | None = None,
 ) -> None:
-    """Download only configured Piper voices, retrying all failures next startup."""
+    """Download and load only configured Piper voices, retrying failures next startup."""
     owned_client: httpx.AsyncClient | None = None
     try:
         voices = {
@@ -147,16 +157,7 @@ async def prepare_configured_voices(
             owned_client = httpx.AsyncClient(follow_redirects=True)
             client = owned_client
         for voice_name in sorted(voices):
-            files = PIPER_VOICES.get(voice_name)
-            if files is None:
-                logger.warning("no pinned Piper download is known for %s", voice_name)
-                continue
-            for voice_file in (files.model, files.config):
-                try:
-                    await _install_voice_file(voice_name, voice_file, settings, client)
-                except Exception as exc:  # noqa: BLE001 - retry on the next startup.
-                    logger.warning("could not prepare Piper voice %s: %s", voice_name, exc)
-                    break
+            await _prepare_voice(voice_name, settings, client)
     except Exception as exc:  # noqa: BLE001 - provisioning must never break app startup.
         logger.warning("could not prepare Piper voices: %s", exc)
     finally:
@@ -165,6 +166,37 @@ async def prepare_configured_voices(
                 await owned_client.aclose()
             except Exception as exc:  # noqa: BLE001 - provisioning remains best-effort.
                 logger.warning("could not close Piper download client: %s", exc)
+
+
+async def _prepare_voice(
+    voice_name: str,
+    settings: Settings,
+    client: httpx.AsyncClient,
+) -> None:
+    files = PIPER_VOICES.get(voice_name)
+    if files is None:
+        logger.warning("no pinned Piper download is known for %s", voice_name)
+        return
+    for voice_file in (files.model, files.config):
+        try:
+            await _install_voice_file(voice_name, voice_file, settings, client)
+        except Exception as exc:  # noqa: BLE001 - retry on the next startup.
+            logger.warning("could not prepare Piper voice %s: %s", voice_name, exc)
+            return
+    await _preload_voice(voice_name, files, settings)
+
+
+async def _preload_voice(voice_name: str, files: PiperVoiceFiles, settings: Settings) -> None:
+    """Pay the load at startup instead of inside the deadline of the first word."""
+    models = settings.data_dir / "models"
+    try:
+        await asyncio.to_thread(
+            _load_voice,
+            models / f"{voice_name}{files.model.suffix}",
+            models / f"{voice_name}{files.config.suffix}",
+        )
+    except Exception as exc:  # noqa: BLE001 - a failed load only costs the first word.
+        logger.warning("could not load Piper voice %s: %s", voice_name, exc)
 
 
 def is_audio_filename(name: str) -> bool:
@@ -250,14 +282,36 @@ async def _piper_audio(
     return True
 
 
-def _synthesize_piper(word: str, model: Path, config: Path) -> bytes:
+def _voice_lock(model: Path) -> threading.Lock:
+    with _VOICES_LOCK:
+        return _VOICE_LOCKS.setdefault(model, threading.Lock())
+
+
+def _load_voice(model: Path, config: Path) -> Any:
+    with _voice_lock(model):
+        return _cached_voice(model, config)
+
+
+def _cached_voice(model: Path, config: Path) -> Any:
+    """Load once and keep it. Callers hold this voice's lock."""
     # Piper is deliberately lazy: a broken native install must degrade to edge-tts.
     from piper import PiperVoice  # noqa: PLC0415 - sanctioned native dependency boundary.
 
-    voice = PiperVoice.load(str(model), config_path=str(config))
+    voice = _VOICES.get(model)
+    if voice is None:
+        voice = PiperVoice.load(str(model), config_path=str(config))
+        _VOICES[model] = voice
+    return voice
+
+
+def _synthesize_piper(word: str, model: Path, config: Path) -> bytes:
     wav_buffer = io.BytesIO()
-    with wave.open(wav_buffer, "wb") as wav_file:
-        voice.synthesize_wav(word, wav_file)
+    # One voice now serves every thread, and espeak-ng's phonemization underneath it
+    # keeps process-global state, so one word at a time goes through a given voice.
+    with _voice_lock(model):
+        voice = _cached_voice(model, config)
+        with wave.open(wav_buffer, "wb") as wav_file:
+            voice.synthesize_wav(word, wav_file)
     wav_buffer.seek(0)
     with wave.open(wav_buffer, "rb") as wav_file:
         encoder = lameenc.Encoder()

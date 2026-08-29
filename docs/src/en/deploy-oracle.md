@@ -2,7 +2,7 @@
 
 The supported target is an Oracle Always Free `VM.Standard.E2.1.Micro`: x86_64,
 1 GB RAM, $0/month. A 2 GB swap file is a hard requirement. The systemd unit also
-applies `MemoryHigh=400M` and `MemoryMax=500M`, so a runaway backend cannot take
+applies `MemoryHigh=600M` and `MemoryMax=700M`, so a runaway backend cannot take
 the VM down. An Arm `A1.Flex` shape, when a region has capacity, lifts these
 constraints but is not assumed.
 
@@ -120,13 +120,30 @@ Run it only when a release changes the note type — `inv deploy` then fails eve
 add with `note type EchoWords is misconfigured`, because the app refuses to
 rewrite a note type it did not create.
 
+Deleting a note type is an Anki *schema* change, so AnkiWeb demands a one-way
+full sync afterwards. The confirmed rebuild performs it, in three steps: it syncs
+normally with AnkiWeb, then deletes, then uploads the result. Every Anki app you
+own then offers to download the collection once. Confirm that download — until
+you do, that device keeps the old note type and sees none of the new cards. The
+sync needs the AnkiWeb credentials, which the CLI reads from the same
+`.deploy/.env` systemd hands the service, so the rebuild refuses to delete
+anything when they are missing.
+
+The order is what makes it safe. The upload replaces the AnkiWeb copy of
+**every** deck with the server's, so the server first takes everything AnkiWeb
+holds; the upload then differs from AnkiWeb by the deletion alone. When the
+collection is already stranded from an earlier attempt and cannot sync normally,
+the server takes AnkiWeb's copy outright first: all it can hold that AnkiWeb
+does not is EchoWords notes and their note type, which the rebuild deletes
+anyway.
+
 !!! warning
-    Changing a note type's fields is an Anki *schema* change, so the first sync
-    afterwards demands a one-way full sync and the service reports
-    `full-sync-required` instead of resolving it. Resolve it by hand, from the
-    device that holds the collection you want to keep — the backend will never
-    choose a direction for you, because choosing wrong overwrites your other
-    decks.
+    **Sync your other devices first.** A device holding reviews it has never
+    sent to AnkiWeb is asked for a full download afterwards and loses them —
+    no sync direction can prevent that. If the upload fails after the deletion,
+    the local deletion stands and the command says so: run it again to finish
+    the upload, it does not delete twice. A rebuild that cannot reach AnkiWeb
+    at all changes nothing.
 
 ## Releases
 

@@ -34,6 +34,44 @@ def test_the_rebuild_subcommand_deletes_nothing_unless_yes_is_passed(monkeypatch
     assert confirmations == [False, True]
 
 
+def test_the_rebuild_subcommand_reads_the_env_file_the_service_is_given(monkeypatch, tmp_path):
+    """systemd hands the service this file, and the rebuild has to land on the same
+    collection and the same AnkiWeb account. It is parsed the way systemd parses an
+    EnvironmentFile: a shell sourcing it would run what the password contains."""
+    data_dir = tmp_path / "service-data"
+    env_file = tmp_path / "deploy.env"
+    env_file.write_text(
+        f"ECHOWORDS_DATA_DIR={data_dir}\n"
+        "ECHOWORDS_ANKIWEB_USER=owner@example.com\n"
+        'ECHOWORDS_ANKIWEB_PASSWORD=pa"ss$(touch pwned)\n',
+    )
+    seen = []
+
+    def record(settings, *, confirmed):
+        seen.append((settings, confirmed))
+        return "what it would delete"
+
+    monkeypatch.setattr("echo_words.main.rebuild_note_type", record)
+
+    result = CliRunner().invoke(echo_words, ["rebuild-note-type", "--env-file", str(env_file)])
+
+    assert result.exit_code == 0
+    settings, confirmed = seen[0]
+    assert (settings.data_dir, confirmed) == (data_dir, False)
+    assert settings.ankiweb_user == "owner@example.com"
+    assert settings.ankiweb_password == 'pa"ss$(touch pwned)'  # noqa: S105 - fake credential
+    assert not (tmp_path / "pwned").exists()
+
+
+def test_the_rebuild_subcommand_refuses_an_env_file_that_is_not_there(tmp_path):
+    result = CliRunner().invoke(
+        echo_words,
+        ["rebuild-note-type", "--env-file", str(tmp_path / "absent.env")],
+    )
+
+    assert result.exit_code != 0
+
+
 def test_a_rebuild_with_no_collection_there_fails_instead_of_reporting_success(
     monkeypatch,
     tmp_path,

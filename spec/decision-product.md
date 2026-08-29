@@ -43,8 +43,11 @@ the work again. **Do not re-open any of it.**
   collection via the headless `anki` pylib and syncs it to AnkiWeb;
   AnkiConnect and Anki desktop are not part of the architecture. There
   is no pending-card queue — adds are in-process and cannot fail on
-  connectivity; only the sync retries. A required one-way full sync is
-  never resolved automatically (protects the user's other decks).
+  connectivity; only the sync retries. The running app never resolves a
+  required one-way full sync (protects the user's other decks); the
+  operator's explicit note-type rebuild does, uploading, because the
+  deletion it just confirmed exists in no other copy — and it merges
+  AnkiWeb in before deleting, so that upload rolls nothing else back.
   Evaluated alternatives (GetSpace, Mochi, own FSRS, genanki):
   `spec/decision-spaced-repetition.md`.
 - Anki sync to AnkiWeb runs automatically after additions,
@@ -74,7 +77,7 @@ the work again. **Do not re-open any of it.**
   exact submitted-text audio; only an NFC-normalized, case-sensitive exact
   headword match can reuse it for Anki. A different dictionary headword gets
   separate audio. Submitted, context and newly known headword audio share one
-  concurrent post-generation wait capped at five seconds. The surrounding
+  concurrent post-generation wait capped at ten seconds. The surrounding
   context is offered in the app alone. Missing submitted-text audio and missing
   card-headword audio are reported separately. Example sentences are never
   voiced (final).

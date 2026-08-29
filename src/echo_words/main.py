@@ -1,11 +1,13 @@
 """The ``echo-words`` command: a launcher for the web app."""
 
+from pathlib import Path
+
 import rich_click as click
 import uvicorn
 
 from echo_words import __version__
 from echo_words.anki import AnkiError, rebuild_note_type
-from echo_words.config import settings
+from echo_words.config import Settings, settings
 
 click.rich_click.USE_MARKDOWN = True
 
@@ -26,15 +28,24 @@ def echo_words(ctx: click.Context, reload: bool) -> None:
 
 @echo_words.command(name="rebuild-note-type")
 @click.option("--yes", is_flag=True, help="Delete. Without it nothing is removed.")
-def rebuild_note_type_command(yes: bool) -> None:
+@click.option(
+    "--env-file",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    help="Read settings from this file, as the service reads its own.",
+)
+def rebuild_note_type_command(yes: bool, env_file: Path | None) -> None:
     """
-    Delete the EchoWords note type and every note of it.
+    Delete the EchoWords note type and every note of it, then upload to AnkiWeb.
 
-    The next card added recreates it with the current fields and templates.
+    The next card added recreates it with the current fields and templates, and
+    every Anki app is asked to download the uploaded collection once.
     Stop the service first: the collection must not be open elsewhere.
     """
+    # Parsed here rather than sourced by the caller's shell: a password may hold
+    # anything, and the AnkiWeb credentials must not travel through a command line.
+    active = Settings(_env_file=env_file) if env_file is not None else settings
     try:
-        click.echo(rebuild_note_type(settings, confirmed=yes))
+        click.echo(rebuild_note_type(active, confirmed=yes))
     except AnkiError as exc:
         # A rebuild that found nothing must not read as a rebuild that worked.
         raise click.ClickException(str(exc)) from exc

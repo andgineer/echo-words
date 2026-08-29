@@ -131,6 +131,20 @@ mismatch raises rather than silently rewriting a collection.
 `inv rebuild-note-type` is the explicit destructive operation used before the
 next deploy of this schema. It names the note type and counts what would be
 deleted, changes nothing without confirmation, and fails if the expected
-collection is absent. The following AnkiWeb synchronization requires a manual
-one-way full sync because the note schema changed; the application surfaces
-that state and never chooses a destructive sync direction itself.
+collection is absent. Deleting a note type is a schema change, so AnkiWeb then
+demands a one-way full sync: the confirmed rebuild performs it, uploading, and
+every other Anki app answers the download it is offered. That direction is the
+only one the deletion can mean, and it is settled by the same confirmation that
+authorized the deletion — the running application still never chooses a
+destructive sync direction of its own.
+
+The upload replaces every deck on AnkiWeb, not only this project's, so the
+rebuild first merges AnkiWeb into the collection it is about to send, and
+deletes nothing until that has succeeded. Where AnkiWeb refuses to merge —
+the collection is already stranded by an earlier attempt — its copy is taken
+outright, because everything this collection can hold that AnkiWeb does not is
+EchoWords notes, their note type and their media, which is exactly what the
+rebuild deletes. What no direction can protect is a device holding reviews it
+has never synced: it is asked for a full download and loses them, so devices
+are synced first. A rebuild that cannot reach AnkiWeb changes nothing; one that
+deleted but could not upload says so, and repeating it finishes the upload.

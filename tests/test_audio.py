@@ -2,6 +2,7 @@ import asyncio
 import hashlib
 import sys
 import threading
+import time
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -292,6 +293,165 @@ async def test_a_cyrillic_locale_voice_is_never_handed_latin(
         ("кућа ђак жена шест", "sr-RS-SophieNeural"),
         ("wardrobe", "en-US-AriaNeural"),
     ]
+
+
+async def test_a_voice_is_loaded_once_and_reused_for_every_later_word(
+    languages,
+    settings,
+    monkeypatch,
+):
+    """Loading a voice costs seconds and synthesizing with a loaded one costs a
+    fraction of a second: paying the load per word puts audio outside its deadline."""
+    voice_name = languages["en"].tts_voice
+    assert voice_name is not None
+    models = settings.data_dir / "models"
+    models.mkdir(parents=True)
+    (models / f"{voice_name}.onnx").write_bytes(b"model")
+    (models / f"{voice_name}.onnx.json").write_text("{}")
+    loads = []
+
+    class FakeVoice:
+        @classmethod
+        def load(cls, model, *, config_path):
+            loads.append((model, config_path))
+            return cls()
+
+        def synthesize_wav(self, _word, wav_file):
+            wav_file.setnchannels(1)
+            wav_file.setsampwidth(2)
+            wav_file.setframerate(22050)
+            wav_file.writeframes(b"\x00\x00" * 2205)
+
+    monkeypatch.setitem(sys.modules, "piper", SimpleNamespace(PiperVoice=FakeVoice))
+    language = replace(languages["en"], dict_api=None)
+    async with mock_client(lambda _request: httpx.Response(500)) as client:
+        for word in ("first", "second"):
+            result = await audio.fetch_pronunciation(
+                word,
+                language,
+                settings=settings,
+                client=client,
+            )
+            assert result is not None and result.read_bytes()
+
+    assert len(loads) == 1
+
+
+async def test_one_shared_voice_synthesizes_one_word_at_a_time(
+    languages,
+    settings,
+    monkeypatch,
+):
+    """Three audio roles resolve concurrently through one cached voice, and espeak-ng
+    underneath it keeps process-global state."""
+    voice_name = languages["en"].tts_voice
+    assert voice_name is not None
+    models = settings.data_dir / "models"
+    models.mkdir(parents=True)
+    (models / f"{voice_name}.onnx").write_bytes(b"model")
+    (models / f"{voice_name}.onnx.json").write_text("{}")
+    active = []
+    counting = threading.Lock()
+    overlapped = threading.Event()
+
+    class FakeVoice:
+        @classmethod
+        def load(cls, _model, *, config_path=None):  # noqa: ARG003 - matches Piper's signature.
+            return cls()
+
+        def synthesize_wav(self, word, wav_file):
+            with counting:
+                active.append(word)
+                if len(active) > 1:
+                    overlapped.set()
+            time.sleep(0.02)
+            with counting:
+                active.remove(word)
+            wav_file.setnchannels(1)
+            wav_file.setsampwidth(2)
+            wav_file.setframerate(22050)
+            wav_file.writeframes(b"\x00\x00" * 2205)
+
+    monkeypatch.setitem(sys.modules, "piper", SimpleNamespace(PiperVoice=FakeVoice))
+    language = replace(languages["en"], dict_api=None)
+
+    async with mock_client(lambda _request: httpx.Response(500)) as client:
+        results = await asyncio.gather(
+            *(
+                audio.fetch_pronunciation(word, language, settings=settings, client=client)
+                for word in ("first", "second", "third")
+            ),
+        )
+
+    assert all(result is not None for result in results)
+    assert not overlapped.is_set()
+
+
+async def test_voice_preparation_loads_what_it_installed(
+    languages,
+    settings,
+    monkeypatch,
+):
+    """The first word after a restart must not pay the load inside its own deadline."""
+    contents = {"https://voices/model": b"model", "https://voices/config": b"config"}
+    files = audio.PiperVoiceFiles(
+        model=audio.VoiceFile(
+            ".onnx",
+            "https://voices/model",
+            hashlib.sha256(contents["https://voices/model"]).hexdigest(),
+        ),
+        config=audio.VoiceFile(
+            ".onnx.json",
+            "https://voices/config",
+            hashlib.sha256(contents["https://voices/config"]).hexdigest(),
+        ),
+    )
+    monkeypatch.setattr(audio, "PIPER_VOICES", {"configured": files})
+    loaded = []
+
+    def fake_load(model, *, config_path):
+        loaded.append((model, config_path))
+        return SimpleNamespace()
+
+    monkeypatch.setitem(
+        sys.modules,
+        "piper",
+        SimpleNamespace(PiperVoice=SimpleNamespace(load=fake_load)),
+    )
+    configured = replace(languages["en"], tts_voice="configured")
+
+    def handler(request):
+        return httpx.Response(200, content=contents[str(request.url)])
+
+    async with mock_client(handler) as client:
+        await audio.prepare_configured_voices(
+            [configured, languages["sr"]],
+            settings,
+            client=client,
+        )
+
+    models = settings.data_dir / "models"
+    assert loaded == [(str(models / "configured.onnx"), str(models / "configured.onnx.json"))]
+
+
+async def test_a_voice_that_cannot_be_installed_is_never_loaded(
+    languages,
+    settings,
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        audio,
+        "_install_voice_file",
+        AsyncMock(side_effect=RuntimeError("download failed")),
+    )
+    monkeypatch.setattr(
+        audio,
+        "_load_voice",
+        lambda *_args: pytest.fail("a voice with no files on disk cannot be loaded"),
+    )
+
+    async with mock_client(lambda _request: httpx.Response(500)) as client:
+        await audio.prepare_configured_voices([languages["en"]], settings, client=client)
 
 
 async def test_voice_preparation_fetches_only_configured_piper_files(

@@ -95,31 +95,26 @@ class CollectionAbsentError(AnkiError):
         super().__init__(f"no collection at {path} — nothing to rebuild")
 
 
-def rebuild_note_type(settings: Settings, *, confirmed: bool) -> str:
-    """Count the EchoWords notes, and delete the note type with them once confirmed.
+class MergeFailedError(AnkiError):
+    """AnkiWeb could not be merged in, so the rebuild deleted nothing."""
 
-    Deleting a note type deletes its notes, which makes this the only operation in
-    the codebase that destroys anything. It is reachable from the console command
-    alone: no startup path, and nothing the running app can call.
-    """
-    path = collection_path(settings)
-    if not path.exists():
-        raise CollectionAbsentError(path)
-    if not confirmed:
-        return _would_delete(path)
-    collection = Collection(str(path))
-    try:
-        model = collection.models.by_name(NOTE_TYPE_NAME)
-        if model is None:
-            return _NOTE_TYPE_ABSENT
-        summary = _note_type_summary(collection, path)
-        collection.models.remove(model["id"])
-        return f"deleted {summary}"
-    finally:
-        collection.close()
+    def __init__(self, reason: object) -> None:
+        super().__init__(
+            f"could not sync with AnkiWeb before deleting: {reason} — nothing was changed",
+        )
 
 
-def _would_delete(path: Path) -> str:
+class UploadFailedError(AnkiError):
+    """The rebuild changed the collection but could not carry that change to AnkiWeb."""
+
+    def __init__(self, reason: object) -> None:
+        super().__init__(
+            f"the note type was deleted here but the AnkiWeb upload failed: {reason} — "
+            "run the rebuild again to retry the upload",
+        )
+
+
+def _would_delete(path: Path, settings: Settings) -> str:
     """Counted on a copy: closing a collection saves it, and the pass that reports
     that nothing was changed must not be the one that changes it."""
     with tempfile.TemporaryDirectory() as workspace:
@@ -130,12 +125,19 @@ def _would_delete(path: Path) -> str:
             shutil.copy2(sidecar, copy.parent / sidecar.name)
         collection = Collection(str(copy))
         try:
-            if collection.models.by_name(NOTE_TYPE_NAME) is None:
-                return _NOTE_TYPE_ABSENT
-            summary = _note_type_summary(collection, path)
+            absent = collection.models.by_name(NOTE_TYPE_NAME) is None
+            summary = "" if absent else _note_type_summary(collection, path)
         finally:
             collection.close()
-    return f"would delete {summary}; nothing was changed — pass --yes to delete"
+    # A confirmed run always syncs, so a pass that deletes nothing still changes what
+    # AnkiWeb holds, and the operator has to be able to confirm knowing that.
+    if absent:
+        if not settings.anki_sync:
+            return _NOTE_TYPE_ABSENT
+        return f"{_NOTE_TYPE_ABSENT}; a confirmed run still settles the sync with AnkiWeb"
+    plan = "would delete" if not settings.anki_sync else "would merge AnkiWeb in, delete"
+    tail = "" if not settings.anki_sync else " and upload the result to AnkiWeb"
+    return f"{plan} {summary}{tail}; nothing was changed — pass --yes to delete"
 
 
 def _note_type_summary(collection: Collection, path: Path) -> str:
@@ -198,6 +200,13 @@ class SyncBackend(Protocol):
         server_usn: int,
     ) -> None: ...
 
+    def full_upload(
+        self,
+        collection: Collection,
+        auth: SyncAuth,
+        server_usn: int,
+    ) -> None: ...
+
 
 class PylibSyncBackend:
     """Calls Anki's own synchronization implementation without a GUI."""
@@ -231,15 +240,137 @@ class PylibSyncBackend:
         auth: SyncAuth,
         server_usn: int,
     ) -> None:
+        self._full_transfer(collection, auth, server_usn, upload=False)
+
+    def full_upload(
+        self,
+        collection: Collection,
+        auth: SyncAuth,
+        server_usn: int,
+    ) -> None:
+        self._full_transfer(collection, auth, server_usn, upload=True)
+
+    def _full_transfer(
+        self,
+        collection: Collection,
+        auth: SyncAuth,
+        server_usn: int,
+        *,
+        upload: bool,
+    ) -> None:
         collection.close_for_full_sync()
         try:
             collection.full_upload_or_download(
                 auth=auth,
                 server_usn=server_usn,
-                upload=False,
+                upload=upload,
             )
         finally:
             collection.reopen(after_full_sync=True)
+
+
+def rebuild_note_type(
+    settings: Settings,
+    *,
+    confirmed: bool,
+    sync_backend: SyncBackend | None = None,
+) -> str:
+    """Merge AnkiWeb in, delete the EchoWords note type with its notes, upload the result.
+
+    Deleting a note type deletes its notes, which makes this the only operation in
+    the codebase that destroys anything. It is reachable from the console command
+    alone: no startup path, and nothing the running app can call.
+    """
+    path = collection_path(settings)
+    if not path.exists():
+        raise CollectionAbsentError(path)
+    if settings.anki_sync:
+        _check_sync_credentials(settings)
+    if not confirmed:
+        return _would_delete(path, settings)
+    collection = Collection(str(path))
+    try:
+        if not settings.anki_sync:
+            deleted = _delete_note_type(collection, path)
+            return f"{deleted}; sync is off, so AnkiWeb keeps the note type it has"
+        backend = sync_backend or PylibSyncBackend()
+        # Everything AnkiWeb knows has to be in this copy before the upload replaces
+        # AnkiWeb with it, and nothing may be deleted until that has succeeded.
+        _merge(collection, settings, backend)
+        deleted = _delete_note_type(collection, path)
+        return f"{deleted}; {_upload(collection, settings, backend)}"
+    finally:
+        collection.close()
+
+
+def _delete_note_type(collection: Collection, path: Path) -> str:
+    model = collection.models.by_name(NOTE_TYPE_NAME)
+    if model is None:
+        return _NOTE_TYPE_ABSENT
+    summary = _note_type_summary(collection, path)
+    collection.models.remove(model["id"])
+    return f"deleted {summary}"
+
+
+def _merge(collection: Collection, settings: Settings, backend: SyncBackend) -> None:
+    """Take everything AnkiWeb holds, so the upload that follows only removes a note type.
+
+    A one-way upload replaces every deck on AnkiWeb, which would silently undo work
+    done on other devices since this copy last synced. A normal sync merges it in
+    first, and where AnkiWeb refuses to merge, its copy is taken outright: all this
+    collection can hold that AnkiWeb does not is EchoWords notes, their note type and
+    their media — exactly what is about to be deleted. Nothing here is destructive,
+    so a failure leaves the collection untouched.
+    """
+    try:
+        auth, output = _sync(collection, settings, backend)
+        if output.required in (
+            SyncCollectionResponse.FULL_SYNC,
+            SyncCollectionResponse.FULL_DOWNLOAD,
+        ):
+            backend.full_download(collection, auth, output.server_media_usn)
+    except Exception as exc:
+        raise MergeFailedError(exc) from exc
+
+
+def _upload(collection: Collection, settings: Settings, backend: SyncBackend) -> str:
+    """Send this collection to AnkiWeb one way, the only direction a rebuild can mean.
+
+    The deletion exists in no other copy, so the running app's refusal to choose a
+    sync direction would strand it here forever. The operator has just confirmed
+    it, and every other device still answers the download prompt Anki raises there.
+    """
+    try:
+        auth, output = _sync(collection, settings, backend)
+        if output.required not in (
+            SyncCollectionResponse.FULL_SYNC,
+            SyncCollectionResponse.FULL_DOWNLOAD,
+            SyncCollectionResponse.FULL_UPLOAD,
+        ):
+            return "AnkiWeb took the deletion without a one-way sync"
+        backend.full_upload(collection, auth, output.server_media_usn)
+    except Exception as exc:
+        raise UploadFailedError(exc) from exc
+    return "uploaded the collection to AnkiWeb — confirm the download in every Anki app"
+
+
+def _sync(
+    collection: Collection,
+    settings: Settings,
+    backend: SyncBackend,
+) -> tuple[SyncAuth, SyncCollectionResponse]:
+    try:
+        auth = _resolve_auth(collection, settings, backend)
+        output = backend.sync_collection(collection, auth)
+    except SyncError as exc:
+        if exc.kind != SyncErrorKind.AUTH:
+            raise
+        _auth_path(settings).unlink(missing_ok=True)
+        auth = _resolve_auth(collection, settings, backend)
+        output = backend.sync_collection(collection, auth)
+    auth = _follow_endpoint(auth, output.new_endpoint)
+    _save_auth(settings, auth)
+    return auth, output
 
 
 class AnkiStore:
@@ -256,7 +387,7 @@ class AnkiStore:
         self.settings = settings
         self.collection_path = collection_path(settings)
         self.bootstrap_path = settings.data_dir / "anki" / "bootstrap.pending"
-        self.auth_path = settings.data_dir / "anki-sync.json"
+        self.auth_path = _auth_path(settings)
         self.sync_backend = sync_backend or PylibSyncBackend()
         self.clock = clock
         self.sleep = sleep
@@ -502,9 +633,9 @@ class AnkiStore:
         collection = self._require_collection()
         auth = self._get_auth(collection)
         output = self.sync_backend.sync_collection(collection, auth)
-        auth = self._follow_endpoint(auth, output.new_endpoint)
+        auth = _follow_endpoint(auth, output.new_endpoint)
         self._auth = auth
-        self._save_auth(auth)
+        _save_auth(self.settings, auth)
         required = output.required
         if bootstrap:
             if required in (
@@ -522,58 +653,9 @@ class AnkiStore:
             raise FullSyncRequiredError
 
     def _get_auth(self, collection: Collection) -> SyncAuth:
-        if self._auth is not None:
-            return self._auth
-        stored = self._load_auth()
-        if stored is not None:
-            self._auth = stored
-            return stored
-        endpoint = self.settings.sync_endpoint or None
-        auth = self.sync_backend.login(
-            collection,
-            self.settings.ankiweb_user,
-            self.settings.ankiweb_password,
-            endpoint,
-        )
-        self._auth = auth
-        self._save_auth(auth)
-        return auth
-
-    def _load_auth(self) -> SyncAuth | None:
-        try:
-            value = json.loads(self.auth_path.read_text(encoding="utf-8"))
-            hkey = value["hkey"]
-            endpoint = value.get("endpoint", "")
-            username = value["username"]
-            configured_endpoint = value["configured_endpoint"]
-        except (OSError, json.JSONDecodeError, KeyError, TypeError):
-            return None
-        if not isinstance(hkey, str) or not hkey:
-            return None
-        if username != self.settings.ankiweb_user:
-            return None
-        if configured_endpoint != self.settings.sync_endpoint:
-            return None
-        return SyncAuth(hkey=hkey, endpoint=endpoint if isinstance(endpoint, str) else "")
-
-    def _save_auth(self, auth: SyncAuth) -> None:
-        self.auth_path.parent.mkdir(parents=True, exist_ok=True)
-        self.auth_path.write_text(
-            json.dumps(
-                {
-                    "hkey": auth.hkey,
-                    "endpoint": auth.endpoint,
-                    "username": self.settings.ankiweb_user,
-                    "configured_endpoint": self.settings.sync_endpoint,
-                },
-            ),
-            encoding="utf-8",
-        )
-
-    def _follow_endpoint(self, auth: SyncAuth, endpoint: str) -> SyncAuth:
-        if not endpoint or endpoint == auth.endpoint:
-            return auth
-        return SyncAuth(hkey=auth.hkey, endpoint=endpoint)
+        if self._auth is None:
+            self._auth = _resolve_auth(collection, self.settings, self.sync_backend)
+        return self._auth
 
     def _add_note_blocking(
         self,
@@ -636,11 +718,73 @@ class AnkiStore:
         return self.collection
 
     def _check_sync_credentials(self) -> None:
-        if not self.settings.ankiweb_user or not self.settings.ankiweb_password:
-            raise AnkiError(
-                "ECHOWORDS_ANKIWEB_USER and ECHOWORDS_ANKIWEB_PASSWORD are required "
-                "when Anki sync is enabled",
-            )
+        _check_sync_credentials(self.settings)
+
+
+def _check_sync_credentials(settings: Settings) -> None:
+    if not settings.ankiweb_user or not settings.ankiweb_password:
+        raise AnkiError(
+            "ECHOWORDS_ANKIWEB_USER and ECHOWORDS_ANKIWEB_PASSWORD are required "
+            "when Anki sync is enabled",
+        )
+
+
+def _auth_path(settings: Settings) -> Path:
+    return settings.data_dir / "anki-sync.json"
+
+
+def _resolve_auth(collection: Collection, settings: Settings, backend: SyncBackend) -> SyncAuth:
+    stored = _load_auth(settings)
+    if stored is not None:
+        return stored
+    auth = backend.login(
+        collection,
+        settings.ankiweb_user,
+        settings.ankiweb_password,
+        settings.sync_endpoint or None,
+    )
+    _save_auth(settings, auth)
+    return auth
+
+
+def _load_auth(settings: Settings) -> SyncAuth | None:
+    try:
+        value = json.loads(_auth_path(settings).read_text(encoding="utf-8"))
+        hkey = value["hkey"]
+        endpoint = value.get("endpoint", "")
+        username = value["username"]
+        configured_endpoint = value["configured_endpoint"]
+    except (OSError, json.JSONDecodeError, KeyError, TypeError):
+        return None
+    if not isinstance(hkey, str) or not hkey:
+        return None
+    if username != settings.ankiweb_user:
+        return None
+    if configured_endpoint != settings.sync_endpoint:
+        return None
+    return SyncAuth(hkey=hkey, endpoint=endpoint if isinstance(endpoint, str) else "")
+
+
+def _save_auth(settings: Settings, auth: SyncAuth) -> None:
+    path = _auth_path(settings)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "hkey": auth.hkey,
+                "endpoint": auth.endpoint,
+                "username": settings.ankiweb_user,
+                "configured_endpoint": settings.sync_endpoint,
+            },
+        ),
+        encoding="utf-8",
+    )
+
+
+def _follow_endpoint(auth: SyncAuth, endpoint: str) -> SyncAuth:
+    if not endpoint or endpoint == auth.endpoint:
+        return auth
+    return SyncAuth(hkey=auth.hkey, endpoint=endpoint)
 
 
 def _wait_past_millisecond(note_id: int) -> None:

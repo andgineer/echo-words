@@ -37,7 +37,7 @@ LOOKUP_ONLY_STATUS = "lookup_only"
 TEXT_STATUS = "text"
 CARD_FAILED_STATUS = "failed"
 REQUEST_EXPIRED = "request expired"
-MAX_POST_GENERATION_AUDIO_WAIT_SECONDS = 5
+MAX_POST_GENERATION_AUDIO_WAIT_SECONDS = 10
 
 logger = logging.getLogger(__name__)
 
@@ -144,7 +144,7 @@ class WordPipeline:
         events: EventHub | None = None,
         anki: CardStore | None = None,
         audio: AudioFetcher = _no_audio,
-        audio_timeout: float = 5,
+        audio_timeout: float = 10,
         audio_dir: Path | None = None,
         history_size: int = 50,
         clock: Clock = time.monotonic,

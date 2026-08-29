@@ -7,6 +7,7 @@ import pytest
 from fakes import FakeBroker
 from fastapi.testclient import TestClient
 
+from echo_words import audio
 from echo_words.api import create_app
 from echo_words.config import Settings
 from echo_words.languages import Language, load_languages
@@ -236,6 +237,15 @@ def _no_real_voice_downloads(monkeypatch: pytest.MonkeyPatch) -> None:
         return None
 
     monkeypatch.setattr("echo_words.api.prepare_configured_voices", skip_voice_downloads)
+
+
+@pytest.fixture(autouse=True)
+def _no_voice_kept_between_tests() -> Iterator[None]:
+    # A loaded voice outlives the test that faked it, and the next test's fake would
+    # never be asked for one.
+    audio._VOICES.clear()  # noqa: SLF001 - the cache under test is process-wide by design.
+    yield
+    audio._VOICES.clear()  # noqa: SLF001 - the cache under test is process-wide by design.
 
 
 @pytest.fixture(autouse=True)

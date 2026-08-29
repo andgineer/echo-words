@@ -31,8 +31,8 @@ def test_systemd_unit_has_the_required_network_gate_and_sandbox():
     assert "EnvironmentFile=/home/ubuntu/echo-words/.deploy/.env" in unit
     assert "ProtectSystem=strict" in unit
     assert "ReadWritePaths=/home/ubuntu/echo-words/data" in unit
-    assert "MemoryHigh=400M" in unit
-    assert "MemoryMax=500M" in unit
+    assert "MemoryHigh=600M" in unit
+    assert "MemoryMax=700M" in unit
 
 
 def test_host_prep_provisions_swap_hardening_and_bounded_journal():
@@ -354,53 +354,20 @@ def test_rebuild_note_type_deletes_nothing_without_a_typed_confirmation(
     assert remote_scripts[-1] == "sudo systemctl start echo-words"
 
 
-def test_rebuild_note_type_runs_the_cli_under_the_data_dir_the_service_uses():
-    """The CLI reads the data dir from the environment alone. Pointed anywhere else it
-    would find no collection, and report having nothing to rebuild while production
-    stays broken. The value is passed in, never sourced: the deploy env sits next to
-    an AnkiWeb password, and a shell would run whatever that password contains."""
+def test_rebuild_note_type_runs_the_cli_under_the_settings_the_service_uses():
+    """The CLI has to resolve what the service resolves: another data dir would find
+    no collection and report nothing to rebuild while production stays broken, and
+    without the AnkiWeb credentials the deletion could not be uploaded. The file is
+    named, never sourced and never spread across a command line: it holds a password,
+    a shell would run whatever that password contains, and a command line is public."""
     for confirmed in (False, True):
-        script = tasks._rebuild_note_type_script(
-            confirmed=confirmed,
-            data_dir="/home/ubuntu/echo-words/data",
-        )
-        assert "ECHOWORDS_DATA_DIR=/home/ubuntu/echo-words/data uv run " in script
-        assert tasks.REMOTE_DEPLOY_ENV not in script
-        assert script.index("ECHOWORDS_DATA_DIR") < script.index("echo-words rebuild-note-type")
-        assert script.index("systemctl stop echo-words") < script.index("ECHOWORDS_DATA_DIR")
+        script = tasks._rebuild_note_type_script(confirmed=confirmed)
+        assert f"--env-file {tasks.REMOTE_DEPLOY_ENV}" in script
+        assert f"source {tasks.REMOTE_DEPLOY_ENV}" not in script
+        assert "ECHOWORDS_ANKIWEB" not in script
+        assert "ECHOWORDS_DATA_DIR" not in script
+        assert script.index("systemctl stop echo-words") < script.index("rebuild-note-type")
         assert script.endswith("--yes") is confirmed
-
-
-def test_a_data_dir_carrying_shell_syntax_reaches_the_vm_as_one_literal_value():
-    script = tasks._rebuild_note_type_script(
-        confirmed=True,
-        data_dir="/home/ubuntu/$(touch pwned) data",
-    )
-
-    assert "ECHOWORDS_DATA_DIR='/home/ubuntu/$(touch pwned) data' uv run " in script
-
-
-def test_a_deploy_env_naming_no_data_dir_leaves_the_cli_on_the_service_default():
-    """An empty assignment would be a data dir of "", which is not the default the
-    service falls back to."""
-    script = tasks._rebuild_note_type_script(confirmed=True, data_dir="")
-
-    assert "ECHOWORDS_DATA_DIR" not in script
-
-
-def test_the_data_dir_is_parsed_rather_than_sourced(monkeypatch, tmp_path):
-    """Read the way systemd reads an EnvironmentFile, not the way a shell would. A
-    shell takes the quote inside the password as opening a string, closes it on the
-    quote two lines down, and leaves the data dir unset without ever failing."""
-    _write_deploy_env(
-        monkeypatch,
-        tmp_path,
-        'ECHOWORDS_ANKIWEB_PASSWORD=pa"ss\n'
-        "ECHOWORDS_DATA_DIR=/home/ubuntu/echo-words/data\n"
-        'ECHOWORDS_TARGET_LANG=ru"\n',
-    )
-
-    assert tasks._remote_data_dir() == "/home/ubuntu/echo-words/data"
 
 
 def test_rebuild_note_type_counts_before_it_deletes(monkeypatch, tmp_path):
