@@ -67,7 +67,15 @@ class ParsedText:
 type ParsedAnswer = ParsedUnit | ParsedText
 
 _UNIT_FIELDS = frozenset(
-    {"word", "word_relation", "suggestion", "meanings", "context_sense", "segments"},
+    {
+        "word",
+        "word_relation",
+        "suggestion",
+        "also_common",
+        "meanings",
+        "context_sense",
+        "segments",
+    },
 )
 _TEXT_FIELDS = frozenset({"combinations"})
 _BOLD_SPAN = re.compile(r"<b>([^<>]+)</b>")
@@ -118,6 +126,15 @@ def parse_answer_payload(  # noqa: C901, PLR0912 - the answer discriminator boun
         submitted,
         language,
     )
+    # The commoner near-spelling is advice about wording the answer vouched for, so a
+    # correction outranks it: the reader is told what to fix before what to weigh.
+    if word_relation != "typo" and suggestion is None:
+        suggestion = _commoner_near_spelling(
+            card.get("also_common"),
+            headword,
+            submitted,
+            language,
+        )
     raw_meanings = card.get("meanings")
     if not isinstance(raw_meanings, list) or not raw_meanings:
         raise CardParseError("answer.meanings must be a non-empty list")
@@ -412,6 +429,16 @@ def _context_sense(value: Any, meanings: int) -> int | None:
     if not isinstance(value, int) or isinstance(value, bool) or not 0 <= value < meanings:
         return None
     return value
+
+
+def _commoner_near_spelling(
+    value: Any,
+    headword: str,
+    submitted: str,
+    language: Language,
+) -> str | None:
+    advice = _usable_suggestion(value, _submitted_spelling(submitted), language)
+    return None if advice == headword else advice
 
 
 def _word_relation(

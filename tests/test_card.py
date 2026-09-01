@@ -452,6 +452,50 @@ def test_morphology_can_change_the_headword_without_a_spelling_suggestion(langua
     assert parsed.suggestion is None
 
 
+def test_a_commoner_near_spelling_is_offered_beside_the_submitted_word(languages):
+    parsed = parse_answer_payload(
+        payload(word="causal", word_relation="same", suggestion="", also_common="casual"),
+        "causal",
+        languages["en"],
+    )
+
+    assert isinstance(parsed, ParsedUnit)
+    assert parsed.note.word == "causal"
+    assert parsed.word_relation == "same"
+    assert parsed.suggestion == "casual"
+
+
+def test_a_declared_correction_outranks_a_commoner_near_spelling(languages):
+    parsed = parse_answer_payload(
+        payload(
+            word="receive",
+            word_relation="typo",
+            suggestion="receive",
+            also_common="relieve",
+        ),
+        "recieve",
+        languages["en"],
+    )
+
+    assert isinstance(parsed, ParsedUnit)
+    assert parsed.word_relation == "typo"
+    # The correction is the headword here, so nothing is offered beside it — and what
+    # is dropped must not be replaced by the weaker advice.
+    assert parsed.suggestion is None
+
+
+@pytest.mark.parametrize("also_common", ["", "  ", "causal", "not a word!", 7, None])
+def test_an_unusable_commoner_near_spelling_offers_nothing(languages, also_common):
+    parsed = parse_answer_payload(
+        payload(word="causal", word_relation="same", suggestion="", also_common=also_common),
+        "causal",
+        languages["en"],
+    )
+
+    assert isinstance(parsed, ParsedUnit)
+    assert parsed.suggestion is None
+
+
 @pytest.mark.parametrize("word_relation", [None, "", "correction", 4])
 def test_an_unusable_relation_label_falls_back_to_the_spellings(languages, word_relation):
     parsed = parse_answer_payload(

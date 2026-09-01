@@ -108,52 +108,81 @@ quality and an earlier hash is never substituted for the current prompt.
 
 ### The near neighbour offered beside the card
 
-Six fixtures measure the offer: three real words a letter or two from a markedly
-commoner one, and three ordinary words that must be offered nothing. On a pool
-answering every call, no registered pair produced the offer and no ordinary word
-drew a false one.
+The advice has its own field, separate from the correction. One field carrying
+both was measured and produced neither: models fill a field called `suggestion`
+only for a spelling they are calling wrong, and for a correctly spelled word they
+left it empty across two promptings and three model families. The knowledge was
+never missing — those same answers name the commoner word in the usage prose,
+"не следует путать с *casual*" — so what failed was routing a finding into a
+field whose primary sense contradicted it. Binding the prose to the shared field
+made it worse: told that naming a confusion obliged it to fill the field, the
+model stopped naming the confusion.
 
-The neighbour itself is present in those answers, as prose. `causal` is analysed
-with "не следует путать с *casual*" and `wider` with "не следует путать … с
-*wieder*", by two different pool models, while the structured suggestion stays
-empty. The knowledge the requirement needs is in the free pool's first answer;
-what the current wording does not do is carry it into the field the interface
-reads. That is a routing result, not the pool's refusal, so the requirement
-stands: dropping it, or deriving the neighbour from an edit distance against a
-per-language frequency list the project does not have, would both be answers to
-a question this measurement did not ask.
+With a field of its own the offer appears, and appears only where it should.
+Six fixtures measure it — three real words a letter or two from a markedly
+commoner one, three ordinary words that must be offered nothing. Over a tier
+answering every one of its calls, the field is non-empty exactly once in 201
+answers, on the registered pair, with the article still entirely about the
+submission; no ordinary word, sentence, misspelling or coinage drew an offer, and
+the correction field stayed non-empty only on misspellings, always holding the
+correction. The separation the two fields were meant to produce is what the
+answers show.
+
+What it costs is coverage, not correctness: one of three registered pairs fired.
+A second pair produced a shorter article that named no confusion at all, so
+nothing reached the field. The offer is therefore advice that arrives when the
+answer happens to notice, not a guarantee — which is what an offer beside the
+card can be, and is why nothing downstream depends on its presence.
 
 A fixture instantiates this requirement only when the submission is wording the
-answer will vouch for. One that the standalone judgement refuses as unused never
+answer will vouch for. One the standalone judgement refuses as unused never
 reaches the branch that offers a neighbour, and measures the refusal instead.
 
 ### Where the free pool's answers stand against fresh review
 
-The deterministic contracts pass and the answers are still not acceptable. Over
-half of a review packet's items carry a defect the learner would see, and a third
-of the packet one they would memorise. Four classes block acceptance:
+The deterministic contracts pass, the answers around them are uneven, and the
+gap is invisible to the screen: every defect below satisfies every contract.
+Roughly half of a review packet's items carry a defect the learner would read,
+and a quarter of the packet one they would drill. The classes, worst first:
 
-- **Ungrammatical target-language sentences on card fronts** — `einen äußerst
-  gelungener Abend`, `the definitely best solution`, a German example with the
-  finite verb off second position. The card is the product; a drilled error is
-  the worst outcome the answer can produce.
-- **Analyses in the wrong language, or half in it** — a Serbian submission
-  answered entirely in Serbian with no Russian anywhere, and example sentences
-  that switch language mid-clause.
-- **Invented facts stated with confidence** — a non-existent idiom as the bold
-  heading, an aspect pair that is not a verb, an etymology built on a false
-  cognate, a Swiss orthographic rule that does not exist, and a spelling card
-  that states its own rule backwards.
-- **Silent card loss** — a correct analysis that cards nothing because its
-  payload is malformed, empty, or reproduces the supplied context with the final
-  period dropped.
+- **A misspelling carded as if correct.** The article keeps the misspelled
+  wording, calls the relation `same`, and spells the non-word in every example.
+  Nothing in the card contract can catch it. What catches it is the parallel
+  judgement, which refuses the wording separately and withholds the note — the
+  measured case where that safety net is the only thing standing between the
+  learner and four cards teaching a word that does not exist.
+- **Cards headed by the wrong word** — a copula glossed with the adjective's
+  sense, an article headed by a different verb than the one submitted.
+- **Ungrammatical or bilingual example sentences**, some of them on card fronts:
+  wrong adjective declension after a determiner, a wrong auxiliary, a Russian
+  subject with a German predicate.
+- **Etymology invented with a straight face**, stated as fact rather than hedged.
 
-Two further findings sit in our own code rather than the model's. A card payload
-whose string values are unquoted is repaired and scored valid, so the screen
-reports conformance the answer did not have; and an exactly correct contextual
-analysis is discarded over one character of punctuation. Repair generous enough
-to hide a malformed payload, and a comparison strict enough to throw away a
-correct one, are the same boundary set wrongly in opposite directions.
+None of these classes is created by the answer contract, and the review found
+nothing in the packet arguing against it. They are the free pool's own quality,
+and they are why fresh semantic review is mandatory rather than advisory: the
+screen certifies conformance, and conformance is not correctness.
+
+Two findings sit in our own code rather than the model's. A card payload whose
+string values are unquoted is repaired and scored valid, so the screen reports
+conformance the answer did not have; and an exactly correct contextual analysis
+is discarded over one character of punctuation. Repair generous enough to hide a
+malformed payload, and a comparison strict enough to throw away a correct one,
+are the same boundary set wrongly in opposite directions.
+
+### The verdict gate reads high against its own manifest
+
+The hard-error rate sits above its threshold on a screen whose reviewed rate sits
+below it. Three of the fourteen counted errors carded exactly the extraction
+their fixture registers as accepted, and behave identically to sibling fixtures
+the manifest already lists as defensible; the difference between them is the
+registration, not the answer. The reviewed rate over the genuine errors is inside
+the band every earlier run measured, so the model has not regressed.
+
+The gate stays as it reads. Re-labelling those three would be an argued change to
+the manifest, and it is not one to make in the same breath as accepting a feature
+the same run was measuring — the party defending a result does not get to move
+the line it is judged against.
 
 ## Trust boundary
 
@@ -174,6 +203,14 @@ would accuse the learner on a large share of everything they submit. The card is
 the same either way; only what the entry says about it differs. A suggestion that
 merely repeats the headword is dropped, because it would offer the reader the word
 already carded.
+
+The correction and the commoner near-spelling arrive in separate fields and are
+reconciled into one thing the entry shows, because the reader has room for one
+piece of advice about their spelling. The correction outranks it: a reader told
+their word is misspelled is not also asked to weigh a different word. The
+near-spelling is read only beside a relation the answer itself vouched for, and
+it passes the same validation and the same repeats-the-headword drop, so a field
+the model fills carelessly can add an offer but never a claim.
 It is a consistency boundary, not an independent spelling judge: a model can
 still call a misspelling morphology, so registered typo fixtures and fresh
 review remain required. For an explicit context request,

@@ -64,7 +64,7 @@ For a unit, write a complete compact dictionary article in this order:
    with the submitted spelling. Before writing anything else, check whether changing
    a letter or two of a correctly spelled submission spells a markedly commoner word
    — quiet beside quite, Rate beside Ratte. When it does, keep the heading on the
-   submission and name that commoner word in suggestion.
+   submission and name that commoner word in also_common.
 2. Give the translations, most frequent in everyday speech first. Never name the
    part of speech. Put a register mark after the translation it qualifies.
 3. Forms only when useful to recognise or produce. Use a table of at most six
@@ -94,7 +94,8 @@ values are placeholders, not strings to copy:
 
 {{"kind": "unit", "word": "<dictionary lemma of the unit>",
  "word_relation": "<same, morphology or typo>",
- "suggestion": "<corrected spelling, likelier word, or empty>",
+ "suggestion": "<corrected spelling, or empty>",
+ "also_common": "<markedly commoner near-spelling, or empty>",
  "meanings": [{{"label": "<short target-language sense label or empty>",
  "translations": ["<target-language translation>"],
  "examples": [{{"highlighted": "<short source-language sentence, unit in b tags>",
@@ -113,10 +114,14 @@ word_relation is typo when the submission is misspelled, and then suggestion hol
 the correct spelling; morphology when word is a different dictionary form of a
 correctly spelled submission; same when word is the submission itself.
 
-suggestion also holds the markedly commoner near-spelling of rule 1, and the relation
-then stays same or morphology: that submission is real, so the article and card stay
-about it and the commoner word is only offered. Never offer a synonym, or a commoner
-word spelled differently. suggestion is empty otherwise.
+suggestion is empty otherwise: it is only ever a correction.
+
+also_common is the separate, weaker thing — the markedly commoner near-spelling of
+rule 1, filled while the relation stays same or morphology. That submission is real,
+so the article and card stay about it and the commoner word is only offered beside
+it. Fill it whenever rule 1 found such a word, including when you also warn about the
+confusion in usage. Never put a synonym there, or a commoner word spelled
+differently, or the submission itself. It is empty otherwise.
 
 meanings are the senses that need different words in {target_lang}, most common
 first; do not impose a numerical limit. Every meaning has 2-4 main translations

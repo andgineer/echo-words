@@ -132,8 +132,12 @@ def test_the_prompt_asks_for_the_spelling_relation_in_one_rule(languages):
     # asked among the field descriptions instead, it was measurably never carried out.
     assert "spells a markedly commoner word" in prompt
     assert "keep the heading on the\n   submission" in prompt
-    assert "the relation\nthen stays same or morphology" in prompt
-    assert "suggestion is empty otherwise" in prompt
+    # The advice has its own field. Sharing suggestion with the correction measurably
+    # produced neither: models fill that field only for a spelling they call wrong.
+    assert "name that commoner word in also_common" in prompt
+    assert '"also_common": "<markedly commoner near-spelling, or empty>"' in prompt
+    assert "while the relation stays same or morphology" in prompt
+    assert "suggestion is empty otherwise: it is only ever a correction" in prompt
     # The heading and the card carry the same wording; the correction is named in
     # suggestion, and the interface tells the reader what became of their spelling.
     assert "head a suspected misspelling with the correction" in prompt

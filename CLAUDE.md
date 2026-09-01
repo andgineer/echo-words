@@ -26,8 +26,8 @@ tool looks for.
 - `spec/plan/` — work that is started and not finished, one file each.
   **Read these first when picking work up**: each says where its work
   stands, what is already built, what its experiments established and
-  what is left. Two are open — `near-neighbour-offer.md`, whose code is
-  committed and green but whose bench gate is red on a valid run, and
+  what is left. Two are open — `near-neighbour-fixture.md`, one bench
+  fixture that measures nothing until its pair is replaced, and
   `exact-boundaries.md`. Write a new plan only for work
   that needs one, and delete it once that work has landed; what outlives
   it moves into a decision spec. A plan is not an archive.
