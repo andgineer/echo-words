@@ -23,10 +23,14 @@ tool looks for.
   the LLM backend, and the deployment host, its rules and its tooling
   (`decision-deployment.md`). They hold the reasoning
   and the measurements behind the choices. Do not re-open them.
-- There is no implementation plan any more: M0–M8 have all landed, so
-  the plan was deleted and what outlived it moved into the specs above.
-  Write a new plan file only for work that needs one, and delete it once
-  that work has landed — a plan is not an archive.
+- `spec/plan-*.md` — work that is started and not finished. **Read these
+  first when picking work up**: each one says where its work stands, what
+  is already built, what its experiments established and what is left.
+  Two are open — `plan-near-neighbour-offer.md`, whose code is committed
+  and green but whose bench gate has never been scored on a valid run,
+  and `plan-exact-boundaries.md`. Write a new plan file only for work
+  that needs one, and delete it once that work has landed; what outlives
+  it moves into a decision spec. A plan is not an archive.
 
 ---
 
