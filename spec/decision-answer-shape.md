@@ -86,12 +86,12 @@ figures are evidence for the failure rather than acceptance evidence for the
 current prompt.
 
 The production gate does not require a perfect model sample. Its smoke,
-confirmation and full tiers contain 39, 93 and at most 169 calls respectively;
-the full tier keeps the canonical 157 unchanged and adds six click and six typo
-calls. Aggregate availability and semantic thresholds tolerate bounded model
+confirmation and full tiers contain 44, 103 and at most 179 calls respectively;
+the full tier keeps the canonical 157 unchanged and adds six click, six typo and
+ten attestation calls. Aggregate availability and semantic thresholds tolerate bounded model
 misses. Every accepted unit still has four-card readiness and safe targeted
 sentence forms, every counted click has exact target identity/kind, context,
-surface and empty components, and every accepted typo retains its submitted
+surface and empty components, and every accepted typo cards the corrected
 spelling. Strict article format, morphology, usage and origin percentages remain
 diagnostics, including in the Serbian slice. A fresh-agent review of the
 structured error packet is mandatory even when the automated screen passes.
@@ -116,13 +116,18 @@ the two cannot disagree. Adjacent bold spans separated only by whitespace are
 merged into one contiguous span in preference to keeping them apart, and the
 same outside-context guard applies to the result, so splitting every word
 cannot bypass whole-sentence rejection. The claimed word relation is
-reconciled rather than enforced: any admission of a correction, and any
-contradiction between a `same` claim and a differing word, produces a typo
-carrying the submitted spelling as its headword. That makes retention of the
-submitted spelling structural, so neither the suggestion itself nor a third
-headword can become the headword. It is a consistency boundary, not an
-independent spelling judge: a model can still call a misspelling morphology, so
-registered typo fixtures and fresh review remain required. For an explicit context request,
+reconciled rather than enforced. An admitted correction produces a typo whose
+headword is the wording the answer analysed — the same wording its meanings,
+examples and gapped sentence describe. A `same` claim contradicted by a differing
+word produces morphology instead: a dictionary form for an inflected submission is
+by far the commoner reading of that contradiction, and calling it a misspelling
+would accuse the learner on a large share of everything they submit. The card is
+the same either way; only what the entry says about it differs. A suggestion that
+merely repeats the headword is dropped, because it would offer the reader the word
+already carded.
+It is a consistency boundary, not an independent spelling judge: a model can
+still call a misspelling morphology, so registered typo fixtures and fresh
+review remain required. For an explicit context request,
 the selected meaning's first plain example must equal the supplied context. Where
 the submitted click surface can be matched token-for-token in that context, the
 backend constructs the two forms itself; otherwise the model's forms must pass

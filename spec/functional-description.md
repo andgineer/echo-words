@@ -263,11 +263,11 @@ The answer contains, in this order:
 
 Additional behavior:
 
-- If the input looks misspelled, the answer keeps that spelling in its
-  returned headword and exposes the correction only as a separate suggestion.
-  The correction is never applied automatically; a button on the entry lets
-  the user explicitly re-run the submission for the suggested spelling (and
-  switch back). See "Autocorrection: advisory only".
+- If the input looks misspelled, the card is made for the corrected wording and
+  the entry says so above the analysis — or no card at all, when the answer would
+  not correct the spelling it calls wrong; if the wording is not used at all, no
+  card and no article are made. See "Spelling: the card carries the word that
+  was analysed".
 - For idioms and phrasal verbs: the meaning, literal vs figurative sense,
   and typical situations where it is used.
 - The answer stays compact (~3,500 characters at most) — it is a
@@ -285,64 +285,100 @@ unmatchable proposal, resolves overlap in favour of the first proposal, and
 adds every source word as its own chip whether or not a combination claims it.
 Repeated occurrences stay separate.
 
-## Autocorrection: advisory only
+## Spelling: the card carries the word that was analysed
 
-The system never silently applies a spelling correction. Auto-applying one is
-attractive for genuine typos but dangerous for a rare word, proper noun,
-dialectal form or deliberate spelling: a plausible-looking wrong note would
-then enter spaced repetition unnoticed.
+Two different failures live here, and they need different answers. A **misspelling**
+means a real word was meant and written wrong. A **coinage** means no word was meant
+at all — a string that is merely well formed, which a model asked for a dictionary
+article will invent one for, complete with origin and usage examples. Measured on the
+free pool, an article prompt refuses none of six such strings; the paid models refuse
+none either. Intelligence is not the lever here, the question is.
 
-A unit answer classifies its returned word as `same`, `morphology` or `typo`
-and carries an advisory suggestion. The backend reconciles that claim against
-the two spellings instead of refusing the answer. A usable suggestion, or a
-returned word which differs from the submission under a `same` or `typo` claim,
-yields a `typo` whose headword is the submission itself and whose suggestion is
-the differing spelling. A word equal to the submission apart from case, or from
-the other Serbian script, is the same word. Any other difference with no
-suggestion is `morphology`. The headword carried by a suspected misspelling is
-therefore the submitted spelling by construction, not because the answer obeyed
-an instruction to copy it.
+**A unit submission is judged twice, and either judgement can withhold it.** The
+answer opens with a verdict on the submitted wording — used or not, and where it is
+used — before it writes anything else; alongside it, a second pool call asks that
+question and nothing else. A refusal from either means no article, no card and no
+audio, and the entry says the wording is not vouched for. Rarity is never a reason to
+refuse; wording real speakers use in any register, field, dialect or period is used,
+however uncommon.
 
-This makes a silent correction visible whenever the payload contradicts itself;
-it does not independently prove linguistic intent. A model can still call a
-misspelling `morphology` and be believed. Exact registered typo fixtures and
-fresh semantic review therefore remain part of every prompt promotion gate; an
-absolute distinction would need a separate spelling judge.
+**The question is asked apart because the framing is what decides the answer.** The
+same instruction, on the same free pool and the same fixtures: prose inside the
+article rules withheld none of six coinages, a verdict at the head of the article
+call withholds two, and the standalone question withholds three to six over six
+samples. A model already writing a dictionary entry has an entry to produce; asked on
+its own it has nothing to produce but the judgement. Rare real wording survived every
+run of all three. What the standalone call reaches are the well-formed compounds
+nobody says — `Fahrradsuppe`, `Löffelangst` — which the article's own verdict never
+withheld and this one refuses in most runs, though not in all of them.
 
-**A note is stored only for the spelling its answer actually analysed.** When the
-answer headed its article with the submitted spelling, everything under it —
-meanings, examples, gap — describes that spelling, and it is carded with the
-correction offered beside it. When the parser had to put the submission back over
-a headword the answer replaced, the two halves belong to different words: that
-note would teach a word no sentence on the card contains. It is not stored, and
-the entry waits for the learner to say which word was meant.
+Nothing is shown until the wording has been vouched for: the article is held while it
+streams and released only once the judgement lands, because streaming a fabrication
+and blanking it afterwards is the reader having seen it. The judgement is one line and
+normally arrives first, and the two calls run together, so the reader waits for the
+slower of the two rather than for their sum. An answer that omits the verdict, or a
+judgement that never arrives, is treated as no objection: closing on the model's
+silence would refuse real words, which is the worse error.
 
-Neither spelling can be carded from an answer about the other, so choosing one
-re-runs the analysis for it:
+**A judgement about the submitted wording is overruled by an answer about another
+one.** The standalone question refuses four of six registered misspellings — being
+unused is what a misspelling is — so taking it at face value would answer every typo
+with "no such word" instead of the correction. It withholds only over an answer that
+stayed on the wording it judged. What that leaves uncovered is a misspelling no
+answer corrected: the entry then says the wording is not vouched for, which is the
+right thing to say about it and not the correction the reader wanted.
 
-- **[✏️ Исправить на «receive»]** analyses the suggested spelling.
-- **[✓ Оставить «recieve»]** analyses the submitted one, telling the model the
-  spelling is deliberate so it describes that word rather than correcting it
-  again — for the rare word, proper noun or dialectal form the first answer
-  mistook for a misspelling. Reverting a correction makes the same claim and is
-  the same request.
-- An answer that still replaces a spelling the learner has confirmed cards
-  nothing and says so, rather than asking the same question again. Where that
-  entry already had a note, the note stands, and the entry says that too: a
-  status which reports that nothing was stored may never stand alone over a
-  card the deck still holds.
+**A note is stored only for the wording its answer analysed.** Where the answer
+analysed another spelling, the card is for that word — applied, not offered, because
+a note pairing the learner's spelling with another word's meanings, examples and gap
+teaches a word no sentence on it contains. Nothing is silent about it: whenever the
+entry is about wording other than what was submitted, it says so above the analysis,
+for a lookup and a failed card as much as for a stored one, and undo removes what was
+stored. Only a misspelling the answer declares is *named* as one — a dictionary lemma
+for an inflected form is the ordinary case, and calling it a typo would accuse the
+learner on a large share of everything they submit. The parser keeps the analysed
+headword and drops a suggestion that merely repeats it.
+
+**An answer that calls the submission misspelled and still heads itself with that
+spelling cards nothing.** Its only card would teach the spelling the same answer
+calls wrong. The article stands, the entry says the wording looks misspelled, and
+the correction stays one tap away. The prompt asks for the lemma in the heading, but
+nothing verifies the visible heading against the stored wording: the card is bound to
+the parsed answer, not to the prose.
+
+Where the answer analysed the submitted wording and still names another spelling, the
+card is the learner's and the entry offers to replace it with the other one.
+
+**A declared misspelling is handed to the paid model, and a refusal is not.** The
+paid models are measurably better at exactly one thing here: six of six registered
+misspellings corrected against the pool's four. They withhold no coinages at all, so
+a refusal sent up for review would be overturned by the weaker judge of the two, and
+it stays with the pool. Ordinary wording never reaches the paid model. The cost is
+therefore one paid call per suspected misspelling, inside the daily cap, and none for
+the vast majority of submissions. Stepping up on this policy is not a complaint about
+the answer, so the pool model that produced it keeps its rating.
+
+**None of this proves linguistic intent, and the operating point is accepted rather
+than solved.** A model can still call a coinage attested: none to three of six survive
+both judgements, and what survives is the well-formed compound — `Fahrradsuppe`,
+`bookshelfy`, `tablewards` — carded with an invented sense, an invented register and
+an invented origin. That is the known cost of shipping without an attestation source,
+and no free source covers English, German and Serbian alike. Registered fixtures of
+both classes — real rare wording and well-formed nonsense — plus fresh semantic review
+of the concrete answers stay part of every prompt promotion gate, because the number
+moves with the prompt and cannot be read off the code.
 
 Behavior is fixed, not configurable:
 
-- The raw submission remains visible in history and is voiced as submitted.
+- The raw submission remains visible in history and is voiced as submitted —
+  except wording the answer would not vouch for, where no recording is offered.
+  Speech is fetched while the answer streams, so the file may already exist and
+  stay in the cache; what the refusal withholds is the player, not the bytes.
 - A valid suggestion is held to the same language and input rules as typed unit
-  text. Switching is reversible, and lookup-only stays lookup-only.
+  text, and lookup-only stays lookup-only.
 - A switch replaces the note and card audio it had, and a switch that stores
-  nothing leaves the previous note and its media exactly as they were.
-- The controls act on their own in-memory history entry and expire on restart. A
-  spelling awaiting a choice expires with it: a restart leaves it uncarded.
-- An entry waiting for a choice counts as neither added nor looked up, and undo
-  has nothing to remove until one of the controls stores a note.
+  nothing leaves the previous note and its media exactly as they were, and says so.
+- The controls act on their own in-memory history entry and expire on restart.
 
 ## Pronunciation audio
 

@@ -36,6 +36,14 @@ class CallRequest:
     trace_id: str | None = None
     on_reset: ResetHook | None = None
     usable: AnswerCheck | None = None
+    hand_over: AnswerCheck | None = None
+    # Whether this call may reach the paid model at all. A judgement asked beside the
+    # answer is a pool question by design: paying for one would spend the day's cap on
+    # every ordinary word, and the paid models are no better at it.
+    pool_only: bool = False
+    # Whether `/api/status` reports this call as the language's last one. A judgement
+    # asked beside the answer is not the answer, and settles after it as often as not.
+    reported: bool = True
 
 
 @dataclass(frozen=True)
@@ -67,6 +75,7 @@ class Completion:
         self._pool_answered = False
         self._rated = False
         self._oversized = False
+        self._pool_answer_usable = False
         self.llm_name: str | None = None
         self.paid = paid_only
 
@@ -101,20 +110,22 @@ class Completion:
                 async for delta in answer:
                     yield delta
         except BackendError as exc:
+            if self._request.reported:
+                self._cascade.record_call(
+                    self._request.language,
+                    self.llm_name,
+                    paid=self.paid,
+                    ok=False,
+                    error=str(exc),
+                )
+            raise
+        if self._request.reported:
             self._cascade.record_call(
                 self._request.language,
                 self.llm_name,
                 paid=self.paid,
-                ok=False,
-                error=str(exc),
+                ok=True,
             )
-            raise
-        self._cascade.record_call(
-            self._request.language,
-            self.llm_name,
-            paid=self.paid,
-            ok=True,
-        )
 
     async def _answer(self) -> AsyncIterator[str]:
         if self._paid_only:
@@ -138,26 +149,74 @@ class Completion:
         if delivered and self._request.on_reset is not None:
             await self._request.on_reset()
         self._oversized = False
-        async with aclosing(self._paid_deltas()) as paid:
-            async for delta in self._bounded_deltas(paid):
+        async for delta in self._paid_or_the_answer_it_replaces(
+            delivered,
+            restorable=self._pool_answer_usable and bool(delivered),
+        ):
+            yield delta
+
+    async def _paid_or_the_answer_it_replaces(
+        self,
+        delivered: list[str],
+        *,
+        restorable: bool,
+    ) -> AsyncIterator[str]:
+        """The paid step, giving back the pool answer it replaced when it fails.
+
+        An answer the caller could have used, handed over on policy alone, is not spent
+        on a provider error the reader never caused: before this it was, and a complete
+        pool answer became a failed entry.
+        """
+        pool_name = self.llm_name
+        try:
+            async with aclosing(self._paid_deltas()) as paid:
+                async for delta in self._bounded_deltas(paid):
+                    yield delta
+        except BackendError:
+            if not restorable:
+                raise
+            # The bound belongs to the answer being given back, not to the paid one
+            # that replaced it; a truncated pool answer is never usable, so never here.
+            self._oversized = False
+            # Rated afresh by the caller, because the answer it ends up with is this
+            # one again; a pool answer already rated down never reaches here.
+            self.paid, self.llm_name, self._rated = False, pool_name, False
+            if self._request.on_reset is not None:
+                await self._request.on_reset()
+            for delta in delivered:
                 yield delta
 
     async def _steps_up(self, miss: BudgetMissError | None, answer: str) -> bool:
         """Whether the paid model takes the request over from the pool."""
-        if (
+        if self._request.pool_only:
+            if miss is not None:
+                raise BackendError(str(miss)) from miss
+            return False
+        usable = (
             miss is None
             and not self._oversized
             and (self._request.usable is None or self._request.usable(answer))
-        ):
+        )
+        self._pool_answer_usable = usable
+        handed_over = (
+            usable and self._request.hand_over is not None and self._request.hand_over(answer)
+        )
+        if usable and not handed_over:
             return False
         refusal = self._cascade.paid_refusal(self._request.language)
         if miss is not None:
             if refusal is not None:
                 raise BackendError(f"{miss}; paid step unavailable: {refusal}") from miss
             return True
-        # An answer the caller cannot use is no more complete than one that never
-        # arrived: it is rated down here, and stands only when nothing can replace it.
-        await self.record_quality(0.0)
+        if not usable:
+            # An answer the caller cannot use is no more complete than one that never
+            # arrived: it is rated down here, and stands only when nothing can replace it.
+            await self.record_quality(0.0)
+        elif refusal is None:
+            # The pool answered as asked and another model takes it from here, so this
+            # call is settled unrated. The caller rates once, at the end of the stream,
+            # and that rating belongs to the answer it ends up with — not to this one.
+            self._rated = True
         return refusal is None
 
     async def _bounded_deltas(self, stream: AsyncIterator[str]) -> AsyncIterator[str]:
@@ -224,7 +283,7 @@ class Cascade:
         self._roll_over()
         return self._paid_calls
 
-    def stream_completion(
+    def stream_completion(  # noqa: PLR0913 - one call, and every hook the caller sets on it.
         self,
         prompt: str,
         language: Language,
@@ -232,6 +291,9 @@ class Cascade:
         trace_id: str | None = None,
         on_reset: ResetHook | None = None,
         usable: AnswerCheck | None = None,
+        hand_over: AnswerCheck | None = None,
+        pool_only: bool = False,
+        reported: bool = True,
     ) -> Completion:
         request = CallRequest(
             prompt,
@@ -239,6 +301,9 @@ class Cascade:
             trace_id=trace_id,
             on_reset=on_reset,
             usable=usable,
+            hand_over=hand_over,
+            pool_only=pool_only,
+            reported=reported,
         )
         return Completion(self, request)
 

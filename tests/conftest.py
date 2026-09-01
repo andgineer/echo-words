@@ -37,6 +37,7 @@ _DEFAULT_BEHAVIOR_BY_FILE: dict[str, tuple[str, str, str | None]] = {
     "test_history.py": (_PLATFORM, "Answer delivery", "History"),
     "test_pipeline.py": (_VOCABULARY, "Answer delivery", "Streaming pipeline"),
     "test_prompt.py": (_VOCABULARY, "Answer delivery", "Prompt construction"),
+    "test_verdict.py": (_VOCABULARY, "Answer delivery", "Attested wording"),
     "test_release_workflows.py": (_PLATFORM, "Health and deployment", "Release pipeline"),
     "test_sanitizer.py": (_PLATFORM, "Answer delivery", "Safe answer HTML"),
     "test_segments.py": (_VOCABULARY, "Answer delivery", "Suggested units"),

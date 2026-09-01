@@ -1,6 +1,8 @@
 """The merged language-analysis prompt and its hidden structured answer."""
 
+import json
 import logging
+from dataclasses import dataclass
 
 from echo_words.card import CardParseError, ParsedAnswer, parse_answer_payload
 from echo_words.languages import Language
@@ -8,6 +10,20 @@ from echo_words.languages import Language
 CARD_DELIMITER = "===CARD==="
 PAYLOAD_LOG_LIMIT = 2000
 MAX_COMPLETE_ANSWER_CHARS = 16_000
+# The verdict leads the answer so a refusal costs no article. Measured on the free
+# pool with the prompt the submit box actually sends: asked as a leading judgement it
+# withholds two coinages of six, asked as prose inside the article rules it withheld
+# none. What it catches is nonsense strings; a well-formed compound it still cards.
+VERDICT_PREFIX = "===USED==="
+# The marker is looked for in the lead rather than at the very start: a model that
+# prefixes one courtesy word must not thereby switch the judgement off.
+VERDICT_LEAD_CHARS = 200
+# How much may follow an opened but unclosed judgement before it is given up on. A
+# judgement wrapped over several lines closes well inside this even with a wordy
+# register; one that never closes would otherwise hold the whole article back for
+# good. Set too tight, the bound expires mid-object and prints the rest of the JSON
+# to the reader as prose.
+MAX_VERDICT_JSON_CHARS = 400
 
 logger = logging.getLogger(__name__)
 
@@ -30,9 +46,22 @@ most of it — return that expression separately in combinations rather than mak
 its changing context part of a dictionary entry. If uncertain, choose text.
 {intent_rule}
 
+Having chosen the unit branch, judge the submitted wording before writing about
+it, and open the answer with that judgement on its own line:
+{verdict_prefix} {{"used": true or false, "where": "<the register, field, dialect or
+period this exact wording is used in, in a few words; empty when used is false>"}}
+Rarity is no objection: wording real speakers use in any register, field, dialect
+or period is used, however uncommon. Wording that is merely well formed — a
+compound, derivation or coinage nobody actually says — is not used. A misspelling
+is not this case: it is real wording written wrong, so answer it as the misspelling
+rules below require, with the correction in suggestion. Say used false only when
+nothing attested is close at all, and then write nothing else: no article, no card,
+no explanation. The text branch has no such line.
+
 For a unit, write a complete compact dictionary article in this order:
-1. Begin with the unit heading in <b> tags, using the dictionary lemma; when you
-   suspect a misspelling, head the article with the submitted spelling instead.
+1. Begin with the unit heading in <b> tags, using the dictionary lemma, which is
+   also what goes in word; head a suspected misspelling with the correction, never
+   with the submitted spelling.
 2. Give the translations, most frequent in everyday speech first. Never name the
    part of speech. Put a register mark after the translation it qualifies.
 3. Forms only when useful to recognise or produce. Use a table of at most six
@@ -122,16 +151,21 @@ Check before answering that the JSON is valid, with every string in double
 quotes, and that a unit article begins with the bold heading its word names.
 """
 
+_ATTESTATION_PROMPT = """You judge whether a wording is actually used by speakers of {source_lang}.
+
+Wording: "{word}"
+
+Answer with one line of JSON and nothing else:
+{{"used": true or false, "where": "<the register, field, dialect or period this exact
+wording is used in, in a few words; empty when used is false>"}}
+
+Rarity is no objection: wording real speakers use in any register, field, dialect or
+period is used, however uncommon. Wording that is merely well formed — a compound,
+derivation or coinage nobody actually says — is not used, however natural it looks.
+Do not write an article, an explanation or anything else."""
+
 _UNIT_INTENT = "The learner explicitly selected a unit, so kind must be unit."
 _OPEN_INTENT = "For this submit-box request, choose the branch yourself."
-# Appended to the intent line rather than placed on its own, so the prompt every
-# other request sends stays byte for byte what the benchmark measured.
-_CONFIRMED_SPELLING = (
-    "The learner has confirmed this spelling deliberately, so treat it as correct: "
-    "analyse exactly the submitted spelling, copy it into word unchanged, set "
-    "word_relation to same, leave suggestion empty, and spell it that way in every "
-    "example and heading."
-)
 _CONTEXT_RULE = (
     "Use the supplied context as the first example of its sense and include "
     '"context_sense": <zero-based index> in the unit object. In that example, '
@@ -162,7 +196,6 @@ def build_prompt(  # noqa: PLR0913 - one prompt, and every switch that varies it
     *,
     context: str = "",
     unit_intent: bool = False,
-    spelling_confirmed: bool = False,
 ) -> str:
     """Build the sole compact prompt; only the request intent varies."""
     request = (
@@ -174,13 +207,12 @@ def build_prompt(  # noqa: PLR0913 - one prompt, and every switch that varies it
     )
     context_field = ', "context_sense": <zero-based index>' if context else ""
     intent_rule = _UNIT_INTENT if unit_intent else _OPEN_INTENT
-    if spelling_confirmed:
-        intent_rule = f"{intent_rule} {_CONFIRMED_SPELLING}"
     return _PROMPT.format(
         source_lang=language.name,
         target_lang=target_lang,
         source_hints=language.prompt_hints or "",
         request=request,
+        verdict_prefix=VERDICT_PREFIX,
         intent_rule=intent_rule,
         context_field=context_field,
         context_rule=_CONTEXT_RULE if context else _NO_CONTEXT_RULE,
@@ -202,6 +234,106 @@ def build_extended_prompt(
         word=word,
         context_note=context_note,
     )
+
+
+@dataclass(frozen=True)
+class Verdict:
+    """The answer's own judgement on whether the submitted wording is used at all.
+
+    The prompt also asks where it is used: naming a register or period is what makes
+    the judgement concrete rather than a guess. Nothing here reads that answer back,
+    so it is not kept.
+    """
+
+    used: bool
+
+
+def _marker_at(raw: str) -> int | None:
+    """Where the verdict marker starts in the answer's lead, whole or still arriving."""
+    # The window covers a marker that *starts* inside the lead, so one beginning at its
+    # last character is still found whole rather than read as prose.
+    lead = raw[: VERDICT_LEAD_CHARS + len(VERDICT_PREFIX)]
+    at = lead.find(VERDICT_PREFIX)
+    if 0 <= at < VERDICT_LEAD_CHARS:
+        return at
+    # A marker still arriving may start anywhere the whole one may, so the two scans
+    # share a window: gating the partial one tighter showed half a marker as prose.
+    if len(raw) > VERDICT_LEAD_CHARS + len(VERDICT_PREFIX):
+        return None
+    # Only the end of the stream can hold half a marker, and it must not flash on
+    # the page as prose before the judgement it belongs to is readable.
+    for length in range(min(len(VERDICT_PREFIX) - 1, len(raw)), 0, -1):
+        if raw.endswith(VERDICT_PREFIX[:length]) and len(raw) - length < VERDICT_LEAD_CHARS:
+            return len(raw) - length
+    return None
+
+
+def _read_verdict(raw: str) -> tuple[Verdict | None, int, int | None] | None:
+    """Scan the lead for the verdict: what it says, where it starts, where it ends.
+
+    None when no marker has arrived at all. An end of None means the marker is still
+    arriving and everything from it is held back; a marker that has arrived whole but
+    cannot be read yields no verdict and is dropped, because unreadable is absent and
+    the marker itself is not prose the reader is owed.
+    """
+    at = _marker_at(raw)
+    if at is None:
+        return None
+    after = at + len(VERDICT_PREFIX)
+    tail = raw[after:]
+    indent = len(tail) - len(tail.lstrip())
+    try:
+        value, consumed = json.JSONDecoder().raw_decode(tail[indent:])
+    except ValueError:
+        opened = tail.lstrip().startswith("{")
+        if opened and len(tail) <= MAX_VERDICT_JSON_CHARS:
+            # A judgement written over more than one line has not finished arriving.
+            # Cutting it at the first newline would print the rest of its JSON as prose.
+            return (None, at, None)
+        line_end = tail.find("\n")
+        # No line break yet means the judgement may still be on its way.
+        return (None, at, None if line_end < 0 else after + line_end + 1)
+    end = after + indent + consumed
+    used = value.get("used") if isinstance(value, dict) else None
+    verdict = Verdict(used) if isinstance(used, bool) else None
+    return verdict, at, end + len(raw[end:]) - len(raw[end:].lstrip())
+
+
+def build_attestation_prompt(language: Language, word: str) -> str:
+    """Build the standalone attestation question.
+
+    Asked on its own rather than inside the article call: a model already writing a
+    dictionary entry has an entry to produce, and measurably keeps producing one.
+    """
+    return _ATTESTATION_PROMPT.format(source_lang=language.name, word=word)
+
+
+def parse_attestation(raw: str) -> Verdict | None:
+    """Read the standalone answer, which is one bare JSON object and no marker."""
+    start = raw.find("{")
+    if start < 0:
+        return None
+    try:
+        value, _consumed = json.JSONDecoder().raw_decode(raw[start:])
+    except ValueError:
+        return None
+    used = value.get("used") if isinstance(value, dict) else None
+    return Verdict(used) if isinstance(used, bool) else None
+
+
+def parse_verdict(raw: str) -> Verdict | None:
+    """Read the answer's verdict, or None when it gave none this side of readable."""
+    read = _read_verdict(raw)
+    return None if read is None else read[0]
+
+
+def strip_verdict(raw: str) -> str:
+    """Drop the verdict from what the reader sees, and every partial prefix of it."""
+    read = _read_verdict(raw)
+    if read is None:
+        return raw
+    _, at, end = read
+    return raw[:at] if end is None else raw[:at] + raw[end:]
 
 
 def extract_answer(

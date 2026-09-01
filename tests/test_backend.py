@@ -4,6 +4,7 @@ from types import SimpleNamespace
 import pytest
 from fakes import FakeDirectClient, FakeHandle, fake_cascade
 from llmbroker import (
+    InvalidProviderResponseError,
     LLMTimeoutError,
     MissingKeyError,
     NoLLMAvailableError,
@@ -103,6 +104,170 @@ async def test_an_answer_the_caller_cannot_use_is_stepped_up_to_exactly_once(set
     assert await drain(completion) == ["free ", "answer", "paid ", "answer"]
     assert cascade.broker.direct_calls == ["gpt-fast"]
     assert cascade.calls_today == 1
+
+
+async def test_a_usable_answer_handed_over_is_stepped_up_without_being_rated_down(
+    settings,
+    languages,
+):
+    """Handing an answer to the paid model on policy is not a complaint about it.
+    Rating it zero would push a pool model down the ranking for answering exactly as
+    it was asked, which is how a caller's preference becomes a broken pool."""
+    handle = FakeHandle(["free ", "answer"])
+    cascade = fake_cascade(
+        settings,
+        handles=[handle],
+        client=FakeDirectClient(["paid ", "answer"]),
+    )
+    completion = cascade.stream_completion(
+        "prompt",
+        languages["en"],
+        usable=lambda _answer: True,
+        hand_over=lambda _answer: True,
+    )
+    assert await drain(completion) == ["free ", "answer", "paid ", "answer"]
+    assert cascade.broker.direct_calls == ["gpt-fast"]
+    assert handle.scores == []
+
+    # The caller rates the answer it ends up with, and that answer came from the paid
+    # model: letting it land on the pool handle would score one model on another's work.
+    await completion.record_quality(1.0)
+    assert handle.scores == []
+
+
+async def test_a_handed_over_answer_stands_unrated_when_nothing_can_take_it(
+    settings,
+    languages,
+):
+    handle = FakeHandle(["free ", "answer"])
+    cascade = fake_cascade(
+        settings.model_copy(update={"api_model": ""}),
+        handles=[handle],
+        client=FakeDirectClient(),
+    )
+    completion = cascade.stream_completion(
+        "prompt",
+        languages["en"],
+        usable=lambda _answer: True,
+        hand_over=lambda _answer: True,
+    )
+    assert await drain(completion) == ["free ", "answer"]
+    assert cascade.broker.direct_calls == []
+    assert handle.scores == []
+
+    # Nothing took it, so this pool answer is the one the reader got, and it is rated.
+    await completion.record_quality(1.0)
+    assert handle.scores == [1.0]
+
+
+async def test_an_unusable_answer_is_rated_down_whatever_the_hand_over_says(
+    settings,
+    languages,
+):
+    handle = FakeHandle(["free ", "answer"])
+    cascade = fake_cascade(
+        settings,
+        handles=[handle],
+        client=FakeDirectClient(["paid ", "answer"]),
+    )
+    completion = cascade.stream_completion(
+        "prompt",
+        languages["en"],
+        usable=lambda _answer: False,
+        hand_over=lambda _answer: False,
+    )
+    assert await drain(completion) == ["free ", "answer", "paid ", "answer"]
+    assert handle.scores == [0.0]
+
+
+async def test_a_failed_paid_step_gives_back_the_pool_answer_it_replaced(
+    settings,
+    languages,
+):
+    """The pool answered completely and was handed over on policy alone. A provider
+    error on the paid side is not the reader's problem: losing their analysis to it
+    would make an optional second opinion strictly worse than not asking."""
+    handle = FakeHandle(["free ", "answer"])
+    cascade = fake_cascade(
+        settings,
+        handles=[handle],
+        client=FakeDirectClient([], error=InvalidProviderResponseError("boom", model="gpt-fast")),
+    )
+    reset = ResetHook()
+    completion = cascade.stream_completion(
+        "prompt",
+        languages["en"],
+        on_reset=reset,
+        usable=lambda _answer: True,
+        hand_over=lambda _answer: True,
+    )
+
+    assert await drain(completion) == ["free ", "answer", "free ", "answer"]
+    assert completion.paid is False
+    # The pool answer stands, so the caller's rating belongs to it again.
+    await completion.record_quality(1.0)
+    assert handle.scores == [1.0]
+
+
+async def test_an_unusable_pool_answer_is_not_given_back_when_the_paid_step_fails(
+    settings,
+    languages,
+):
+    """Restoring is for an answer handed over on policy. One the caller called unusable
+    was rated down and replaced on quality: handing it back would show the reader text
+    the pipeline cannot read, and rate the same pool call a second time."""
+    handle = FakeHandle(["free ", "answer"])
+    cascade = fake_cascade(
+        settings,
+        handles=[handle],
+        client=FakeDirectClient([], error=InvalidProviderResponseError("boom", model="gpt-fast")),
+    )
+    completion = cascade.stream_completion(
+        "prompt",
+        languages["en"],
+        usable=lambda _answer: False,
+        hand_over=lambda _answer: False,
+    )
+
+    with pytest.raises(BackendError):
+        await drain(completion)
+    await completion.record_quality(1.0)
+    assert handle.scores == [0.0]
+
+
+async def test_a_pool_only_call_never_reaches_the_paid_model(settings, languages):
+    """The judgement asked beside the answer is a pool question by design: paying for
+    one would spend the day's cap on every ordinary word, and the paid models are no
+    better at it. A pool miss is an error here, never a reason to buy an answer."""
+    cascade = fake_cascade(
+        settings,
+        handles=[FakeHandle(["free ", "answer"])],
+        client=FakeDirectClient(["paid ", "answer"]),
+    )
+    completion = cascade.stream_completion(
+        "prompt",
+        languages["en"],
+        pool_only=True,
+        usable=lambda _answer: False,
+    )
+    assert await drain(completion) == ["free ", "answer"]
+    assert cascade.broker.direct_calls == []
+    assert cascade.calls_today == 0
+
+
+async def test_a_pool_only_call_that_misses_its_budget_fails_instead_of_buying_one(
+    settings,
+    languages,
+):
+    cascade = fake_cascade(
+        settings,
+        handles=[FakeHandle([], error=BudgetMissError("pool budget spent"))],
+        client=FakeDirectClient(["paid ", "answer"]),
+    )
+    completion = cascade.stream_completion("prompt", languages["en"], pool_only=True)
+    with pytest.raises(BackendError):
+        await drain(completion)
+    assert cascade.broker.direct_calls == []
 
 
 async def test_a_pool_answer_the_caller_can_use_never_steps_up(settings, languages):

@@ -38,10 +38,19 @@ class Entry:
     no_card_audio: bool = False
     # This answer stored nothing, and the note the entry already had still stands.
     card_kept: bool = False
+    # The wording the entry is about when it is not the wording submitted, so the
+    # reader is told which word they are reading about. Named apart from the
+    # pipeline's own carded_word, which is the headword a rebuild reuses audio for.
+    analysed_as: str | None = None
+    # Whether the answer called that difference a misspelling, which decides whether
+    # the entry says "looks like a typo" or merely names the word it is about.
+    typo_suspected: bool = False
+    # The entry shows a spelling other than the one submitted, so the offer beside
+    # it points back rather than forward.
+    showing_other_spelling: bool = False
     error: str | None = None
     model: str | None = None
     detail_available: bool = False
-    correction_reversed: bool = False
 
     def __post_init__(self) -> None:
         if not self.shown_spelling:

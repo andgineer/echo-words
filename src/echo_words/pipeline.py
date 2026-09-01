@@ -18,12 +18,22 @@ from echo_words.card import Meaning, Note, ParsedAnswer, ParsedText, ParsedUnit
 from echo_words.events import EventHub
 from echo_words.history import Entry, History, UndoState
 from echo_words.i18n import DEFAULT_LOCALE, message
-from echo_words.languages import MAX_CONTEXT_LENGTH, Language, split_words
+from echo_words.languages import (
+    MAX_CONTEXT_LENGTH,
+    Language,
+    fold_for_match,
+    split_words,
+)
 from echo_words.prompt import (
     CARD_DELIMITER,
+    Verdict,
+    build_attestation_prompt,
     build_extended_prompt,
     build_prompt,
     extract_answer,
+    parse_attestation,
+    parse_verdict,
+    strip_verdict,
 )
 from echo_words.sanitizer import sanitize_html
 from echo_words.segments import Segment, display_text
@@ -36,10 +46,20 @@ ADDED_STATUS = "added"
 LOOKUP_ONLY_STATUS = "lookup_only"
 TEXT_STATUS = "text"
 CARD_FAILED_STATUS = "failed"
-HELD_SPELLING_STATUS = "spelling"
-SPELLING_REFUSED_STATUS = "spelling_refused"
+UNATTESTED_STATUS = "unattested"
+MISSPELLED_STATUS = "misspelled"
 REQUEST_EXPIRED = "request expired"
 MAX_POST_GENERATION_AUDIO_WAIT_SECONDS = 10
+# How long the judgement may still take once the article is complete. It is one line
+# and normally lands long before; past this the answer stands unjudged rather than the
+# reader waiting on a call that is not coming back.
+ATTESTATION_GRACE_SECONDS = 5
+# How long the first characters wait on the judgement. It normally answers well inside
+# this; past it the answer stays withheld anyway, so the wait only decides whether the
+# reader sees the article as it streams or all at once when the judgement lands.
+FIRST_PAINT_SECONDS = 2
+# The judgement has not been read yet; distinct from "read, and it said nothing".
+_PENDING = object()
 
 logger = logging.getLogger(__name__)
 
@@ -95,7 +115,6 @@ class Job:
     replace_media: str | None = None
     replaced_audio: Path | None = None
     replaced_card_audio: Path | None = None
-    spelling_confirmed: bool = False
 
 
 @dataclass(frozen=True)
@@ -206,7 +225,6 @@ class WordPipeline:
         replace_media: str | None = None,
         replaced_audio: Path | None = None,
         replaced_card_audio: Path | None = None,
-        spelling_confirmed: bool = False,
     ) -> Entry:
         if reuse_entry is not None:
             entry = self._entries[reuse_entry]
@@ -266,7 +284,6 @@ class WordPipeline:
                 replace_media,
                 replaced_audio,
                 replaced_card_audio,
-                spelling_confirmed,
             ),
         )
         await self.events.publish("accepted", entry.public())
@@ -318,35 +335,6 @@ class WordPipeline:
             context=state.context,
             reuse_entry=entry.entry_id,
             kind="switch",
-            # Going back to what the learner typed is the same claim keeping it makes:
-            # this spelling is the word, so it has to be analysed as itself.
-            spelling_confirmed=reverting,
-            replace_note_id=state.note_id,
-            replace_media=state.media_filename,
-            replaced_audio=state.audio_path,
-            replaced_card_audio=state.card_audio_path,
-        )
-
-    async def keep_spelling(self, entry_id: str) -> Entry:
-        """Analyse the submitted spelling as a word in its own right, and card that.
-
-        Nothing already in hand describes it: the answer that suspected a misspelling
-        described the other spelling throughout. Only the learner can settle which
-        word was meant, so their answer is what the model is finally told.
-        """
-        entry, state = self._active_control(entry_id)
-        if not state.suggestion:
-            raise ValueError("no spelling is waiting to be confirmed")
-        return await self.enqueue(
-            state.language,
-            # The spelling on screen is the one the control names and the learner reads.
-            state.shown_spelling,
-            state.lookup_only,
-            intent="unit",
-            context=state.context,
-            reuse_entry=entry.entry_id,
-            kind="switch",
-            spelling_confirmed=True,
             replace_note_id=state.note_id,
             replace_media=state.media_filename,
             replaced_audio=state.audio_path,
@@ -448,6 +436,7 @@ class WordPipeline:
             entry.text = ""
             await self.events.publish("reset", {"entry_id": entry.entry_id})
 
+        attestation = _Attestation(self._attestation_task(job))
         try:
             if self.cascade is None:
                 await self._fail(job)
@@ -458,12 +447,21 @@ class WordPipeline:
                 self.target_lang,
                 context=job.context,
                 unit_intent=job.intent == "unit",
-                spelling_confirmed=job.spelling_confirmed,
             )
             parsed: ParsedAnswer | None = None
+            verdict: Verdict | None = None
 
-            def parse_payload(answer: str) -> bool:
-                nonlocal parsed
+            judged = job.kind != "rebuild"
+
+            def read_answer(answer: str) -> None:
+                nonlocal parsed, verdict
+                verdict = parse_verdict(answer)
+                if judged and verdict is not None and not verdict.used:
+                    # A refusal is the whole answer: there is no card block to read.
+                    # A rebuild is not judged at all — it is about a note the reader
+                    # already has, and re-deciding that here would delete it.
+                    parsed = None
+                    return
                 parsed = extract_answer(
                     answer,
                     job.word,
@@ -471,8 +469,24 @@ class WordPipeline:
                     unit_intent=job.intent == "unit",
                     context=job.context,
                 )
-                return parsed is not None
 
+            def complete(answer: str) -> bool:
+                """Whether the answer is one the caller can use. A refusal is complete
+                in itself: it withheld the article on purpose, and nothing is missing."""
+                read_answer(answer)
+                return parsed is not None or (judged and verdict is not None and not verdict.used)
+
+            def hand_over(answer: str) -> bool:
+                """Whether the paid model decides instead, over a usable pool answer.
+
+                Only a declared misspelling: the paid models correct all six registered
+                ones against the pool's four, while they withhold fewer coinages, so a
+                refusal stays here rather than being overturned by a weaker judge.
+                """
+                read_answer(answer)
+                return parsed is not None and _declares_a_typo(parsed)
+
+            paint_waited = False
             try:
                 if job.paid_only:
                     completion = self.cascade.stream_paid(
@@ -486,7 +500,8 @@ class WordPipeline:
                         job.language,
                         trace_id=job.entry_id,
                         on_reset=reset,
-                        usable=parse_payload,
+                        usable=complete,
+                        hand_over=hand_over,
                     )
                 async with aclosing(completion):
                     async for delta in completion:
@@ -504,7 +519,24 @@ class WordPipeline:
                             await self.events.publish("reset", {"entry_id": entry.entry_id})
                             entry_reset = True
                         raw += delta
-                        visible = sanitize_html(visible_analysis(raw))
+                        if attestation.pending:
+                            # Waited for once, briefly, so the first characters are not
+                            # held back until the article's next chunk happens to
+                            # arrive; after that the judgement is read, never waited
+                            # for, and it keeps the answer withheld until it lands.
+                            if not paint_waited:
+                                paint_waited = True
+                                await attestation.lands_within(FIRST_PAINT_SECONDS)
+                            attestation.poll()
+                        # Nothing is shown until the wording has been vouched for, and
+                        # an unfinished judgement has not vouched for anything.
+                        # Streaming first and blanking afterwards is the reader having
+                        # seen the fabrication.
+                        early = parse_verdict(raw) if judged else None
+                        withheld = judged and (
+                            _refuses(early) or attestation.pending or attestation.refuses
+                        )
+                        visible = "" if withheld else sanitize_html(visible_analysis(raw))
                         entry.text = visible
                         last_published, last_update_at = await self._publish_progress(
                             entry,
@@ -513,10 +545,12 @@ class WordPipeline:
                             last_update_at,
                         )
                     if getattr(completion, "oversized", False):
-                        parsed = None
+                        # Including the judgement: what a bounded answer said about the
+                        # wording cannot speak for the answer that replaced it.
+                        parsed = verdict = None
                         quality = 0.0
                     else:
-                        quality = 1.0 if parse_payload(raw) else 0.0
+                        quality = 1.0 if complete(raw) else 0.0
                     await completion.record_quality(quality)
             except BackendError as exc:
                 if job.kind == "rebuild" and not entry_reset:
@@ -538,10 +572,21 @@ class WordPipeline:
             )
             audio_task = None
             context_audio_task = None
-            stored = await self._store_card(job, parsed, card_audio_path)
+            attested = await attestation.result()
+            # A correction overrules the standalone refusal: nobody writes `recieve` —
+            # being a misspelling is what that means (spec/decision-answer-shape.md).
+            refused = judged and (
+                _refuses(verdict) or (_refuses(attested) and not _declares_a_typo(parsed))
+            )
+            stored = (
+                # A refused lookup is still a lookup: it made no card either way.
+                StoreResult(UNATTESTED_STATUS, "lookup" if job.lookup_only else "unattested")
+                if refused
+                else await self._store_card(job, parsed, card_audio_path)
+            )
             if job.kind == "switch" and not _kept_previous_note(job, stored):
-                # Confirming a spelling switches an entry to the word it already
-                # showed, and one cached file then serves both sides of the switch.
+                # The switch stored its own note, so what the replaced one used goes —
+                # except a cached file the new spelling happens to share with it.
                 if job.replaced_audio != audio_path:
                     self._delete_audio(job.replaced_audio)
                 if job.replaced_card_audio != card_audio_path:
@@ -552,11 +597,27 @@ class WordPipeline:
                 if card_audio_path not in (job.replaced_card_audio, job.replaced_audio):
                     self._delete_audio(card_audio_path)
                 audio_path = job.replaced_audio
+            if stored.status == UNATTESTED_STATUS:
+                # Speaking a string the answer would not vouch for tells the reader it
+                # is a word, which is the claim the answer refused to make. Detaching is
+                # all that is done here: a recording is addressed by its text, so the
+                # same file may already be serving another live entry.
+                audio_path = context_audio_path = card_audio_path = None
             entry.audio_file = audio_path.name if audio_path else None
-            entry.no_audio = audio_path is None
+            entry.no_audio = audio_path is None and stored.status != UNATTESTED_STATUS
             entry.no_card_audio = stored.action == "added" and card_audio_path is None
             # A status that says nothing was carded must not stand over a surviving note.
             entry.card_kept = _kept_previous_note(job, stored)
+            entry.analysed_as = _analysed_as(job, parsed)
+            entry.typo_suspected = _declares_a_typo(parsed)
+            withheld = stored.status == UNATTESTED_STATUS
+            if withheld:
+                # Everything read out of a withheld answer goes with it: a chip is the
+                # same invention one tap away, and a detail is the article again.
+                entry.text = raw = ""
+                last_published = ""
+                parsed = None
+                entry.analysed_as, entry.typo_suspected = None, False
             entry.context_audio_file = context_audio_path.name if context_audio_path else None
             suggestion = self._correction_target(job, parsed)
             chips, segment_kind = _segments_for(parsed, job)
@@ -581,6 +642,44 @@ class WordPipeline:
             for pending in (audio_task, context_audio_task):
                 if pending is not None:
                     _cancel_task(pending)
+            attestation.cancel()
+
+    def _attestation_task(self, job: Job) -> "asyncio.Task[Verdict | None] | None":
+        """Ask the pool in parallel whether the submitted wording is used at all.
+
+        A judgement asked on its own withholds measurably more coinages than the same
+        judgement asked at the head of the answer that has a dictionary entry to write.
+        """
+        if self.cascade is None or job.intent != "unit" or job.paid_only:
+            return None
+        return asyncio.create_task(
+            self._attest(job),
+            name=f"echo-words-attestation-{job.entry_id}",
+        )
+
+    async def _attest(self, job: Job) -> Verdict | None:
+        if self.cascade is None:
+            return None
+        answer = ""
+        try:
+            completion = self.cascade.stream_completion(
+                build_attestation_prompt(job.language, job.word),
+                job.language,
+                trace_id=f"{job.entry_id}-attestation",
+                pool_only=True,
+                reported=False,
+            )
+            async with aclosing(completion):
+                async for delta in completion:
+                    answer += delta
+            verdict = parse_attestation(answer)
+            await completion.record_quality(1.0 if verdict is not None else 0.0)
+        except BackendError:
+            # An attestation that never arrived is not an objection; refusing on the
+            # pool's silence would withhold real words, which is the worse error.
+            return None
+        else:
+            return verdict
 
     async def _process_detail(self, job: DetailJob) -> None:
         entry = self._entries.get(job.entry_id)
@@ -699,13 +798,10 @@ class WordPipeline:
             return StoreResult(status, "lookup")
         if not isinstance(parsed, ParsedUnit) or self.anki is None:
             return StoreResult(CARD_FAILED_STATUS, "failed")
-        if not parsed.analysed_as_carded:
-            # The note would carry the submitted spelling over the meanings, examples
-            # and gap of the word the answer actually analysed. Nothing here is worth
-            # storing: either spelling has to be analysed as itself first.
-            if job.spelling_confirmed:
-                return StoreResult(SPELLING_REFUSED_STATUS, "refused")
-            return StoreResult(HELD_SPELLING_STATUS, "held")
+        if _kept_the_misspelling(job, parsed):
+            # The answer called the submission misspelled and still headed itself with
+            # it, so the only card it offers teaches the spelling it just called wrong.
+            return StoreResult(MISSPELLED_STATUS, "misspelled")
         note = parsed.note
         try:
             if job.replace_note_id is not None:
@@ -748,7 +844,10 @@ class WordPipeline:
         entry.suggestion = suggestion
         entry.shown_spelling = entry.word
         control = self._controls.get(entry.entry_id)
-        entry.correction_reversed = bool(
+        # Which way the offer points: towards the suggestion, or back to what was
+        # typed. Without it the entry would call the learner's own spelling the
+        # usual one as soon as they switched away from it.
+        entry.showing_other_spelling = bool(
             control
             and control.suggestion
             and control.shown_spelling.casefold() != control.input_word.casefold(),
@@ -766,6 +865,9 @@ class WordPipeline:
                 "no_audio": entry.no_audio,
                 "no_card_audio": entry.no_card_audio,
                 "card_kept": entry.card_kept,
+                "analysed_as": entry.analysed_as,
+                "typo_suspected": entry.typo_suspected,
+                "showing_other_spelling": entry.showing_other_spelling,
                 "segments": entry.segments,
                 "segment_kind": entry.segment_kind,
                 "shape": entry.shape,
@@ -773,7 +875,6 @@ class WordPipeline:
                 "context_audio_url": entry.context_audio_url,
                 "model": entry.model,
                 "detail_available": entry.detail_available,
-                "correction_reversed": entry.correction_reversed,
             },
         )
         self.history.trim()
@@ -827,9 +928,10 @@ class WordPipeline:
                 )
         elif not replacement_failed:
             undo = self.history.undo.get(job.language.code)
-            # A held spelling has no note to replace, so the control that resolves it
-            # writes the first undo state this entry ever had.
-            resolves_hold = (
+            # A switch over an entry that never stored a note — a refusal, a card that
+            # failed, a misspelling left uncarded — has nothing to replace, so it writes
+            # the first undo state this entry ever had.
+            cards_first = (
                 job.replace_note_id is None
                 and stored.note_id is not None
                 and self._latest_submissions.get(job.language.code) == job.entry_id
@@ -839,7 +941,7 @@ class WordPipeline:
                 and undo is not None
                 and undo.note_id == job.replace_note_id
             )
-            if resolves_hold or replaces_undone_note:
+            if cards_first or replaces_undone_note:
                 self.history.undo[job.language.code] = UndoState(
                     word=job.word,
                     action=stored.action,
@@ -957,6 +1059,9 @@ class WordPipeline:
         entry.no_audio = False
         entry.no_card_audio = False
         entry.card_kept = False
+        entry.analysed_as = None
+        entry.typo_suspected = False
+        entry.showing_other_spelling = False
         entry.error = None
         entry.model = None
         if kind != "rebuild":
@@ -991,7 +1096,8 @@ class WordPipeline:
 
 
 def visible_analysis(raw: str) -> str:
-    """Hide the card payload and every partial delimiter suffix from display."""
+    """Hide the verdict, the card payload and every partial delimiter from display."""
+    raw = strip_verdict(raw)
     delimiter_at = raw.find(CARD_DELIMITER)
     if delimiter_at >= 0:
         return raw[:delimiter_at]
@@ -1043,6 +1149,88 @@ def _sense_sentence(meaning: Meaning) -> str:
         if text and len(text) <= MAX_CONTEXT_LENGTH:
             return text
     return ""
+
+
+def _analysed_as(job: Job, parsed: ParsedAnswer | None) -> str | None:
+    """The wording the entry is about, when that is not the wording submitted.
+
+    Said for a lookup and a failed card as much as for a stored one, and whatever the
+    answer called the difference: the reader typed one thing and is reading about
+    another, which is theirs to know. What the difference is called is decided
+    separately — a dictionary lemma for an inflected form is not a misspelling.
+    """
+    if not isinstance(parsed, ParsedUnit):
+        return None
+    # Folded as the relation itself was decided, so a case fold or the other Serbian
+    # script is the same wording rather than another word to announce.
+    same = fold_for_match(parsed.note.word, job.language) == fold_for_match(
+        job.word,
+        job.language,
+    )
+    return None if same else parsed.note.word
+
+
+def _refuses(verdict: "Verdict | None | object") -> bool:
+    return isinstance(verdict, Verdict) and not verdict.used
+
+
+class _Attestation:
+    """The parallel judgement: the task, and every way of reading it without losing it.
+
+    It owns the task for the whole of a word, so the one place that ends it is the
+    caller's ``finally`` — a judgement read past its grace is still running.
+    """
+
+    def __init__(self, task: "asyncio.Task[Verdict | None] | None") -> None:
+        self._task = task
+        self._verdict: Verdict | None = None
+        self.pending = task is not None
+
+    @property
+    def refuses(self) -> bool:
+        return _refuses(self._verdict)
+
+    def poll(self) -> None:
+        """Read the judgement if it has landed, leaving it running otherwise."""
+        if self._task is not None and self._task.done():
+            self._verdict, self.pending = _task_verdict(self._task), False
+
+    async def lands_within(self, seconds: float) -> None:
+        """Give the judgement a moment to arrive; a cancellation here is not swallowed."""
+        if self._task is not None and self.pending:
+            with suppress(TimeoutError):
+                await asyncio.wait_for(asyncio.shield(self._task), seconds)
+        self.poll()
+
+    async def result(self) -> Verdict | None:
+        """The judgement, waited for only as long as it can still matter."""
+        await self.lands_within(ATTESTATION_GRACE_SECONDS)
+        return self._verdict
+
+    def cancel(self) -> None:
+        if self._task is not None:
+            _cancel_task(self._task)
+
+
+def _task_verdict(task: "asyncio.Task[Verdict | None]") -> Verdict | None:
+    if not task.done() or task.cancelled() or task.exception() is not None:
+        return None
+    return task.result()
+
+
+def _declares_a_typo(parsed: ParsedAnswer | None) -> bool:
+    return isinstance(parsed, ParsedUnit) and parsed.word_relation == "typo"
+
+
+def _kept_the_misspelling(job: Job, parsed: ParsedUnit) -> bool:
+    # Folded exactly as the relation itself was decided: a headword the parser called
+    # a different spelling is one, and a headword it called the same wording is the
+    # submission however its case or script is written.
+    return (
+        _declares_a_typo(parsed)
+        and parsed.suggestion is not None
+        and fold_for_match(parsed.note.word, job.language) == fold_for_match(job.word, job.language)
+    )
 
 
 def _kept_previous_note(job: Job, stored: StoreResult) -> bool:

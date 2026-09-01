@@ -348,14 +348,11 @@ def test_a_correct_spelling_suggestion_retains_the_submitted_word(languages):
     assert parsed.note.word == "recieve"
     assert parsed.word_relation == "typo"
     assert parsed.suggestion == "receive"
-    # This answer headed the article with the spelling it was given, so everything
-    # under it describes that spelling and the note it makes is one word throughout.
-    assert parsed.analysed_as_carded is True
 
 
-def test_a_headword_put_back_over_the_analysed_one_is_not_a_cardable_answer(languages):
-    """The note would read as the submitted spelling over another word's meanings,
-    examples and gap; only the answer's own headword names what was analysed."""
+def test_a_corrected_headword_is_kept_so_the_note_is_one_word_throughout(languages):
+    """The meanings, examples and gap under this headword describe the corrected
+    word, so the note carries that word too — and the reader is told it did."""
     parsed = parse_answer_payload(
         payload(word="receive", word_relation="typo", suggestion=""),
         "recieve",
@@ -363,25 +360,28 @@ def test_a_headword_put_back_over_the_analysed_one_is_not_a_cardable_answer(lang
     )
 
     assert isinstance(parsed, ParsedUnit)
-    assert parsed.note.word == "recieve"
-    assert parsed.analysed_word == "receive"
-    assert parsed.analysed_as_carded is False
+    assert parsed.note.word == "receive"
+    assert parsed.word_relation == "typo"
+    # Naming "receive" as the suggestion would offer the reader the word already carded.
+    assert parsed.suggestion is None
 
 
 @pytest.mark.parametrize(
     ("word", "suggestion", "expected_suggestion"),
     [
-        ("receive", "receive", "receive"),
+        ("receive", "receive", None),
         ("receiving", "receive", "receive"),
-        ("receive", "", "receive"),
+        ("receive", "", None),
     ],
 )
-def test_a_spelling_suggestion_never_becomes_the_headword(
+def test_the_analysed_headword_is_the_one_carded(
     languages,
     word,
     suggestion,
     expected_suggestion,
 ):
+    """However the answer names the correction, the note is built from the word the
+    answer described — never from a spelling nothing under the heading is about."""
     parsed = parse_answer_payload(
         payload(word=word, word_relation="typo", suggestion=suggestion),
         "recieve",
@@ -389,12 +389,17 @@ def test_a_spelling_suggestion_never_becomes_the_headword(
     )
 
     assert isinstance(parsed, ParsedUnit)
-    assert parsed.note.word == "recieve"
+    assert parsed.note.word == word
     assert parsed.word_relation == "typo"
     assert parsed.suggestion == expected_suggestion
 
 
-def test_a_same_relation_contradicted_by_the_word_becomes_a_visible_correction(languages):
+def test_a_same_relation_contradicted_by_the_word_is_not_read_as_a_correction(languages):
+    """The answer analysed another spelling while calling it the same word, and that
+    contradiction says nothing about the learner's spelling. Reading it as a correction
+    would call a dictionary form for an inflected submission a typo — which is what the
+    submissions of a learner mostly are — so the card is made and no accusation with it.
+    """
     parsed = parse_answer_payload(
         payload(word="можда", word_relation="same", suggestion=""),
         "мозда",
@@ -402,9 +407,9 @@ def test_a_same_relation_contradicted_by_the_word_becomes_a_visible_correction(l
     )
 
     assert isinstance(parsed, ParsedUnit)
-    assert parsed.note.word == "мозда"
-    assert parsed.word_relation == "typo"
-    assert parsed.suggestion == "можда"
+    assert parsed.note.word == "можда"
+    assert parsed.word_relation == "morphology"
+    assert parsed.suggestion is None
 
 
 def test_a_headword_differing_from_the_submission_only_in_case_stays_the_same_word(
@@ -463,11 +468,13 @@ def test_an_unusable_relation_label_falls_back_to_the_spellings(languages, word_
 @pytest.mark.parametrize(
     ("word_relation", "word", "suggestion", "expected"),
     [
-        ("same", "banks", "", ("typo", "bank", "banks")),
-        ("same", "bank", "banks", ("typo", "bank", "banks")),
-        ("morphology", "bank", "banks", ("typo", "bank", "banks")),
+        ("same", "banks", "", ("morphology", "banks", None)),
+        # An answer that analysed the submitted spelling and names another one is not
+        # calling it a misspelling: the suggestion stands as advice beside the card.
+        ("same", "bank", "banks", ("same", "bank", "banks")),
+        ("morphology", "bank", "banks", ("same", "bank", "banks")),
         ("typo", "bank", "", ("same", "bank", None)),
-        ("typo", "banks", "bank", ("typo", "bank", "banks")),
+        ("typo", "banks", "bank", ("typo", "banks", None)),
         ("morphology", "banks", "", ("morphology", "banks", None)),
     ],
 )

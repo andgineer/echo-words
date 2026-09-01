@@ -56,14 +56,6 @@ class ParsedUnit:
     word_relation: WordRelation
     suggestion: str | None
     segments: list[Segment]
-    # The headword the answer actually analysed. A suspected misspelling keeps the
-    # submitted spelling on the note, and then the meanings, examples and gap below
-    # it describe this other word instead.
-    analysed_word: str
-
-    @property
-    def analysed_as_carded(self) -> bool:
-        return self.analysed_word == self.note.word
 
 
 @dataclass(frozen=True)
@@ -118,8 +110,7 @@ def parse_answer_payload(  # noqa: C901, PLR0912 - the answer discriminator boun
     if any(key in card for key in _TEXT_FIELDS):
         raise CardParseError("a unit answer contains text combinations")
 
-    analysed_word = _headword(card.get("word"), language)
-    headword = analysed_word
+    headword = _headword(card.get("word"), language)
     word_relation, headword, suggestion = _word_relation(
         card.get("word_relation"),
         card.get("suggestion"),
@@ -172,7 +163,6 @@ def parse_answer_payload(  # noqa: C901, PLR0912 - the answer discriminator boun
         word_relation,
         suggestion,
         segments,
-        analysed_word,
     )
 
 
@@ -436,16 +426,17 @@ def _word_relation(
     submitted_spelling = _submitted_spelling(submitted)
     differs = fold_for_match(headword, language) != fold_for_match(submitted_spelling, language)
     suggestion = _usable_suggestion(suggestion_value, submitted_spelling, language)
-    # A typo claim which corrected the spelling in word instead of suggestion, and a same
-    # claim contradicted by a different word, both mean the answer analysed a spelling the
-    # learner never submitted. Show that correction rather than swapping the headword.
-    if suggestion is None and differs and declared in {"typo", "same"}:
+    # A typo claim that put the correction in word instead of suggestion still declares
+    # one; the headword stays the wording analysed, since the meanings describe it.
+    if suggestion is None and differs and declared == "typo":
         suggestion = headword if validate_word(headword, language) is None else None
-    if suggestion is None:
-        return ("same" if not differs else "morphology"), headword, None
-    if validate_word(submitted_spelling, language) is not None:
-        return "typo", headword, suggestion
-    return "typo", submitted_spelling, suggestion
+    # A suggestion repeating the headword would offer the word already being carded.
+    advice = None if suggestion is None or suggestion == headword else suggestion
+    # Only an admitted correction reads as a misspelling. A suggestion beside a same or
+    # morphology claim names a more usual spelling for a word the answer did vouch for.
+    if declared == "typo" and suggestion is not None:
+        return "typo", headword, advice
+    return ("same" if not differs else "morphology"), headword, advice
 
 
 def _usable_suggestion(value: Any, submitted_spelling: str, language: Language) -> str | None:

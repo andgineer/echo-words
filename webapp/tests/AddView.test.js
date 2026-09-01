@@ -209,79 +209,292 @@ describe("AddView", () => {
     expect(wrapper.find(".entry-card-status").text()).toBe("✅ added to Anki");
   });
 
-  it("offers both spellings and no card while a typo is held", async () => {
+
+  it("says which word the card is for when a misspelling was corrected onto it", async () => {
     await labelBehavior(EPIC.ANKI_CARDS, FEATURE.COLLECTION, "Card delivery status");
     entries.value = [{
       entry_id: "entry-1",
-      word: "fricolous",
-      language: "English",
-      status: "done",
-      text: "meaning",
-      card_status: "spelling",
-      suggestion: "frivolous",
-      shown_spelling: "fricolous",
-    }];
-    const wrapper = mount(AddView);
-    await flushPromises();
-
-    expect(wrapper.find(".entry-card-status").text()).toBe("✏️ looks like a typo — no card yet");
-    expect(wrapper.find(".correction").text()).toBe("✏️ Correct to “frivolous”");
-    expect(wrapper.find(".keep").text()).toBe("✓ Keep “fricolous”");
-    // Nothing was carded, so there is nothing to rebuild.
-    expect(wrapper.find(".rebuild").exists()).toBe(false);
-
-    await wrapper.find(".keep").trigger("click");
-    await flushPromises();
-
-    expect(apiRequest).toHaveBeenCalledWith("/api/words/entry-1/keep", { method: "POST" });
-  });
-
-  it("keeps both spellings on offer when the model refuses the kept one", async () => {
-    await labelBehavior(EPIC.ANKI_CARDS, FEATURE.COLLECTION, "Card delivery status");
-    entries.value = [{
-      entry_id: "entry-1",
-      word: "fricolous",
-      language: "English",
-      status: "done",
-      text: "meaning",
-      card_status: "spelling_refused",
-      suggestion: "frivolous",
-      shown_spelling: "fricolous",
-    }];
-    const wrapper = mount(AddView);
-    await flushPromises();
-
-    expect(wrapper.find(".entry-card-status").text()).toBe(
-      "⚠️ the model will not analyse this spelling as a word",
-    );
-    // A refusal is not a dead end: both spellings can still be asked for.
-    expect(wrapper.find(".keep").exists()).toBe(true);
-    expect(wrapper.find(".correction").exists()).toBe(true);
-  });
-
-  it("says the card it could not replace is still there, and still offers it", async () => {
-    await labelBehavior(EPIC.ANKI_CARDS, FEATURE.COLLECTION, "Card delivery status");
-    entries.value = [{
-      entry_id: "entry-1",
-      word: "fricolous",
+      word: "envi",
       language: "English",
       status: "done",
       shape: "unit",
-      text: "meaning",
-      card_status: "spelling_refused",
-      card_kept: true,
-      suggestion: "frivolous",
-      shown_spelling: "fricolous",
+      text: "<b>envy</b> — зависть",
+      card_status: "added",
+      card_kinds: ["Recognition"],
+      analysed_as: "envy",
+      typo_suspected: true,
     }];
     const wrapper = mount(AddView);
     await flushPromises();
 
-    expect(wrapper.find(".entry-card-status").text()).toBe(
-      "⚠️ the model will not analyse this spelling as a word · the card you had is untouched",
+    expect(wrapper.find(".entry-notice").text()).toBe(
+      "“envi” looks like a typo, so the card is for “envy” instead.",
     );
-    // The note still exists, so the control that manages it cannot disappear.
-    expect(wrapper.find(".rebuild").exists()).toBe(true);
+    const html = wrapper.html();
+    expect(html.indexOf("entry-notice")).toBeLessThan(html.indexOf("entry-text"));
   });
+
+  it("says nothing about the spelling when the card is for the word as typed", async () => {
+    await labelBehavior(EPIC.ANKI_CARDS, FEATURE.COLLECTION, "Card delivery status");
+    entries.value = [{
+      entry_id: "entry-1",
+      word: "receive",
+      language: "English",
+      status: "done",
+      shape: "unit",
+      text: "<b>receive</b> — получать",
+      card_status: "added",
+      card_kinds: ["Recognition"],
+    }];
+    const wrapper = mount(AddView);
+    await flushPromises();
+
+    expect(wrapper.find(".entry-notice").exists()).toBe(false);
+  });
+
+  it("shows no card and no article for wording the answer would not vouch for", async () => {
+    await labelBehavior(EPIC.ANKI_CARDS, FEATURE.COLLECTION, "Card delivery status");
+    entries.value = [{
+      entry_id: "entry-1",
+      word: "blorptium",
+      language: "English",
+      status: "done",
+      text: "",
+      card_status: "unattested",
+    }];
+    const wrapper = mount(AddView);
+    await flushPromises();
+
+    expect(wrapper.find(".entry-notice").text()).toBe(
+      "“blorptium” — the model does not vouch for this word. No card was made.",
+    );
+    expect(wrapper.find(".entry-card-status").text()).toBe("🚫 no card");
+    expect(wrapper.find(".entry-text").exists()).toBe(false);
+    expect(wrapper.find(".rebuild").exists()).toBe(false);
+  });
+
+  it("does not tell a lookup that a card was withheld from it", async () => {
+    await labelBehavior(EPIC.ANKI_CARDS, FEATURE.COLLECTION, "Card delivery status");
+    entries.value = [{
+      entry_id: "entry-1",
+      word: "blorptium",
+      language: "English",
+      status: "done",
+      text: "",
+      card_status: "unattested",
+      lookup_only: true,
+    }];
+    const wrapper = mount(AddView);
+    await flushPromises();
+
+    expect(wrapper.find(".entry-notice").text()).toBe(
+      "“blorptium” — the model does not vouch for this word.",
+    );
+  });
+
+  it("points the offer back once the entry shows the other spelling", async () => {
+    await labelBehavior(EPIC.ANKI_CARDS, FEATURE.CORRECTION_AND_DETAIL, "Correction control");
+    entries.value = [{
+      entry_id: "entry-1",
+      word: "envy",
+      language: "English",
+      status: "done",
+      shape: "unit",
+      text: "<b>envy</b> — зависть",
+      card_status: "added",
+      card_kinds: ["Recognition"],
+      suggestion: "envi",
+      showing_other_spelling: true,
+    }];
+    const wrapper = mount(AddView);
+    await flushPromises();
+
+    // Calling the learner's own spelling "the usual one" is what the flag prevents.
+    expect(wrapper.find(".entry-notice").text()).toContain(
+      "This is “envy”, not the “envi” you typed.",
+    );
+    expect(wrapper.find(".correction").text()).toBe("↩︎ Go back to a card for “envi”");
+  });
+
+  // Reached after a switch back: the learner returned to their own spelling, this
+  // answer accepted it as a word, and the other one stays on offer beside it.
+  it("does not call a misspelling a more usual spelling on a lookup", async () => {
+    await labelBehavior(EPIC.ANKI_CARDS, FEATURE.CORRECTION_AND_DETAIL, "Correction control");
+    entries.value = [{
+      entry_id: "entry-1",
+      word: "recieve",
+      language: "English",
+      status: "done",
+      shape: "unit",
+      text: "<b>recieve</b> — получать",
+      card_status: "lookup_only",
+      suggestion: "receive",
+      typo_suspected: true,
+    }];
+    const wrapper = mount(AddView);
+    await flushPromises();
+
+    // There is no card here, and the answer called this spelling wrong — the other
+    // wording is the correction, not a more usual way of writing a good word.
+    expect(wrapper.find(".entry-notice").text()).toContain(
+      "“recieve” looks like a typo for “receive”",
+    );
+  });
+
+  it("names the other spelling once the entry is back on the one typed", async () => {
+    await labelBehavior(EPIC.ANKI_CARDS, FEATURE.CORRECTION_AND_DETAIL, "Correction control");
+    entries.value = [{
+      entry_id: "entry-1",
+      word: "envi",
+      language: "English",
+      status: "done",
+      shape: "unit",
+      text: "<b>envi</b> — зависть",
+      card_status: "added",
+      card_kinds: ["Recognition"],
+      suggestion: "envy",
+    }];
+    const wrapper = mount(AddView);
+    await flushPromises();
+
+    expect(wrapper.find(".entry-notice").text()).toContain(
+      "The card is for “envi”; “envy” is named the more usual spelling.",
+    );
+    expect(wrapper.find(".correction").text()).toBe("Replace the card with “envy”");
+  });
+
+  it("names the word a card is for when it is not the word that was typed", async () => {
+    await labelBehavior(EPIC.ANKI_CARDS, FEATURE.COLLECTION, "Card delivery status");
+    entries.value = [{
+      entry_id: "entry-1",
+      word: "envi",
+      language: "English",
+      status: "done",
+      shape: "unit",
+      text: "<b>environment</b> — окружающая среда",
+      card_status: "added",
+      card_kinds: ["Recognition"],
+      analysed_as: "environment",
+      typo_suspected: false,
+    }];
+    const wrapper = mount(AddView);
+    await flushPromises();
+
+    // Saying nothing here is how a learner ends up drilling a word they never typed;
+    // calling it a typo is how every inflected submission gets accused of one.
+    expect(wrapper.find(".entry-notice").text()).toBe(
+      "The card is for “environment”, not the “envi” you typed.",
+    );
+  });
+
+  it("makes no card for a spelling the answer itself called wrong", async () => {
+    await labelBehavior(EPIC.ANKI_CARDS, FEATURE.COLLECTION, "Card delivery status");
+    entries.value = [{
+      entry_id: "entry-1",
+      word: "recieve",
+      language: "English",
+      status: "done",
+      shape: "unit",
+      text: "<b>recieve</b> — получать",
+      card_status: "misspelled",
+      suggestion: "receive",
+    }];
+    const wrapper = mount(AddView);
+    await flushPromises();
+
+    expect(wrapper.find(".entry-notice").text()).toContain(
+      "“recieve” looks like a typo for “receive”, so no card was made.",
+    );
+    // There is no card to replace, so the offer says what it will actually do.
+    expect(wrapper.find(".correction").text()).toBe("Analyse “receive” instead");
+  });
+
+  it("keeps the way back when the switch could not store its card", async () => {
+    await labelBehavior(EPIC.ANKI_CARDS, FEATURE.CORRECTION_AND_DETAIL, "Correction control");
+    entries.value = [{
+      entry_id: "entry-1",
+      word: "receive",
+      language: "English",
+      status: "done",
+      shape: "unit",
+      text: "<b>receive</b> — получать",
+      card_status: "failed",
+      card_kept: true,
+      suggestion: "recieve",
+      showing_other_spelling: true,
+    }];
+    const wrapper = mount(AddView);
+    await flushPromises();
+
+    // Without this the entry shows another word than the deck holds, says nothing
+    // about it, and leaves retyping as the only way back.
+    expect(wrapper.find(".entry-notice").text()).toContain(
+      "This is “receive”, not the “recieve” you typed.",
+    );
+    expect(wrapper.find(".correction").text()).toBe("↩︎ Go back to a card for “recieve”");
+    expect(wrapper.find(".entry-card-status").text()).toContain("the card you had is untouched");
+  });
+
+  it("says which word a corrected lookup analysed, though it carded nothing", async () => {
+    await labelBehavior(EPIC.ANKI_CARDS, FEATURE.COLLECTION, "Card delivery status");
+    entries.value = [{
+      entry_id: "entry-1",
+      word: "recieve",
+      language: "English",
+      status: "done",
+      shape: "unit",
+      text: "<b>receive</b> — получать",
+      card_status: "lookup_only",
+      analysed_as: "receive",
+      typo_suspected: true,
+    }];
+    const wrapper = mount(AddView);
+    await flushPromises();
+
+    expect(wrapper.find(".entry-notice").text()).toBe(
+      "This is “receive”, not the “recieve” you typed.",
+    );
+  });
+
+  it("shows the submitted sentence above its translation", async () => {
+    await labelBehavior(EPIC.VOCABULARY_ANALYSIS, FEATURE.ANSWER_DELIVERY, "Streaming answers");
+    entries.value = [{
+      entry_id: "entry-1",
+      word: "Er steht jeden Morgen um sechs auf.",
+      language: "Deutsch",
+      status: "done",
+      shape: "text",
+      text: "Он встаёт каждое утро в шесть.",
+      card_status: "text",
+    }];
+    const wrapper = mount(AddView);
+    await flushPromises();
+
+    // A dictionary article opens with its own headword; a translation shows nothing
+    // of what was asked unless the entry carries it.
+    expect(wrapper.find(".entry-source").text()).toBe("Er steht jeden Morgen um sechs auf.");
+    const html = wrapper.html();
+    expect(html.indexOf("entry-source")).toBeLessThan(html.indexOf("entry-text"));
+  });
+
+  it("leaves a unit answer to open with its own headword", async () => {
+    await labelBehavior(EPIC.VOCABULARY_ANALYSIS, FEATURE.ANSWER_DELIVERY, "Streaming answers");
+    entries.value = [{
+      entry_id: "entry-1",
+      word: "aufstehen",
+      language: "Deutsch",
+      status: "done",
+      shape: "unit",
+      text: "<b>aufstehen</b> — вставать",
+      card_status: "added",
+    }];
+    const wrapper = mount(AddView);
+    await flushPromises();
+
+    expect(wrapper.find(".entry-source").exists()).toBe(false);
+  });
+
+
 
   it("gives all four card kinds distinct localized status labels", async () => {
     await labelBehavior(EPIC.ANKI_CARDS, FEATURE.COLLECTION, "Card delivery status");
@@ -465,15 +678,15 @@ describe("AddView", () => {
     expect(wrapper.find(".context-audio-title").exists()).toBe(false);
   });
 
-  it("documents both lookup shortcuts and the spelling choice a typo asks for", async () => {
+  it("documents both lookup shortcuts and what becomes of a misspelling", async () => {
     const wrapper = mount(AddView);
     await flushPromises();
 
     await wrapper.find(".about-toggle").trigger("click");
 
     expect(wrapper.find(".about-text").text()).toContain("“? word”");
-    expect(wrapper.find(".about-text").text()).toContain("✏️ Correct");
-    expect(wrapper.find(".about-text").text()).toContain("no card is created until you choose");
+    expect(wrapper.find(".about-text").text()).toContain("said above the analysis");
+    expect(wrapper.find(".about-text").text()).toContain("will not invent a word");
   });
 
   it("passes punctuation on a direct single-word submission to server validation", async () => {
@@ -510,7 +723,6 @@ describe("AddView", () => {
       status: "done",
       text: "analysis",
       suggestion: "receive",
-      correction_reversed: false,
       detail_available: true,
       model: "free-flash",
       shape: "unit",
@@ -519,7 +731,8 @@ describe("AddView", () => {
     const wrapper = mount(AddView);
     await flushPromises();
 
-    expect(wrapper.find(".correction").text()).toContain("✏️ Correct to “receive”");
+    // The card exists for what was typed, so the control replaces it rather than "corrects".
+    expect(wrapper.find(".correction").text()).toContain("Replace the card with “receive”");
     expect(wrapper.find(".rebuild").exists()).toBe(true);
     expect(wrapper.find(".detail").element.disabled).toBe(false);
     expect(wrapper.find(".entry-meta").text()).toContain("English · free-flash");

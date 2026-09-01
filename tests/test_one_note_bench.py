@@ -196,11 +196,22 @@ def _passing_quality_counts() -> dict[str, int]:
         "registered_units": bench.MIN_REGISTERED_UNITS,
         "click_success": bench.MIN_CLICK_SUCCESS,
         "expression_success": bench.MIN_EXPRESSION_SUCCESS,
-        "typo_success": 5,
-        "confirmed_attempted": 6,
-        "confirmed_cardable": 4,
-        "confirmed_success": 0,
+        "typo_success": 3,
+        "attested_kept": 3,
+        "unused_refused": 3,
     }
+
+
+def test_the_registered_unit_floor_sits_at_the_bottom_of_its_measured_spread():
+    """Measured 15 to 18 of 21 across runs of one prompt answered by one provider set.
+    A floor inside that spread reddens on the draw; at its bottom the gate still holds
+    the count to something a collapse would break."""
+    assert bench.REGISTERED_UNITS_SPREAD[0] == bench.MIN_REGISTERED_UNITS
+    counts = _passing_quality_counts()
+    counts["registered_units"] = bench.MIN_REGISTERED_UNITS
+    assert bench.quality_gates(counts, "full")["registered units recovered"] is True
+    counts["registered_units"] = bench.MIN_REGISTERED_UNITS - 1
+    assert bench.quality_gates(counts, "full")["registered units recovered"] is False
 
 
 def test_quality_thresholds_pass_at_the_boundaries():
@@ -216,7 +227,8 @@ def test_quality_thresholds_fail_immediately_below_each_minimum():
         "click_success",
         "expression_success",
         "typo_success",
-        "confirmed_cardable",
+        "attested_kept",
+        "unused_refused",
     )
     for key in keys:
         counts = _passing_quality_counts()
@@ -234,12 +246,19 @@ def test_tier_manifests_have_frozen_non_overlapping_counts():
     assert len(bench.CONFIRMATION_ANCHOR_IDS) == 8
     assert len(bench.canonical_ids_for_tier("confirmation")) == 81
     assert len(bench.canonical_ids_for_tier("full")) == 157
-    assert len(bench.initial_jobs_for_tier("smoke")) + len(bench.CLICK_IDS) == 42
-    assert len(bench.initial_jobs_for_tier("confirmation")) + len(bench.CLICK_IDS) == 99
-    assert len(bench.initial_jobs_for_tier("full")) + len(bench.CLICK_IDS) == 175
-    assert len(bench.confirmed_ids_for_tier("smoke")) == 3
-    assert len(bench.confirmed_ids_for_tier("full")) == 6
-    assert not bench.CONFIRMED_IDS & bench.TYPO_IDS
+    assert len(bench.initial_jobs_for_tier("smoke")) + len(bench.CLICK_IDS) == 52
+    assert len(bench.initial_jobs_for_tier("confirmation")) + len(bench.CLICK_IDS) == 119
+    assert len(bench.initial_jobs_for_tier("full")) + len(bench.CLICK_IDS) == 195
+    assert len(bench.attested_ids_for_tier("smoke")) == 5
+    assert len(bench.attested_ids_for_tier("full")) == 10
+    # Every attested fixture is judged twice, as production judges it.
+    assert len(bench.attestation_ids_for_tier("full")) == 16
+    assert all(
+        "Do not write an article" in bench.prompt_for(shot) for shot in bench.attestation_shots()
+    )
+    assert not bench.ATTESTED_IDS & bench.TYPO_IDS
+    # Both classes are represented at every tier, or the arm measures only one error.
+    assert {bench.ATTESTED_BY_ID[i].attested for i in bench.SMOKE_ATTESTED_IDS} == {True, False}
     assert "verdict:clauses:sr:0" in bench.HISTORICAL_HARD_IDS
     assert "verdict:fragments:en:1" in bench.CONFIRMATION_ANCHOR_IDS
 
@@ -258,11 +277,11 @@ def test_registered_typo_inputs_are_valid_unit_intent_cases():
     assert all("kind must be unit" in bench.prompt_for(row) for row in rows)
 
 
-def test_typo_success_requires_original_word_and_exact_suggestion():
+def test_typo_success_requires_the_corrected_word_on_the_card():
     job = bench.typo_shots()[0]
-    payload = json.loads(_unit_answer(job.source).split("===CARD===", 1)[1])
+    payload = json.loads(_unit_answer(job.expected_suggestion).split("===CARD===", 1)[1])
     payload["word_relation"] = "typo"
-    payload["suggestion"] = job.expected_suggestion
+    payload["suggestion"] = ""
 
     scored = bench.score(
         replace(job, text="analysis===CARD===" + json.dumps(payload)),
@@ -271,13 +290,29 @@ def test_typo_success_requires_original_word_and_exact_suggestion():
     assert scored.metrics["typo_success"] is True
 
 
-def test_accepted_silent_typo_correction_is_a_zero_tolerance_failure():
-    job = bench.typo_shots()[3]
-    payload = json.loads(_unit_answer(job.expected_suggestion).split("===CARD===", 1)[1])
-    payload["word_relation"] = "morphology"
-    corrected = "analysis===CARD===" + json.dumps(payload)
+def test_a_refused_coinage_is_a_complete_answer_and_is_not_re_asked_on_resume():
+    """A refusal is the outcome the unused fixtures expect, not a missing branch.
+    Judging it by the branch keys re-asks all six every resume, and `_select_canonical`
+    then keeps the last draw where every other kind keeps the first."""
+    job = next(shot for shot in bench.attested_shots() if shot.shot_id.startswith("unused-"))
+    refusal = '===USED=== {"used": false, "where": ""}\n'
+    refused = bench.score(replace(job, prompt_hash=bench.prompt_fingerprint(job), text=refusal))
 
-    scored = bench.score(replace(job, text=corrected))
+    assert bench.attested_refused(refused) is True
+    assert bench.complete(refused) is True
+    assert bench.pending([job], {job.shot_id: refused}, resume=True) == []
+
+
+def test_an_uncorrected_misspelling_on_the_card_is_a_zero_tolerance_failure():
+    """The card must carry the attested spelling: a note headed by the misspelling
+    teaches the misspelling, whatever the answer called the relation."""
+    job = bench.typo_shots()[3]
+    payload = json.loads(_unit_answer(job.source).split("===CARD===", 1)[1])
+    payload["word_relation"] = "typo"
+    payload["suggestion"] = job.expected_suggestion
+    uncorrected = "analysis===CARD===" + json.dumps(payload)
+
+    scored = bench.score(replace(job, text=uncorrected))
 
     assert scored.metrics["payload_valid"] is True
     assert scored.metrics["typo_word_exact"] is False
@@ -285,24 +320,50 @@ def test_accepted_silent_typo_correction_is_a_zero_tolerance_failure():
         [scored],
         [],
         "full",
-    )["accepted typos retain the submitted spelling"]
+    )["accepted typos card the corrected spelling"]
 
 
-def test_registered_typo_cannot_pass_by_declaring_morphology():
+def test_the_declared_relation_is_reported_but_no_longer_a_contract():
+    """The card is bound to the wording, not to the label the answer chose for it: the
+    entry names the word it is about without calling the difference a misspelling, so a
+    relation of morphology over the corrected spelling harms nothing."""
     job = bench.typo_shots()[0]
-    payload = json.loads(_unit_answer(job.source).split("===CARD===", 1)[1])
+    payload = json.loads(_unit_answer(job.expected_suggestion).split("===CARD===", 1)[1])
     payload["word_relation"] = "morphology"
     scored = bench.score(
         replace(job, text="analysis===CARD===" + json.dumps(payload)),
     )
 
-    assert scored.metrics["payload_valid"] is True
     assert scored.metrics["typo_relation_exact"] is False
-    assert not bench.deterministic_gates(
-        [scored],
-        [],
-        "full",
-    )["accepted registered typos declare typo relation"]
+    assert scored.metrics["typo_word_exact"] is True
+    assert bench.deterministic_gates([scored], [], "full")[
+        "accepted typos card the corrected spelling"
+    ]
+
+
+def test_a_misspelling_the_standalone_judgement_refuses_cards_nothing_to_hold():
+    """Production makes no card there at all, so the contract about what a card carries
+    has nothing to hold. Counting it as a violation would red the gate for the outcome
+    the judgement exists to produce."""
+    job = bench.typo_shots()[4]
+    payload = json.loads(_unit_answer(job.source).split("===CARD===", 1)[1])
+    payload["word_relation"] = "same"
+    kept = bench.score(replace(job, text="analysis===CARD===" + json.dumps(payload)))
+    refusal = bench.score(
+        replace(
+            next(
+                shot
+                for shot in bench.attestation_shots()
+                if shot.shot_id == bench.attestation_id(job.shot_id)
+            ),
+            text='{"used": false, "where": ""}',
+        ),
+    )
+
+    assert kept.metrics["typo_word_exact"] is False
+    assert bench.deterministic_gates([kept, refusal], [], "full")[
+        "accepted typos card the corrected spelling"
+    ]
 
 
 def test_resume_retries_availability_and_parse_misses_for_verdicts():
@@ -515,7 +576,10 @@ def test_review_packet_lists_typo_click_and_raw_evidence():
     assert typo_item["categories"] == ["typo"]
     assert typo_item["expected"]["word_relation"] == "typo"
     assert typo_item["actual"]["word_relation"] == "typo"
-    assert typo_item["expected"]["suggestion"] == "receive"
+    # The correction is applied, so the card is expected to carry it and the
+    # suggestion to be empty rather than repeating the word already carded.
+    assert typo_item["expected"]["word"] == "receive"
+    assert typo_item["expected"]["suggestion"] == ""
     assert typo_item["raw_evidence"]["answer"] == typo.text
     assert {item["fixture_id"] for item in packet["items"]} >= bench.CLICK_IDS
 

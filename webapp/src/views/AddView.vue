@@ -1,5 +1,5 @@
 <script setup>
-import { nextTick, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { apiRequest } from "../api/_request.js";
 import { upsertEntry } from "../composables/useEntries.js";
 import { useEventStream } from "../composables/useEventStream.js";
@@ -113,8 +113,8 @@ const CARD_STATUS_KEYS = {
   lookup_only: "card.lookupOnly",
   text: "card.text",
   failed: "card.failed",
-  spelling: "card.spelling",
-  spelling_refused: "card.spellingRefused",
+  unattested: "card.unattested",
+  misspelled: "card.misspelled",
 };
 
 const CARD_KIND_KEYS = {
@@ -141,6 +141,56 @@ function cardStatusLabel(entry) {
     return tn("card.addedCount", kinds.length, { kinds: cardKindsText(kinds) });
   }
   return t(CARD_STATUS_KEYS[entry.card_status] ?? entry.card_status);
+}
+
+function spellingNotice(entry) {
+  // Whatever the answer did with the spelling is said above the analysis, because
+  // the analysis may be of another word and the card was made without asking.
+  if (entry.status !== "done") return "";
+  if (entry.card_status === "unattested") {
+    // A lookup asked for no card, so it is not one that was withheld.
+    return entry.lookup_only
+      ? t("add.unattestedLookup", { word: entry.word })
+      : t("add.unattested", { word: entry.word });
+  }
+  if (entry.card_status === "misspelled") {
+    return t("add.misspelled", { word: entry.word, suggestion: entry.suggestion });
+  }
+  if (entry.analysed_as) {
+    // Always said, whatever the difference is called: the reader typed one wording and
+    // is reading about another. Only a suspected misspelling is named as one.
+    if (entry.card_status !== "added") {
+      return t("add.analysedInstead", { word: entry.word, shown: entry.analysed_as });
+    }
+    return entry.typo_suspected
+      ? t("add.cardedInstead", { word: entry.word, carded: entry.analysed_as })
+      : t("add.otherWordCard", { word: entry.word, carded: entry.analysed_as });
+  }
+  if (entry.suggestion) {
+    if (entry.showing_other_spelling) {
+      return t("add.showingOther", { word: entry.word, submitted: entry.suggestion });
+    }
+    // Only an answer that vouched for the wording can call another one "more usual".
+    // One that called it a misspelling says that instead, and says it without
+    // claiming a card the entry may not have.
+    return entry.typo_suspected
+      ? t("add.misspelled", { word: entry.word, suggestion: entry.suggestion })
+      : t("add.moreCommon", { word: entry.word, suggestion: entry.suggestion });
+  }
+  return "";
+}
+
+const spellingNotices = computed(() =>
+  Object.fromEntries(entries.value.map((entry) => [entry.entry_id, spellingNotice(entry)])),
+);
+
+function correctionLabel(entry) {
+  // The offer points back to the reader's own spelling once the entry shows another,
+  // and its wording follows the card: there is nothing to replace without one.
+  if (entry.showing_other_spelling) return t("add.revert", { word: entry.suggestion });
+  return entry.card_status === "added"
+    ? t("add.replaceCard", { word: entry.suggestion })
+    : t("add.analyseInstead", { word: entry.suggestion });
 }
 
 function cardStatusText(entry) {
@@ -210,6 +260,17 @@ async function undo() {
       <p v-if="entry.status === 'pending' && !entry.text" class="entry-head">
         ⏳ <b>{{ entry.word }}</b> …
       </p>
+      <div v-if="spellingNotices[entry.entry_id]" class="entry-notice">
+        <p class="notice-text">{{ spellingNotices[entry.entry_id] }}</p>
+        <button
+          v-if="entry.suggestion"
+          class="btn-inline correction"
+          @click="entryAction(entry, 'switch')"
+        >
+          {{ correctionLabel(entry) }}
+        </button>
+      </div>
+      <p v-if="entry.shape === 'text' && entry.text" class="entry-source">{{ entry.word }}</p>
       <div v-if="entry.text" class="entry-text" v-html="entry.text"></div>
       <div
         v-if="entry.detail_html"
@@ -257,24 +318,6 @@ async function undo() {
       <p v-if="entry.detail_error" class="entry-error">{{ entry.detail_error }}</p>
       <p v-if="entry.control_error" class="entry-error">{{ entry.control_error }}</p>
       <div v-if="entry.status === 'done'" class="entry-actions">
-        <button
-          v-if="entry.suggestion"
-          class="btn-inline correction"
-          @click="entryAction(entry, 'switch')"
-        >
-          {{
-            entry.correction_reversed
-              ? t("add.revert", { word: entry.suggestion })
-              : t("add.correct", { word: entry.suggestion })
-          }}
-        </button>
-        <button
-          v-if="entry.card_status === 'spelling' || entry.card_status === 'spelling_refused'"
-          class="btn-inline keep"
-          @click="entryAction(entry, 'keep')"
-        >
-          {{ t("add.keep", { word: entry.shown_spelling }) }}
-        </button>
         <button
           v-if="entry.shape === 'unit' && (entry.card_status === 'added' || entry.card_kept)"
           class="btn-inline rebuild"
@@ -369,6 +412,28 @@ async function undo() {
 .entry-card-status {
   margin-top: 0.5rem;
   font-size: 0.85rem;
+}
+
+/* Said before the analysis, which may be about another word than the one typed. */
+.entry-notice {
+  border-left: 3px solid var(--accent);
+  padding: 0.1rem 0 0.1rem 0.6rem;
+  margin-bottom: 0.75rem;
+}
+
+.notice-text {
+  font-size: 0.9rem;
+}
+
+.entry-notice .btn-inline {
+  margin-top: 0.4rem;
+}
+
+.entry-source {
+  margin-bottom: 0.5rem;
+  padding-left: 0.6rem;
+  border-left: 3px solid var(--border);
+  white-space: pre-wrap;
 }
 
 .entry-audio {

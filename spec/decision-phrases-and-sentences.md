@@ -289,8 +289,8 @@ Those figures name the scoring policy printed with that run. Raw JSONL is
 append-only and is not rewritten when the scorer changes. Current rescoring uses
 one-to-one recovery, so a single merged chip cannot preserve an older 21/21
 label by standing in for two distinct clickable units; the merged chip remains
-visible as useful boundary drift and the aggregate 18/21 threshold absorbs one
-such case.
+visible as useful boundary drift and the aggregate registered-unit floor absorbs
+one such case.
 
 ## Prompt-bound qualitative review and benchmark promotion
 
@@ -338,9 +338,9 @@ three registered corrections succeeded.** `recieve` returned both `word` and
 silently opened on and analysed `можда`. The prompt told the model both to
 retain submitted spelling and to make `word` a clean dictionary headword. The
 correction behavior is therefore a prompt conflict, not three unrelated
-content slips. Typo retention now explicitly overrides every dictionary-lemma
-instruction, including the visible bold heading, and the parser rejects any
-valid non-empty suggestion unless `word` is the normalized submitted spelling.
+content slips. It is settled the other way now: the dictionary lemma heads the
+article and goes in `word`, the misspelling is reported through `suggestion`
+alone, and the card carries the corrected spelling.
 
 Fresh review found none of v6's whole-context highlighting pathology in any
 accepted v7 unit. All 21 registered-combination smoke texts reached the text
@@ -413,6 +413,62 @@ independent judge. The harness marks an incomplete current-hash packet
 `pending_semantic_review`. Promotion restarts at smoke without substituting any
 earlier answer from the append-only store.
 
+### Two-judgement arm: full-tier review and decision
+
+**Accepted.** The full tier ran 195 calls on a healthy free pool: every deterministic
+contract passed and every quality threshold passed, with hard verdict errors at 7 of
+120 usable against a 10% ceiling. The mandatory semantic review of the concrete packet
+found three things to settle before acceptance, and all three are settled.
+
+Sentence form is screened on the marked example, which is the only copy the contract
+asks for: a sentence carrying markup other than its own highlight is a defect. Four
+stand in the measured packet — `put up with` bolded two whole sentences, and two
+separated German units were marked incompletely, `eine Rolle spielen` without `eine`
+and `unter die Lupe nehmen` without `nehmen`.
+
+The coinage operating point is accepted as measured, not as hoped: none to three of
+six survive both judgements, and what survives is the well-formed compound carded with
+an invented sense and origin. The review's quality observations — a Serbian card
+headed by a Russian verb, an imperative kept as a headword, three registered Serbian
+combinations missed — are recorded as this arm's known cost; they sit inside the
+declared tolerances and are properties of the free pool rather than of the contract.
+
+### What the answers are known to get wrong
+
+A second full tier, semantically reviewed item by item, blocks on nothing and records
+the limitations below. The attestation slice is the strongest part of the run — all
+six coinages refused, all four rare real words kept with accurate registers — and the
+Serbian slice the weakest.
+
+**A misrouted fragment cards a note whose two directions teach different things.** The
+recognition side carries the lemma the answer chose and the production side the gap
+from the submitted fragment, so `sehr schüchtern gewesen` cards the front `sein` with
+the back "быть" against the gap `Er ist früher ___.`. This is the only class here that
+is silently and confidently wrong rather than merely imperfect, and it is the first
+thing to fix. An example pinned to a submitted fragment also keeps that fragment's
+inflection, so it can be ungrammatical in its own sentence.
+
+**A free combination submitted as a fragment is carded as a set expression**, with a
+compositional etymology invented to justify it. When a sentence is answered on the
+unit branch, its examples can be written in the target language with the source unit
+embedded, while the card payload of the same answer stays correct.
+
+**Grammar and etymology stated in the prose are wrong often enough to matter, and no
+gate sees them.** Serbian is the worst-affected: seven of twelve Serbian articles here
+state at least one false fact about Serbian grammar, against six of nineteen German
+and two of eight English. A correctly headed, correctly carded article can still teach
+a false rule or an invented etymon. The forms table also names cases and tenses
+instead of carrying grammar in phrases, which the functional description forbids.
+
+**Three screen rules are known to measure the wrong thing.** A payload the production
+parser repaired but the strict reader rejected skips the highlight checks entirely,
+because those checks are gated on the strict payload naming a unit. "Submitted token
+occurs outside target" fires on every legitimate discontinuous unit. `origin`, `usage`
+and `morphology` are presence regexes, so a false etymology scores as an etymology and
+a case-labelled table scores as morphology — the most common real defect in the run is
+invisible to every gate. The review packet should also carry the screen's own counts
+and thresholds, which it does not.
+
 ## What the shorter prompt cost and bought
 
 Moving the derivable obligations into the parser let the prompt drop by about a
@@ -439,11 +495,15 @@ The harness has three exact, append-only-resumable tiers. Every tier derives the
 same six click fixtures after their source texts succeed and runs at pacing two
 seconds with concurrency one:
 
-| tier | canonical manifest | typo manifest | clicks | maximum calls |
-|---|---:|---:|---:|---:|
-| smoke | 30 | 3 | 6 | 39 |
-| confirmation | 81 | 6 | 6 | 93 |
-| full | unchanged 157 | 6 | 6 | 169 |
+| tier | canonical manifest | typo manifest | attestation manifest | clicks | maximum calls |
+|---|---:|---:|---:|---:|---:|
+| smoke | 30 | 3 | 5 | 6 | 44 |
+| confirmation | 81 | 6 | 10 | 6 | 103 |
+| full | unchanged 157 | 6 | 10 | 6 | 179 |
+
+The attestation manifest holds rare real wording alongside well-formed coinages,
+and both classes are required at every tier: measured on one class alone the arm
+rewards either fabrication or paranoia.
 
 Smoke contains the 20 text fixtures with registered combinations, the
 standalone English click source and all nine bare cases. Confirmation contains
@@ -456,13 +516,12 @@ gray/stable anchors. The availability-collapsed v2 arm is not used to invent a
 The six typo fixtures are `recieve` → `receive`, `Strase` → `Straße`, `мозда` →
 `можда`, `definately` → `definitely`, `vieleicht` → `vielleicht` and `podrska` →
 `podrška`. They are validated source-language inputs and always use explicit
-unit intent. Success requires the parsed headword to retain the exact submitted
-spelling and the suggestion to equal the registered correction. Smoke requires
-two of three; confirmation and full require five of six. The zero-tolerance
-contract binds the parsed note rather than the raw payload: a payload which puts
-the correction in `word` is reconciled into a visible suggestion, and no accepted
-note may carry a spelling the learner did not submit. This is typo coverage, not
-a morphology rule.
+unit intent. Success requires the parsed headword to be the registered
+correction: the card carries the attested wording, and the entry tells the reader
+which word it is for. Smoke requires two of three; confirmation and full require
+five of six. The zero-tolerance contract binds the parsed note rather than the
+raw payload: no accepted note may be headed by a spelling nothing under it
+describes. This is typo coverage, not a morphology rule.
 
 Every report labels itself **AUTOMATED SCREEN** and writes a structured review
 packet containing every non-exact boundary/label, acceptable or ambiguous
@@ -473,7 +532,7 @@ concrete errors and record the prompt-bound decision in this checked-in spec.
 
 Prompt work is promoted in order: smoke while iterating; confirmation for a
 candidate; fresh-agent packet review and a recorded decision; then the full
-169-call maximum immediately before commit. A failed semantic review returns to
+179-call maximum immediately before commit. A failed semantic review returns to
 smoke. Full is the pre-commit measurement, not a substitute for review. Raw
 outputs remain append-only through every tier and prompt hash.
 

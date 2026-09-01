@@ -127,9 +127,9 @@ def test_the_prompt_asks_for_the_spelling_relation_in_one_rule(languages):
     assert '"word_relation": "<same, morphology or typo>"' in prompt
     assert "word_relation is typo when the submission is misspelled" in prompt
     assert "suggestion\nis empty unless the relation is typo" in prompt
-    assert "when you\n   suspect a misspelling, head the article with the submitted spelling" in (
-        prompt
-    )
+    # The heading and the card carry the same wording; the correction is named in
+    # suggestion, and the interface tells the reader what became of their spelling.
+    assert "head a suspected misspelling with the correction" in prompt
 
 
 def test_contiguous_unit_uses_one_bold_span(languages):

@@ -78,6 +78,10 @@ class FakeDirectClient:
         self.closed = True
 
 
+ATTESTATION_MARK = "You judge whether a wording is actually used"
+VOUCHED_ANSWER = '{"used": true, "where": "everyday"}'
+
+
 class FakeBroker:
     """Stands in for the one ``AsyncBroker``: hands out prepared handles and clients."""
 
@@ -91,6 +95,7 @@ class FakeBroker:
         direct_error: Exception | None = None,
         snapshot: object | None = None,
         stats: dict[str, object] | None = None,
+        attestation: str = VOUCHED_ANSWER,
     ) -> None:
         self.home = home
         self.direct_aliases = list(direct)
@@ -98,6 +103,8 @@ class FakeBroker:
         self.client = client
         self.direct_error = direct_error
         self.stream_calls: list[dict] = []
+        self.attestation_calls: list[str] = []
+        self.attestation = attestation
         self.direct_calls: list[str] = []
         self.closed = False
         self.snapshot_value = snapshot or SimpleNamespace(
@@ -120,6 +127,11 @@ class FakeBroker:
         self.stream_calls.append(
             {"prompt": prompt, "operation": operation, "trace_id": trace_id, "wait": wait},
         )
+        if ATTESTATION_MARK in prompt:
+            # Answered off the prepared handles and in any order: it runs in parallel
+            # with the article, so a test cannot script it by position.
+            self.attestation_calls.append(prompt)
+            return FakeHandle([self.attestation])
         if not self.handles:
             raise AssertionError("the pool was asked for one stream more than the test prepared")
         return self.handles.pop(0)

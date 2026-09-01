@@ -17,18 +17,20 @@ the work again. **Do not re-open any of it.**
   duplicate check. A sense chip is a new submission, so deduplication would
   refuse exactly the route by which another sense enters the deck. Equal bare
   sends making equal notes is the visible, undoable cost.
-- **Autocorrection is advisory only — hardcoded, no config flag.** The raw
-  submission remains the history and PWA-audio text. A unit answer's validated
-  dictionary headword is the identity used by the note and its card audio,
-  which legitimately normalizes an inflected chip. A suspected spelling
-  correction stays only in `suggestion`; it may not silently become the
-  returned headword. **A note is stored only for the spelling its answer
-  analysed**: where the parser put the submission back over a replaced headword,
-  the note would carry their spelling above the other word's meanings, examples
-  and gap, so it is not stored at all. Either spelling is then carded by
-  analysing it — the correction control for the suggested one, and, for the
-  submitted one, a re-run that tells the model the spelling is deliberate. An
-  answer that overrides a confirmed spelling anyway cards nothing.
+- **The card carries the wording the answer analysed — hardcoded, no config
+  flag.** The raw submission remains the history and PWA-audio text. A suspected
+  misspelling is corrected on the card rather than offered, because a note
+  pairing the learner's spelling with another word's meanings and examples
+  teaches a word no sentence on it contains; the entry names the carded word
+  above the analysis and undo removes it. Wording neither judgement will vouch
+  for as used gets no card, no article and no audio: a model asked for a
+  dictionary entry invents one for any well-formed string, so a unit submission
+  is judged twice — once at the head of the article call, once by a parallel call
+  that asks nothing else — and either refusal withholds it. Asking apart is what
+  makes the defence work, and it is measured. Rarity is never a reason to refuse.
+  A declared misspelling is settled by the paid model, which is measurably better
+  at spelling than the pool; a refusal is not sent to it, because the paid models
+  withhold fewer coinages than the pool does. Ordinary wording reaches neither.
 - **Every accepted note generates exactly four cards.** The bare word and its
   translations are asked both ways; the selected sense's sentence is asked
   once with all unit parts highlighted and once with them gapped. A short sense
@@ -108,7 +110,11 @@ the work again. **Do not re-open any of it.**
   anywhere — both backends are plain text→text calls with nothing to
   contain.
 - Words are processed sequentially and in submission order (one worker
-  over a FIFO queue) — no parallel LLM runs, even across languages.
+  over a FIFO queue) — no two submissions are in flight at once, in any
+  language. Within one submission the article call and the parallel
+  attestation call do run together: the reader is held until both have
+  answered either way, so running them in sequence would add the judgement's
+  latency to every word and buy nothing.
 - **echo-words has no database.** The Anki collection is the only
   durable state; history is a bounded in-memory buffer, "added" stats
   are counted from the collection's own note ids, and the lookup-only

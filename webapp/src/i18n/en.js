@@ -15,9 +15,20 @@ export default {
   "add.nothingToUndo": "Nothing to undo",
   "add.queued": "No connection — the word is saved and will be sent later.",
   "add.empty": "Word analyses will appear here.",
-  "add.revert": "↩︎ Revert to “{word}”",
-  "add.correct": "✏️ Correct to “{word}”",
-  "add.keep": "✓ Keep “{word}”",
+  "add.revert": "↩︎ Go back to a card for “{word}”",
+  "add.showingOther": "This is “{word}”, not the “{submitted}” you typed.",
+  "add.replaceCard": "Replace the card with “{word}”",
+  "add.analyseInstead": "Analyse “{word}” instead",
+  "add.unattested":
+    "“{word}” — the model does not vouch for this word. No card was made.",
+  "add.unattestedLookup": "“{word}” — the model does not vouch for this word.",
+  "add.cardedInstead":
+    "“{word}” looks like a typo, so the card is for “{carded}” instead.",
+  "add.analysedInstead": "This is “{shown}”, not the “{word}” you typed.",
+  "add.otherWordCard": "The card is for “{carded}”, not the “{word}” you typed.",
+  "add.misspelled":
+    "“{word}” looks like a typo for “{suggestion}”, so no card was made.",
+  "add.moreCommon": "The card is for “{word}”; “{suggestion}” is named the more usual spelling.",
   "add.rebuild": "Rebuild the card",
   "add.detailReady": "Full analysis ready",
   "add.detail": "More detail",
@@ -44,11 +55,11 @@ export default {
     "<b>Look up only.</b> The checkbox next to the input gives you the analysis and the " +
     "pronunciation without creating a card. A leading <b>?</b> does the same: “? word”.",
   "add.aboutCorrection":
-    "<b>✏️ Correct.</b> The submitted text stays in the history; a unit card uses the validated " +
-    "dictionary headword returned by the analysis. When the input looks like a typo, no card is " +
-    "created until you choose a spelling: under the analysis a ✏️ button offers the corrected " +
-    "spelling and a ✓ button asks for yours to be analysed as a word. Either way the card is " +
-    "made from the spelling that was actually analysed.",
+    "<b>Spelling.</b> What became of the word you typed is always said above the analysis. When " +
+    "no such word exists, the card is made for the corrected one and says so; undo removes it. " +
+    "When the word exists but another spelling is the usual one, the card is yours and a button " +
+    "offers to replace it. When the model does not vouch for the word at all, there is no card " +
+    "and no article: it will not invent a word that nobody uses.",
 
   "card.added": "✅ added to Anki",
   "card.addedCount.one": "✅ 1 card: {kinds}",
@@ -63,8 +74,8 @@ export default {
   "card.lookupOnly": "👁 lookup only",
   "card.text": "👁 text — no card",
   "card.failed": "⚠️ card failed",
-  "card.spelling": "✏️ looks like a typo — no card yet",
-  "card.spellingRefused": "⚠️ the model will not analyse this spelling as a word",
+  "card.unattested": "🚫 no card",
+  "card.misspelled": "🚫 no card — looks misspelled",
   "card.kept": "the card you had is untouched",
   "card.noAudio": "🔇 submitted text has no audio",
   "card.noCardAudio": "🔇 Anki card has no audio",

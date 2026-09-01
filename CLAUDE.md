@@ -117,6 +117,41 @@ manifest decision, time — say so and ask. Never present the work as finished
 with the measurement outstanding, and never let a repo rule about bench gates
 become the excuse for skipping it.
 
+**The automated screen is not acceptance.** `report` prints
+`semantic_review_required` and writes a review packet because a green screen
+proves conformance to contracts, not that the answers are any good: only reading
+the concrete items catches a card headed by a word from the wrong language, an
+invented etymology, or a coinage carded with a confident sense. So a bench run is
+finished only when a **fresh agent** — one that did not run the bench — has
+semantically reviewed every item of `review-packet-*.json`, and the decision is
+recorded in a `spec/decision-*.md`. Fresh is the point: the reviewer must not be
+the party defending the result.
+
+Run it in the same turn the report lands. A mandatory check is work to discharge,
+never an outstanding item to hand back — reporting that the review is still owed
+is not a substitute for doing it, and neither is waiting to be asked.
+
+**Plan the experiment before spending the pool.** The free pool has a daily quota
+that a tier does not fit twice, and buying paid answers is no way around it: the
+app itself runs on the pool, so only pool answers measure what ships. Spend it
+like the finite shared resource it is.
+
+- One change per measurement, measured by a tier. Repeated one-shot probes are
+  the trap: each is an n of 1 that cannot separate a better prompt from a
+  different model answering, and four of them cost a day of quota and buy no
+  evidence. When a single fixture must be checked, check it once and treat the
+  result as a hint, never as a finding.
+- Decide the fixtures before the run, and check each one instantiates the
+  requirement. A fixture that trips a different behaviour — a word the judgement
+  refuses, an everyday word where nothing should fire — measures that other
+  behaviour and nothing else.
+- Read availability before reading results. Provider answers well below the run
+  before it, or the workhorse model absent from the tally, means an exhausted
+  pool: that run is void, and its numbers say nothing about the change. Say so
+  and wait for the quota rather than reporting it.
+- A run interrupted by exhaustion is resumed, never restarted: `--resume` keeps
+  every answer already bought.
+
 ---
 
 ## Tests
@@ -216,3 +251,10 @@ become the excuse for skipping it.
 - Commit straight to `main` — no working branches, no PRs. Releases are
   protected by their tag and by the PyPI publication, so `main` is a
   working surface and breaking it costs nothing.
+- **Never `git push` and never `inv deploy` without the operator's explicit
+  approval for that push and that deploy.** Approval is per act: an earlier
+  "yes, ship it" covers the change it was given for and nothing after it. A
+  conditional — "fix it properly and deploy" — is not approval either; it
+  says what to build, not when to publish it. Green gates, a passed review
+  and a measured bench are reasons to *ask*, never reasons to skip asking.
+  Committing locally needs no such approval; leaving the machine does.

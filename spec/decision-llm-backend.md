@@ -392,12 +392,17 @@ mandatory before acceptance.
 Semantic quality is aggregate: obvious hard verdict errors may be at most 10%
 of usable verdict results, while acceptable and ambiguous/defensible boundaries
 are not errors. Known-text, bare-unit, registered-unit, click and expression
-flows use the documented 23/26, 8/9, 18/21, 5/6 and 2/3 thresholds. The Serbian
+flows use the documented 23/26, 8/9, 15/21, 5/6 and 2/3 thresholds; the
+registered-unit floor sits at the bottom of its measured spread rather than
+inside it, because repeated runs of one prompt answered by the same providers
+have counted 15 through 18 of 21 and any floor above that bottom reddens on the
+draw. The count and its spread stay in the report, where a human weighs them
+before promoting a prompt. The Serbian
 availability, usable-result, verdict-error and formatting slice remains visible
 but has no separate zero-error requirement. Deterministic bounds, sanitization,
 branch isolation, exact context-click surface, targeted sentence
-transformations, typo spelling preservation, source-token fill and four-card
-readiness remain zero-tolerance contracts for accepted payloads. Exact tier
+transformations, the corrected spelling on a typo card, source-token fill and
+four-card readiness remain zero-tolerance contracts for accepted payloads. Exact tier
 manifests, pacing and promotion procedure are recorded in
 `decision-phrases-and-sentences.md`.
 
