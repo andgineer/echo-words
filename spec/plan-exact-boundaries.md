@@ -10,8 +10,9 @@ guessing.
 
 ## The problem
 
-`exact source boundaries` is 12 of 21. A chip's boundary is not cosmetic: the
-chip is what the reader taps, and a tap builds the note.
+`exact source boundaries` is 11 of 21, with 16 of 21 registered units found — the
+figures from the last full tier measured on a healthy pool. A chip's boundary is
+not cosmetic: the chip is what the reader taps, and a tap builds the note.
 
 Tapping the nine imprecise chips exactly as the reader would — the chip text
 plus the text it came from, with unit intent — produced this:
@@ -25,11 +26,14 @@ plus the text it came from, with unit intent — produced this:
 The control says the tap itself is sound: the six click fixtures, whose surfaces
 are exact, pass 6 of 6.
 
-So an imprecise boundary costs a wrong headword on the card and a spelling
-control offering to "fix" a word that was never misspelled — not a untidy
-button. The one case with no phrase chip at all (`се изненадио`) is the mildest
-of the nine: tapping the bare word returned `изненадити се` correctly, so the
-all-words chip row does catch it.
+So an imprecise boundary costs the reader their card outright. An answer that
+calls the submission misspelled and still heads itself with that spelling cards
+nothing, so those four cases store nothing at all and offer to "fix" a word the
+reader had just read in the text. That is the harm option D goes after.
+
+The one case with no phrase chip at all (`се изненадио`) is the mildest of the
+nine: tapping the bare word returned `изненадити се` correctly, so the all-words
+chip row does catch it.
 
 ## What the evidence says
 
@@ -99,7 +103,10 @@ imprecise chip, not only the nine measured.
 ## Experiments
 
 Four of these cost nothing: they re-score answers already bought. Run them
-before spending a single call.
+before spending a single call. Score them against answers recorded under the
+prompt they are meant to judge — the near-neighbour work in
+`plan-near-neighbour-offer.md` changed the prompt, so a recorded set from before
+it reports as a separate arm and reads as zeroes against the current one.
 
 **E1 — does the dictionary form know what the surface does not?** Over every
 recorded text answer, count how often the returned dictionary form accounts for
@@ -143,7 +150,10 @@ not.
 The registered-unit gate currently counts a chip sharing most of the unit as
 found. That relaxation was accepted on the reasoning that an omitted word stays
 one tap away from the same entry — which the tap measurement above has now shown
-to be false in four cases of nine. Either the justification is replaced with one
+to be false in four cases of nine. The mandatory semantic review of the full tier
+reached the same conclusion independently, naming `freue ... auf` for `sich freuen
+auf` as a match the screen should not be counting: if the chip is what the learner
+cards, a surface missing `mich`, `sich` or `се` is not one. Either the justification is replaced with one
 the data supports, or the gate returns to exact matching with a threshold set
 from what a repaired backend actually reaches. Settle it once the deterministic
 repairs have landed and the number is real, not before.
