@@ -197,6 +197,8 @@ def _passing_quality_counts() -> dict[str, int]:
         "click_success": bench.MIN_CLICK_SUCCESS,
         "expression_success": bench.MIN_EXPRESSION_SUCCESS,
         "typo_success": 3,
+        "neighbour_success": 4,
+        "neighbour_false_offers": 0,
         "attested_kept": 3,
         "unused_refused": 3,
     }
@@ -246,9 +248,9 @@ def test_tier_manifests_have_frozen_non_overlapping_counts():
     assert len(bench.CONFIRMATION_ANCHOR_IDS) == 8
     assert len(bench.canonical_ids_for_tier("confirmation")) == 81
     assert len(bench.canonical_ids_for_tier("full")) == 157
-    assert len(bench.initial_jobs_for_tier("smoke")) + len(bench.CLICK_IDS) == 52
-    assert len(bench.initial_jobs_for_tier("confirmation")) + len(bench.CLICK_IDS) == 119
-    assert len(bench.initial_jobs_for_tier("full")) + len(bench.CLICK_IDS) == 195
+    assert len(bench.initial_jobs_for_tier("smoke")) + len(bench.CLICK_IDS) == 55
+    assert len(bench.initial_jobs_for_tier("confirmation")) + len(bench.CLICK_IDS) == 125
+    assert len(bench.initial_jobs_for_tier("full")) + len(bench.CLICK_IDS) == 201
     assert len(bench.attested_ids_for_tier("smoke")) == 5
     assert len(bench.attested_ids_for_tier("full")) == 10
     # Every attested fixture is judged twice, as production judges it.
@@ -288,6 +290,60 @@ def test_typo_success_requires_the_corrected_word_on_the_card():
     )
 
     assert scored.metrics["typo_success"] is True
+
+
+def _neighbour_answer(shot, *, relation, suggestion):
+    payload = json.loads(_unit_answer(shot.source).split("===CARD===", 1)[1])
+    payload["word_relation"] = relation
+    payload["suggestion"] = suggestion
+    return "analysis===CARD===" + json.dumps(payload)
+
+
+def test_a_likelier_near_neighbour_is_offered_beside_the_learners_own_card():
+    """The submission is a real word, so its article and its card are the learner's.
+    The commoner word it may have been meant for is advice standing beside them."""
+    job = next(shot for shot in bench.neighbour_shots() if shot.shot_id == "neighbour-en-causal")
+
+    offered = bench.score(
+        replace(job, text=_neighbour_answer(job, relation="same", suggestion="casual")),
+    )
+
+    assert offered.metrics["neighbour_offered"] is True
+    assert offered.metrics["neighbour_kept_submission"] is True
+    assert offered.metrics["neighbour_success"] is True
+    assert offered.metrics["neighbour_false_offer"] is False
+
+
+def test_a_neighbour_carded_instead_of_offered_is_not_a_success():
+    """Calling it a misspelling replaces the learner's word instead of advising on it,
+    and `_kept_the_misspelling` then cards nothing at all."""
+    job = next(shot for shot in bench.neighbour_shots() if shot.shot_id == "neighbour-en-causal")
+
+    as_typo = bench.score(
+        replace(job, text=_neighbour_answer(job, relation="typo", suggestion="casual")),
+    )
+
+    assert as_typo.metrics["neighbour_kept_submission"] is False
+    assert as_typo.metrics["neighbour_success"] is False
+
+
+def test_a_neighbour_invented_for_an_ordinary_word_fails_a_zero_tolerance_gate():
+    """A needless replace offer costs the learner more than a missed one: it appears
+    beside a card they spelled correctly, on the common path rather than the rare one."""
+    job = next(shot for shot in bench.neighbour_shots() if shot.shot_id == "neighbour-en-kitchen")
+
+    invented = bench.score(
+        replace(job, text=_neighbour_answer(job, relation="same", suggestion="chicken")),
+    )
+    counts = _passing_quality_counts()
+    counts["neighbour_false_offers"] = 1
+
+    assert invented.metrics["neighbour_false_offer"] is True
+    assert invented.metrics["neighbour_success"] is False
+    assert (
+        bench.quality_gates(counts, "full")["no near neighbour is invented for an ordinary word"]
+        is False
+    )
 
 
 def test_a_refused_coinage_is_a_complete_answer_and_is_not_re_asked_on_resume():

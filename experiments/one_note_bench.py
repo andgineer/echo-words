@@ -181,6 +181,33 @@ TYPO_CASES = (
     TypoCase("typo-de-vieleicht", "de", "vieleicht", "vielleicht"),
     TypoCase("typo-sr-podrska", "sr", "podrska", "podrška"),
 )
+@dataclass(frozen=True)
+class NeighbourCase:
+    """A real word beside a near neighbour, and the neighbour if one is far commoner.
+
+    An empty ``neighbour`` is an ordinary word that must be offered nothing: the cost
+    of this feature is a needless replace offer on words the learner spelled fine.
+    """
+
+    shot_id: str
+    lang: str
+    submitted: str
+    neighbour: str
+
+
+NEIGHBOUR_CASES = (
+    NeighbourCase("neighbour-en-causal", "en", "causal", "casual"),
+    NeighbourCase("neighbour-en-kitchen", "en", "kitchen", ""),
+    NeighbourCase("neighbour-de-wider", "de", "wider", "wieder"),
+    NeighbourCase("neighbour-de-fenster", "de", "Fenster", ""),
+    NeighbourCase("neighbour-sr-otad", "sr", "отад", "отац"),
+    NeighbourCase("neighbour-sr-prozor", "sr", "прозор", ""),
+)
+NEIGHBOUR_BY_ID = {case.shot_id: case for case in NEIGHBOUR_CASES}
+NEIGHBOUR_IDS = frozenset(NEIGHBOUR_BY_ID)
+SMOKE_NEIGHBOUR_IDS = frozenset(case.shot_id for case in NEIGHBOUR_CASES[:3])
+
+
 TYPO_BY_ID = {case.shot_id: case for case in TYPO_CASES}
 TYPO_IDS = frozenset(TYPO_BY_ID)
 SMOKE_TYPO_IDS = frozenset(case.shot_id for case in TYPO_CASES[:3])
@@ -564,6 +591,32 @@ def typo_shots() -> list[Shot]:
     return rows
 
 
+def neighbour_shots() -> list[Shot]:
+    rows = [
+        Shot(
+            case.shot_id,
+            "neighbour",
+            case.lang,
+            case.submitted,
+            expected_kind="unit",
+            expected_suggestion=case.neighbour,
+        )
+        for case in NEIGHBOUR_CASES
+    ]
+    invalid = [
+        shot.shot_id
+        for shot in rows
+        if validate_word(shot.source, LANGUAGES[shot.lang]) is not None
+    ]
+    if invalid:
+        raise RuntimeError("invalid registered neighbour inputs: " + ", ".join(invalid))
+    return rows
+
+
+def neighbour_ids_for_tier(tier: str) -> frozenset[str]:
+    return SMOKE_NEIGHBOUR_IDS if tier == "smoke" else NEIGHBOUR_IDS
+
+
 def attestation_id(shot_id: str) -> str:
     return f"attestation-{shot_id}"
 
@@ -630,10 +683,17 @@ def initial_jobs_for_tier(tier: str) -> list[Shot]:
         | typo_ids_for_tier(tier)
         | attested_ids_for_tier(tier)
         | attestation_ids_for_tier(tier)
+        | neighbour_ids_for_tier(tier)
     )
     return [
         shot
-        for shot in (*initial_shots(), *typo_shots(), *attested_shots(), *attestation_shots())
+        for shot in (
+            *initial_shots(),
+            *typo_shots(),
+            *attested_shots(),
+            *attestation_shots(),
+            *neighbour_shots(),
+        )
         if shot.shot_id in wanted
     ]
 
@@ -732,6 +792,7 @@ def read(out: Path, attempts: list[Shot] | None = None) -> dict[str, Shot]:
             *typo_shots(),
             *attested_shots(),
             *attestation_shots(),
+            *neighbour_shots(),
         )
     }
     rows = _select_canonical(recorded, initial)
@@ -1102,6 +1163,25 @@ def vocab_metrics(shot: Shot, parsed: ParsedUnit, analysis: str) -> dict:
     )
     typo_relation_exact = typo_case is None or parsed.word_relation == "typo"
     typo_suggestion_exact = typo_case is None or not parsed.suggestion
+    neighbour_case = NEIGHBOUR_BY_ID.get(shot.shot_id)
+    # The offer is advice beside the learner's own card, so the article has to have
+    # stayed on the submission and the answer must not have called it a misspelling.
+    neighbour_offered = bool(parsed.suggestion)
+    neighbour_kept = normalize(note.word, shot.lang) == normalize(
+        shot.source,
+        shot.lang,
+    ) and parsed.word_relation != "typo"
+    if neighbour_case is None:
+        neighbour_success = True
+    elif neighbour_case.neighbour:
+        neighbour_success = (
+            neighbour_offered
+            and neighbour_kept
+            and normalize(parsed.suggestion or "", shot.lang)
+            == normalize(neighbour_case.neighbour, shot.lang)
+        )
+    else:
+        neighbour_success = not neighbour_offered
     return {
         "word_valid": bool(note.word),
         "meanings": len(note.meanings),
@@ -1154,6 +1234,12 @@ def vocab_metrics(shot: Shot, parsed: ParsedUnit, analysis: str) -> dict:
         "typo_suggestion_exact": typo_suggestion_exact,
         "typo_success": (
             typo_word_exact and typo_relation_exact and typo_suggestion_exact
+        ),
+        "neighbour_offered": neighbour_offered,
+        "neighbour_kept_submission": neighbour_kept,
+        "neighbour_success": neighbour_success,
+        "neighbour_false_offer": (
+            neighbour_case is not None and not neighbour_case.neighbour and neighbour_offered
         ),
         "card_fronts": [
             note.word,
@@ -1495,6 +1581,7 @@ async def run(args, out: Path) -> None:
                     *typo_shots(),
                     *attested_shots(),
                     *attestation_shots(),
+                    *neighbour_shots(),
                 )
                 if shot.shot_id in requested
             ]
@@ -1563,6 +1650,7 @@ def quality_counts(initial_rows: list[Shot], context_rows: list[Shot]) -> dict[s
     text_rows = [row for row in initial_rows if row.kind == "text"]
     bare_rows = [row for row in initial_rows if row.kind == "bare"]
     typo_rows = [row for row in initial_rows if row.kind == "typo"]
+    neighbour_rows = [row for row in initial_rows if row.kind == "neighbour"]
     attested_rows = [row for row in initial_rows if row.kind == "attested"]
     # Production refuses when either judgement refuses, so the arm is scored that way:
     # measuring the article's verdict alone would measure half the product.
@@ -1580,7 +1668,7 @@ def quality_counts(initial_rows: list[Shot], context_rows: list[Shot]) -> dict[s
         "usable_initial": sum(
             usable_result(row)
             for row in initial_rows
-            if row.kind not in {"typo", "attested", "attestation"}
+            if row.kind not in {"typo", "attested", "attestation", "neighbour"}
         ),
         "usable_verdicts": len(usable_verdicts),
         "hard_verdict_errors": sum(
@@ -1605,6 +1693,12 @@ def quality_counts(initial_rows: list[Shot], context_rows: list[Shot]) -> dict[s
         ),
         "typo_success": len(
             {row.shot_id for row in typo_rows if row.metrics.get("typo_success")},
+        ),
+        "neighbour_success": len(
+            {row.shot_id for row in neighbour_rows if row.metrics.get("neighbour_success")},
+        ),
+        "neighbour_false_offers": len(
+            {row.shot_id for row in neighbour_rows if row.metrics.get("neighbour_false_offer")},
         ),
         "attested_kept": len(
             {
@@ -1650,6 +1744,9 @@ def quality_gates(counts: dict[str, int], tier: str) -> dict[str, bool]:
     # two of six twice.
     attested_min = 2 if tier == "smoke" else 3
     unused_min = 2 if tier == "smoke" else 3
+    # Half the registered pairs, and every ordinary word left alone: a needless replace
+    # offer costs the learner more than a missed one, so the false side has no slack.
+    neighbour_min = 2 if tier == "smoke" else 4
     return {
         "usable initial results": counts["usable_initial"] >= usable_min,
         "obvious hard verdict errors": not counts["usable_verdicts"]
@@ -1664,6 +1761,9 @@ def quality_gates(counts: dict[str, int], tier: str) -> dict[str, bool]:
         "successful expression cases": counts["expression_success"]
         >= MIN_EXPRESSION_SUCCESS,
         "exact typo correction cases": counts["typo_success"] >= typo_min,
+        "a likelier near neighbour is offered": counts["neighbour_success"] >= neighbour_min,
+        "no near neighbour is invented for an ordinary word": counts["neighbour_false_offers"]
+        == 0,
         "rare real wording still cards": counts["attested_kept"] >= attested_min,
         "unused wording is refused": counts["unused_refused"] >= unused_min,
     }
@@ -1716,6 +1816,7 @@ def deterministic_gates(
     expected_typo_count = 3 if tier == "smoke" else 6
     expected_attested_count = len(attested_ids_for_tier(tier))
     expected_attestation_count = len(attestation_ids_for_tier(tier))
+    expected_neighbour_count = len(neighbour_ids_for_tier(tier))
     return {
         "all tier manifest fixtures attempted": len(initial_rows) == len(canonical)
         and {row.shot_id for row in initial_rows} == expected_ids,
@@ -1724,14 +1825,16 @@ def deterministic_gates(
             - expected_typo_count
             - expected_attested_count
             - expected_attestation_count
+            - expected_neighbour_count
         ]
         == tier
+        and sum(row.kind == "neighbour" for row in canonical) == expected_neighbour_count
         and sum(row.kind == "typo" for row in canonical) == expected_typo_count
         and sum(row.kind == "attested" for row in canonical) == expected_attested_count
         and sum(row.kind == "attestation" for row in canonical) == expected_attestation_count
         and len(CLICK_IDS) == CLICK_FIXTURES
         and len(canonical) + len(CLICK_IDS)
-        == {"smoke": 52, "confirmation": 119, "full": 195}[tier],
+        == {"smoke": 55, "confirmation": 125, "full": 201}[tier],
         "accepted payloads contain one branch": all(
             not row.metrics.get("mixed_branch") for row in accepted
         ),
@@ -2002,7 +2105,10 @@ def report(out: Path, tier: str) -> None:
     typo_total = len(typo_ids_for_tier(tier))
     attested_total = len(attested_ids_for_tier(tier))
     attestation_total = len(attestation_ids_for_tier(tier))
-    initial_total = canonical_total + typo_total + attested_total + attestation_total
+    neighbour_total = len(neighbour_ids_for_tier(tier))
+    initial_total = (
+        canonical_total + typo_total + attested_total + attestation_total + neighbour_total
+    )
     usable_min = {"smoke": 27, "confirmation": 73, "full": 142}[tier]
 
     print(f"AUTOMATED SCREEN — {tier.upper()} TIER")
@@ -2082,6 +2188,18 @@ def report(out: Path, tier: str) -> None:
             counts["typo_success"],
             typo_total,
             f">= {2 if tier == 'smoke' else 3}",
+        ),
+        (
+            "a likelier near neighbour is offered",
+            counts["neighbour_success"],
+            len(neighbour_ids_for_tier(tier)),
+            f">= {2 if tier == 'smoke' else 4}",
+        ),
+        (
+            "no near neighbour is invented for an ordinary word",
+            counts["neighbour_false_offers"],
+            len(neighbour_ids_for_tier(tier)),
+            "== 0",
         ),
         (
             "rare real wording still cards",
@@ -2164,6 +2282,13 @@ def report(out: Path, tier: str) -> None:
     print(f"  typo relation declared        {ratio(typo_rows, 'typo_relation_exact')}")
     print(f"  no redundant suggestion       {ratio(typo_rows, 'typo_suggestion_exact')}\n")
 
+    neighbour_rows = [row for row in current_initial if row.kind == "neighbour"]
+    wanted = [row for row in neighbour_rows if NEIGHBOUR_BY_ID[row.shot_id].neighbour]
+    ordinary = [row for row in neighbour_rows if not NEIGHBOUR_BY_ID[row.shot_id].neighbour]
+    print("NEAR-NEIGHBOUR DETAIL")
+    print(f"  registered pair offered       {ratio(wanted, 'neighbour_success')}")
+    print(f"  article stayed on submission  {ratio(wanted, 'neighbour_kept_submission')}")
+    print(f"  ordinary word left alone      {ratio(ordinary, 'neighbour_success')}\n")
 
     serbian = [row for row in current_initial if row.lang == "sr" and row.kind != "typo"]
     serbian_verdicts = [row for row in serbian if row.kind == "verdict"]

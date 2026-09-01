@@ -66,7 +66,7 @@ def test_a_complete_prefix_awaiting_its_json_is_held_back():
 def test_a_courtesy_word_before_the_marker_does_not_switch_the_judgement_off():
     """The gate is the parsed field, never the model obeying "write nothing else": one
     stray token ahead of the marker must not read as an answer that never judged."""
-    raw = f'Sure!\n{line('{"used": false, "where": ""}')}prose'
+    raw = f"Sure!\n{line('{"used": false, "where": ""}')}prose"
 
     assert parse_verdict(raw).used is False
     assert VERDICT_PREFIX not in strip_verdict(raw)
@@ -163,5 +163,5 @@ def test_a_partial_marker_is_held_wherever_a_whole_one_would_be_read():
     """The two scans share one window. Gating the partial one tighter left a band where
     half a marker was shown as prose and then taken away again."""
     for preamble in (0, 100, 195, 199):
-        raw = f'{"x" * preamble}{VERDICT_PREFIX[:6]}'
+        raw = f"{'x' * preamble}{VERDICT_PREFIX[:6]}"
         assert VERDICT_PREFIX[:6] not in strip_verdict(raw), preamble

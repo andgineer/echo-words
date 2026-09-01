@@ -126,7 +126,14 @@ def test_the_prompt_asks_for_the_spelling_relation_in_one_rule(languages):
 
     assert '"word_relation": "<same, morphology or typo>"' in prompt
     assert "word_relation is typo when the submission is misspelled" in prompt
-    assert "suggestion\nis empty unless the relation is typo" in prompt
+    # The field carries two different things, and the rule has to keep them apart: a
+    # correction replaces the submission, a commoner near-spelling only sits beside it.
+    # The check is asked for at the heading, where the answer decides what the word is:
+    # asked among the field descriptions instead, it was measurably never carried out.
+    assert "spells a markedly commoner word" in prompt
+    assert "keep the heading on the\n   submission" in prompt
+    assert "the relation\nthen stays same or morphology" in prompt
+    assert "suggestion is empty otherwise" in prompt
     # The heading and the card carry the same wording; the correction is named in
     # suggestion, and the interface tells the reader what became of their spelling.
     assert "head a suspected misspelling with the correction" in prompt
