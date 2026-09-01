@@ -6,14 +6,14 @@ Delete this file once the work has landed. What outlives it belongs in
 
 ## Where this stands
 
-The code is written, committed and green. The measurement is not done. Commit
-`7551e4e9` carries the work and says so in its own message; the release deployed
-to the host is `890c9cfd`, the commit before it, which does **not** contain any
-of this.
+The code is written, committed and green. The measurement has now been made and
+the feature does not work: the offer never fires. Commit `7551e4e9` carries the
+code; the release deployed to the host is `890c9cfd`, the commit before it, which
+does **not** contain any of this, and nothing here is fit to deploy.
 
-`inv pre` and `inv test` pass (582 pytest, 75 frontend). One bench gate, `a
-likelier near neighbour is offered`, is red and unproven — not from a measured
-failure but because no valid tier has ever scored it.
+`inv pre` and `inv test` pass (582 pytest, 75 frontend). The gate `a likelier
+near neighbour is offered` is red on a valid run: 3/6, needing 4, with all three
+successes coming from ordinary words correctly left alone.
 
 ## The requirement
 
@@ -41,49 +41,72 @@ the notice, were already there and unreachable.
 
 ## What the experiments have established
 
+**The pool knows the neighbour and will not put it in the field.** This is the
+finding that decides what to do next. In `experiments/.bench-nb-real/`, on a run
+where every one of 195 calls was answered, `causal` came back with "не следует
+путать с *casual*" and `wider` with "не следует путать … с *wieder*" — the exact
+pairs the fixtures registered, named in the article prose, with `suggestion`
+empty in both. `openrouter-nemotron-3-ultra` did the same on `causal` in the
+earlier probe. Two model families, two languages, first answer each time. The
+missing step is routing, not knowledge.
+
 **Placement decides whether the check happens at all.** Asked among the JSON field
 descriptions, it was never carried out — by then the article is written and the
 fields only transcribe it. Moved into article rule 1, where the answer decides
-what the word is, it fired. Same model both times.
+what the word is, it fired once in an early probe; over a measured tier it does
+not.
 
 **Qualifiers subtract.** A wording that added "rare, archaic or narrow" broke the
 one case that had worked under the plainer "markedly commoner word", with the same
 model answering. The plainer wording is what is committed.
 
 **The false side needs no defending.** Zero invented offers on ordinary words
-across every probe, including the loosest wording. The guard written against that
-risk cost a true positive and bought nothing.
+across every probe, including the loosest wording, and again over the full tier.
+The guard written against that risk cost a true positive and bought nothing.
 
-**Two fixtures measured the wrong thing and were replaced.** `Beet` and `дуг` are
-ordinary words looked up in their own right; the model declined them correctly and
-even discussed `Bett` in the etymology while doing so. `manger` never reached this
-logic at all — the judgement refuses it as unused. The registered pairs are now
-`causal`/`casual`, `wider`/`wieder`, `отад`/`отац`.
+**Three fixtures measured the wrong thing.** `Beet` and `дуг` are ordinary words
+looked up in their own right; the model declined them correctly. `manger` never
+reached this logic at all — the judgement refuses it as unused. Those three were
+replaced by `causal`/`casual`, `wider`/`wieder`, `отад`/`отац`, and `отад` has now
+failed the same way: the answer was `{"used": false}`, so it never reached the
+branch. `отад` is a real, standard Serbian adverb, the short form of `отада`, so
+that refusal is also a defect in its own right — recorded in
+`spec/decision-answer-shape.md`.
 
 ## What is left
 
-1. Wait for the free pool's daily quota. Confirm with one call before committing to
-   a tier, and read the provider tally, not the wall clock.
-2. `uv run python experiments/one_note_bench.py run --tier full --resume --wait 180
-   --pace 2 --concurrency 1 --out experiments/.bench-nb-real`. That directory holds
-   70 answers already bought; `--resume` keeps them.
-3. Read availability first. Provider answers well below 187/189, or
-   `google-gemini-3.5-flash-lite` missing from the tally, means the run is void and
-   says nothing about the change.
-4. `run-clicks`, then `report --tier full`.
-5. Fresh-agent semantic review of the packet, and record the decision in
+1. **Replace the Serbian fixture.** It has to be a real word the answer will
+   vouch for, one or two letters from a markedly commoner one, and the commoner
+   word must be the neighbour a competent speaker would actually name — `отад`'s
+   own nearest neighbour is its variant `отада`, not `отац`, so a model naming
+   `отада` would be right and scored a miss. Verify the frequency claim for the
+   pair before registering it, and do not pick a pair because it looks easier.
+2. **One prompt change, then one tier.** The change to try is carrying the
+   neighbour the article already names into the `suggestion` field — the field
+   description and article rule 1 currently ask for it in two places and get it
+   in neither. Do not vary anything else in the same measurement.
+3. Run `uv run python experiments/one_note_bench.py run --tier full --resume
+   --wait 180 --pace 2 --concurrency 1 --out experiments/.bench-nb-<name>`, a
+   fresh output directory: the recorded answers are bound to the current prompt
+   hash and none of them survive a prompt change.
+4. Read availability before results. Provider answers well below the call count,
+   or `google-gemini-3.5-flash-lite` missing from the tally, means the run is void
+   and says nothing about the change.
+5. `run-clicks`, then `report --tier full`.
+6. Fresh-agent semantic review of the packet, and record the decision in
    `spec/decision-answer-shape.md`.
-6. Act on what it finds.
 
 ## The decision the measurement has to inform
 
-Three registered pairs across three languages. Whether the offer appears is the
-question; the gate asks for four of six with the three ordinary words counting
-toward it, so the offer has to fire at least once.
+Whether the offer appears at all. The gate asks for four of six with the three
+ordinary words counting toward it, so the offer has to fire at least once.
 
-If it does not fire at all on a healthy pool, the honest conclusion is that the
-free pool will not do this, and the choice is between dropping the requirement and
-deriving the neighbour ourselves — edit distance against a frequency list, which
-is a computation rather than a language judgement, and would need a frequency
-resource per language that the project does not have today. Do not answer that
-question by loosening the gate or by choosing easier fixtures.
+If it does not fire once the prompt asks for it in the one place that works, the
+honest conclusion is that the free pool will not do this, and the choice is
+between dropping the requirement and deriving the neighbour ourselves — edit
+distance against a frequency list, which is a computation rather than a language
+judgement, and would need a frequency resource per language that the project does
+not have today. That conclusion is not available yet: the pool demonstrably
+produces the neighbour in prose, so the prompt has not yet been given its fair
+test. Do not reach for it, and do not answer the question by loosening the gate
+or by choosing easier fixtures.

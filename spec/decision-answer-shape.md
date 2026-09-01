@@ -106,6 +106,55 @@ silently repaired by deterministic code. A prompt arm with invalid or missing
 answers is reported as such; availability misses are never counted as content
 quality and an earlier hash is never substituted for the current prompt.
 
+### The near neighbour offered beside the card
+
+Six fixtures measure the offer: three real words a letter or two from a markedly
+commoner one, and three ordinary words that must be offered nothing. On a pool
+answering every call, no registered pair produced the offer and no ordinary word
+drew a false one.
+
+The neighbour itself is present in those answers, as prose. `causal` is analysed
+with "не следует путать с *casual*" and `wider` with "не следует путать … с
+*wieder*", by two different pool models, while the structured suggestion stays
+empty. The knowledge the requirement needs is in the free pool's first answer;
+what the current wording does not do is carry it into the field the interface
+reads. That is a routing result, not the pool's refusal, so the requirement
+stands: dropping it, or deriving the neighbour from an edit distance against a
+per-language frequency list the project does not have, would both be answers to
+a question this measurement did not ask.
+
+A fixture instantiates this requirement only when the submission is wording the
+answer will vouch for. One that the standalone judgement refuses as unused never
+reaches the branch that offers a neighbour, and measures the refusal instead.
+
+### Where the free pool's answers stand against fresh review
+
+The deterministic contracts pass and the answers are still not acceptable. Over
+half of a review packet's items carry a defect the learner would see, and a third
+of the packet one they would memorise. Four classes block acceptance:
+
+- **Ungrammatical target-language sentences on card fronts** — `einen äußerst
+  gelungener Abend`, `the definitely best solution`, a German example with the
+  finite verb off second position. The card is the product; a drilled error is
+  the worst outcome the answer can produce.
+- **Analyses in the wrong language, or half in it** — a Serbian submission
+  answered entirely in Serbian with no Russian anywhere, and example sentences
+  that switch language mid-clause.
+- **Invented facts stated with confidence** — a non-existent idiom as the bold
+  heading, an aspect pair that is not a verb, an etymology built on a false
+  cognate, a Swiss orthographic rule that does not exist, and a spelling card
+  that states its own rule backwards.
+- **Silent card loss** — a correct analysis that cards nothing because its
+  payload is malformed, empty, or reproduces the supplied context with the final
+  period dropped.
+
+Two further findings sit in our own code rather than the model's. A card payload
+whose string values are unquoted is repaired and scored valid, so the screen
+reports conformance the answer did not have; and an exactly correct contextual
+analysis is discarded over one character of punctuation. Repair generous enough
+to hide a malformed payload, and a comparison strict enough to throw away a
+correct one, are the same boundary set wrongly in opposite directions.
+
 ## Trust boundary
 
 The parser normalizes harmless singular/list variation, drops an independently
