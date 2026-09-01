@@ -105,7 +105,7 @@ imprecise chip, not only the nine measured.
 Four of these cost nothing: they re-score answers already bought. Run them
 before spending a single call. Score them against answers recorded under the
 prompt they are meant to judge — the near-neighbour work in
-`plan-near-neighbour-offer.md` changed the prompt, so a recorded set from before
+`near-neighbour-offer.md` changed the prompt, so a recorded set from before
 it reports as a separate arm and reads as zeroes against the current one.
 
 **E1 — does the dictionary form know what the surface does not?** Over every
