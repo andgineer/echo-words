@@ -65,6 +65,16 @@ on a multi-word submission no longer withholds the entry, because the judgement
 is about one lexical unit and running text is not one. That narrows this defect
 to single-word submissions, which is where all three observations sit.
 
+That fallback needs the same tier. It fired on none of 2,624 recorded multi-word
+answers, because no fixture ever submitted the input that provokes it: two content
+words with no unit between them, which is neither a fragment carrying a real unit
+nor a clause. Three such word lists are now registered — `Ampel links`, the case
+the reader reported, plus an English and a Serbian one — at three calls on the
+full tier. What they measure is the failure, not the refusal: carding the pair as
+a dictionary entry. A refusal is a right answer there, and now leaves the reader a
+chip per word. Reported as a diagnostic, gating nothing, for the same reason the
+ordinary class gates nothing — the rate is the question.
+
 ## What not to do
 
 Do not tune the standalone question against these three words. Three refusals

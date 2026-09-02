@@ -51,7 +51,7 @@ from backend_bench import (  # noqa: E402
     split_answer,
 )
 from bench_items import SENTENCES  # noqa: E402
-from echo_words.card import ParsedText, ParsedUnit  # noqa: E402
+from echo_words.card import ParsedAnswer, ParsedText, ParsedUnit  # noqa: E402
 from echo_words.languages import (  # noqa: E402
     fold_for_match,
     load_languages,
@@ -269,6 +269,30 @@ ATTESTED_CASES = (
 ORDINARY_ATTESTED_IDS = frozenset(
     case.shot_id for case in ATTESTED_CASES if case.ordinary
 )
+
+
+@dataclass(frozen=True)
+class WordListCase:
+    """Two content words with no unit between them: a list, not a lexical unit.
+
+    Distinct from FRAGMENTS, which are a use of a real unit typed with the words
+    around it. Here there is nothing to extract, so the only right answers are the
+    text branch or a refusal — and a refusal now leaves the reader a chip per word
+    rather than nothing. Carding such a pair as a dictionary entry is the failure.
+    """
+
+    shot_id: str
+    lang: str
+    submitted: str
+
+
+WORDLIST_CASES = (
+    WordListCase("wordlist-de-ampel-links", "de", "Ampel links"),
+    WordListCase("wordlist-en-window-quickly", "en", "window quickly"),
+    WordListCase("wordlist-sr-prozor-brzo", "sr", "прозор брзо"),
+)
+WORDLIST_BY_ID = {case.shot_id: case for case in WORDLIST_CASES}
+WORDLIST_IDS = frozenset(WORDLIST_BY_ID)
 ATTESTED_BY_ID = {case.shot_id: case for case in ATTESTED_CASES}
 ATTESTED_IDS = frozenset(ATTESTED_BY_ID)
 SMOKE_ATTESTED_IDS = frozenset(
@@ -666,6 +690,13 @@ def attestation_shots() -> list[Shot]:
     ]
 
 
+def wordlist_shots() -> list[Shot]:
+    return [
+        Shot(case.shot_id, "wordlist", case.lang, case.submitted, expected_kind="text")
+        for case in WORDLIST_CASES
+    ]
+
+
 def attested_shots() -> list[Shot]:
     return [
         Shot(
@@ -707,6 +738,11 @@ def attestation_ids_for_tier(tier: str) -> frozenset[str]:
     return frozenset(attestation_id(shot_id) for shot_id in judged)
 
 
+def wordlist_ids_for_tier(tier: str) -> frozenset[str]:
+    # Three calls, on the full tier only: the class exists to be measured, not gated.
+    return WORDLIST_IDS if tier == "full" else frozenset()
+
+
 def initial_jobs_for_tier(tier: str) -> list[Shot]:
     wanted = (
         canonical_ids_for_tier(tier)
@@ -714,6 +750,7 @@ def initial_jobs_for_tier(tier: str) -> list[Shot]:
         | attested_ids_for_tier(tier)
         | attestation_ids_for_tier(tier)
         | neighbour_ids_for_tier(tier)
+        | wordlist_ids_for_tier(tier)
     )
     return [
         shot
@@ -723,6 +760,7 @@ def initial_jobs_for_tier(tier: str) -> list[Shot]:
             *attested_shots(),
             *attestation_shots(),
             *neighbour_shots(),
+            *wordlist_shots(),
         )
         if shot.shot_id in wanted
     ]
@@ -823,6 +861,7 @@ def read(out: Path, attempts: list[Shot] | None = None) -> dict[str, Shot]:
             *attested_shots(),
             *attestation_shots(),
             *neighbour_shots(),
+            *wordlist_shots(),
         )
     }
     rows = _select_canonical(recorded, initial)
@@ -1356,6 +1395,20 @@ def _payload_parses_unrepaired(text: str) -> bool:
     return True
 
 
+def _wordlist_refused(shot: Shot) -> bool:
+    verdict = parse_verdict(shot.text) if shot.text else None
+    return verdict is not None and not verdict.used
+
+
+def _wordlist_chips(shot: Shot, parsed: ParsedAnswer | None) -> int:
+    """The chips the reader ends with, counting the refusal fallback production runs."""
+    if isinstance(parsed, ParsedText):
+        return len(parsed.segments)
+    if _wordlist_refused(shot):
+        return len(fill_text_segments([], shot.source, LANGUAGES[shot.lang]))
+    return 0
+
+
 def score(shot: Shot) -> Shot:
     if shot.shot_id in EXPECTED_UNIT_OVERRIDES:
         shot.expected_kind = "unit"
@@ -1417,6 +1470,15 @@ def score(shot: Shot) -> Shot:
         ),
         "raw_sentence_issues": raw_sentence_issues,
         "raw_sentence_forms_exact": not raw_sentence_issues,
+        # A word list has no unit to extract, so carding one as a dictionary entry is
+        # the failure. A refusal is not: production reads a refused multi-word
+        # submission as text and leaves the reader a chip for each word.
+        "wordlist_carded": shot.kind == "wordlist"
+        and isinstance(parsed, ParsedUnit)
+        and not _wordlist_refused(shot),
+        "wordlist_chips": _wordlist_chips(shot, semantic_parsed)
+        if shot.kind == "wordlist"
+        else 0,
     }
     if isinstance(semantic_parsed, ParsedText):
         raw_items = raw_combinations(shot)
@@ -1696,6 +1758,7 @@ def quality_counts(initial_rows: list[Shot], context_rows: list[Shot]) -> dict[s
     bare_rows = [row for row in initial_rows if row.kind == "bare"]
     typo_rows = [row for row in initial_rows if row.kind == "typo"]
     neighbour_rows = [row for row in initial_rows if row.kind == "neighbour"]
+    wordlist_rows = [row for row in initial_rows if row.kind == "wordlist"]
     attested_rows = [row for row in initial_rows if row.kind == "attested"]
     # Production refuses when either judgement refuses, so the arm is scored that way:
     # measuring the article's verdict alone would measure half the product.
@@ -1713,7 +1776,7 @@ def quality_counts(initial_rows: list[Shot], context_rows: list[Shot]) -> dict[s
         "usable_initial": sum(
             usable_result(row)
             for row in initial_rows
-            if row.kind not in {"typo", "attested", "attestation", "neighbour"}
+            if row.kind not in {"typo", "attested", "attestation", "neighbour", "wordlist"}
         ),
         "usable_verdicts": len(usable_verdicts),
         "hard_verdict_errors": sum(
@@ -1758,6 +1821,12 @@ def quality_counts(initial_rows: list[Shot], context_rows: list[Shot]) -> dict[s
                 and row.shot_id not in refused_apart
                 and attested_success(row)
             },
+        ),
+        "wordlist_carded": len(
+            {row.shot_id for row in wordlist_rows if row.metrics.get("wordlist_carded")},
+        ),
+        "wordlist_chipped": len(
+            {row.shot_id for row in wordlist_rows if int(row.metrics.get("wordlist_chips", 0)) >= 2},
         ),
         # Diagnostic, deliberately outside every gate: what the ordinary class scores
         # is the open question, and a threshold set before the measurement would be a
@@ -1879,6 +1948,7 @@ def deterministic_gates(
     expected_attested_count = len(attested_ids_for_tier(tier))
     expected_attestation_count = len(attestation_ids_for_tier(tier))
     expected_neighbour_count = len(neighbour_ids_for_tier(tier))
+    expected_wordlist_count = len(wordlist_ids_for_tier(tier))
     return {
         "all tier manifest fixtures attempted": len(initial_rows) == len(canonical)
         and {row.shot_id for row in initial_rows} == expected_ids,
@@ -1888,15 +1958,17 @@ def deterministic_gates(
             - expected_attested_count
             - expected_attestation_count
             - expected_neighbour_count
+            - expected_wordlist_count
         ]
         == tier
+        and sum(row.kind == "wordlist" for row in canonical) == expected_wordlist_count
         and sum(row.kind == "neighbour" for row in canonical) == expected_neighbour_count
         and sum(row.kind == "typo" for row in canonical) == expected_typo_count
         and sum(row.kind == "attested" for row in canonical) == expected_attested_count
         and sum(row.kind == "attestation" for row in canonical) == expected_attestation_count
         and len(CLICK_IDS) == CLICK_FIXTURES
         and len(canonical) + len(CLICK_IDS)
-        == {"smoke": 55, "confirmation": 125, "full": 213}[tier],
+        == {"smoke": 55, "confirmation": 125, "full": 216}[tier],
         "accepted payloads contain one branch": all(
             not row.metrics.get("mixed_branch") for row in accepted
         ),
@@ -2283,6 +2355,13 @@ def report(out: Path, tier: str) -> None:
             f">= {2 if tier == 'smoke' else 3}",
         ),
     )
+    wordlist_total = len(wordlist_ids_for_tier(tier))
+    if wordlist_total:
+        print(
+            f"  word list carded as a unit    {counts['wordlist_carded']}/{wordlist_total}"
+            f"  ·  reader keeps chips {counts['wordlist_chipped']}/{wordlist_total}"
+            "  (diagnostic, gates nothing)",
+        )
     ordinary_total = sum(1 for i in attested_ids_for_tier(tier) if ATTESTED_BY_ID[i].ordinary)
     if ordinary_total:
         print(

@@ -3,6 +3,8 @@ from dataclasses import replace
 
 import one_note_bench as bench
 
+from echo_words.prompt import VERDICT_PREFIX
+
 
 def _shot(shot_id: str, *, expected_kind: str = "text") -> bench.Shot:
     return bench.Shot(
@@ -255,6 +257,32 @@ def test_quality_thresholds_fail_immediately_below_each_minimum():
     assert not bench.quality_gates(counts, "full")["obvious hard verdict errors"]
 
 
+def test_a_word_list_carded_as_a_unit_is_the_failure_and_a_refusal_is_not():
+    """There is no unit to extract from two unrelated words, so the text branch and a
+    refusal are both right — production reads a refused multi-word submission as text.
+    Only a dictionary entry made out of the pair loses the reader anything."""
+    carded = next(row for row in bench.wordlist_shots() if row.shot_id == "wordlist-de-ampel-links")
+    carded.text = (
+        "translation===CARD==="
+        '{"kind":"unit","word":"Ampel links","word_relation":"same","suggestion":"",'
+        '"meanings":[{"label":"","translations":["светофор слева"],"examples":['
+        '{"text":"Die Ampel links.","translation":"x","highlighted":"Die <b>Ampel links</b>.",'
+        '"gapped":"Die ___."}]}],"segments":[]}'
+    )
+    scored = bench.score(carded)
+    assert scored.metrics["wordlist_carded"] is True
+    assert scored.metrics["wordlist_chips"] == 0
+
+    refused = next(
+        row for row in bench.wordlist_shots() if row.shot_id == "wordlist-de-ampel-links"
+    )
+    refused.text = f'{VERDICT_PREFIX} {{"used": false, "where": ""}}\n'
+    scored = bench.score(refused)
+    assert scored.metrics["wordlist_carded"] is False
+    # The reader still gets a chip for each submitted word.
+    assert scored.metrics["wordlist_chips"] == 2
+
+
 def test_tier_manifests_have_frozen_non_overlapping_counts():
     assert len(bench.SMOKE_CANONICAL_IDS) == 30
     assert len(bench.HISTORICAL_HARD_IDS) == 38
@@ -263,7 +291,10 @@ def test_tier_manifests_have_frozen_non_overlapping_counts():
     assert len(bench.canonical_ids_for_tier("full")) == 157
     assert len(bench.initial_jobs_for_tier("smoke")) + len(bench.CLICK_IDS) == 55
     assert len(bench.initial_jobs_for_tier("confirmation")) + len(bench.CLICK_IDS) == 125
-    assert len(bench.initial_jobs_for_tier("full")) + len(bench.CLICK_IDS) == 213
+    assert len(bench.initial_jobs_for_tier("full")) + len(bench.CLICK_IDS) == 216
+    # A word list is measured on the full tier only, at three calls.
+    assert len(bench.wordlist_ids_for_tier("full")) == 3
+    assert bench.wordlist_ids_for_tier("confirmation") == frozenset()
     assert len(bench.attested_ids_for_tier("smoke")) == 5
     assert len(bench.attested_ids_for_tier("confirmation")) == 10
     assert len(bench.attested_ids_for_tier("full")) == 16
