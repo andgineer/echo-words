@@ -10,9 +10,10 @@ guessing.
 
 ## The problem
 
-`exact source boundaries` is 11 of 21, with 16 of 21 registered units found — the
-figures from the last full tier measured on a healthy pool. A chip's boundary is
-not cosmetic: the chip is what the reader taps, and a tap builds the note.
+`exact source boundaries` is 13 of 21, with 17 of 21 registered units found — the
+figures from the most recent full tier measured on a healthy pool,
+`experiments/.bench-nb-field/`. A chip's boundary is not cosmetic: the chip is
+what the reader taps, and a tap builds the note.
 
 Tapping the nine imprecise chips exactly as the reader would — the chip text
 plus the text it came from, with unit intent — produced this:
@@ -66,9 +67,9 @@ Five classes, and only two of them are the model failing to know the answer:
 negation and the current subject, object or complement, and to include every
 fixed piece in the form it takes in this sentence. Both are stated; both are
 broken, in opposite directions, in the same run. Restating them louder is
-therefore the least promising route, and the run history agrees: four prompt
-generations scored 18, 9, 16 and 17 distinct registered units on the same
-fixtures.
+therefore the least promising route, and the run history agrees: prompt
+generations have scored 18, 9, 16, 17, 14 and 17 distinct registered units on the
+same fixtures.
 
 ## Where a fix could live
 
@@ -104,9 +105,12 @@ imprecise chip, not only the nine measured.
 
 Four of these cost nothing: they re-score answers already bought. Run them
 before spending a single call. Score them against answers recorded under the
-prompt they are meant to judge — the near-neighbour work in
-`near-neighbour-offer.md` changed the prompt, so a recorded set from before
-it reports as a separate arm and reads as zeroes against the current one.
+prompt they are meant to judge: the prompt has changed twice since these
+experiments were written, so every directory older than
+`experiments/.bench-nb-field/` reports as a separate arm and reads as zeroes
+against the current one. `read_arms` is what separates them, and a report showing
+a healthy archived arm beside an empty current one is showing that, not a
+regression.
 
 **E1 — does the dictionary form know what the surface does not?** Over every
 recorded text answer, count how often the returned dictionary form accounts for
@@ -138,9 +142,9 @@ effect is separable from theirs. *About 33 calls.*
 ## What the measurement cannot do
 
 Twenty-one registered units is a small denominator: one unit is five points and
-three units are the whole gap. Four prompt generations produced 18, 9, 16 and 17
-on the same fixtures. **A single smoke run cannot tell a two-unit improvement
-from noise**, so no prompt change is accepted on one run. A deterministic change
+three units are the whole gap. Six prompt generations produced 18, 9, 16, 17, 14
+and 17 on the same fixtures. **A single smoke run cannot tell a two-unit
+improvement from noise**, so no prompt change is accepted on one run. A deterministic change
 is a different case: it is re-scored over every recorded answer at once, and its
 regression risk is measured directly as chips it used to get right and now does
 not.

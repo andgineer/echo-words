@@ -26,9 +26,11 @@ tool looks for.
 - `spec/plan/` — work that is started and not finished, one file each.
   **Read these first when picking work up**: each says where its work
   stands, what is already built, what its experiments established and
-  what is left. Two are open — `near-neighbour-fixture.md`, one bench
-  fixture that measures nothing until its pair is replaced, and
-  `exact-boundaries.md`. Write a new plan only for work
+  what is left. Four are open: `exact-boundaries.md`, the chip boundary a
+  tap depends on; `bench-instrument.md`, four places the harness reports
+  what is not so; `context-equality.md`, a correct answer rejected over a
+  full stop; and `attestation-refuses-real-words.md`, the judgement
+  withholding words that exist. Write a new plan only for work
   that needs one, and delete it once that work has landed; what outlives
   it moves into a decision spec. A plan is not an archive.
 

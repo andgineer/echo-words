@@ -163,12 +163,14 @@ nothing in the packet arguing against it. They are the free pool's own quality,
 and they are why fresh semantic review is mandatory rather than advisory: the
 screen certifies conformance, and conformance is not correctness.
 
-Two findings sit in our own code rather than the model's. A card payload whose
-string values are unquoted is repaired and scored valid, so the screen reports
-conformance the answer did not have; and an exactly correct contextual analysis
-is discarded over one character of punctuation. Repair generous enough to hide a
-malformed payload, and a comparison strict enough to throw away a correct one,
-are the same boundary set wrongly in opposite directions.
+Two findings sit in our own code rather than the model's, and they are not the
+same kind of thing. Repairing a payload whose string values are unquoted is
+deliberate and earns its keep — a repaired card reaches the learner where a
+rejected one does not; what is wrong is that the screen counts the repaired
+answer as a parseable one, so a measurement of how well models follow the
+contract silently includes answers that did not. The other is a product
+strictness: a contextual analysis correct in every other respect is discarded
+because it reproduced the supplied sentence without its final period.
 
 ### The verdict gate reads high against its own manifest
 
