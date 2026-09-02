@@ -399,8 +399,12 @@ than solved.** A model can still call a coinage attested: none to three of six s
 both judgements, one of them carded with an invented register and an invented
 etymology on the most recent tier, and what survives is the well-formed compound — `Fahrradsuppe`,
 `bookshelfy`, `tablewards` — carded with an invented sense, an invented register and
-an invented origin. That is the known cost of shipping without an attestation source,
-and no free source covers English, German and Serbian alike. Registered fixtures of
+an invented origin. That is the measured cost of what no model catches. A
+dictionary is therefore asked as well — Wiktionary covers all three languages free
+and without a key — and where no wiki has the wording a note carries, the entry says
+so and offers the reader the lookups they would have run themselves. It warns and
+never withholds, because the one measured false alarm is a real Serbian set
+expression, and refusing that would cost more than the warning does. Registered fixtures of
 both classes — real rare wording and well-formed nonsense — plus fresh semantic review
 of the concrete answers stay part of every prompt promotion gate, because the number
 moves with the prompt and cannot be read off the code.

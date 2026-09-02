@@ -292,6 +292,69 @@ describe("AddView", () => {
     );
   });
 
+  it("says when no dictionary has the word, and still shows the card", async () => {
+    await labelBehavior(EPIC.ANKI_CARDS, FEATURE.COLLECTION, "Card delivery status");
+    entries.value = [{
+      entry_id: "entry-1",
+      word: "bookshelfy",
+      lang: "en",
+      language: "English",
+      status: "done",
+      text: "<b>bookshelfy</b>",
+      card_status: "added",
+      card_kinds: ["Recognition"],
+      not_in_dictionary: true,
+    }];
+    const wrapper = mount(AddView);
+    await flushPromises();
+
+    const notice = wrapper.find(".entry-notice.unverified");
+    expect(notice.text()).toContain("No dictionary has “bookshelfy”");
+    expect(notice.text()).toContain("rare word, an unexpected form, or not a word at all");
+    // The two lookups a doubting reader would run themselves.
+    const links = notice.findAll("a").map((a) => a.attributes("href"));
+    expect(links[0]).toBe("https://en.wiktionary.org/w/index.php?search=bookshelfy");
+    expect(links[1]).toBe("https://duckduckgo.com/?q=%22bookshelfy%22");
+    expect(wrapper.find(".entry-text").exists()).toBe(true);
+  });
+
+  it("asks about the word the card carries, not the one that was typed", async () => {
+    await labelBehavior(EPIC.ANKI_CARDS, FEATURE.COLLECTION, "Card delivery status");
+    entries.value = [{
+      entry_id: "entry-1",
+      word: "recieve",
+      lang: "en",
+      language: "English",
+      status: "done",
+      text: "<b>receive</b>",
+      card_status: "added",
+      analysed_as: "receive",
+      not_in_dictionary: true,
+    }];
+    const wrapper = mount(AddView);
+    await flushPromises();
+
+    expect(wrapper.find(".entry-notice.unverified").text()).toContain("“receive”");
+  });
+
+  it("says nothing about the dictionary when it had the word", async () => {
+    await labelBehavior(EPIC.ANKI_CARDS, FEATURE.COLLECTION, "Card delivery status");
+    entries.value = [{
+      entry_id: "entry-1",
+      word: "petrichor",
+      lang: "en",
+      language: "English",
+      status: "done",
+      text: "<b>petrichor</b>",
+      card_status: "added",
+      not_in_dictionary: false,
+    }];
+    const wrapper = mount(AddView);
+    await flushPromises();
+
+    expect(wrapper.find(".entry-notice.unverified").exists()).toBe(false);
+  });
+
   it("points the offer back once the entry shows the other spelling", async () => {
     await labelBehavior(EPIC.ANKI_CARDS, FEATURE.CORRECTION_AND_DETAIL, "Correction control");
     entries.value = [{

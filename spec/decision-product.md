@@ -31,6 +31,16 @@ the work again. **Do not re-open any of it.**
   the submission with a correction, that correction faces the same question, so a
   refusal is never discarded for a claim nothing has vouched for.
   Rarity is never a reason to refuse.
+  **What cannot be verified is said, not hidden.** No judgement makes a model
+  incapable of a confident article about a string nobody says, so the promise is not
+  that a card never carries one — it is that unverified wording is never presented as
+  verified. A dictionary outside the models is asked about the wording each note
+  carries, and where none has it the entry says it may be a rare word, an unexpected
+  form or no word at all, and offers the reader the lookups they would have run
+  themselves. A card the reader was warned about is the product working, not failing;
+  a card that quietly teaches an invention is the failure. The check never withholds,
+  because its measured false alarm is a real set expression and a false refusal costs
+  more than a warning does.
   A declared misspelling is settled by the paid model, which is measurably better
   at spelling than the pool; a refusal is not sent to it, because the paid models
   withhold fewer coinages than the pool does. Ordinary wording reaches neither.

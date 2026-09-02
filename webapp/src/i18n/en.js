@@ -29,6 +29,10 @@ export default {
   "add.misspelled":
     "“{word}” looks like a typo for “{suggestion}”, so no card was made.",
   "add.moreCommon": "The card is for “{word}”; “{suggestion}” is named the more usual spelling.",
+  "add.notInDictionary":
+    "No dictionary has “{word}”. It may be a rare word, an unexpected form, or not a word at all — the card was still made.",
+  "add.checkWiktionary": "Look it up in Wiktionary",
+  "add.checkUsage": "Search for it in real use",
   "add.rebuild": "Rebuild the card",
   "add.detailReady": "Full analysis ready",
   "add.detail": "More detail",

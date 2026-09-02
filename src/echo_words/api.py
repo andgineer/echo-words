@@ -42,6 +42,7 @@ from echo_words.languages import (
     validate_text,
     validate_word,
 )
+from echo_words.lexicon import Wiktionary
 from echo_words.pipeline import WordPipeline
 
 # Transport guards only, kept far above the real limits so that the short
@@ -172,6 +173,7 @@ def _lifespan(settings: Settings):
             events=app.state.events,
             anki=app.state.anki,
             audio=partial(fetch_pronunciation, settings=settings),
+            dictionary=Wiktionary().documents,
             audio_timeout=settings.audio_timeout,
             audio_dir=settings.data_dir / "audio",
         )

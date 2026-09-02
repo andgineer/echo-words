@@ -87,10 +87,16 @@ class CardStore(Protocol):
 
 
 AudioFetcher = Callable[[str, Language], Coroutine[Any, Any, Path | None]]
+DictionaryLookup = Callable[[str, Language], Coroutine[Any, Any, bool | None]]
 JobKind = Literal["submit", "rebuild", "switch"]
 
 
 async def _no_audio(_word: str, _language: Language) -> Path | None:
+    return None
+
+
+async def _no_lookup(_word: str, _language: Language) -> bool | None:
+    """No dictionary configured, which says nothing about any word."""
     return None
 
 
@@ -164,6 +170,7 @@ class WordPipeline:
         events: EventHub | None = None,
         anki: CardStore | None = None,
         audio: AudioFetcher = _no_audio,
+        dictionary: DictionaryLookup = _no_lookup,
         audio_timeout: float = 10,
         audio_dir: Path | None = None,
         history_size: int = 50,
@@ -173,6 +180,7 @@ class WordPipeline:
         self.events = events or EventHub()
         self.anki = anki
         self.audio = audio
+        self.dictionary = dictionary
         self.audio_timeout = audio_timeout
         self.audio_dir = audio_dir
         self.target_lang = target_lang
@@ -600,6 +608,7 @@ class WordPipeline:
             entry.card_kept = _kept_previous_note(job, stored)
             entry.analysed_as = _analysed_as(job, parsed)
             entry.typo_suspected = _declares_a_typo(parsed)
+            entry.not_in_dictionary = await self._dictionary_miss(job, parsed)
             withheld = stored.status == UNATTESTED_STATUS
             if withheld:
                 # Everything read out of a withheld answer goes with it: a chip is the
@@ -633,6 +642,17 @@ class WordPipeline:
                 if pending is not None:
                     _cancel_task(pending)
             attestation.cancel()
+
+    async def _dictionary_miss(self, job: Job, parsed: ParsedAnswer | None) -> bool:
+        """Whether no dictionary has the wording this note would carry.
+
+        Asked of the headword rather than the submission, because the headword is what
+        the note teaches. Only a definite absence is reported: an unreachable service
+        says nothing, and a text answer teaches no single wording.
+        """
+        if not isinstance(parsed, ParsedUnit):
+            return False
+        return await self.dictionary(parsed.note.word, job.language) is False
 
     def _attestation_task(self, job: Job) -> "asyncio.Task[Verdict | None] | None":
         """Ask the pool in parallel whether the submitted wording is used at all.

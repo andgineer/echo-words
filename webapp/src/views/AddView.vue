@@ -198,6 +198,29 @@ const spellingNotices = computed(() =>
   Object.fromEntries(entries.value.map((entry) => [entry.entry_id, spellingNotice(entry)])),
 );
 
+// The wording the note actually teaches, which is what the dictionary was asked about.
+function taughtWord(entry) {
+  return entry.analysed_as || entry.shown_spelling || entry.word;
+}
+
+// The two lookups a doubting reader would run themselves: the dictionary for the
+// language, and the exact wording in real use.
+function dictionaryLinks(entry) {
+  const word = taughtWord(entry);
+  return [
+    {
+      key: "wiktionary",
+      label: t("add.checkWiktionary"),
+      href: `https://${entry.lang}.wiktionary.org/w/index.php?search=${encodeURIComponent(word)}`,
+    },
+    {
+      key: "usage",
+      label: t("add.checkUsage"),
+      href: `https://duckduckgo.com/?q=${encodeURIComponent(`"${word}"`)}`,
+    },
+  ];
+}
+
 function correctionLabel(entry) {
   // The offer points back to the reader's own spelling once the entry shows another,
   // and its wording follows the card: there is nothing to replace without one.
@@ -283,6 +306,20 @@ async function undo() {
         >
           {{ correctionLabel(entry) }}
         </button>
+      </div>
+      <div v-if="entry.not_in_dictionary" class="entry-notice unverified">
+        <p class="notice-text">
+          {{ t("add.notInDictionary", { word: taughtWord(entry) }) }}
+        </p>
+        <a
+          v-for="link in dictionaryLinks(entry)"
+          :key="link.key"
+          class="btn-inline"
+          :href="link.href"
+          target="_blank"
+          rel="noopener noreferrer"
+          >{{ link.label }}</a
+        >
       </div>
       <p v-if="entry.shape === 'text' && entry.text" class="entry-source">{{ entry.word }}</p>
       <div v-if="entry.text" class="entry-text" v-html="entry.text"></div>
@@ -446,6 +483,16 @@ async function undo() {
 
 .entry-notice .btn-inline {
   margin-top: 0.4rem;
+}
+
+/* Unverified wording is marked apart from a spelling notice: one is about how the
+   word is written, the other about whether it is a word. */
+.entry-notice.unverified {
+  border-left-color: var(--warn, #b8860b);
+}
+
+.entry-notice.unverified .btn-inline + .btn-inline {
+  margin-left: 0.5rem;
 }
 
 .entry-source {

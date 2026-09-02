@@ -1167,6 +1167,100 @@ async def test_a_corrected_misspelling_names_the_word_the_card_is_for(languages)
         await pipeline.close()
 
 
+async def test_a_headword_no_dictionary_has_is_said_and_still_carded(languages):
+    """The reader is told, not overruled. Withholding on absence would refuse a real
+    set expression no wiki happens to carry, and a false refusal is the worse error."""
+    anki = RecordingAnki(Added(1, None, ("Recognition",)))
+    asked = []
+
+    async def dictionary(word, language):
+        asked.append((word, language.code))
+        return False
+
+    cascade = ScriptedCascade([Completion([valid_card("bookshelfy")])])
+    pipeline = WordPipeline(cascade, target_lang="ru", anki=anki, dictionary=dictionary)
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(languages["en"], "bookshelfy", False, intent="unit")
+        await pipeline.join()
+
+        assert entry.not_in_dictionary is True
+        assert entry.card_status == ADDED_STATUS
+        assert asked == [("bookshelfy", "en")]
+    finally:
+        await pipeline.close()
+
+
+async def test_the_dictionary_is_asked_about_the_wording_the_note_carries(languages):
+    """The note teaches the headword, so that is what has to be in a dictionary — not
+    the spelling the reader typed and the answer corrected away."""
+    anki = RecordingAnki(Added(1, None, ("Recognition",)))
+    asked = []
+
+    async def dictionary(word, language):  # noqa: ARG001
+        asked.append(word)
+        return True
+
+    cascade = ScriptedCascade(
+        [Completion([typo_card("receive")])],
+        attestations=[REFUSED, '{"used": true, "where": "everyday"}'],
+    )
+    pipeline = WordPipeline(cascade, target_lang="ru", anki=anki, dictionary=dictionary)
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(languages["en"], "recieve", False, intent="unit")
+        await pipeline.join()
+
+        assert asked == ["receive"]
+        assert entry.not_in_dictionary is False
+    finally:
+        await pipeline.close()
+
+
+async def test_an_unreachable_dictionary_says_nothing_about_the_word(languages):
+    """A service that did not answer is not a dictionary that lacks the word, and
+    telling the reader otherwise would accuse their real word on our own outage."""
+    anki = RecordingAnki(Added(1, None, ("Recognition",)))
+
+    async def dictionary(_word, _language):
+        return None
+
+    cascade = ScriptedCascade([Completion([valid_card("petrichor")])])
+    pipeline = WordPipeline(cascade, target_lang="ru", anki=anki, dictionary=dictionary)
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(languages["en"], "petrichor", False, intent="unit")
+        await pipeline.join()
+
+        assert entry.not_in_dictionary is False
+    finally:
+        await pipeline.close()
+
+
+async def test_a_text_answer_is_never_asked_about_in_a_dictionary(languages):
+    """Text teaches no single wording, so there is nothing to look up and no lookup
+    to spend."""
+    asked = []
+
+    async def dictionary(word, _language):
+        asked.append(word)
+        return False
+
+    cascade = ScriptedCascade(
+        [Completion(['translation===CARD==={"kind":"text","combinations":[]}'])],
+    )
+    pipeline = WordPipeline(cascade, target_lang="ru", dictionary=dictionary)
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(languages["de"], "Ampel links", False)
+        await pipeline.join()
+
+        assert asked == []
+        assert entry.not_in_dictionary is False
+    finally:
+        await pipeline.close()
+
+
 async def test_a_vouched_word_keeps_the_article_it_was_given(languages):
     anki = RecordingAnki(Added(2, None, ("Recognition",)))
     cascade = ScriptedCascade([Completion([valid_card("petrichor")])])

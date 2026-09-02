@@ -237,6 +237,38 @@ contract silently includes answers that did not. The other is a product
 strictness: a contextual analysis correct in every other respect is discarded
 because it reproduced the supplied sentence without its final period.
 
+### A dictionary is asked, and the reader is told rather than overruled
+
+Neither model tier reaches "no card ever carries a word nobody says". Over the same
+fixtures, six notes of 42 on the free pool and four of 42 on `gpt-fast` carry
+something a learner would memorise wrong, and the class no model fixes is
+well-formed nonsense carded with a confident sense. Requiring both models to vouch
+buys nothing: both vouch for `bookshelfy` and both for `tablewards`, so the blind
+spot is shared and agreement cannot separate a productive derivation from a word.
+
+The lever is a source outside the models, and one exists. **Wiktionary covers
+English, German and Serbian, free and without a key** — the source-language wiki
+for what it has, the English one, which documents every language, for the rest;
+present in either is present. Scored over every headword the two recorded tiers
+would have carded, 31 free and 34 paid, exactly four are absent from both wikis:
+`bookshelfy` and `змркалица`, both coinages that reach the reader; `водити рачуна`,
+a real Serbian set expression neither wiki carries; and `das Fenster`, real and
+present as `Fenster`, where the answer kept the article. One lookup is 183 ms at the
+median against a 2.5 s answer.
+
+**The check warns and never withholds.** Withholding on absence would refuse
+`водити рачуна`, and the product's own rule is that a false refusal costs the reader
+more than a warning they can act on. So where no wiki has the wording a note carries,
+the entry says so in the terms that are true — a rare word, an unexpected form, or no
+word at all — and offers the two lookups a doubting reader would run themselves: the
+dictionary for that language, and the exact wording in real use. An unreachable
+Wiktionary is not a miss, on the same rule as the judgement: silence is not an
+objection.
+
+The question is asked of the headword rather than the submission, because the
+headword is what the note teaches. It is an existence check and nothing more: a
+wrong gloss on a real word passes it untouched, and that class stays open.
+
 ### The verdict gate is read as it stands, never re-labelled to pass
 
 Some counted hard errors card exactly the extraction their own fixture registers
