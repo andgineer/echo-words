@@ -74,10 +74,11 @@ start the service.
 `deploy` is the only code-and-PWA activation path. It pins the ref to a single
 commit, so your local branch and any uncommitted work take no part in what ships —
 the ref only has to exist locally and be pushed to the origin the VM clones from.
-It requires a clean local checkout of the requested ref, checks out that same
-commit on the VM, runs `uv sync --no-dev`, builds `_static/` **on the VM** with
-`uv run --no-dev inv build-static`, syncs the secrets, starts or restarts the
-unit, and fails unless `/api/health` answers within 30 seconds.
+It requires a clean local checkout of the requested ref, fetches the origin's
+advertised branches and tags, verifies and checks out that same commit on the VM,
+runs `uv sync --no-dev`, builds `_static/` **on the VM** with `uv run --no-dev inv
+build-static`, syncs the secrets, starts or restarts the unit, and fails unless
+`/api/health` answers within 30 seconds.
 
 The remote checkout is inspected for modified tracked files and unexpected
 untracked files both before checkout and before sync; deployment stops and prints

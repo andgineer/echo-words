@@ -270,7 +270,9 @@ def _remote_deploy_script(commit: str) -> str:
     return (
         f"set -euo pipefail; cd {REMOTE_ROOT}; "
         f"{dirty_check}; "
-        f"git fetch origin {commit}; git checkout --detach {commit}; "
+        "git fetch origin '+refs/heads/*:refs/remotes/origin/*' "
+        "'+refs/tags/*:refs/tags/*'; "
+        f"git cat-file -e {commit}^{{commit}}; git checkout --detach {commit}; "
         f'test "$(git rev-parse HEAD)" = {commit}; '
         f"{dirty_check}; "
         "source /home/ubuntu/.local/bin/env; uv sync --no-dev; "
