@@ -3,8 +3,6 @@ from dataclasses import replace
 
 import one_note_bench as bench
 
-from echo_words.prompt import VERDICT_PREFIX
-
 
 def _shot(shot_id: str, *, expected_kind: str = "text") -> bench.Shot:
     return bench.Shot(
@@ -204,8 +202,8 @@ def _passing_quality_counts() -> dict[str, int]:
         "expression_success": bench.MIN_EXPRESSION_SUCCESS,
         "typo_success": 3,
         "typo_carded_misspelling": 0,
-        "neighbour_success": 4,
         "neighbour_false_offers": 0,
+        "unit_intent_wrong_branch": 0,
         "attested_kept": 3,
         "unused_refused": 3,
     }
@@ -257,10 +255,10 @@ def test_quality_thresholds_fail_immediately_below_each_minimum():
     assert not bench.quality_gates(counts, "full")["obvious hard verdict errors"]
 
 
-def test_a_word_list_carded_as_a_unit_is_the_failure_and_a_refusal_is_not():
-    """There is no unit to extract from two unrelated words, so the text branch and a
-    refusal are both right — production reads a refused multi-word submission as text.
-    Only a dictionary entry made out of the pair loses the reader anything."""
+def test_a_word_list_carded_as_a_unit_is_the_failure_and_the_text_branch_is_not():
+    """There is no unit to extract from two unrelated words. Nothing judges a submit-box
+    submission, so the text branch is the only answer that leaves the reader anything;
+    a dictionary entry made out of the pair is what loses them something."""
     carded = next(row for row in bench.wordlist_shots() if row.shot_id == "wordlist-de-ampel-links")
     carded.text = (
         "translation===CARD==="
@@ -273,11 +271,11 @@ def test_a_word_list_carded_as_a_unit_is_the_failure_and_a_refusal_is_not():
     assert scored.metrics["wordlist_carded"] is True
     assert scored.metrics["wordlist_chips"] == 0
 
-    refused = next(
+    chipped = next(
         row for row in bench.wordlist_shots() if row.shot_id == "wordlist-de-ampel-links"
     )
-    refused.text = f'{VERDICT_PREFIX} {{"used": false, "where": ""}}\n'
-    scored = bench.score(refused)
+    chipped.text = 'translation===CARD==={"kind":"text","combinations":[]}'
+    scored = bench.score(chipped)
     assert scored.metrics["wordlist_carded"] is False
     # The reader still gets a chip for each submitted word.
     assert scored.metrics["wordlist_chips"] == 2
@@ -374,7 +372,8 @@ def test_registered_typo_inputs_are_valid_unit_intent_cases():
         "vieleicht",
         "podrska",
     ]
-    assert all("kind must be unit" in bench.prompt_for(row) for row in rows)
+    assert all("The learner selected this unit" in bench.prompt_for(row) for row in rows)
+    assert all('"kind": "text"' not in bench.prompt_for(row) for row in rows)
 
 
 def test_typo_success_requires_the_corrected_word_on_the_card():
@@ -397,64 +396,61 @@ def _neighbour_answer(shot, *, relation, suggestion):
     return "analysis===CARD===" + json.dumps(payload)
 
 
-def test_a_likelier_near_neighbour_is_offered_beside_the_learners_own_card():
-    """The submission is a real word, so its article and its card are the learner's.
-    The commoner word it may have been meant for is advice standing beside them."""
+def test_the_commoner_word_is_measured_where_the_answer_still_names_it():
+    """The field is gone, so what is left to count is the article's own prose — which
+    is where the knowledge was before a field was ever asked for."""
     job = next(shot for shot in bench.neighbour_shots() if shot.shot_id == "neighbour-en-causal")
+    named = _neighbour_answer(job, relation="same", suggestion="")
+    named = named.replace("analysis", "не следует путать с casual", 1)
 
-    offered = bench.score(
-        replace(job, text=_neighbour_answer(job, relation="same", suggestion="casual")),
+    scored = bench.score(replace(job, text=named))
+    silent = bench.score(
+        replace(job, text=_neighbour_answer(job, relation="same", suggestion="")),
     )
 
-    assert offered.metrics["neighbour_offered"] is True
-    assert offered.metrics["neighbour_kept_submission"] is True
-    assert offered.metrics["neighbour_success"] is True
-    assert offered.metrics["neighbour_false_offer"] is False
+    assert scored.metrics["neighbour_named_in_prose"] is True
+    assert scored.metrics["neighbour_offered"] is False
+    assert silent.metrics["neighbour_named_in_prose"] is False
 
 
-def test_a_neighbour_carded_instead_of_offered_is_not_a_success():
-    """Calling it a misspelling replaces the learner's word instead of advising on it,
-    and `_kept_the_misspelling` then cards nothing at all."""
-    job = next(shot for shot in bench.neighbour_shots() if shot.shot_id == "neighbour-en-causal")
-
-    as_typo = bench.score(
-        replace(job, text=_neighbour_answer(job, relation="typo", suggestion="casual")),
-    )
-
-    assert as_typo.metrics["neighbour_kept_submission"] is False
-    assert as_typo.metrics["neighbour_success"] is False
-
-
-def test_a_neighbour_invented_for_an_ordinary_word_fails_a_zero_tolerance_gate():
-    """A needless replace offer costs the learner more than a missed one: it appears
-    beside a card they spelled correctly, on the common path rather than the rare one."""
+def test_a_correction_invented_for_an_ordinary_word_fails_a_zero_tolerance_gate():
+    """With no field to fill, a suggestion on a correctly spelled word is the answer
+    calling it misspelled — on the common path rather than the rare one."""
     job = next(shot for shot in bench.neighbour_shots() if shot.shot_id == "neighbour-en-kitchen")
 
     invented = bench.score(
-        replace(job, text=_neighbour_answer(job, relation="same", suggestion="chicken")),
+        replace(job, text=_neighbour_answer(job, relation="typo", suggestion="chicken")),
     )
     counts = _passing_quality_counts()
     counts["neighbour_false_offers"] = 1
 
     assert invented.metrics["neighbour_false_offer"] is True
-    assert invented.metrics["neighbour_success"] is False
     assert (
-        bench.quality_gates(counts, "full")["no near neighbour is invented for an ordinary word"]
+        bench.quality_gates(counts, "full")["no correction is invented for an ordinary word"]
         is False
     )
 
 
-def test_a_refused_coinage_is_a_complete_answer_and_is_not_re_asked_on_resume():
-    """A refusal is the outcome the unused fixtures expect, not a missing branch.
-    Judging it by the branch keys re-asks all six every resume, and `_select_canonical`
-    then keeps the last draw where every other kind keeps the first."""
-    job = next(shot for shot in bench.attested_shots() if shot.shot_id.startswith("unused-"))
-    refusal = '===USED=== {"used": false, "where": ""}\n'
-    refused = bench.score(replace(job, prompt_hash=bench.prompt_fingerprint(job), text=refusal))
+def test_a_selected_unit_answered_as_text_fails_a_zero_tolerance_gate():
+    """The selected-unit prompt carries no text branch, so an answer that takes one
+    has ignored the only contract it was given."""
+    counts = _passing_quality_counts()
+    counts["unit_intent_wrong_branch"] = 1
 
-    assert bench.attested_refused(refused) is True
-    assert bench.complete(refused) is True
-    assert bench.pending([job], {job.shot_id: refused}, resume=True) == []
+    assert bench.quality_gates(counts, "full")["a selected unit is never answered as text"] is False
+
+
+def test_only_the_standalone_call_can_refuse_a_coinage():
+    """The article prompt asks for no judgement of its own, so an article about a
+    coinage is not a refusal however the reader ends up not seeing it."""
+    job = next(shot for shot in bench.attested_shots() if shot.shot_id.startswith("unused-"))
+    article = bench.score(replace(job, text=_unit_answer(job.source)))
+    judged = bench.attestation_shots()[0]
+    judged = replace(judged, text='{"used": false, "where": ""}')
+
+    assert bench.judgement_refused(article) is False
+    assert bench.judgement_refused(bench.score(judged)) is True
+    assert bench.complete(bench.score(judged)) is True
 
 
 def test_an_uncorrected_misspelling_on_the_card_is_a_zero_tolerance_failure():

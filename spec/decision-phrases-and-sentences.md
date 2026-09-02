@@ -1,10 +1,12 @@
 # Phrases and sentences — decision
 
-Status: **decided 2026-08-27 — one prompt analyses every submission; its
-answer says whether the input is a lexical unit or text containing units. A
-unit creates one note, while text creates no note and offers complete lookup
-chips.** The production-flow harness is `experiments/one_note_bench.py`; the
-verdict fixtures originate in `experiments/unit_verdict_bench.py`.
+Status: **decided 2026-08-27 — where the branch is open the answer decides it:
+the submit-box prompt carries both branches and says whether the input is a
+lexical unit or text containing units. A unit creates one note, while text
+creates no note and offers complete lookup chips. Where the reader's own action
+already settled the branch, the prompt carries that branch alone.** The
+production-flow harness is `experiments/one_note_bench.py`; the verdict fixtures
+originate in `experiments/unit_verdict_bench.py`.
 
 ## Why the model decides inside the answer
 
@@ -16,8 +18,8 @@ same length and punctuation but require different outcomes. Serbian
 `чувам се.` can likewise be either a lexical target or a clause. No threshold
 over word count and punctuation can answer the linguistic question.
 
-The old surface router therefore left the design with two prompts and still
-made errors in the irreducible middle band. The merged contract asks for one
+The old surface *code* router therefore left the design with two prompts and
+still made errors in the irreducible middle band. The merged contract asks for one
 of two neutral branches in the same call that writes the article:
 
 - `unit` returns the dictionary article, validated dictionary headword,

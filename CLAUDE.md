@@ -26,10 +26,10 @@ tool looks for.
 - `spec/plan/` — work that is started and not finished, one file each.
   **Read these first when picking work up**: each says where its work
   stands, what is already built, what its experiments established and
-  what is left. One is open: `two-prompts.md` — replacing the one large
-  merged prompt with two short ones, each with a single job, and a cheap
-  call to choose between them only where the branch is not already known.
-  It is not started. Writing a defect into a decision spec documents it;
+  what is left. One is open: `two-prompts.md` — a cheap model call to
+  choose the branch for the submit box, where it is still unknown. The
+  prompt split it depended on has landed and is measured; the classifier
+  call has not. Writing a defect into a decision spec documents it;
   it does not accept it, and only the operator accepts a limitation of
   the product. Write a new plan only for work that needs one, and delete
   it once that work has landed; what outlives it moves into a decision

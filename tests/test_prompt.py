@@ -37,7 +37,7 @@ def unit_json():
     )
 
 
-def test_one_prompt_carries_both_neutral_branches(languages):
+def test_the_submit_box_prompt_carries_both_neutral_branches(languages):
     prompt = build_prompt(languages["sr"], "Он се вратио.", "Russian")
 
     assert '"kind": "unit"' in prompt
@@ -49,9 +49,10 @@ def test_one_prompt_carries_both_neutral_branches(languages):
     assert "at most five" not in prompt
 
 
-def test_submit_box_and_chip_prompts_differ_only_in_request_intent(languages):
-    open_prompt = build_prompt(languages["de"], "Rad fahren", "Russian")
-    unit_prompt = build_prompt(
+def test_a_selected_unit_is_asked_with_the_unit_contract_alone(languages):
+    """The branch is settled by the tap, so nothing about text can apply to the
+    answer. Carrying it anyway asks a fast model to hold a contract it cannot use."""
+    prompt = build_prompt(
         languages["de"],
         "Rad fahren",
         "Russian",
@@ -59,10 +60,26 @@ def test_submit_box_and_chip_prompts_differ_only_in_request_intent(languages):
         unit_intent=True,
     )
 
-    assert "choose the branch yourself" in open_prompt
-    assert "kind must be unit" in unit_prompt
+    assert '"kind": "unit"' in prompt
+    assert '"kind": "text"' not in prompt
+    assert "combinations" not in prompt
+    assert "First decide whether the submission" not in prompt
+    assert "context_sense" in prompt
+
+
+def test_the_open_branch_decision_stays_where_the_branch_is_unknown(languages):
+    open_prompt = build_prompt(languages["de"], "Rad fahren", "Russian")
+
+    assert "First decide whether the submission" in open_prompt
     assert "context_sense" not in open_prompt
-    assert "context_sense" in unit_prompt
+
+
+def test_the_selected_unit_prompt_is_the_shorter_one(languages):
+    """Half of what the merged prompt spends on a chip tap cannot apply to it."""
+    open_prompt = build_prompt(languages["de"], "Rad fahren", "Russian")
+    unit_prompt = build_prompt(languages["de"], "Rad fahren", "Russian", unit_intent=True)
+
+    assert len(unit_prompt) < len(open_prompt) * 0.7
 
 
 def test_open_verdict_defaults_contextual_finite_clauses_to_text(languages):
@@ -86,7 +103,7 @@ def test_text_combinations_preserve_separate_exact_source_units(languages):
         "Russian",
     )
 
-    assert "put every clear multi-word lookup target in combinations" in prompt
+    assert "put every clear multi-word lookup target in\ncombinations" in prompt
     assert "Keep distinct non-overlapping units\nseparate" in prompt
     assert "label and surface are the same unit twice" in prompt
     assert "copied token for token out of the submitted\ntext" in prompt
@@ -101,8 +118,18 @@ def test_text_combinations_preserve_separate_exact_source_units(languages):
 
 def test_unit_article_still_requires_forms_usage_origin_and_examples(languages):
     prompt = build_prompt(languages["de"], "Bank", "Russian", unit_intent=True)
-    for section in ("Forms only when useful", "Usage:", "Origin:", "examples"):
+    for section in ("Forms only when useful", "Usage:", "Origin only where", "examples"):
         assert section in prompt
+
+
+def test_origin_is_asked_for_only_where_it_is_known(languages):
+    """Required of every word, it is supplied for every word — including the ones that
+    have none, where what arrives is a confident story assembled from the parts."""
+    prompt = build_prompt(languages["de"], "Lupe", "Russian", unit_intent=True)
+
+    assert "Origin only where you know it" in prompt
+    assert "Origin: always include it" not in prompt
+    assert "leave it out" in prompt
 
 
 def test_unit_examples_target_only_the_lexical_surface(languages):
@@ -126,18 +153,11 @@ def test_the_prompt_asks_for_the_spelling_relation_in_one_rule(languages):
 
     assert '"word_relation": "<same, morphology or typo>"' in prompt
     assert "word_relation is typo when the submission is misspelled" in prompt
-    # The field carries two different things, and the rule has to keep them apart: a
-    # correction replaces the submission, a commoner near-spelling only sits beside it.
-    # The check is asked for at the heading, where the answer decides what the word is:
-    # asked among the field descriptions instead, it was measurably never carried out.
-    assert "spells a markedly commoner word" in prompt
-    assert "keep the heading on the\n   submission" in prompt
-    # The advice has its own field. Sharing suggestion with the correction measurably
-    # produced neither: models fill that field only for a spelling they call wrong.
-    assert "name that commoner word in also_common" in prompt
-    assert '"also_common": "<markedly commoner near-spelling, or empty>"' in prompt
-    assert "while the relation stays same or morphology" in prompt
     assert "suggestion is empty otherwise: it is only ever a correction" in prompt
+    # The near-spelling search cost a paragraph in the most expensive position in the
+    # prompt and reached the reader once in 201 answers.
+    assert "also_common" not in prompt
+    assert "markedly commoner" not in prompt
     # The heading and the card carry the same wording; the correction is named in
     # suggestion, and the interface tells the reader what became of their spelling.
     assert "head a suspected misspelling with the correction" in prompt

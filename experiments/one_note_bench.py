@@ -65,7 +65,6 @@ from echo_words.prompt import (  # noqa: E402
     build_prompt,
     extract_answer,
     parse_attestation,
-    parse_verdict,
 )
 from echo_words.sanitizer import sanitize_html  # noqa: E402
 from echo_words.segments import fill_text_segments  # noqa: E402
@@ -527,13 +526,13 @@ def _unit_intent(shot: Shot) -> bool:
     # What the submit box sends: a one-word submission is forced to the unit branch
     # there, so an attested shot — every one of them a single word — has to carry the
     # same instruction. Measuring it on the open-branch prompt would measure a prompt
-    # the app never sends for that input, and "kind must be unit" pushes against
-    # refusing, which is the very thing that arm exists to measure.
+    # the app never sends for that input, and the selected-unit prompt has no text
+    # branch at all, which is the very thing the split has to be scored on.
     return shot.kind in {"context", "typo"} or len(split_words(shot.source)) == 1
 
 
 def prompt_for(shot: Shot) -> str:
-    if shot.kind == "attestation":
+    if shot.kind in {"attestation", "correction"}:
         return build_attestation_prompt(LANGUAGES[shot.lang], shot.source)
     return build_prompt(
         LANGUAGES[shot.lang],
@@ -671,6 +670,10 @@ def attestation_id(shot_id: str) -> str:
     return f"attestation-{shot_id}"
 
 
+def correction_id(shot_id: str) -> str:
+    return f"correction-{shot_id}"
+
+
 def attestation_shots() -> list[Shot]:
     """The standalone judgement, which production asks in parallel with the article.
 
@@ -688,6 +691,36 @@ def attestation_shots() -> list[Shot]:
         )
         for case in (*ATTESTED_CASES, *TYPO_CASES)
     ]
+
+
+def correction_shots(recorded: dict[str, Shot]) -> list[Shot]:
+    """The second judgement, about the wording an answer put in place of a refused one.
+
+    Derived rather than registered: that wording is the answer's own, so it cannot be
+    written down before the run. Production asks it wherever a refusal would otherwise
+    be overruled by the bare word `typo`, and its count therefore varies with the draw,
+    which is why these calls sit outside every frozen tier total.
+    """
+    rows = []
+    for shot in recorded.values():
+        if not judgement_refused(recorded.get(attestation_id(shot.shot_id))):
+            continue
+        corrected = _correction_wording(shot)
+        if corrected:
+            rows.append(Shot(correction_id(shot.shot_id), "correction", shot.lang, corrected))
+    return rows
+
+
+def _correction_wording(shot: Shot) -> str:
+    """The second wording a note would carry, read exactly as production reads it.
+
+    The reconciled relation, not the claimed one, and empty where the answer headed
+    itself with the submission: there is no second wording there to ask about.
+    """
+    if shot.metrics.get("word_relation") != "typo":
+        return ""
+    word = str(shot.payload.get("word") or "")
+    return "" if normalize(word, shot.lang) == normalize(shot.source, shot.lang) else word
 
 
 def wordlist_shots() -> list[Shot]:
@@ -867,6 +900,8 @@ def read(out: Path, attempts: list[Shot] | None = None) -> dict[str, Shot]:
     rows = _select_canonical(recorded, initial)
     clicks = {shot.shot_id: shot for shot in context_shots(rows)}
     rows.update(_select_canonical(recorded, clicks))
+    corrections = {shot.shot_id: shot for shot in correction_shots(rows)}
+    rows.update(_select_canonical(recorded, corrections))
     return rows
 
 
@@ -878,7 +913,7 @@ def read_arms(
     hashes: dict[str, list[str]] = {}
     arms: list[dict[str, Shot]] = []
     for shot in attempts if attempts is not None else read_attempts(out):
-        if shot.kind in {"context", "typo"}:
+        if shot.kind in {"context", "correction", "typo"}:
             continue
         seen = hashes.setdefault(shot.shot_id, [])
         if shot.prompt_hash not in seen:
@@ -1278,24 +1313,19 @@ def vocab_metrics(shot: Shot, parsed: ParsedUnit, analysis: str) -> dict:
     typo_relation_exact = typo_case is None or parsed.word_relation == "typo"
     typo_suggestion_exact = typo_case is None or not parsed.suggestion
     neighbour_case = NEIGHBOUR_BY_ID.get(shot.shot_id)
-    # The offer is advice beside the learner's own card, so the article has to have
-    # stayed on the submission and the answer must not have called it a misspelling.
+    # Nothing routes a near neighbour into a field any more. What the reader can still
+    # be told is what the article says, so that is what the arm measures.
     neighbour_offered = bool(parsed.suggestion)
     neighbour_kept = normalize(note.word, shot.lang) == normalize(
         shot.source,
         shot.lang,
     ) and parsed.word_relation != "typo"
-    if neighbour_case is None:
-        neighbour_success = True
-    elif neighbour_case.neighbour:
-        neighbour_success = (
-            neighbour_offered
-            and neighbour_kept
-            and normalize(parsed.suggestion or "", shot.lang)
-            == normalize(neighbour_case.neighbour, shot.lang)
-        )
-    else:
-        neighbour_success = not neighbour_offered
+    neighbour_named = bool(
+        neighbour_case
+        and neighbour_case.neighbour
+        and normalize(neighbour_case.neighbour, shot.lang)
+        in set(tokens(analysis, shot.lang))
+    )
     return {
         "word_valid": bool(note.word),
         "meanings": len(note.meanings),
@@ -1354,7 +1384,7 @@ def vocab_metrics(shot: Shot, parsed: ParsedUnit, analysis: str) -> dict:
         ),
         "neighbour_offered": neighbour_offered,
         "neighbour_kept_submission": neighbour_kept,
-        "neighbour_success": neighbour_success,
+        "neighbour_named_in_prose": neighbour_named,
         "neighbour_false_offer": (
             neighbour_case is not None and not neighbour_case.neighbour and neighbour_offered
         ),
@@ -1367,42 +1397,44 @@ def vocab_metrics(shot: Shot, parsed: ParsedUnit, analysis: str) -> dict:
     }
 
 
-def attested_refused(shot: Shot) -> bool:
-    """Whether this answer withheld the wording, read off its own judgement.
+def judgement_refused(shot: Shot | None) -> bool:
+    """Whether the standalone judgement withheld the wording.
 
-    Only a judgement counts as a refusal. An unparseable payload, a text answer or an
-    article about some corrected word all leave the fabrication unmeasured, and this
-    arm exists to measure the judgement and nothing else.
+    It is the only call that judges: the article prompt asks for no verdict of its
+    own. An unreadable answer is an absent judgement, never a refusal.
     """
-    verdict = (
-        parse_attestation(shot.text)
-        if shot.kind == "attestation"
-        else parse_verdict(shot.text)
-    )
+    if shot is None:
+        return False
+    verdict = parse_attestation(shot.text)
     return verdict is not None and not verdict.used
 
 
 def attested_carded(shot: Shot) -> bool:
     """A dictionary article headed by the submitted wording, which is what cards it."""
-    if attested_refused(shot) or shot.payload.get("kind") != "unit":
-        return False
-    return normalize(shot.payload.get("word"), shot.lang) == normalize(shot.source, shot.lang)
-
-
-def attested_carded_or_silent(shot: Shot) -> bool:
-    """Whether the article stayed on the submitted wording, which is what a standalone
-    refusal can withhold. An article about a corrected word is not that."""
     if shot.payload.get("kind") != "unit":
-        return True
+        return False
     return normalize(shot.payload.get("word"), shot.lang) == normalize(shot.source, shot.lang)
 
 
-def attested_success(shot: Shot) -> bool:
-    """Used wording earns its article; unused wording must be refused by the verdict."""
-    case = ATTESTED_BY_ID.get(shot.shot_id)
-    if case is None:
-        return False
-    return attested_carded(shot) if case.attested else attested_refused(shot)
+def _withheld_in_production(rows: list[Shot]) -> set[str]:
+    """The fixtures whose answer never reaches a reader, read exactly as production
+    decides it: the judgement refused the submission, and where the answer replaced
+    that submission with a correction, the second judgement refused that one too."""
+    by_id = {row.shot_id: row for row in rows}
+    withheld = set()
+    for row in rows:
+        if row.kind != "attestation" or not judgement_refused(row):
+            continue
+        shot_id = row.shot_id.removeprefix("attestation-")
+        answer = by_id.get(shot_id)
+        overruled = (
+            answer is not None
+            and bool(_correction_wording(answer))
+            and not judgement_refused(by_id.get(correction_id(shot_id)))
+        )
+        if not overruled:
+            withheld.add(shot_id)
+    return withheld
 
 
 def _recoverable(shot: Shot) -> bool:
@@ -1441,18 +1473,10 @@ def _payload_parses_unrepaired(text: str) -> bool:
     return True
 
 
-def _wordlist_refused(shot: Shot) -> bool:
-    verdict = parse_verdict(shot.text) if shot.text else None
-    return verdict is not None and not verdict.used
-
-
 def _wordlist_chips(shot: Shot, parsed: ParsedAnswer | None) -> int:
-    """The chips the reader ends with, counting the refusal fallback production runs."""
-    if isinstance(parsed, ParsedText):
-        return len(parsed.segments)
-    if _wordlist_refused(shot):
-        return len(fill_text_segments([], shot.source, LANGUAGES[shot.lang]))
-    return 0
+    """The chips the reader ends with. Nothing judges a submit-box submission, so the
+    text branch is the only thing that leaves the reader a chip per word."""
+    return len(parsed.segments) if isinstance(parsed, ParsedText) else 0
 
 
 def score(shot: Shot) -> Shot:
@@ -1519,9 +1543,7 @@ def score(shot: Shot) -> Shot:
         # A word list has no unit to extract, so carding one as a dictionary entry is
         # the failure. A refusal is not: production reads a refused multi-word
         # submission as text and leaves the reader a chip for each word.
-        "wordlist_carded": shot.kind == "wordlist"
-        and isinstance(parsed, ParsedUnit)
-        and not _wordlist_refused(shot),
+        "wordlist_carded": shot.kind == "wordlist" and isinstance(parsed, ParsedUnit),
         "wordlist_chips": _wordlist_chips(shot, semantic_parsed)
         if shot.kind == "wordlist"
         else 0,
@@ -1686,16 +1708,8 @@ def complete(shot: Shot) -> bool:
     # A standalone judgement answers with neither branch, so completeness for it is a
     # readable judgement. Judging it by the branch keys made every resume re-ask all of
     # them, and kept the last attempt where every other kind keeps the first.
-    if shot.kind == "attestation":
+    if shot.kind in {"attestation", "correction"}:
         return parse_attestation(shot.text) is not None
-    # A refused wording is a complete answer, not a missing branch: judging the unused
-    # fixtures by the branch keys re-asked all six on every resume and kept the last.
-    if shot.kind == "attested" and attested_refused(shot):
-        return True
-    # Same for a word list: a refusal is one of its two right answers, and production
-    # reads it as text. Judging it by the branch keys re-asked it on every resume.
-    if shot.kind == "wordlist" and _wordlist_refused(shot):
-        return True
     return bool(
         shot.metrics.get("answered")
         and (
@@ -1776,6 +1790,20 @@ async def run_clicks(args, out: Path) -> None:
         await broker.aclose()
 
 
+async def run_corrections(args, out: Path) -> None:
+    assert_no_prompt_drift()
+    os.environ.update(load_keys())
+    broker = AsyncBroker(home=out / "llmbroker")
+    try:
+        recorded = read(out)
+        jobs = correction_shots(recorded)
+        todo = pending(jobs, recorded, args.resume)
+        log(f"corrections: {len(todo)} calls")
+        await run_batch(args, out, broker, todo)
+    finally:
+        await broker.aclose()
+
+
 def ratio(rows: list[Shot], key: str) -> str:
     passed = sum(bool(row.metrics.get(key)) for row in rows)
     return f"{passed}/{len(rows)} ({passed / len(rows):.0%})" if rows else "-"
@@ -1802,7 +1830,11 @@ def hard_verdict_rate_ok(errors: int, usable: int) -> bool:
     return usable > 0 and errors * 10 <= usable
 
 
-def quality_counts(initial_rows: list[Shot], context_rows: list[Shot]) -> dict[str, int]:
+def quality_counts(
+    initial_rows: list[Shot],
+    context_rows: list[Shot],
+    corrections: list[Shot] = [],  # noqa: B006 - read only, and empty is the honest default
+) -> dict[str, int]:
     verdict_rows = [row for row in initial_rows if row.kind == "verdict"]
     usable_verdicts = [row for row in verdict_rows if usable_result(row)]
     text_rows = [row for row in initial_rows if row.kind == "text"]
@@ -1811,13 +1843,7 @@ def quality_counts(initial_rows: list[Shot], context_rows: list[Shot]) -> dict[s
     neighbour_rows = [row for row in initial_rows if row.kind == "neighbour"]
     wordlist_rows = [row for row in initial_rows if row.kind == "wordlist"]
     attested_rows = [row for row in initial_rows if row.kind == "attested"]
-    # Production refuses when either judgement refuses, so the arm is scored that way:
-    # measuring the article's verdict alone would measure half the product.
-    refused_apart = {
-        row.shot_id.removeprefix("attestation-")
-        for row in initial_rows
-        if row.kind == "attestation" and attested_refused(row)
-    }
+    withheld = _withheld_in_production([*initial_rows, *corrections])
     actual_text_rows = [
         row
         for row in text_rows
@@ -1848,6 +1874,11 @@ def quality_counts(initial_rows: list[Shot], context_rows: list[Shot]) -> dict[s
             int(row.metrics.get("registered_units_cardable", 0))
             for row in actual_text_rows
         ),
+        # The selected-unit prompt has no text branch to answer with, so an answer
+        # that still takes one is the whole cost of the split.
+        "unit_intent_wrong_branch": sum(
+            bool(row.metrics.get("unit_intent_wrong_branch")) for row in initial_rows
+        ),
         "click_success": len(
             {row.shot_id for row in context_rows if click_success(row)},
         ),
@@ -1862,8 +1893,7 @@ def quality_counts(initial_rows: list[Shot], context_rows: list[Shot]) -> dict[s
                 for row in typo_rows
                 if row.metrics.get("payload_valid")
                 and row.metrics.get("typo_heads_submission")
-                and not attested_refused(row)
-                and row.shot_id not in refused_apart
+                and row.shot_id not in withheld
             },
         ),
         # Diagnostics. How often the pool names the misspelling as one measures its
@@ -1875,8 +1905,14 @@ def quality_counts(initial_rows: list[Shot], context_rows: list[Shot]) -> dict[s
         "typo_success": len(
             {row.shot_id for row in typo_rows if row.metrics.get("typo_success")},
         ),
-        "neighbour_success": len(
-            {row.shot_id for row in neighbour_rows if row.metrics.get("neighbour_success")},
+        # What the reader is left with once the field is gone: the article naming the
+        # commoner word in its prose, which is where that knowledge always was.
+        "neighbour_named_in_prose": len(
+            {
+                row.shot_id
+                for row in neighbour_rows
+                if row.metrics.get("neighbour_named_in_prose")
+            },
         ),
         "neighbour_false_offers": len(
             {row.shot_id for row in neighbour_rows if row.metrics.get("neighbour_false_offer")},
@@ -1896,8 +1932,8 @@ def quality_counts(initial_rows: list[Shot], context_rows: list[Shot]) -> dict[s
                 for row in attested_rows
                 if ATTESTED_BY_ID[row.shot_id].attested
                 and not ATTESTED_BY_ID[row.shot_id].ordinary
-                and row.shot_id not in refused_apart
-                and attested_success(row)
+                and row.shot_id not in withheld
+                and attested_carded(row)
             },
         ),
         "wordlist_carded": len(
@@ -1914,8 +1950,8 @@ def quality_counts(initial_rows: list[Shot], context_rows: list[Shot]) -> dict[s
                 row.shot_id
                 for row in attested_rows
                 if ATTESTED_BY_ID[row.shot_id].ordinary
-                and row.shot_id not in refused_apart
-                and attested_success(row)
+                and row.shot_id not in withheld
+                and attested_carded(row)
             },
         ),
         "unused_refused": len(
@@ -1923,12 +1959,7 @@ def quality_counts(initial_rows: list[Shot], context_rows: list[Shot]) -> dict[s
                 row.shot_id
                 for row in attested_rows
                 if not ATTESTED_BY_ID[row.shot_id].attested
-                and (
-                    attested_success(row)
-                    # The standalone refusal counts only over an answer about the very
-                    # wording it judged: a corrected spelling overrules it in production.
-                    or (row.shot_id in refused_apart and attested_carded_or_silent(row))
-                )
+                and row.shot_id in withheld
             },
         ),
     }
@@ -1954,9 +1985,6 @@ def quality_gates(counts: dict[str, int], tier: str) -> dict[str, bool]:
     # two of six twice.
     attested_min = 2 if tier == "smoke" else 3
     unused_min = 2 if tier == "smoke" else 3
-    # Half the registered pairs, and every ordinary word left alone: a needless replace
-    # offer costs the learner more than a missed one, so the false side has no slack.
-    neighbour_min = 2 if tier == "smoke" else 4
     return {
         "usable initial results": counts["usable_initial"] >= usable_min,
         "obvious hard verdict errors": not counts["usable_verdicts"]
@@ -1971,18 +1999,24 @@ def quality_gates(counts: dict[str, int], tier: str) -> dict[str, bool]:
         "successful expression cases": counts["expression_success"]
         >= MIN_EXPRESSION_SUCCESS,
         "a misspelling is never carded": counts["typo_carded_misspelling"] == 0,
-        "a likelier near neighbour is offered": counts["neighbour_success"] >= neighbour_min,
-        "no near neighbour is invented for an ordinary word": counts["neighbour_false_offers"]
+        # With no field to fill, a suggestion on a correctly spelled ordinary word is
+        # the answer calling it misspelled, which is the harm this pair always guarded.
+        "no correction is invented for an ordinary word": counts["neighbour_false_offers"]
+        == 0,
+        # The branch is settled before the call, so an answer that takes the other one
+        # is asking for a contract its prompt does not carry.
+        "a selected unit is never answered as text": counts["unit_intent_wrong_branch"]
         == 0,
         "rare real wording still cards": counts["attested_kept"] >= attested_min,
         "unused wording is refused": counts["unused_refused"] >= unused_min,
     }
 
 
-def deterministic_gates(
+def deterministic_gates(  # noqa: PLR0913 - the screen's inputs, and every arm of them.
     initial_rows: list[Shot],
     context_rows: list[Shot],
     tier: str,
+    corrections: list[Shot] = [],  # noqa: B006 - read only, and empty is the honest default
 ) -> dict[str, bool]:
     canonical = initial_jobs_for_tier(tier)
     expected_ids = {shot.shot_id for shot in canonical}
@@ -2006,21 +2040,14 @@ def deterministic_gates(
         for row in accepted_context
         if row.metrics.get("actual_kind") == "unit"
     ]
-    refused_apart = {
-        row.shot_id.removeprefix("attestation-")
-        for row in initial_rows
-        if row.kind == "attestation" and attested_refused(row)
-    }
-    # A misspelling the standalone judgement refuses, over an article that stayed on
-    # that same spelling, is carded by nothing in production: either the answer declared
-    # the misspelling, and production leaves it uncarded with the correction on offer,
-    # or it did not, and the refusal stands. Either way there is no card here for the
-    # contract to hold to a spelling — the carve-out excuses no card that is made.
+    withheld = _withheld_in_production([*initial_rows, *corrections])
+    # A withheld misspelling is carded by nothing in production, so there is no card
+    # here for the contract to hold to a spelling — the carve-out excuses none that is
+    # made.
     accepted_typos = [
         row
         for row in accepted_initial
-        if row.kind == "typo"
-        and not (row.shot_id in refused_apart and attested_carded_or_silent(row))
+        if row.kind == "typo" and row.shot_id not in withheld
     ]
     expected_canonical = {30: "smoke", 81: "confirmation", 157: "full"}
     expected_typo_count = 3 if tier == "smoke" else 6
@@ -2183,6 +2210,10 @@ def review_packet(
     expected_rows.extend(
         Shot(case.shot_id, "context", "", case.label) for case in CLICK_CASES
     )
+    expected_rows.extend(
+        row for row in current.values() if row.kind == "correction"
+    )
+    withheld = _withheld_in_production(list(current.values()))
     for expected_shot in expected_rows:
         shot = current.get(expected_shot.shot_id)
         if shot is None:
@@ -2245,31 +2276,46 @@ def review_packet(
             # packet built from categories alone cannot show the reviewer the class it
             # was called for.
             categories.add(shot.kind)
-            actual["carded"] = shot.metrics.get("meanings_valid")
             actual["headword"] = shot.payload.get("word")
+            # The production outcome, not the payload's: a coinage whose article would
+            # have carded and was then withheld must not read as a coinage carded.
+            actual["carded"] = bool(shot.metrics.get("meanings_valid")) and (
+                shot.shot_id not in withheld
+            )
             if shot.kind == "attested":
                 case = ATTESTED_BY_ID[shot.shot_id]
                 expected["attested"] = case.attested
                 expected["class"] = "ordinary" if case.ordinary else "famous"
-                actual["article_refused"] = attested_refused(shot)
                 judged = current.get(attestation_id(shot.shot_id))
                 actual["standalone_refused"] = (
-                    attested_refused(judged) if judged is not None else None
+                    judgement_refused(judged) if judged is not None else None
                 )
+                if judged is not None and shot.metrics.get("payload_valid"):
+                    actual["reaches_the_reader"] = shot.shot_id not in withheld
             if shot.kind == "neighbour":
                 expected["neighbour"] = NEIGHBOUR_BY_ID[shot.shot_id].neighbour
-                actual["also_common"] = shot.payload.get("also_common")
+                actual["neighbour_named_in_prose"] = shot.metrics.get(
+                    "neighbour_named_in_prose",
+                )
             if shot.kind == "wordlist":
                 actual["chips"] = shot.metrics.get("wordlist_chips")
                 actual["carded_as_unit"] = shot.metrics.get("wordlist_carded")
-        if shot.kind == "attestation":
+        if shot.kind in {"attestation", "correction"}:
             # The judge's own answer, so a reviewer can see it invent an attestation.
-            categories.add("attestation")
-            actual["used"] = shot.payload.get("used") if shot.payload else None
-            actual["where"] = shot.payload.get("where") if shot.payload else None
+            # It carries no card block by design, so it is never an unusable answer.
+            categories.discard("unusable")
+            categories.add(shot.kind)
+            judgement = parse_attestation(shot.text)
+            actual["used"] = None if judgement is None else judgement.used
+            actual["readable"] = judgement is not None
+            actual.pop("payload_valid", None)
         if shot.kind == "typo":
             categories.add("typo")
-            actual["also_common"] = shot.payload.get("also_common")
+            # Only where the pool's own answer settles it. An unusable payload steps up
+            # to the paid model, which this arm does not call, so what the reader ends
+            # up with is not this run's to say.
+            if shot.metrics.get("payload_valid"):
+                actual["reaches_the_reader"] = shot.shot_id not in withheld
             expected["word"] = shot.expected_suggestion
             expected["word_relation"] = "typo"
             expected["suggestion"] = ""
@@ -2337,9 +2383,12 @@ def report(out: Path, tier: str) -> None:
     rows = [
         row
         for row in current.values()
-        if row.shot_id in wanted_ids or row.shot_id in CLICK_IDS
+        if row.shot_id in wanted_ids
+        or row.shot_id in CLICK_IDS
+        or row.shot_id.removeprefix("correction-") in wanted_ids
     ]
-    current_initial = [row for row in rows if row.kind != "context"]
+    current_initial = [row for row in rows if row.kind not in {"context", "correction"}]
+    corrections = [row for row in rows if row.kind == "correction"]
     missing = wanted_ids - {
         row.shot_id for row in current_initial
     }
@@ -2351,8 +2400,8 @@ def report(out: Path, tier: str) -> None:
     context_rows = [row for row in rows if row.kind == "context"]
     verdict_rows = [row for row in current_initial if row.kind == "verdict"]
     required_morph = [row for row in vocab_rows if row.expects_morphology]
-    counts = quality_counts(current_initial, context_rows)
-    hard = deterministic_gates(current_initial, context_rows, tier)
+    counts = quality_counts(current_initial, context_rows, corrections)
+    hard = deterministic_gates(current_initial, context_rows, tier, corrections)
     quality = quality_gates(counts, tier)
     canonical_total = len(canonical_ids_for_tier(tier))
     typo_total = len(typo_ids_for_tier(tier))
@@ -2443,15 +2492,19 @@ def report(out: Path, tier: str) -> None:
             "== 0",
         ),
         (
-            "a likelier near neighbour is offered",
-            counts["neighbour_success"],
-            len(neighbour_ids_for_tier(tier)),
-            f">= {2 if tier == 'smoke' else 4}",
-        ),
-        (
-            "no near neighbour is invented for an ordinary word",
+            "no correction is invented for an ordinary word",
             counts["neighbour_false_offers"],
             len(neighbour_ids_for_tier(tier)),
+            "== 0",
+        ),
+        (
+            "a selected unit is never answered as text",
+            counts["unit_intent_wrong_branch"],
+            len([
+                row
+                for row in current_initial
+                if _unit_intent(row) and row.kind != "attestation"
+            ]),
             "== 0",
         ),
         (
@@ -2539,6 +2592,19 @@ def report(out: Path, tier: str) -> None:
     print(f"  sense chips ready             {ratio(vocab_rows, 'sense_chips_ready')}")
     print(f"  usage present                 {ratio(vocab_rows, 'usage')}")
     print(f"  origin present                {ratio(vocab_rows, 'origin')}")
+    # Where an origin is asked for unconditionally, the answers that have none supply
+    # one anyway: a wolf-lupa story for Lupe, viel + leicht for a misspelling. These
+    # are the fixtures with nothing to tell, so the share here is the invention rate.
+    invented_risk = [
+        row
+        for row in current_initial
+        if row.metrics.get("actual_kind") == "unit"
+        and (
+            row.kind == "typo"
+            or (row.kind == "attested" and not ATTESTED_BY_ID[row.shot_id].attested)
+        )
+    ]
+    print(f"    on coinages and misspellings {ratio(invented_risk, 'origin')}")
     print(f"  required morphology present   {ratio(required_morph, 'morphology')}")
     print(f"  clicked context is example 1  {ratio(context_rows, 'context_example_exact')}")
     print(f"  clicked surface exact         {ratio(context_rows, 'context_surface_exact')}")
@@ -2564,10 +2630,18 @@ def report(out: Path, tier: str) -> None:
     neighbour_rows = [row for row in current_initial if row.kind == "neighbour"]
     wanted = [row for row in neighbour_rows if NEIGHBOUR_BY_ID[row.shot_id].neighbour]
     ordinary = [row for row in neighbour_rows if not NEIGHBOUR_BY_ID[row.shot_id].neighbour]
-    print("NEAR-NEIGHBOUR DETAIL")
-    print(f"  registered pair offered       {ratio(wanted, 'neighbour_success')}")
+    print("NEAR-NEIGHBOUR DETAIL — what the dropped field cost the reader")
+    print(f"  commoner word named in prose  {ratio(wanted, 'neighbour_named_in_prose')}")
     print(f"  article stayed on submission  {ratio(wanted, 'neighbour_kept_submission')}")
-    print(f"  ordinary word left alone      {ratio(ordinary, 'neighbour_success')}\n")
+    print(f"  ordinary word left alone      "
+          f"{sum(not row.metrics.get('neighbour_offered') for row in ordinary)}/{len(ordinary)}\n")
+
+    print("SECOND JUDGEMENT — the correction put in place of a refused wording")
+    print(f"  corrections asked about       {len(corrections)}")
+    print(
+        "  vouched for, so the note ships "
+        f"{sum(not judgement_refused(row) for row in corrections)}/{len(corrections)}\n",
+    )
 
     serbian = [row for row in current_initial if row.lang == "sr" and row.kind != "typo"]
     serbian_verdicts = [row for row in serbian if row.kind == "verdict"]
@@ -2626,7 +2700,10 @@ def show(out: Path, shot_ids: list[str]) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("action", choices=["run", "run-clicks", "report", "show"])
+    parser.add_argument(
+        "action",
+        choices=["run", "run-clicks", "run-corrections", "report", "show"],
+    )
     parser.add_argument("--tier", choices=TIER_NAMES, default="smoke")
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--concurrency", type=int, default=1)
@@ -2640,6 +2717,8 @@ def main() -> None:
         asyncio.run(run(args, out))
     elif args.action == "run-clicks":
         asyncio.run(run_clicks(args, out))
+    elif args.action == "run-corrections":
+        asyncio.run(run_corrections(args, out))
     elif args.action == "report":
         report(out, args.tier)
     else:

@@ -91,11 +91,15 @@ The four requirements every design decision is weighed against:
    want analysed. A lookup-only request — the answer and audio arrive as
    usual but no Anki note is created — is made with the control next to the
    input; prefixing the text with `?` does the same.
-   Every compact answer uses one prompt and one hidden discriminated payload.
-   A single source word is a known vocabulary unit. For an ordinary
-   multi-word submit-box request the model decides, in that same answer,
-   whether the input is one lexical `unit` or `text` containing units; no
-   punctuation or word-count classifier and no preliminary model call exist.
+   Every compact answer ends in one hidden discriminated payload, and the
+   prompt that asks for it carries only the branches the request can still be
+   in. A single source word is a known vocabulary unit, and so is a tapped
+   chip: those are asked with the unit contract alone, since nothing about
+   text can apply to them. For an ordinary multi-word submit-box request the
+   branch is unknown, so that prompt carries both and the model decides, in
+   that same answer, whether the input is one lexical `unit` or `text`
+   containing units; no punctuation or word-count classifier and no
+   preliminary model call exist.
    The boundary is semantic rather than grammatical and deliberately
    conservative. An ordinary utterance with a freely chosen participant,
    current argument, time, place, degree or other surrounding event detail is
@@ -294,48 +298,55 @@ article will invent one for, complete with origin and usage examples. Measured o
 free pool, an article prompt refuses none of six such strings; the paid models refuse
 none either. Intelligence is not the lever here, the question is.
 
-**A unit submission is judged twice, and either judgement can withhold it.** The
-answer opens with a verdict on the submitted wording — used or not, and where it is
-used — before it writes anything else; alongside it, a second pool call asks that
-question and nothing else. A refusal from either means no article, no card and no
-audio, and the entry says the wording is not vouched for. Rarity is never a reason to
-refuse; wording real speakers use in any register, field, dialect or period is used,
-however uncommon.
-
-**A refusal is a judgement about one lexical unit, so it cannot withhold running
-text.** The standalone question is asked only where the submission is one unit, and
-a verdict at the head of an answer to a multi-word submission says the answer took
-the unit branch when it should have taken the text one. Such a submission is read as
-text instead of refused: no card, nothing the answer wrote about wording it had just
-refused, and a chip for each submitted word — a row the backend builds from the
-submission itself. Losing the whole submission to a question that was never about it
-would cost the reader more than the mis-branched answer did.
+**A unit submission is judged by a pool call that does nothing else.** It asks
+whether the submitted wording is used — and where — and answers with that and nothing
+more. A refusal means no article, no card and no audio, and the entry says the wording
+is not vouched for. Rarity is never a reason to refuse; wording real speakers use in
+any register, field, dialect or period is used, however uncommon.
 
 **The question is asked apart because the framing is what decides the answer.** The
 same instruction, on the same free pool and the same fixtures: prose inside the
-article rules withheld none of six coinages, a verdict at the head of the article
-call withholds two, and the standalone question withholds three to six over six
-samples. A model already writing a dictionary entry has an entry to produce; asked on
-its own it has nothing to produce but the judgement. Rare real wording survived every
-run of all three. What the standalone call reaches are the well-formed compounds
-nobody says — `Fahrradsuppe`, `Löffelangst` — which the article's own verdict never
-withheld and this one refuses in most runs, though not in all of them.
+article rules withheld none of six coinages, a verdict at the head of the article call
+withholds two, and the standalone question withholds three to six over six samples. A
+model already writing a dictionary entry has an entry to produce; asked on its own it
+has nothing to produce but the judgement. Rare real wording survived every run of all
+three. What the standalone call reaches are the well-formed compounds nobody says —
+`Fahrradsuppe`, `Löffelangst` — which the article's own verdict never withheld and
+this one refuses in most runs, though not in all of them.
+
+**Only a unit submission is judged at all.** The question is about one lexical unit,
+so it is asked only where the submission is one — a tapped chip, or a single word. A
+submit-box request the model reads as text is not judged by anything, and the reader
+gets its translation and a chip for each source word. Over three registered word-list
+fixtures — two content words with no unit between them — that is what happens: none
+was carded as a dictionary entry and each left the reader its chips. What this leaves
+unguarded is a multi-word submit-box submission the model answers on the unit branch:
+it is carded with no judgement anywhere in the loop, and the branch decision is the
+only thing standing behind it.
 
 Nothing is shown until the wording has been vouched for: the article is held while it
 streams and released only once the judgement lands, because streaming a fabrication
 and blanking it afterwards is the reader having seen it. The judgement is one line and
 normally arrives first, and the two calls run together, so the reader waits for the
-slower of the two rather than for their sum. An answer that omits the verdict, or a
-judgement that never arrives, is treated as no objection: closing on the model's
-silence would refuse real words, which is the worse error.
+slower of the two rather than for their sum. A judgement that never arrives is treated
+as no objection: closing on the model's silence would refuse real words, which is the
+worse error. The question about a correction fails open the same way, and it is the
+same choice made twice — a correction nothing could be asked about reaches the reader
+rather than being withheld on a refusal the answer itself disputes.
 
-**A judgement about the submitted wording is overruled by an answer about another
-one.** The standalone question refuses four of six registered misspellings — being
-unused is what a misspelling is — so taking it at face value would answer every typo
-with "no such word" instead of the correction. It withholds only over an answer that
-stayed on the wording it judged. What that leaves uncovered is a misspelling no
-answer corrected: the entry then says the wording is not vouched for, which is the
-right thing to say about it and not the correction the reader wanted.
+**A judgement about the submitted wording is overruled only by a correction the same
+question vouches for.** The judgement refuses four of six registered misspellings —
+being unused is what a misspelling is — so taking it at face value would answer every
+typo with "no such word" instead of the correction. An answer that declares the
+misspelling is about another wording, and that wording is what the note would carry,
+so it is asked about in its turn. `receive` and `Straße` came back used and their notes
+stood; `сумралица`, offered as the correction of the coinage `змркалица`, came back
+unused and nothing was shown — the one case where the refusal used to be discarded
+with nothing put in its place, and four cards for an invented word were stored under a
+second invented word. The extra question is asked only on that path, and only where
+the first judgement refused. What it still leaves uncovered is a misspelling no answer
+declares as one: the entry then says the wording is not vouched for, which is the right
+thing to say about it and not the correction the reader wanted.
 
 **A note is stored only for the wording its answer analysed.** Where the answer
 analysed another spelling, the card is for that word — applied, not offered, because

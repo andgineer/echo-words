@@ -3,7 +3,9 @@
 Status: **decided 2026-08-27 — one neutral contract returns either a full
 dictionary article for a unit or a translation and explanation for text. Unit
 articles open on meaning, never name a part of speech, and show useful
-inflection as live phrases.** The production-prompt harness is
+inflection as live phrases. The prompt asking for it carries only the branches
+the request can still be in: a selected unit gets the unit contract alone, and
+the submit box gets both.** The production-prompt harness is
 `experiments/one_note_bench.py`; the original forms study remains in
 `experiments/forms_bench.py`.
 
@@ -21,14 +23,16 @@ the terminology does not.
 
 The same input box also accepts running text. It needs a coherent translation
 and explanation, not a dictionary article or a card payload. Selecting one of
-two prompts before asking the model reproduced a classification problem that
-surface punctuation and length cannot solve, so branch selection now belongs
-to the answer itself.
+two prompts *in code* before asking the model reproduced a classification
+problem that surface punctuation and length cannot solve, so where the branch
+is open it belongs to the answer itself. Where it is not open the question
+never arises: a tapped chip and a one-word submission are units by the action
+that made them.
 
-## The one answer contract
+## The one answer contract, asked by the prompt the request needs
 
-Every attempt uses the same production prompt and ends with a bounded JSON
-object whose neutral `kind` is `unit` or `text`.
+Every attempt ends with a bounded JSON object whose neutral `kind` is `unit`
+or `text`. The contract is one; which of its branches the prompt states is not.
 
 - A unit article starts with the meanings that require different words in the
   configured target language, ordered most common first. A register mark
@@ -53,6 +57,34 @@ The visible article may use `<b>`, `<i>`, `<table>`, `<tr>` and `<td>`. No tag
 has attributes. JSON sentence strings use only the allowed emphasis and blank
 marker required for the four cards. The sanitizer matches whole literals, so
 the model has no general HTML surface.
+
+### Two prompts, because half of one of them could never apply
+
+A chip tap was asked with 8,787 characters, of which the text branch, the
+branch decision it had already made, the leading verdict and the near-spelling
+search were 47% that could not apply to it. A fast free model was being asked
+to hold two contracts in view and obey whichever turned out to be live.
+
+The selected-unit prompt now states the unit contract and nothing else — no
+text branch, no branch-decision paragraph — and runs 4,651 characters; the
+submit box keeps both branches at 7,205. Both are built from the same
+fragments, so a rule that applies to both is written once.
+
+Measured over a full tier: every selected-unit article call answered on the
+unit branch, all six clicks kept their context and surface exactly, and usable
+results rose to 156 of 157 against 147 on the merged prompt. Known text reached
+the text branch 26 times of 26 against 24, cardable registered units 19 of 21
+against 17, and obvious hard verdict errors fell to 6 of 121 usable verdicts
+from 10 of 113. Nothing measured here got worse. The registered-unit count sits
+above the 13-17 spread six earlier runs measured, on one sample, which is a hint
+and not a new floor.
+
+A rule that only ever mattered to one branch belongs in that branch's prompt.
+The three rules added on the tier before the split — source-language examples,
+heading-and-gloss coherence, and a clause with its own subject and finite verb
+read as text — were checked against that: the first two apply to any unit
+article and stay in both, and the clause rule is part of the branch decision,
+so it now sits only where a branch is still to be decided.
 
 ## What was measured
 
@@ -86,10 +118,12 @@ figures are evidence for the failure rather than acceptance evidence for the
 current prompt.
 
 The production gate does not require a perfect model sample. Its smoke,
-confirmation and full tiers contain 44, 103 and at most 179 calls respectively;
-the full tier keeps the canonical 157 unchanged and adds six click, six typo and
-ten attestation calls. Aggregate availability and semantic thresholds tolerate bounded model
-misses. Every accepted unit still has four-card readiness and safe targeted
+confirmation and full tiers contain 55, 125 and 216 calls respectively; the full
+tier keeps the canonical 157 unchanged and adds six typo, sixteen attested,
+twenty-two attestation, six near-neighbour, three word-list and six click calls.
+A handful of derived second judgements sit outside those totals, because how many
+of them a run needs is the draw's to decide and not the manifest's. Aggregate
+availability and semantic thresholds tolerate bounded model misses. Every accepted unit still has four-card readiness and safe targeted
 sentence forms, every counted click has exact target identity/kind, context,
 surface and empty components, and every accepted typo cards the corrected
 spelling. Strict article format, morphology, usage and origin percentages remain
@@ -106,45 +140,68 @@ silently repaired by deterministic code. A prompt arm with invalid or missing
 answers is reported as such; availability misses are never counted as content
 quality and an earlier hash is never substituted for the current prompt.
 
-### The near neighbour offered beside the card
+### The near neighbour is prose, not an offer
 
-The advice has its own field, separate from the correction. One field carrying
-both was measured and produced neither: models fill a field called `suggestion`
-only for a spelling they are calling wrong, and for a correctly spelled word they
-left it empty across two promptings and three model families. The knowledge was
-never missing — those same answers name the commoner word in the usage prose,
-"не следует путать с *casual*" — so what failed was routing a finding into a
-field whose primary sense contradicted it. Binding the prose to the shared field
-made it worse: told that naming a confusion obliged it to fill the field, the
-model stopped naming the confusion.
+A commoner word one or two letters from the submission is named in the article
+if the answer notices it, and there is no field for it. Six fixtures measure
+what the reader gets: three real words a letter or two from a markedly commoner
+one, three ordinary words that must be offered nothing.
 
-With a field of its own the offer appears, and appears only where it should.
-Six fixtures measure it — three real words a letter or two from a markedly
-commoner one, three ordinary words that must be offered nothing. Over a tier
-answering every one of its calls, the field is non-empty exactly once in 201
-answers, on the registered pair, with the article still entirely about the
-submission; no ordinary word, sentence or coinage drew an offer, and the
-correction field stayed non-empty only on misspellings, always holding the
-correction. The separation the two fields were meant to produce is what the
-answers show.
+A field of its own was built and measured first, because the shared
+`suggestion` field produced nothing — models fill a field with that name only
+for a spelling they are calling wrong. The separate field did appear, and only
+where it should: non-empty exactly once in 201 answers, on one registered pair,
+no ordinary word or coinage drawing an offer. What it bought was one tap on one
+of three pairs, and it carried a premise the answer was not held to — on a later
+tier `definately` filled it with `defiantly`, the rarer word of the two, which
+reached no reader only because a declared correction outranks the offer.
 
-A misspelling does draw one. On a later tier `definately` returned `also_common:
-"defiantly"` — and inverted the field's premise, since `defiantly` is the rarer
-word of the two. It reached no reader: a declared correction outranks the offer,
-so the entry showed `definitely`. It is invisible to the gate as well, which
-scans the six registered pairs and nothing else. The field is therefore advice
-whose premise the answer is not held to, and the misspelling branch is the one
-place that has been seen to break it.
+A paragraph in the most expensive position in the prompt, plus its schema field
+and its rule, is a large price for an offer that arrives once in 201 answers.
+Both came out, and the tier that followed measured the loss: the article prose
+names the commoner word on two of the three registered pairs — `casual` beside
+`causal`, `wieder` beside `wider`, with `место` beside `месо` named by nothing.
+That is more often than the field ever fired, and better: the previous tier's
+prose named `weiter` for `wider`, the wrong word, while this one names the right
+one. No ordinary word was told its spelling was wrong, and a non-empty
+`suggestion` now appears only on a spelling the answer is correcting.
 
-What it costs is coverage, not correctness: one of three registered pairs fired.
-A second pair produced a shorter article that named no confusion at all, so
-nothing reached the field. The offer is therefore advice that arrives when the
-answer happens to notice, not a guarantee — which is what an offer beside the
-card can be, and is why nothing downstream depends on its presence.
+What is lost is real and bounded: the hint is a clause the reader has to notice
+and retype, where the field was one tap. Nothing downstream ever depended on the
+offer's presence, and the inverted-premise failure is now structurally
+impossible.
 
 A fixture instantiates this requirement only when the submission is wording the
 answer will vouch for. One the standalone judgement refuses as unused never
-reaches the branch that offers a neighbour, and measures the refusal instead.
+reaches the branch that names a neighbour, and measures the refusal instead.
+
+### Origin is asked for only where it is known, and that is not the fix
+
+"Origin: always include it" was the suspected cause of confident invented
+etymologies: told to supply one for every word, the answer supplies one for the
+words that have none. The rule now asks for it only where the answer knows it and
+says to leave it out rather than reason one out from a word's parts.
+
+Measured over a full tier, that is not what invented etymology turns on. It does
+stop an origin being manufactured for a shape that plainly has no history:
+`blorptium` carries none, and the coinages that reached a reader carry a note on
+how the suffix works rather than a past. Five unit articles omit the section
+entirely where every article used to carry one, and origin on ordinary real words
+is unchanged at eight of nine.
+
+It does not stop a confident false etymology about a real, common word. Fresh
+review read every origin in the tier: twenty were accurate, and the fabrications
+are about words that exist — an invented Indo-European base meaning for `прозор`,
+an invented narrative for `give up`. Two of them reach a reader. The rest of the
+fabricated ones are withheld, and by the judgement rather than by this rule: an
+answer that gives `vieleicht` an origin from Old High German `fior` "four" is
+withheld because the wording was refused, not because it was asked to keep quiet.
+
+So the rule is kept for what it does — an article about a shape with no history
+no longer manufactures one — and credited with nothing else. What stands between
+a learner and an invented etymology is the judgement, and reading the answers.
+Nothing in the automated screen can see this: its origin count matches the word
+"этимология", not the truth of the sentence around it.
 
 ### Where the free pool's answers stand against fresh review
 
@@ -180,19 +237,15 @@ contract silently includes answers that did not. The other is a product
 strictness: a contextual analysis correct in every other respect is discarded
 because it reproduced the supplied sentence without its final period.
 
-### The verdict gate reads high against its own manifest
+### The verdict gate is read as it stands, never re-labelled to pass
 
-The hard-error rate sits above its threshold on a screen whose reviewed rate sits
-below it. Three of the fourteen counted errors carded exactly the extraction
-their fixture registers as accepted, and behave identically to sibling fixtures
-the manifest already lists as defensible; the difference between them is the
-registration, not the answer. The reviewed rate over the genuine errors is inside
-the band every earlier run measured, so the model has not regressed.
-
-The gate stays as it reads. Re-labelling those three would be an argued change to
-the manifest, and it is not one to make in the same breath as accepting a feature
-the same run was measuring — the party defending a result does not get to move
-the line it is judged against.
+Some counted hard errors card exactly the extraction their own fixture registers
+as accepted, and behave identically to sibling fixtures the manifest already
+lists as defensible; the difference between them is the registration, not the
+answer. Re-labelling them would be an argued change to the manifest, and it is
+never one to make in the same breath as accepting a feature the same run was
+measuring — the party defending a result does not get to move the line it is
+judged against. A manifest change is its own piece of work, argued on its own.
 
 ## Trust boundary
 
@@ -214,16 +267,20 @@ the same either way; only what the entry says about it differs. A suggestion tha
 merely repeats the headword is dropped, because it would offer the reader the word
 already carded.
 
-The correction and the commoner near-spelling arrive in separate fields and are
-reconciled into one thing the entry shows, because the reader has room for one
-piece of advice about their spelling. The correction outranks it: a reader told
-their word is misspelled is not also asked to weigh a different word. The
-near-spelling is read only beside a relation the answer itself vouched for, and
-it passes the same validation and the same repeats-the-headword drop, so a field
-the model fills carelessly can add an offer but never a claim.
-It is a consistency boundary, not an independent spelling judge: a model can
-still call a misspelling morphology, so registered typo fixtures and fresh
-review remain required.
+The reader has room for one piece of advice about their spelling, and only the
+correction field carries one. It is a consistency boundary, not an independent
+spelling judge: a model can still call a misspelling morphology, so registered
+typo fixtures and fresh review remain required.
+
+**A declared correction is wording nothing has vouched for yet.** The relation
+`typo` is the one claim that replaces the submission with another word, and the
+note is then about that other word. Where the judgement refused the submission,
+the claim alone used to be enough to discard the refusal — so an answer that
+"corrected" the coinage `змркалица` into `сумралица`, itself not a word, stored
+four cards under the second invention and told the reader they had misspelled it.
+Neither the card contract nor the screen could see it: the payload was clean, and
+the arm counted the fixture as withheld. The correction is therefore put to the
+same judgement, and the refusal stands unless that wording comes back used.
 
 **What the answers are known to get wrong, and what no contract catches.** The
 structural checks bind the shape of a note, never its content, so these are found
@@ -242,7 +299,7 @@ subject and finite verb as text.
 
 An article can state grammar that is simply false: a wrong case, an invented
 pronoun form, `es` described as `er`. It can give a confident etymology for a word
-it invented one, and requiring an origin for every word is part of why. It can put
+that has none. It can put
 a table on an invariable word or print a bare part of speech. A forms table naming
 case, tense or person is the one of these the prompt now forbids in those words:
 naming a grammatical category in a table fell from 26% to 11% of tables when the

@@ -32,11 +32,9 @@ from echo_words.prompt import (
     build_prompt,
     extract_answer,
     parse_attestation,
-    parse_verdict,
-    strip_verdict,
 )
 from echo_words.sanitizer import sanitize_html
-from echo_words.segments import Segment, display_text, fill_text_segments
+from echo_words.segments import Segment, display_text
 
 UPDATE_INTERVAL_SECONDS = 0.5
 # Codes, not sentences: the client owns every user-facing wording, so a
@@ -449,19 +447,9 @@ class WordPipeline:
                 unit_intent=job.intent == "unit",
             )
             parsed: ParsedAnswer | None = None
-            verdict: Verdict | None = None
-
-            judged = job.kind != "rebuild"
 
             def read_answer(answer: str) -> None:
-                nonlocal parsed, verdict
-                verdict = parse_verdict(answer)
-                if judged and verdict is not None and not verdict.used:
-                    # A refusal is the whole answer: there is no card block to read.
-                    # A rebuild is not judged at all — it is about a note the reader
-                    # already has, and re-deciding that here would delete it.
-                    parsed = None
-                    return
+                nonlocal parsed
                 parsed = extract_answer(
                     answer,
                     job.word,
@@ -471,10 +459,9 @@ class WordPipeline:
                 )
 
             def complete(answer: str) -> bool:
-                """Whether the answer is one the caller can use. A refusal is complete
-                in itself: it withheld the article on purpose, and nothing is missing."""
+                """Whether the answer is one the caller can use."""
                 read_answer(answer)
-                return parsed is not None or (judged and verdict is not None and not verdict.used)
+                return parsed is not None
 
             def hand_over(answer: str) -> bool:
                 """Whether the paid model decides instead, over a usable pool answer.
@@ -532,10 +519,7 @@ class WordPipeline:
                         # an unfinished judgement has not vouched for anything.
                         # Streaming first and blanking afterwards is the reader having
                         # seen the fabrication.
-                        early = parse_verdict(raw) if judged else None
-                        withheld = judged and (
-                            _refuses(early) or attestation.pending or attestation.refuses
-                        )
+                        withheld = attestation.pending or attestation.refuses
                         visible = "" if withheld else sanitize_html(visible_analysis(raw))
                         entry.text = visible
                         last_published, last_update_at = await self._publish_progress(
@@ -545,9 +529,7 @@ class WordPipeline:
                             last_update_at,
                         )
                     if getattr(completion, "oversized", False):
-                        # Including the judgement: what a bounded answer said about the
-                        # wording cannot speak for the answer that replaced it.
-                        parsed = verdict = None
+                        parsed = None
                         quality = 0.0
                     else:
                         quality = 1.0 if complete(raw) else 0.0
@@ -575,17 +557,17 @@ class WordPipeline:
             attested = await attestation.result()
             # A correction overrules the standalone refusal: nobody writes `recieve` —
             # being a misspelling is what that means (spec/decision-answer-shape.md).
-            refused = judged and (
-                _refuses(verdict) or (_refuses(attested) and not _declares_a_typo(parsed))
-            )
-            # The judgement is a question about one lexical unit. Asked of a multi-word
-            # submission it can only say the answer took the wrong branch, so the reader
-            # gets the text branch instead of nothing: a chip per word, which the backend
-            # builds from the submission itself and never from the refused answer.
-            as_text = refused and _read_as_text(job)
-            if as_text:
-                parsed = ParsedText("text", fill_text_segments([], job.word, job.language))
-                refused = False
+            # What the note then carries is the correction, and the judgement never saw
+            # it, so it is asked again about that wording. Without this a coinage the
+            # judgement refused is carded whenever the answer "corrects" it into a
+            # second invention, which is the one case where the refusal is discarded
+            # and nothing takes its place.
+            refused = _refuses(attested)
+            if refused and _declares_a_typo(parsed):
+                corrected = _corrected_headword(parsed, job)
+                refused = corrected is not None and _refuses(
+                    await self._attest(job, corrected, suffix="-correction"),
+                )
             stored = (
                 # A refused lookup is still a lookup: it made no card either way.
                 StoreResult(UNATTESTED_STATUS, "lookup" if job.lookup_only else "unattested")
@@ -626,11 +608,6 @@ class WordPipeline:
                 last_published = ""
                 parsed = None
                 entry.analysed_as, entry.typo_suspected = None, False
-            elif as_text:
-                # The chips stand because they are the submitted words. Whatever the
-                # answer wrote about wording it had just refused does not.
-                entry.text = raw = ""
-                last_published = ""
             entry.context_audio_file = context_audio_path.name if context_audio_path else None
             suggestion = self._correction_target(job, parsed)
             chips, segment_kind = _segments_for(parsed, job)
@@ -663,22 +640,24 @@ class WordPipeline:
         A judgement asked on its own withholds measurably more coinages than the same
         judgement asked at the head of the answer that has a dictionary entry to write.
         """
-        if self.cascade is None or job.intent != "unit" or job.paid_only:
+        # A rebuild is about a note the reader already has and already accepted;
+        # re-deciding that here would delete it over an action they asked for.
+        if self.cascade is None or job.intent != "unit" or job.paid_only or job.kind == "rebuild":
             return None
         return asyncio.create_task(
-            self._attest(job),
+            self._attest(job, job.word),
             name=f"echo-words-attestation-{job.entry_id}",
         )
 
-    async def _attest(self, job: Job) -> Verdict | None:
+    async def _attest(self, job: Job, word: str, suffix: str = "") -> Verdict | None:
         if self.cascade is None:
             return None
         answer = ""
         try:
             completion = self.cascade.stream_completion(
-                build_attestation_prompt(job.language, job.word),
+                build_attestation_prompt(job.language, word),
                 job.language,
-                trace_id=f"{job.entry_id}-attestation",
+                trace_id=f"{job.entry_id}-attestation{suffix}",
                 pool_only=True,
                 reported=False,
             )
@@ -1109,8 +1088,7 @@ class WordPipeline:
 
 
 def visible_analysis(raw: str) -> str:
-    """Hide the verdict, the card payload and every partial delimiter from display."""
-    raw = strip_verdict(raw)
+    """Hide the card payload and every partial delimiter from display."""
     delimiter_at = raw.find(CARD_DELIMITER)
     if delimiter_at >= 0:
         return raw[:delimiter_at]
@@ -1231,9 +1209,19 @@ def _task_verdict(task: "asyncio.Task[Verdict | None]") -> Verdict | None:
     return task.result()
 
 
-def _read_as_text(job: Job) -> bool:
-    """Whether the submission is running text rather than the one unit a verdict judges."""
-    return job.intent != "unit" and len(split_words(job.word)) > 1
+def _corrected_headword(parsed: ParsedAnswer | None, job: Job) -> str | None:
+    """The second wording a note would carry, where the answer replaced the submission.
+
+    None where it declared a misspelling and still headed itself with the submission:
+    there is no second wording to ask about, and asking the same question twice would
+    let a re-roll of it overturn the answer the first call already gave.
+    """
+    if not isinstance(parsed, ParsedUnit) or parsed.word_relation != "typo":
+        return None
+    word = parsed.note.word
+    if fold_for_match(word, job.language) == fold_for_match(job.word, job.language):
+        return None
+    return word
 
 
 def _declares_a_typo(parsed: ParsedAnswer | None) -> bool:

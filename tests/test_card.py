@@ -452,7 +452,23 @@ def test_morphology_can_change_the_headword_without_a_spelling_suggestion(langua
     assert parsed.suggestion is None
 
 
-def test_a_commoner_near_spelling_is_offered_beside_the_submitted_word(languages):
+def test_a_correction_that_repeats_the_headword_offers_nothing(languages):
+    """The correction is the headword here, so offering it would hand the reader back
+    the word already being carded."""
+    parsed = parse_answer_payload(
+        payload(word="receive", word_relation="typo", suggestion="receive"),
+        "recieve",
+        languages["en"],
+    )
+
+    assert isinstance(parsed, ParsedUnit)
+    assert parsed.word_relation == "typo"
+    assert parsed.suggestion is None
+
+
+def test_a_field_the_contract_no_longer_carries_is_ignored(languages):
+    """The near-spelling offer is gone from the prompt; an answer that still fills it
+    must not thereby put a second word in front of the reader."""
     parsed = parse_answer_payload(
         payload(word="causal", word_relation="same", suggestion="", also_common="casual"),
         "causal",
@@ -461,38 +477,6 @@ def test_a_commoner_near_spelling_is_offered_beside_the_submitted_word(languages
 
     assert isinstance(parsed, ParsedUnit)
     assert parsed.note.word == "causal"
-    assert parsed.word_relation == "same"
-    assert parsed.suggestion == "casual"
-
-
-def test_a_declared_correction_outranks_a_commoner_near_spelling(languages):
-    parsed = parse_answer_payload(
-        payload(
-            word="receive",
-            word_relation="typo",
-            suggestion="receive",
-            also_common="relieve",
-        ),
-        "recieve",
-        languages["en"],
-    )
-
-    assert isinstance(parsed, ParsedUnit)
-    assert parsed.word_relation == "typo"
-    # The correction is the headword here, so nothing is offered beside it — and what
-    # is dropped must not be replaced by the weaker advice.
-    assert parsed.suggestion is None
-
-
-@pytest.mark.parametrize("also_common", ["", "  ", "causal", "not a word!", 7, None])
-def test_an_unusable_commoner_near_spelling_offers_nothing(languages, also_common):
-    parsed = parse_answer_payload(
-        payload(word="causal", word_relation="same", suggestion="", also_common=also_common),
-        "causal",
-        languages["en"],
-    )
-
-    assert isinstance(parsed, ParsedUnit)
     assert parsed.suggestion is None
 
 

@@ -22,12 +22,15 @@ the work again. **Do not re-open any of it.**
   misspelling is corrected on the card rather than offered, because a note
   pairing the learner's spelling with another word's meanings and examples
   teaches a word no sentence on it contains; the entry names the carded word
-  above the analysis and undo removes it. Wording neither judgement will vouch
+  above the analysis and undo removes it. Wording the judgement will not vouch
   for as used gets no card, no article and no audio: a model asked for a
   dictionary entry invents one for any well-formed string, so a unit submission
-  is judged twice — once at the head of the article call, once by a parallel call
-  that asks nothing else — and either refusal withholds it. Asking apart is what
-  makes the defence work, and it is measured. Rarity is never a reason to refuse.
+  is judged by a parallel call that asks nothing else. Asking apart is what makes
+  the defence work, and it is measured: the same question inside the article call
+  withholds a fraction of what it withholds on its own. Where an answer replaces
+  the submission with a correction, that correction faces the same question, so a
+  refusal is never discarded for a claim nothing has vouched for.
+  Rarity is never a reason to refuse.
   A declared misspelling is settled by the paid model, which is measurably better
   at spelling than the pool; a refusal is not sent to it, because the paid models
   withhold fewer coinages than the pool does. Ordinary wording reaches neither.
