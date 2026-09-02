@@ -37,7 +37,9 @@ class Wiktionary:
         wording = word.strip()
         if not wording:
             return None
-        wikis = [language.code] if language.code == UNIVERSAL_WIKI else [language.code, UNIVERSAL_WIKI]
+        wikis = [language.code]
+        if language.code != UNIVERSAL_WIKI:
+            wikis.append(UNIVERSAL_WIKI)
         unknown = False
         async with httpx.AsyncClient(
             timeout=self._timeout,

@@ -482,9 +482,20 @@ would be a guess. A note carries the headword, the translations and the two sent
 forms, so the hedge never reaches the deck: the card's confidence does not depend on
 the article's. Where an answer will not commit, the product has no way to card that.
 
-None of this moves the conclusion below, which is about latency and cost as much as
-quality: the paid article costs 10.6 s at the median against the pool's 2.5, with a
-19 s tail. A full tier of 218 calls spent roughly 325K input and 102K output tokens,
+None of this moves the conclusion below, which is about latency as much as quality:
+the paid article costs 10.6 s at the median against the pool's 2.5, with a 19 s tail.
+
+**And the latency is reasoning, not throughput.** Seven of those ten seconds pass
+before the first character arrives — 7.2 s to first token against the pool's 1.05 —
+while the answer itself is *shorter* than the pool's, 1265 characters against 1396.
+Asked a one-line question the same model answers in 1.6 s against 0.88, so the paid
+path carries no large fixed overhead; the cost appears where a long answer follows a
+thinking phase. That is a property of reasoning models rather than of paying for one:
+the pool's own `glm-4.7-flash` is a reasoning model and takes 34 s. The request that
+buys this is a bare one — llmbroker's direct client sends `model`, `messages` and the
+streaming options and no reasoning budget — so the measurement is of the model's
+default effort, and llmbroker is ours to change if a lower one is worth testing.
+`haiku` and the paid `gemini-3.7-flash` are neither reasoning-first nor measured. A full tier of 218 calls spent roughly 325K input and 102K output tokens,
 about a third of a month at a couple of dozen submissions a day.
 
 ## What would re-open this
