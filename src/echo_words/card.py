@@ -86,6 +86,9 @@ _BARE_VALUE = re.compile(r'(?<=")(:\s*)(?![\s"\[{\d-]|true|false|null)([^,}\]\n"
 _FULL_STOP_SEPARATOR = re.compile(r'([}\]])\s*\.\s*(")')
 _NON_ESCAPE = re.compile(r'\\(?=[^\\"/bfnrtu])')
 _SOURCE_TOKEN = re.compile(r"[^\W\d_]+(?:[-'’][^\W\d_]+)*", re.UNICODE)
+# A copy of the context may lose its final stop and nothing else. Anything further
+# in is a rewrite, which is the case the equality below exists to reject.
+_TRAILING_SENTENCE_MARKS = " .!?…"
 
 
 def parse_answer_payload(  # noqa: C901, PLR0912 - the answer discriminator boundary.
@@ -325,11 +328,12 @@ def _parse_example(
     text = _BOLD_SPAN.sub(lambda match: match.group(1), marked)
     if not text:
         return None
-    if context and text == context:
+    if context and _copies_context(text, context):
         contextual = _context_sentence_forms(context, selected_surface)
         if contextual is not None:
             highlighted, gapped = contextual
-            return Example(text, translation, highlighted, gapped)
+            # The backend owns the context, so the card carries ours, never the copy.
+            return Example(context, translation, highlighted, gapped)
     sentence_forms = _normalized_sentence_forms(sanitize_html(marked))
     if sentence_forms is None or (
         not context
@@ -342,6 +346,10 @@ def _parse_example(
     ):
         return None
     return Example(text, translation, *sentence_forms)
+
+
+def _copies_context(text: str, context: str) -> bool:
+    return text.rstrip(_TRAILING_SENTENCE_MARKS) == context.rstrip(_TRAILING_SENTENCE_MARKS)
 
 
 def _normalized_sentence_forms(highlighted: str) -> tuple[str, str] | None:

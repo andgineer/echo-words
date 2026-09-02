@@ -715,3 +715,53 @@ def test_an_unlabelled_sense_still_yields_to_a_labelled_one(languages):
 
     assert isinstance(parsed, ParsedUnit)
     assert [item.label for item in parsed.note.meanings] == ["о реке"]
+
+
+def test_a_context_copy_missing_its_final_stop_still_cards_our_context(languages):
+    context = "We sat on the bank."
+    contextual = example()
+    contextual.update(highlighted="We sat on the <b>bank</b>")
+
+    parsed = parse_answer_payload(
+        payload(meanings=[meaning(examples=[contextual])], context_sense=0),
+        "bank",
+        languages["en"],
+        unit_intent=True,
+        context=context,
+    )
+
+    assert isinstance(parsed, ParsedUnit)
+    assert parsed.note.meaning.examples[0] == Example(
+        context,
+        "Перевод.",
+        "We sat on the <b>bank</b>.",
+        "We sat on the ___.",
+    )
+
+
+def test_a_context_copy_carrying_an_extra_word_is_still_rejected(languages):
+    contextual = example()
+    contextual.update(highlighted="We sat on the <b>bank</b> today.")
+
+    with pytest.raises(CardParseError, match="must equal the supplied context"):
+        parse_answer_payload(
+            payload(meanings=[meaning(examples=[contextual])], context_sense=0),
+            "bank",
+            languages["en"],
+            unit_intent=True,
+            context="We sat on the bank.",
+        )
+
+
+def test_a_word_changed_inside_the_context_is_still_rejected(languages):
+    contextual = example()
+    contextual.update(highlighted="We sat near the <b>bank</b>.")
+
+    with pytest.raises(CardParseError, match="must equal the supplied context"):
+        parse_answer_payload(
+            payload(meanings=[meaning(examples=[contextual])], context_sense=0),
+            "bank",
+            languages["en"],
+            unit_intent=True,
+            context="We sat on the bank.",
+        )

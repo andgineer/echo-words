@@ -215,11 +215,16 @@ it passes the same validation and the same repeats-the-headword drop, so a field
 the model fills carelessly can add an offer but never a claim.
 It is a consistency boundary, not an independent spelling judge: a model can
 still call a misspelling morphology, so registered typo fixtures and fresh
-review remain required. For an explicit context request,
-the selected meaning's first plain example must equal the supplied context. Where
-the submitted click surface can be matched token-for-token in that context, the
-backend constructs the two forms itself; otherwise the model's forms must pass
-the same structural checks. The parser does not verify morphology, infer the
+review remain required. For an explicit context request, the selected meaning's
+first plain example must be the supplied context, allowing only the sentence's
+final punctuation to differ — a difference anywhere further in is a rewrite, and
+a rewrite is what the rule exists to reject. The card then carries the context
+the backend supplied rather than the model's copy of it, so the comparison has
+one degree of freedom and the card has none. Of 152 recorded contextual answers
+three failed strict equality: one dropped its full stop, and two rewrote the
+sentence. Where the submitted click surface can be matched token-for-token in
+that context, the backend constructs the two forms itself; otherwise the model's
+forms must pass the same structural checks. The parser does not verify morphology, infer the
 linguistic boundary of a generated example, or decide whether prose agrees with
 `kind`. The complete response is bounded at
 16,000 characters before JSON decoding and segment filling. Streaming exposes
