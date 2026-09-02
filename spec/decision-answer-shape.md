@@ -236,7 +236,9 @@ for a word it invented one. It can print a forms table naming case, tense and
 person where the functional description forbids naming them, put a table on an
 invariable word, or print a bare part of speech. These are article defects rather
 than card defects — the payload is usually clean while the visible prose carries
-them — and the mandatory semantic review is the only thing that sees them. For an explicit context request, the selected meaning's
+them — and the mandatory semantic review is the only thing that sees them. This
+records what has been observed; whether the product accepts it is open, and is
+tracked as a decision rather than settled here. For an explicit context request, the selected meaning's
 first plain example must be the supplied context, allowing only the sentence's
 final punctuation to differ — a difference anywhere further in is a rewrite, and
 a rewrite is what the rule exists to reject. The card then carries the context
