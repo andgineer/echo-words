@@ -1,8 +1,9 @@
 # Implementation plan — the judgement refuses words that exist
 
-Delete this file once the operating point is re-measured and recorded. What
-outlives it belongs in `spec/functional-description.md`, which today states the
-false-positive half of this trade and not the half below.
+Delete this file once the ordinary-word class has been scored on a tier and the
+operating point is recorded. What outlives it belongs in
+`spec/functional-description.md`, which today states the false-positive half of
+this trade and not the half below.
 
 ## What has been observed
 
@@ -18,8 +19,8 @@ told that about a word that is simply a word.
 
 It also costs a second thing that is easy to miss. A refused submission never
 reaches anything downstream of the judgement, so any other behaviour measured on
-that word silently reports a zero — which is how `neighbour-sr-otad` came to
-measure nothing at all for two tiers running.
+that word silently reports a zero — which is how the Serbian neighbour pair came
+to measure nothing at all for two tiers running.
 
 ## Why the fixtures did not catch it
 
@@ -33,18 +34,36 @@ That is a hypothesis, not a finding, and it is testable: if it holds, the attest
 arm is measuring recall of famous words rather than the judgement the product
 depends on, and its 4 of 4 means much less than it reads.
 
-## What to do
+## What landed
 
-1. Register a second class of attested fixture: ordinary, unremarkable, mid-
-   frequency words in all three languages — the words nobody writes essays about.
-   Six or so, chosen before any of them is run, and not chosen by trying candidates
-   against the model first.
-2. Score them on a tier. The existing famous-word fixtures stay, so the two classes
-   can be read apart.
-3. If ordinary words are refused at a materially higher rate, the operating point
-   in `spec/functional-description.md` needs its other half written down, and the
-   choice becomes explicit: accept the false refusals, soften the standalone
-   question, or stop letting a single refusal withhold the whole entry.
+Six ordinary, unremarkable, mid-frequency words are registered as a second
+attested class — `ledge`, `scowl`, `Kübel`, `mürrisch`, `клупа`, `сврака`. They
+were chosen on that principle alone and never tried against a model first, which
+is what makes their score evidence rather than a fitted result. They sit on the
+full tier only, at twelve calls, and the two classes read apart in the report:
+the famous four keep the `rare real wording still cards` gate, and the ordinary
+six are printed beside it as a diagnostic that gates nothing.
+
+Gating them now would be setting a threshold before the measurement — a guess
+reddening the run for a reason nobody has decided. Their rate is the open
+question, not a target.
+
+The same measurement covers the refusal risk on the replaced Serbian neighbour
+pair: `месо` is an ordinary word of exactly the class being scored, so a separate
+probe call before the tier would buy nothing the tier does not already report.
+
+## What is left
+
+Score the class on a tier, and read the two classes apart. If ordinary words are
+refused at a materially higher rate, the operating point in
+`spec/functional-description.md` needs its other half written down, and the choice
+becomes explicit: accept the false refusals, soften the standalone question, or
+stop letting a single refusal withhold the whole entry.
+
+Note that the third option is now partly taken for a different reason: a refusal
+on a multi-word submission no longer withholds the entry, because the judgement
+is about one lexical unit and running text is not one. That narrows this defect
+to single-word submissions, which is where all three observations sit.
 
 ## What not to do
 

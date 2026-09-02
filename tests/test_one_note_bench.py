@@ -260,11 +260,16 @@ def test_tier_manifests_have_frozen_non_overlapping_counts():
     assert len(bench.canonical_ids_for_tier("full")) == 157
     assert len(bench.initial_jobs_for_tier("smoke")) + len(bench.CLICK_IDS) == 55
     assert len(bench.initial_jobs_for_tier("confirmation")) + len(bench.CLICK_IDS) == 125
-    assert len(bench.initial_jobs_for_tier("full")) + len(bench.CLICK_IDS) == 201
+    assert len(bench.initial_jobs_for_tier("full")) + len(bench.CLICK_IDS) == 213
     assert len(bench.attested_ids_for_tier("smoke")) == 5
-    assert len(bench.attested_ids_for_tier("full")) == 10
+    assert len(bench.attested_ids_for_tier("confirmation")) == 10
+    assert len(bench.attested_ids_for_tier("full")) == 16
     # Every attested fixture is judged twice, as production judges it.
-    assert len(bench.attestation_ids_for_tier("full")) == 16
+    assert len(bench.attestation_ids_for_tier("full")) == 22
+    # The ordinary-word class is measured on the full tier and gates nothing there.
+    assert len(bench.ORDINARY_ATTESTED_IDS) == 6
+    assert not bench.ORDINARY_ATTESTED_IDS & bench.attested_ids_for_tier("confirmation")
+    assert all(bench.ATTESTED_BY_ID[i].attested for i in bench.ORDINARY_ATTESTED_IDS)
     assert all(
         "Do not write an article" in bench.prompt_for(shot) for shot in bench.attestation_shots()
     )

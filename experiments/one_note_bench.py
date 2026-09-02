@@ -205,7 +205,11 @@ NEIGHBOUR_CASES = (
     NeighbourCase("neighbour-en-kitchen", "en", "kitchen", ""),
     NeighbourCase("neighbour-de-wider", "de", "wider", "wieder"),
     NeighbourCase("neighbour-de-fenster", "de", "Fenster", ""),
-    NeighbourCase("neighbour-sr-otad", "sr", "отад", "отац"),
+    # `месо` beside `место` is the Serbian pair with the shape the other two have: one
+    # letter inserted, and one plausible commoner word rather than a field of them.
+    # `отад` was replaced because it stood one letter from several ordinary words, so a
+    # model naming its own variant `отада` answered well and scored a miss.
+    NeighbourCase("neighbour-sr-meso", "sr", "месо", "место"),
     NeighbourCase("neighbour-sr-prozor", "sr", "прозор", ""),
 )
 NEIGHBOUR_BY_ID = {case.shot_id: case for case in NEIGHBOUR_CASES}
@@ -230,6 +234,7 @@ class AttestedCase:
     lang: str
     submitted: str
     attested: bool
+    ordinary: bool = False
 
 
 ATTESTED_CASES = (
@@ -248,6 +253,21 @@ ATTESTED_CASES = (
     # Invented strings with no attested neighbour at all.
     AttestedCase("unused-en-blorptium", "en", "blorptium", False),
     AttestedCase("unused-sr-zmrkalica", "sr", "змркалица", False),
+    # Ordinary, unremarkable and mid-frequency: the words nobody writes essays about.
+    # The four attested cases above are all words with a literature — the kind that
+    # fills "untranslatable words" lists a model has read many times — so passing them
+    # may be recall of famous words rather than the judgement the product depends on.
+    # These six were chosen on that principle alone and never tried against a model
+    # first, which is what makes their score evidence rather than a fitted result.
+    AttestedCase("ordinary-en-ledge", "en", "ledge", True, ordinary=True),
+    AttestedCase("ordinary-en-scowl", "en", "scowl", True, ordinary=True),
+    AttestedCase("ordinary-de-kuebel", "de", "Kübel", True, ordinary=True),
+    AttestedCase("ordinary-de-muerrisch", "de", "mürrisch", True, ordinary=True),
+    AttestedCase("ordinary-sr-klupa", "sr", "клупа", True, ordinary=True),
+    AttestedCase("ordinary-sr-svraka", "sr", "сврака", True, ordinary=True),
+)
+ORDINARY_ATTESTED_IDS = frozenset(
+    case.shot_id for case in ATTESTED_CASES if case.ordinary
 )
 ATTESTED_BY_ID = {case.shot_id: case for case in ATTESTED_CASES}
 ATTESTED_IDS = frozenset(ATTESTED_BY_ID)
@@ -674,7 +694,11 @@ def typo_ids_for_tier(tier: str) -> frozenset[str]:
 
 
 def attested_ids_for_tier(tier: str) -> frozenset[str]:
-    return SMOKE_ATTESTED_IDS if tier == "smoke" else ATTESTED_IDS
+    if tier == "smoke":
+        return SMOKE_ATTESTED_IDS
+    # The ordinary-word class is a measurement, and it is taken on the full tier only:
+    # twelve calls is a real share of a smaller tier's budget.
+    return ATTESTED_IDS if tier == "full" else ATTESTED_IDS - ORDINARY_ATTESTED_IDS
 
 
 def attestation_ids_for_tier(tier: str) -> frozenset[str]:
@@ -1729,6 +1753,19 @@ def quality_counts(initial_rows: list[Shot], context_rows: list[Shot]) -> dict[s
                 row.shot_id
                 for row in attested_rows
                 if ATTESTED_BY_ID[row.shot_id].attested
+                and not ATTESTED_BY_ID[row.shot_id].ordinary
+                and row.shot_id not in refused_apart
+                and attested_success(row)
+            },
+        ),
+        # Diagnostic, deliberately outside every gate: what the ordinary class scores
+        # is the open question, and a threshold set before the measurement would be a
+        # guess reddening the run for a reason nobody has decided.
+        "ordinary_kept": len(
+            {
+                row.shot_id
+                for row in attested_rows
+                if ATTESTED_BY_ID[row.shot_id].ordinary
                 and row.shot_id not in refused_apart
                 and attested_success(row)
             },
@@ -1858,7 +1895,7 @@ def deterministic_gates(
         and sum(row.kind == "attestation" for row in canonical) == expected_attestation_count
         and len(CLICK_IDS) == CLICK_FIXTURES
         and len(canonical) + len(CLICK_IDS)
-        == {"smoke": 55, "confirmation": 125, "full": 201}[tier],
+        == {"smoke": 55, "confirmation": 125, "full": 213}[tier],
         "accepted payloads contain one branch": all(
             not row.metrics.get("mixed_branch") for row in accepted
         ),
@@ -2231,7 +2268,11 @@ def report(out: Path, tier: str) -> None:
         (
             "rare real wording still cards",
             counts["attested_kept"],
-            sum(1 for i in attested_ids_for_tier(tier) if ATTESTED_BY_ID[i].attested),
+            sum(
+                1
+                for i in attested_ids_for_tier(tier)
+                if ATTESTED_BY_ID[i].attested and not ATTESTED_BY_ID[i].ordinary
+            ),
             f">= {2 if tier == 'smoke' else 3}",
         ),
         (
@@ -2241,6 +2282,12 @@ def report(out: Path, tier: str) -> None:
             f">= {2 if tier == 'smoke' else 3}",
         ),
     )
+    ordinary_total = sum(1 for i in attested_ids_for_tier(tier) if ATTESTED_BY_ID[i].ordinary)
+    if ordinary_total:
+        print(
+            "  ordinary real wording still cards "
+            f"{counts['ordinary_kept']}/{ordinary_total}  (diagnostic, gates nothing)",
+        )
     for name, numerator, denominator, threshold in quality_lines:
         passed = quality[name]
         print(
