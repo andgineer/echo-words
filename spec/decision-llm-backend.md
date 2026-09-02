@@ -427,6 +427,66 @@ manifests, pacing and promotion procedure are recorded in
 - **Web grounding is dropped** from v0.1 — no switch, no search
   dependency.
 
+## What money buys, measured on cards rather than on a rubric
+
+The survey above scored a rubric. The question a learner cares about is how many
+of the notes that reach their deck teach something false, and that is a different
+measurement: the same production fixtures, the same prompts, once through the free
+pool and once through `gpt-fast`, both read by the same fresh reviewer. Each tier
+shipped exactly 42 notes.
+
+**Cards carrying something the learner would memorise wrong: 6 of 42 free, 4 of 42
+paid.** Neither tier is near "never"; both are around one card in ten.
+
+What the paid tier removes outright, over these fixtures:
+
+| defect | free | paid |
+|---|---:|---:|
+| example sentences in the target language with the unit dropped in | 11 | 0 |
+| corrupted or mixed-script table cells | 10 | 0 |
+| corrupted Serbian words inside articles | 8 | 0 |
+| part of speech named in prose | 10 | 0 |
+| invented etymology stated as fact | 2 | 0 |
+| cards headed by a word other than the one analysed | 3 | 0 |
+| misspellings named and corrected | 4/6 | 6/6 |
+| Serbian cards carrying a defect | 3 of 10 | 1 of 13 |
+
+Serbian is where the difference is largest, and Serbian is the language this
+decision left on the pool because its one gap was morphology. That gap is what
+the paid tier closes: `Седимо на клупу` becomes `Седи на клупи у парку`, and the
+mixed-script and corrupted-token classes disappear entirely.
+
+**What money does not buy is the class that matters most, and there it is worse.**
+Well-formed nonsense carded with a confident sense reaches the reader twice of six
+on the pool and three times of six on `gpt-fast`. The paid judgement is the reason:
+asked about the invented `змркалица` it answered used, and invented a dialect and a
+mealtime to justify it — contradicting, in the same run, its own article's story
+about twilight. Invented provenance in the judgement's `where` field runs two of six
+on the pool against four of six paid.
+
+The configuration that follows is a mixed one: **the paid model writes the article
+and the pool judges**. Scored over the recorded answers, it withholds four coinages
+of six — the pool judge's rate — with the paid tier's article quality, and loses
+none of the ten real words.
+
+**A second judge is not the fix, and this was measured rather than assumed.**
+Requiring both the pool and the paid model to vouch withholds the same four of six
+and loses no real word — no better than the pool alone, because the two models
+share the blind spot exactly: both vouch for `bookshelfy` and both for `tablewards`.
+English productive derivation reads as a word to both of them, so model agreement
+cannot separate it from a word.
+
+**The article knows more than the card carries.** Asked about `blorptium`, the paid
+article says it is probably a fictional form and that deriving an etymology for it
+would be a guess. A note carries the headword, the translations and the two sentence
+forms, so the hedge never reaches the deck: the card's confidence does not depend on
+the article's. Where an answer will not commit, the product has no way to card that.
+
+None of this moves the conclusion below, which is about latency and cost as much as
+quality: the paid article costs 10.6 s at the median against the pool's 2.5, with a
+19 s tail. A full tier of 218 calls spent roughly 325K input and 102K output tokens,
+about a third of a month at a couple of dozen submissions a day.
+
 ## What would re-open this
 
 - The pool's primary model degrading or disappearing from the curated
@@ -437,6 +497,10 @@ manifests, pacing and promotion procedure are recorded in
   first thing to try before any language moves to a metered backend.
 - Sustained use past a couple of dozen requests a day, which is where
   the fallback tail stops being theoretical.
+- An attestation source that covers all three languages. It is the only
+  lever measured to reach the class neither tier reaches, and until one
+  exists the choice between the tiers is a choice between kinds of
+  defect rather than between fit and unfit for use.
 
 The harness is `experiments/backend_bench.py`; it is outside CI, calls
 real models, and its paid phase spends real money.
