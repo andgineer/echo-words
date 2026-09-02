@@ -1646,6 +1646,10 @@ def complete(shot: Shot) -> bool:
     # fixtures by the branch keys re-asked all six on every resume and kept the last.
     if shot.kind == "attested" and attested_refused(shot):
         return True
+    # Same for a word list: a refusal is one of its two right answers, and production
+    # reads it as text. Judging it by the branch keys re-asked it on every resume.
+    if shot.kind == "wordlist" and _wordlist_refused(shot):
+        return True
     return bool(
         shot.metrics.get("answered")
         and (
@@ -2156,8 +2160,38 @@ def review_packet(
             actual["success"] = click_success(shot)
             actual["context_exact"] = shot.metrics.get("context_example_exact")
             actual["surface_exact"] = shot.metrics.get("context_surface_exact")
+        if shot.kind in {"attested", "bare", "neighbour", "wordlist"}:
+            # Every one of these is read, whatever it scored. The first thing this
+            # review exists to catch is a coinage carded with a confident sense, and a
+            # carded coinage scores nothing: it earns no category of its own, so a
+            # packet built from categories alone cannot show the reviewer the class it
+            # was called for.
+            categories.add(shot.kind)
+            actual["carded"] = shot.metrics.get("meanings_valid")
+            actual["headword"] = shot.payload.get("word")
+            if shot.kind == "attested":
+                case = ATTESTED_BY_ID[shot.shot_id]
+                expected["attested"] = case.attested
+                expected["class"] = "ordinary" if case.ordinary else "famous"
+                actual["article_refused"] = attested_refused(shot)
+                judged = current.get(attestation_id(shot.shot_id))
+                actual["standalone_refused"] = (
+                    attested_refused(judged) if judged is not None else None
+                )
+            if shot.kind == "neighbour":
+                expected["neighbour"] = NEIGHBOUR_BY_ID[shot.shot_id].neighbour
+                actual["also_common"] = shot.payload.get("also_common")
+            if shot.kind == "wordlist":
+                actual["chips"] = shot.metrics.get("wordlist_chips")
+                actual["carded_as_unit"] = shot.metrics.get("wordlist_carded")
+        if shot.kind == "attestation":
+            # The judge's own answer, so a reviewer can see it invent an attestation.
+            categories.add("attestation")
+            actual["used"] = shot.payload.get("used") if shot.payload else None
+            actual["where"] = shot.payload.get("where") if shot.payload else None
         if shot.kind == "typo":
             categories.add("typo")
+            actual["also_common"] = shot.payload.get("also_common")
             expected["word"] = shot.expected_suggestion
             expected["word_relation"] = "typo"
             expected["suggestion"] = ""

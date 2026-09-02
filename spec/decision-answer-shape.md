@@ -123,10 +123,18 @@ Six fixtures measure it — three real words a letter or two from a markedly
 commoner one, three ordinary words that must be offered nothing. Over a tier
 answering every one of its calls, the field is non-empty exactly once in 201
 answers, on the registered pair, with the article still entirely about the
-submission; no ordinary word, sentence, misspelling or coinage drew an offer, and
-the correction field stayed non-empty only on misspellings, always holding the
+submission; no ordinary word, sentence or coinage drew an offer, and the
+correction field stayed non-empty only on misspellings, always holding the
 correction. The separation the two fields were meant to produce is what the
 answers show.
+
+A misspelling does draw one. On a later tier `definately` returned `also_common:
+"defiantly"` — and inverted the field's premise, since `defiantly` is the rarer
+word of the two. It reached no reader: a declared correction outranks the offer,
+so the entry showed `definitely`. It is invisible to the gate as well, which
+scans the six registered pairs and nothing else. The field is therefore advice
+whose premise the answer is not held to, and the misspelling branch is the one
+place that has been seen to break it.
 
 What it costs is coverage, not correctness: one of three registered pairs fired.
 A second pair produced a shorter article that named no confusion at all, so
