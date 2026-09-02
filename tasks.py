@@ -270,7 +270,10 @@ def _remote_deploy_script(commit: str) -> str:
     return (
         f"set -euo pipefail; cd {REMOTE_ROOT}; "
         f"{dirty_check}; "
-        f"git fetch origin {commit}; git checkout --detach {commit}; "
+        # GitHub returned a spurious 401 for Jammy's HTTP/2 stack on 2026-09-02.
+        # TODO: Retest HTTP/2 and remove this override after the upstream fix lands.
+        f"git -c http.version=HTTP/1.1 fetch origin {commit}; "
+        f"git checkout --detach {commit}; "
         f'test "$(git rev-parse HEAD)" = {commit}; '
         f"{dirty_check}; "
         "source /home/ubuntu/.local/bin/env; uv sync --no-dev; "
