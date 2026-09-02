@@ -59,6 +59,7 @@ from echo_words.languages import (  # noqa: E402
     validate_word,
 )
 from echo_words.prompt import (  # noqa: E402
+    CARD_DELIMITER,
     MAX_COMPLETE_ANSWER_CHARS,
     build_attestation_prompt,
     build_prompt,
@@ -126,14 +127,18 @@ EXPRESSION_FIXTURES = 3
 MIN_USABLE_INITIAL = 142
 MIN_TEXT_BRANCH = 23
 MIN_BARE_CARDABLE = 8
-# The floor sits at the bottom of the measured spread rather than inside it. Runs
-# of one prompt answered by the same providers on every text shot have measured 15
-# through 18 of 21, so a floor above 15 reddens on the draw; at 15 the gate is
-# insensitive to that swing and still catches a collapse. The report prints the
-# spread beside the count, because one sample cannot tell a two-unit regression
-# from a two-unit draw and only repeated runs can raise this floor.
-MIN_REGISTERED_UNITS = 15
-REGISTERED_UNITS_SPREAD = (15, 18)
+# A chip the learner would card wrong is not a unit recovered, so the gate counts
+# only the two match kinds that card the registered entry: an exact chip, and a
+# surface registered in ACCEPTED_SURFACE_ALTERNATIVES. An expanded or partial
+# boundary is reported beside it as a diagnostic and gates nothing.
+CARDABLE_MATCHES = frozenset({"exact", "accepted alternative"})
+# The floor sits at the bottom of the measured spread rather than inside it. Six
+# full runs answering every text shot, re-scored through the boundary repair, have
+# measured 13 through 17 of 21, so a floor above 13 reddens on the draw. The report
+# prints the spread beside the count, because one sample cannot tell a two-unit
+# regression from a two-unit draw and only repeated runs can raise this floor.
+MIN_CARDABLE_UNITS = 13
+CARDABLE_UNITS_SPREAD = (13, 17)
 MIN_SHARED_WORDS = 2
 MAX_BOUNDARY_DRIFT = 1
 MIN_CLICK_SUCCESS = 5
@@ -900,6 +905,7 @@ def coverage(shot: Shot, parsed: ParsedText) -> dict:
         "expected_found": registered["exact"],
         "expected_total": len(expected),
         "registered_units_found": registered["found"],
+        "registered_units_cardable": registered["cardable"],
         "registered_units_total": len(expected),
         "registered_unit_matches": registered["matches"],
         "registered_unit_misses": registered["misses"],
@@ -1009,6 +1015,7 @@ def _registered_unit_matches(
     return {
         "found": len(matches),
         "exact": sum(match["match"] == "exact" for match in matches),
+        "cardable": sum(match["match"] in CARDABLE_MATCHES for match in matches),
         "matches": matches,
         "misses": misses,
         "merged": merged,
@@ -1312,6 +1319,18 @@ def _verdict_outcome(shot: Shot, actual_kind: str | None) -> str:
     return "hard_error"
 
 
+def _payload_parses_unrepaired(text: str) -> bool:
+    """Whether the card JSON stood on its own, before `extract_answer` repaired it."""
+    at = text.find(CARD_DELIMITER)
+    if at < 0:
+        return False
+    try:
+        json.JSONDecoder().raw_decode(text[at + len(CARD_DELIMITER) :].lstrip())
+    except (json.JSONDecodeError, TypeError):
+        return False
+    return True
+
+
 def score(shot: Shot) -> Shot:
     if shot.shot_id in EXPECTED_UNIT_OVERRIDES:
         shot.expected_kind = "unit"
@@ -1347,6 +1366,7 @@ def score(shot: Shot) -> Shot:
         "answered": bool(shot.text) and not shot.error,
         "raw_parse_error": raw_error,
         "payload_valid": parsed is not None,
+        "payload_repaired": parsed is not None and not _payload_parses_unrepaired(shot.text),
         "semantic_payload_valid": semantic_parsed is not None,
         "unit_intent_wrong_branch": unit_intent_wrong_branch,
         "actual_kind": actual_kind,
@@ -1685,6 +1705,10 @@ def quality_counts(initial_rows: list[Shot], context_rows: list[Shot]) -> dict[s
             int(row.metrics.get("registered_units_found", 0))
             for row in actual_text_rows
         ),
+        "cardable_units": sum(
+            int(row.metrics.get("registered_units_cardable", 0))
+            for row in actual_text_rows
+        ),
         "click_success": len(
             {row.shot_id for row in context_rows if click_success(row)},
         ),
@@ -1756,7 +1780,7 @@ def quality_gates(counts: dict[str, int], tier: str) -> dict[str, bool]:
         ),
         "known text reaches text branch": counts["text_branch"] >= text_min,
         "bare units are cardable": counts["bare_cardable"] >= MIN_BARE_CARDABLE,
-        "registered units recovered": counts["registered_units"] >= MIN_REGISTERED_UNITS,
+        "registered units cardable": counts["cardable_units"] >= MIN_CARDABLE_UNITS,
         "successful click cases": counts["click_success"] >= MIN_CLICK_SUCCESS,
         "successful expression cases": counts["expression_success"]
         >= MIN_EXPRESSION_SUCCESS,
@@ -1930,6 +1954,9 @@ def report_arm(
     print(f"  recorded attempts             {len(rows)}/157")
     print(f"  provider answers              {ratio(rows, 'answered')}")
     print(f"  parseable payload             {ratio(rows, 'payload_valid')}")
+    # `payload_valid` counts answers `extract_answer` repaired into shape, so on its
+    # own it overstates how often a model produces JSON that conforms.
+    print(f"    of which repaired first     {ratio(rows, 'payload_repaired')}")
     print(f"  Serbian provider answers      {ratio(serbian, 'answered')}")
     print(f"  Serbian parseable payload     {ratio(serbian, 'payload_valid')}")
     report_verdict(verdict_rows)
@@ -2166,10 +2193,10 @@ def report(out: Path, tier: str) -> None:
             f">= {MIN_BARE_CARDABLE}",
         ),
         (
-            "registered units recovered",
-            counts["registered_units"],
+            "registered units cardable",
+            counts["cardable_units"],
             REGISTERED_UNITS,
-            f">= {MIN_REGISTERED_UNITS}",
+            f">= {MIN_CARDABLE_UNITS}",
         ),
         (
             "successful click cases",
@@ -2272,9 +2299,10 @@ def report(out: Path, tier: str) -> None:
     print(f"  expression contexts exact     {ratio(expression_rows, 'expression_contexts_exact')}\n")
 
     print("REGISTERED UNITS")
+    print(f"  cardable units                {counts['cardable_units']}/{REGISTERED_UNITS}")
     print(f"  distinct units found          {counts['registered_units']}/{REGISTERED_UNITS}")
-    print(f"  measured spread across runs   {REGISTERED_UNITS_SPREAD[0]}-{REGISTERED_UNITS_SPREAD[1]}")
-    print(f"  floor, at the spread's bottom {MIN_REGISTERED_UNITS}\n")
+    print(f"  measured spread across runs   {CARDABLE_UNITS_SPREAD[0]}-{CARDABLE_UNITS_SPREAD[1]}")
+    print(f"  floor, at the spread's bottom {MIN_CARDABLE_UNITS}\n")
 
     typo_rows = [row for row in current_initial if row.kind == "typo"]
     print("TYPO DETAIL")

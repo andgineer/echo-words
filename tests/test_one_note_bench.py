@@ -193,7 +193,8 @@ def _passing_quality_counts() -> dict[str, int]:
         "hard_verdict_errors": 10,
         "text_branch": bench.MIN_TEXT_BRANCH,
         "bare_cardable": bench.MIN_BARE_CARDABLE,
-        "registered_units": bench.MIN_REGISTERED_UNITS,
+        "registered_units": bench.REGISTERED_UNITS,
+        "cardable_units": bench.MIN_CARDABLE_UNITS,
         "click_success": bench.MIN_CLICK_SUCCESS,
         "expression_success": bench.MIN_EXPRESSION_SUCCESS,
         "typo_success": 3,
@@ -204,16 +205,25 @@ def _passing_quality_counts() -> dict[str, int]:
     }
 
 
-def test_the_registered_unit_floor_sits_at_the_bottom_of_its_measured_spread():
-    """Measured 15 to 18 of 21 across runs of one prompt answered by one provider set.
+def test_the_cardable_unit_floor_sits_at_the_bottom_of_its_measured_spread():
+    """Measured 13 to 17 of 21 across six full runs that answered every text shot.
     A floor inside that spread reddens on the draw; at its bottom the gate still holds
     the count to something a collapse would break."""
-    assert bench.REGISTERED_UNITS_SPREAD[0] == bench.MIN_REGISTERED_UNITS
+    assert bench.CARDABLE_UNITS_SPREAD[0] == bench.MIN_CARDABLE_UNITS
     counts = _passing_quality_counts()
-    counts["registered_units"] = bench.MIN_REGISTERED_UNITS
-    assert bench.quality_gates(counts, "full")["registered units recovered"] is True
-    counts["registered_units"] = bench.MIN_REGISTERED_UNITS - 1
-    assert bench.quality_gates(counts, "full")["registered units recovered"] is False
+    counts["cardable_units"] = bench.MIN_CARDABLE_UNITS
+    assert bench.quality_gates(counts, "full")["registered units cardable"] is True
+    counts["cardable_units"] = bench.MIN_CARDABLE_UNITS - 1
+    assert bench.quality_gates(counts, "full")["registered units cardable"] is False
+
+
+def test_a_chip_the_learner_would_card_wrong_is_not_a_unit_recovered():
+    """An expanded or partial boundary carries a surface the reader would card as the
+    entry, so the gate counts only exact chips and registered alternatives."""
+    counts = _passing_quality_counts()
+    counts["registered_units"] = bench.REGISTERED_UNITS
+    counts["cardable_units"] = bench.MIN_CARDABLE_UNITS - 1
+    assert bench.quality_gates(counts, "full")["registered units cardable"] is False
 
 
 def test_quality_thresholds_pass_at_the_boundaries():
@@ -225,7 +235,7 @@ def test_quality_thresholds_fail_immediately_below_each_minimum():
         "usable_initial",
         "text_branch",
         "bare_cardable",
-        "registered_units",
+        "cardable_units",
         "click_success",
         "expression_success",
         "typo_success",
@@ -886,26 +896,17 @@ def test_expression_gate_preserves_case_in_the_exact_source_parts():
 
 
 def test_an_omitted_fixed_part_costs_the_exact_boundary_but_not_the_unit():
-    shot = bench.Shot(
-        "text-de-9",
-        "text",
-        "de",
-        "Wir müssen uns auf das Wesentliche beschränken.",
-        expected_groups=[
-            ["sich auf etwas beschränken", "sich beschränken auf", "beschränken auf"],
-        ],
-        expected_kind="text",
-    )
+    shot = next(row for row in bench.text_shots() if row.shot_id == "text-de-4")
     shot.text = (
         "translation===CARD==="
         '{"kind":"text","combinations":['
-        '{"label":"sich auf etwas beschränken","surface":"auf … beschränken",'
-        '"why":"verb"}]}'
+        '{"label":"die Nase voll haben","surface":"die Nase voll","why":"verb"}]}'
     )
 
     scored = bench.score(shot)
 
     assert scored.metrics["registered_units_found"] == 1
+    assert scored.metrics["registered_units_cardable"] == 0
     assert scored.metrics["registered_unit_matches"][0]["match"] == "partial boundary"
     assert scored.metrics["expected_found"] == 0
     # The label names the entry; only the surface proves the fixed part was found.
@@ -974,7 +975,7 @@ def test_merged_neighbor_chip_counts_once_and_can_still_pass_aggregate_threshold
     assert all(bench.quality_gates(counts, "full").values())
 
 
-def test_a_dropped_clitic_still_counts_while_its_word_keeps_a_chip():
+def test_a_clitic_the_label_names_is_taken_back_into_the_chip():
     shot = next(row for row in bench.text_shots() if row.shot_id == "text-de-1")
     shot.text = (
         "translation===CARD==="
@@ -984,8 +985,9 @@ def test_a_dropped_clitic_still_counts_while_its_word_keeps_a_chip():
 
     scored = bench.score(shot)
 
-    assert scored.metrics["registered_units_found"] == 1
-    assert scored.metrics["registered_unit_matches"][0]["match"] == "partial boundary"
+    assert scored.metrics["registered_units_cardable"] == 1
+    assert scored.metrics["registered_unit_matches"][0]["chip"] == "freue mich auf"
+    assert scored.metrics["registered_unit_matches"][0]["match"] == "exact"
     assert "mich" not in scored.metrics["missing"]
 
 

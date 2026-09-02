@@ -13,7 +13,10 @@ from echo_words.languages import (
     normalize_submission,
     plain_text,
     plain_unit,
+    reflexive_forms,
+    reflexive_markers,
     sanitize_context,
+    unit_excluded_words,
     unknown_language_hint,
     validate_text,
     validate_word,
@@ -269,3 +272,17 @@ def test_serbian_folding_maps_both_scripts_onto_one_spelling(languages):
 def test_folding_a_single_script_language_only_folds_case(languages):
     assert fold_for_match("Straße", languages["de"]) == fold_for_match("STRASSE", languages["de"])
     assert fold_for_match("Он", languages["en"]) == "он"
+
+
+def test_serbian_closed_class_words_are_listed_once_in_the_script_matching_folds_to(languages):
+    excluded = unit_excluded_words(languages["sr"])
+
+    assert {fold_for_match(word, languages["sr"]) for word in ("не", "није", "да")} <= excluded
+
+
+def test_a_language_without_closed_class_data_gets_no_boundary_repair():
+    language = Language(code="fr", name="Français", deck="Deck", script="latin")
+
+    assert unit_excluded_words(language) == frozenset()
+    assert reflexive_forms(language) == frozenset()
+    assert reflexive_markers(language) == frozenset()

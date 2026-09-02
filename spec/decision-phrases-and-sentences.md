@@ -51,7 +51,23 @@ the model returns the lemma. Dropping the dictionary form cut recovered units
 from 18 of 21 to 9 of 21 and clicks from six of six to four of six, because a
 chip carrying a lemma cannot be located in the text and is never built. Both
 forms therefore stay in the contract, with an explicit example of the two side
-by side, even though the product reads only one of them. The first overlapping proposal wins, repeated words use the earliest
+by side, even though the product reads only one of them.
+
+Carrying the unit twice also lets each copy check the other, and the backend
+repairs the copied boundary against the dictionary form the same answer
+returned. Closed-class material a unit never carries — negation, subordinators
+and copulas, listed per language — is dropped from the chip, and a reflexive
+marker the dictionary form names is taken back in as the form the sentence
+spells. The trim is withheld unless what survives it is the unit itself: a
+negation dropped from a span still carrying free material would card a chip
+saying the opposite of the sentence the reader is looking at, which is worse
+than the untidy boundary it replaces. Re-scored over every recorded answer the
+repair raises exact boundaries from 420 of 878 to 508 of 878 without costing a
+single chip that was exact before, and on the tier that gates it moves 13 of 21
+to 16 of 21. Resolving an overlap by fit rather than by arrival was measured on
+the same answers and rejected: it recovered one boundary and lost two.
+
+The first overlapping proposal wins, repeated words use the earliest
 unclaimed occurrence, and an unmatchable proposal is ignored independently.
 Every source word then becomes its own chip too, including articles, particles
 and prepositions, and including the words a combination already claims: a chip
@@ -170,25 +186,24 @@ cascade into missing-token or missing-card structural failures.
 
 One production-filled chip can recover at most one registered unit. A merged
 chip containing neighbouring registered material is reported as partial/merged
-recovery and cannot count once for each boundary it contains. Exact source
-boundaries and lookup labels, optional combinations, strict article format,
-article/verdict disagreements and tolerant verdict interpretation remain
-diagnostic.
+recovery and cannot count once for each boundary it contains. Lookup labels,
+optional combinations, strict article format, article/verdict disagreements and
+tolerant verdict interpretation remain diagnostic.
 
-A registered unit also counts when the chip shares at least two words with it
-and drifts by at most one word in each direction — one expected word omitted,
-one extra word taken in — provided every omitted word is itself offered as a
-chip. The count therefore measures whether the model located the unit at all,
-and it is not a claim that the drift is harmless.
+A unit counts toward the gate only when its chip cards the registered entry:
+an exact boundary, or a surface registered as an accepted alternative, where a
+current experiencer may be left out of a reusable impersonal or reflexive unit.
+A chip sharing at least two words with the unit and drifting by at most one
+word in each direction is still reported, because it shows the model located
+the unit; it does not count, because locating a unit is not carding it.
 
 Tapping nine drifted chips reached the intended dictionary entry three times.
 Four returned the drifted surface itself as the headword and declared it a
 spelling correction, so the note carries the surface and the correction control
 offers to undo a spelling the reader never mistyped; two answers were rejected
 outright and fell to the paid fallback. Chips whose boundary is exact succeed
-six times in six. The exact boundary is therefore the number to watch, and it
-stays a separate diagnostic so the drift remains visible rather than absorbed
-into the gate.
+six times in six. That is why the gate counts what cards, and why the drift
+stays visible beside it rather than absorbed into it.
 
 A chip which shares nothing with the registered unit, or which runs on past it,
 is still a miss.

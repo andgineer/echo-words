@@ -1,12 +1,15 @@
-# Implementation plan — four places the bench reports what is not so
+# Implementation plan — two places the bench reports what is not so
 
-Delete this file once all four are settled. Nothing here changes what the app
+Delete this file once both are settled. Nothing here changes what the app
 does; it changes what the harness claims about it, which is why none of it can be
 done quietly — a gate that moves without an argument is worth less than the red
 reading it replaced.
 
-The four are independent. Do them in any order, and delete each section as it
-lands rather than waiting for the rest.
+The two are independent. Do them in any order, and delete each section as it
+lands rather than waiting for the rest. Two others have landed and are gone: the
+report now prints the repaired-payload count beside the parseable one, and the
+registered-unit gate counts what the learner would card, at a floor taken from
+the spread six full runs actually measure.
 
 ## 1. A neighbour fixture that measures nothing
 
@@ -58,31 +61,3 @@ Two things this section must not become:
 - **It is not a change to make while shipping something else.** The party
   defending a result does not move the line it is judged against. Land it on its
   own, with the argument written down.
-
-## 3. A spread the runs have outgrown
-
-`REGISTERED_UNITS_SPREAD` is `(15, 18)` and the report prints it as the measured
-spread across runs, with `MIN_REGISTERED_UNITS = 15` justified as sitting at that
-spread's bottom. A full tier has since measured 14. Five full runs now read 17,
-16, 16, 14, 17.
-
-Correct the printed claim so it matches what has been observed. Note that the
-floor's justification then no longer holds as written: a floor "at the spread's
-bottom" would move to 14, which is a decision about how much model variance the
-gate should absorb, not a cleanup. Make that decision explicitly or replace the
-justification — do not let the constant drift down as a side effect of fixing a
-comment.
-
-## 4. A repaired payload counted as a parseable one
-
-`payload_valid` is `parsed is not None`, and `extract_answer` repairs punctuation
-slips before parsing — `_quote_bare_values` among them. So an answer whose card
-JSON left its string values unquoted is counted in `parseable payload` beside
-answers that needed nothing. The repair itself is right and stays: a repaired
-card reaches the learner where a rejected one does not. What is wrong is
-measuring contract conformance with a number that includes answers which did not
-conform.
-
-Report the two separately — a repaired-payload count beside the parseable one —
-so the diagnostic says how often models actually produce valid JSON. This is
-zero-cost: it re-scores answers already recorded.

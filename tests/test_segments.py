@@ -169,3 +169,91 @@ def test_a_token_the_submission_endpoint_would_reject_gets_no_chip(languages):
         "was",
         "euro",
     ]
+
+
+def test_leading_negation_is_dropped_from_the_unit_the_label_names(languages):
+    segments = fill_text_segments(
+        [{"label": "bojati se", "surface": "Ne bojim se", "why": "Verb."}],
+        "Ne bojim se više ničega.",
+        languages["sr"],
+    )
+
+    assert [item.label for item in segments if len(item.label.split()) > 1] == ["bojim se"]
+
+
+def test_a_copied_auxiliary_the_dictionary_form_does_not_carry_is_dropped(languages):
+    segments = fill_text_segments(
+        [{"label": "look forward to", "surface": "is looking forward to"}],
+        "He is looking forward to the trip.",
+        languages["en"],
+    )
+
+    assert [item.label for item in segments if len(item.label.split()) > 1] == [
+        "looking forward to",
+    ]
+
+
+def test_a_trailing_subordinator_is_dropped_even_when_the_label_repeats_it(languages):
+    segments = fill_text_segments(
+        [{"label": "nadati se da", "surface": "Nadam se da"}],
+        "Nadam se da ćeš doći na vreme.",
+        languages["sr"],
+    )
+
+    assert [item.label for item in segments if len(item.label.split()) > 1] == ["Nadam se"]
+
+
+def test_the_reflexive_the_label_names_is_taken_in_when_the_copy_left_it_out(languages):
+    segments = fill_text_segments(
+        [{"label": "sich freuen auf", "surface": "freue ... auf"}],
+        "Ich freue mich schon sehr auf den Sommer.",
+        languages["de"],
+    )
+
+    assert [item.label for item in segments if len(item.label.split()) > 1] == [
+        "freue mich auf",
+    ]
+
+
+def test_a_label_reflexive_maps_onto_the_form_the_sentence_actually_uses(languages):
+    segments = fill_text_segments(
+        [{"label": "sich beschränken auf", "surface": "sich ... beschränken auf"}],
+        "Wir müssen uns auf das Wesentliche beschränken.",
+        languages["de"],
+    )
+
+    assert [item.label for item in segments if len(item.label.split()) > 1] == [
+        "uns auf beschränken",
+    ]
+
+
+def test_negation_stays_when_free_material_would_survive_the_trim(languages):
+    segments = fill_text_segments(
+        [{"label": "u redu", "surface": "nešto nije u redu"}],
+        "Sve mi se čini da nešto nije u redu.",
+        languages["sr"],
+    )
+
+    assert [item.label for item in segments if len(item.label.split()) > 1] == [
+        "nešto nije u redu",
+    ]
+
+
+def test_a_trim_below_two_words_drops_the_chip_and_keeps_the_words_clickable(languages):
+    segments = fill_text_segments(
+        [{"label": "rennen", "surface": "nicht rennt"}],
+        "Er rennt nicht schnell.",
+        languages["de"],
+    )
+
+    assert [item.label for item in segments] == ["Er", "rennt", "nicht", "schnell"]
+
+
+def test_an_untouched_boundary_keeps_the_reason_and_the_source_order(languages):
+    segments = fill_text_segments(
+        [{"label": "izvinuti se", "surface": "se izvinio", "why": "Возвратный глагол."}],
+        "On se juče izvinio svima.",
+        languages["sr"],
+    )
+
+    assert Segment("se izvinio", "Возвратный глагол.", "On se juče izvinio svima.") in segments

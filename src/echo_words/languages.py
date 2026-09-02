@@ -129,6 +129,40 @@ _SERBIAN_LATIN = {
 }
 
 
+# Closed-class material a dictionary unit never carries, and the reflexive marker a
+# unit's dictionary form names. Serbian is listed in Latin only: `fold_for_match`
+# folds its Cyrillic onto Latin before any of these are consulted. A language absent
+# here gets no repair, which is why an operator may add one without touching this.
+_UNIT_EXCLUDED = {
+    "en": frozenset({"not", "never", "is", "are", "was", "were", "am", "be", "been", "being"}),
+    "de": frozenset({"nicht", "nie", "niemals"}),
+    "sr": frozenset({"ne", "nije", "da"}),
+}
+_REFLEXIVE_FORMS = {
+    "de": frozenset({"mich", "dich", "sich", "uns", "euch"}),
+    "sr": frozenset({"se"}),
+}
+_REFLEXIVE_MARKERS = {
+    "de": frozenset({"sich"}),
+    "sr": frozenset({"se"}),
+}
+
+
+def unit_excluded_words(language: Language) -> frozenset[str]:
+    """Folded words a dictionary unit does not carry: negation, subordinators, copulas."""
+    return _UNIT_EXCLUDED.get(language.code, frozenset())
+
+
+def reflexive_forms(language: Language) -> frozenset[str]:
+    """Folded reflexive pronouns as running text spells them."""
+    return _REFLEXIVE_FORMS.get(language.code, frozenset())
+
+
+def reflexive_markers(language: Language) -> frozenset[str]:
+    """Folded reflexive markers as a dictionary form spells them."""
+    return _REFLEXIVE_MARKERS.get(language.code, frozenset())
+
+
 def fold_for_match(text: str, language: Language) -> str:
     """Fold a string for comparison against another spelling of the same language."""
     folded = unicodedata.normalize("NFC", text).casefold()
