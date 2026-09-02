@@ -81,7 +81,10 @@ def test_tolerant_verdict_outcomes_do_not_turn_gray_boundaries_into_hard_errors(
     assert _outcome(_shot("verdict:clauses:en:1"), "text") == "correct"
     assert _outcome(_shot("verdict:fragments:en:1"), "unit") == "acceptable"
     assert _outcome(_shot("verdict:clauses:de:2"), "unit") == "ambiguous"
-    assert _outcome(_shot("verdict:clauses:de:0"), "unit") == "hard_error"
+    # Registered by the shape of the utterance, not by what an answer extracted.
+    assert _outcome(_shot("verdict:clauses:de:0"), "unit") == "ambiguous"
+    # A clause carrying its own subject and time is not that shape.
+    assert _outcome(_shot("verdict:clauses:de:4"), "unit") == "hard_error"
     assert _outcome(_shot("verdict:fragments:en:2"), "unit") == "hard_error"
     assert _outcome(_shot("verdict:sentences-split:de:0"), "unit") == "hard_error"
     assert _outcome(_shot("verdict:units:de:0", expected_kind="unit"), "text") == "hard_error"

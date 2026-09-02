@@ -441,6 +441,7 @@ NO_COMBINATION_SHOTS = {
 # text whose contextual material makes a unit verdict plainly unsafe.
 DEFENSIBLE_UNIT_VERDICTS = {
     "verdict:clauses:en:0",  # I have no idea
+    "verdict:clauses:de:0",  # Ich habe keine Zeit
     "verdict:clauses:de:2",  # Ich weiß nicht
     "verdict:clauses:de:3",  # Das stimmt
     "verdict:clauses:sr:1",  # Не знам

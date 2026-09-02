@@ -140,8 +140,15 @@ then adds a tolerant interpretation without changing the recorded answers:
   enough as one learnable chunk: `it` is dispensable and `rather` is debatable,
   but neither makes the result an error;
 - `ambiguous/defensible` covers reusable short utterances on either reasonable
-  side of the boundary. `I have no idea`, `Ich weiß nicht`, `Das stimmt` and
-  `Не знам` are examples, not false-unit failures;
+  side of the boundary. `I have no idea`, `Ich habe keine Zeit`, `Ich weiß
+  nicht`, `Das stimmt` and `Не знам` are examples, not false-unit failures. The
+  class is registered by the shape of the utterance, never by what an answer
+  happened to extract from it: `Ich habe keine Zeit` yields `Zeit haben`, a
+  multi-word collocation on its own accepted list and a better unit than the
+  bare `wissen` and `stimmen` its registered siblings yield, so scoring it a
+  hard error while excusing them would grade the registration rather than the
+  answer. Registering it leaves the hard-error count above its gate, which is
+  what keeps this a correction and not a way through;
 - `hard error` is reserved for a clear loss of the requested operation, such as
   treating a registered set expression as surrounding text or carding a whole
   contextual sentence whose changing subject, time or arguments are not part
