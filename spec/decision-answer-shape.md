@@ -260,10 +260,26 @@ median against a 2.5 s answer.
 `водити рачуна`, and the product's own rule is that a false refusal costs the reader
 more than a warning they can act on. So where no wiki has the wording a note carries,
 the entry says so in the terms that are true — a rare word, an unexpected form, or no
-word at all — and offers the two lookups a doubting reader would run themselves: the
-dictionary for that language, and the exact wording in real use. An unreachable
-Wiktionary is not a miss, on the same rule as the judgement: silence is not an
-objection.
+word at all. An unreachable Wiktionary is not a miss, on the same rule as the
+judgement: silence is not an objection.
+
+**And the question the warning raises is answered rather than described.** A
+dictionary cannot settle whether a wording is used — it holds only what someone wrote
+down, and no dictionary holds everything — so the reader is not sent back to the one
+already asked. One control runs the search they would have run: how often the exact
+wording occurs in the encyclopedia in that language, with the fragments that show it
+in use.
+
+Measured over the same fixtures, the count separates the two cases the dictionary
+leaves open. Every invented wording occurs **nought** times — `bookshelfy`,
+`tablewards`, `змркалица`, `Fahrradsuppe`. Every real one occurs at least six:
+`Kummerspeck` 6, `сврака` 87, `Rad fahren` 100, `водити рачуна` 249 — which is the
+dictionary check's own false alarm, rescued here — `petrichor` 147, and ordinary
+colloquial wording in the hundreds or thousands in all three languages. Serbian is
+the smallest of the three encyclopedias and still leaves that margin.
+
+Nought occurrences and a failed lookup read alike to a reader and mean opposite
+things, so a search that did not answer is never shown as one that found nothing.
 
 The question is asked of the headword rather than the submission, because the
 headword is what the note teaches. It is an existence check and nothing more: a

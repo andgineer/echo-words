@@ -42,7 +42,7 @@ from echo_words.languages import (
     validate_text,
     validate_word,
 )
-from echo_words.lexicon import Wiktionary
+from echo_words.lexicon import Wikipedia, Wiktionary
 from echo_words.pipeline import WordPipeline
 
 # Transport guards only, kept far above the real limits so that the short
@@ -177,6 +177,7 @@ def _lifespan(settings: Settings):
             audio_timeout=settings.audio_timeout,
             audio_dir=settings.data_dir / "audio",
         )
+        app.state.usage = Wikipedia().usage
         app.state.submissions = SubmissionRegistry()
         app.state.pipeline.start()
         try:
@@ -269,6 +270,29 @@ def create_app(settings: Settings | None = None) -> FastAPI:  # noqa: C901, PLR0
         limit: int = Query(default=20, ge=1, le=100),
     ) -> list[dict[str, object]]:
         return request.app.state.pipeline.recent(limit)
+
+    @app.get("/api/usage")
+    async def word_usage(
+        request: Request,
+        lang: str,
+        word: str = Query(max_length=MAX_CONTEXT_LENGTH),
+    ) -> dict[str, object]:
+        """How often the encyclopedia has this wording, for a reader the dictionary
+        told nothing. The question a reader asks next, asked for them."""
+        language = request.app.state.languages.get(lang)
+        if language is None:
+            raise HTTPException(status_code=404, detail="unknown language")
+        wording = plain_unit(word)
+        if not wording:
+            raise HTTPException(status_code=422, detail="nothing to look up")
+        found = await request.app.state.usage(wording, language)
+        if found is None:
+            raise HTTPException(status_code=503, detail="usage lookup unavailable")
+        return {
+            "hits": found.hits,
+            "examples": found.examples,
+            "search_url": found.search_url,
+        }
 
     @app.post("/api/words/{entry_id}/switch")
     async def switch_word(request: Request, entry_id: str) -> dict[str, object]:

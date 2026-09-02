@@ -31,8 +31,16 @@ export default {
   "add.moreCommon": "The card is for “{word}”; “{suggestion}” is named the more usual spelling.",
   "add.notInDictionary":
     "No dictionary has “{word}”. It may be a rare word, an unexpected form, or not a word at all — the card was still made.",
-  "add.checkWiktionary": "Look it up in Wiktionary",
-  "add.checkUsage": "Search for it in real use",
+  "add.findUsage": "Look for real uses",
+  "add.usageSearching": "Looking…",
+  "add.usageUnavailable": "The usage search is not answering right now.",
+  "add.usageNone":
+    "“{word}” does not occur once in this language's Wikipedia. Every invented word tested behaved this way.",
+  "add.usageFound.one": "“{word}” occurs in {count} article, so it is written by someone:",
+  "add.usageFound.few": "“{word}” occurs in {count} articles, so it is written by someone:",
+  "add.usageFound.many": "“{word}” occurs in {count} articles, so it is written by someone:",
+  "add.usageFound.other": "“{word}” occurs in {count} articles, so it is written by someone:",
+  "add.usageAll": "See them all",
   "add.rebuild": "Rebuild the card",
   "add.detailReady": "Full analysis ready",
   "add.detail": "More detail",

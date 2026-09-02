@@ -36,8 +36,10 @@ the work again. **Do not re-open any of it.**
   that a card never carries one — it is that unverified wording is never presented as
   verified. A dictionary outside the models is asked about the wording each note
   carries, and where none has it the entry says it may be a rare word, an unexpected
-  form or no word at all, and offers the reader the lookups they would have run
-  themselves. A card the reader was warned about is the product working, not failing;
+  form or no word at all, and one control runs the search they would have run — how
+  often the exact wording occurs in that language's encyclopedia, with the fragments
+  showing it in use. The dictionary is not offered back: it has already been asked,
+  and what it cannot answer is whether anyone writes the word. A card the reader was warned about is the product working, not failing;
   a card that quietly teaches an invention is the failure. The check never withholds,
   because its measured false alarm is a real set expression and a false refusal costs
   more than a warning does.

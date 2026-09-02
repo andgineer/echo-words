@@ -311,11 +311,74 @@ describe("AddView", () => {
     const notice = wrapper.find(".entry-notice.unverified");
     expect(notice.text()).toContain("No dictionary has “bookshelfy”");
     expect(notice.text()).toContain("rare word, an unexpected form, or not a word at all");
-    // The two lookups a doubting reader would run themselves.
-    const links = notice.findAll("a").map((a) => a.attributes("href"));
-    expect(links[0]).toBe("https://en.wiktionary.org/w/index.php?search=bookshelfy");
-    expect(links[1]).toBe("https://duckduckgo.com/?q=%22bookshelfy%22");
+    // The dictionary was already asked, so nothing points back at it.
+    expect(notice.findAll("a")).toHaveLength(0);
+    expect(notice.find(".find-usage").exists()).toBe(true);
     expect(wrapper.find(".entry-text").exists()).toBe(true);
+  });
+
+  it("runs the usage search for the reader and reports that nobody writes the word", async () => {
+    await labelBehavior(EPIC.ANKI_CARDS, FEATURE.COLLECTION, "Card delivery status");
+    apiRequest.mockImplementation(async (path) => {
+      if (path === "/api/languages") return OPTIONS;
+      if (path.startsWith("/api/usage")) {
+        return { hits: 0, examples: [], search_url: "https://en.wikipedia.org/w/index.php" };
+      }
+      throw new Error(`Unexpected request: ${path}`);
+    });
+    entries.value = [{
+      entry_id: "entry-1",
+      word: "bookshelfy",
+      lang: "en",
+      language: "English",
+      status: "done",
+      text: "<b>bookshelfy</b>",
+      card_status: "added",
+      not_in_dictionary: true,
+    }];
+    const wrapper = mount(AddView);
+    await flushPromises();
+    await wrapper.find(".find-usage").trigger("click");
+    await flushPromises();
+
+    expect(apiRequest).toHaveBeenCalledWith("/api/usage?lang=en&word=bookshelfy");
+    expect(wrapper.find(".usage-result").text()).toContain("does not occur once");
+    // Nothing to look through, so no link out of an empty result.
+    expect(wrapper.find(".usage-result a").exists()).toBe(false);
+  });
+
+  it("shows the wording in real use when the encyclopedia has it", async () => {
+    await labelBehavior(EPIC.ANKI_CARDS, FEATURE.COLLECTION, "Card delivery status");
+    apiRequest.mockImplementation(async (path) => {
+      if (path === "/api/languages") return OPTIONS;
+      if (path.startsWith("/api/usage")) {
+        return {
+          hits: 249,
+          examples: ["неопходно је водити рачуна о психолошком"],
+          search_url: "https://sr.wikipedia.org/w/index.php?search=test",
+        };
+      }
+      throw new Error(`Unexpected request: ${path}`);
+    });
+    entries.value = [{
+      entry_id: "entry-1",
+      word: "водити рачуна",
+      lang: "sr",
+      language: "Српски",
+      status: "done",
+      text: "<b>водити рачуна</b>",
+      card_status: "added",
+      not_in_dictionary: true,
+    }];
+    const wrapper = mount(AddView);
+    await flushPromises();
+    await wrapper.find(".find-usage").trigger("click");
+    await flushPromises();
+
+    const result = wrapper.find(".usage-result");
+    expect(result.text()).toContain("249");
+    expect(result.find(".usage-example").text()).toContain("водити рачуна");
+    expect(result.find("a").attributes("href")).toContain("sr.wikipedia.org");
   });
 
   it("asks about the word the card carries, not the one that was typed", async () => {

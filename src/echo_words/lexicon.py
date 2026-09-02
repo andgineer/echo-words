@@ -1,12 +1,15 @@
-"""Whether any dictionary documents a wording at all, asked outside the models.
+"""What reference works outside the models say about a wording.
 
 Both model tiers vouch for the same well-formed nonsense, so agreement between them
-cannot separate a coinage from a word (spec/decision-llm-backend.md). Wiktionary can,
-and it is the only free source measured to cover all three languages.
+cannot separate a coinage from a word (spec/decision-llm-backend.md). Two questions
+can, and neither needs a key: whether a dictionary has an entry, and whether the
+wording occurs in running text at all.
 """
 
 import logging
+import re
 from collections import OrderedDict
+from dataclasses import dataclass
 
 import httpx
 
@@ -20,8 +23,77 @@ LOOKUP_TIMEOUT_SECONDS = 4.0
 CACHE_LIMIT = 2048
 # Wikimedia asks for a user agent that identifies the caller.
 USER_AGENT = "echo-words/1 (private vocabulary assistant)"
+WIKIPEDIA_URL = "https://{lang}.wikipedia.org/w/api.php"
+WIKIPEDIA_SEARCH_URL = "https://{lang}.wikipedia.org/w/index.php?search={query}"
+USAGE_EXAMPLES = 3
+_TAGS = re.compile(r"<[^>]*>")
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class Usage:
+    """How often a wording occurs in the encyclopedia, and where the reader can see it.
+
+    A count rather than a judgement: the reader decides what nought occurrences means
+    about a word the dictionary also lacks.
+    """
+
+    hits: int
+    examples: list[str]
+    search_url: str
+
+
+class Wikipedia:
+    """Occurrences of a wording in running text, which no dictionary can bound.
+
+    A dictionary answers whether a word was written down; this answers whether anyone
+    writes it. Measured over the registered fixtures, every invented wording occurs
+    nought times and every real one at least six, colloquial and Serbian alike.
+    """
+
+    def __init__(self, timeout: float = LOOKUP_TIMEOUT_SECONDS) -> None:
+        self._timeout = timeout
+
+    async def usage(self, word: str, language: Language) -> Usage | None:
+        """What the encyclopedia has, or None where the question could not be asked."""
+        wording = word.strip()
+        if not wording:
+            return None
+        try:
+            async with httpx.AsyncClient(
+                timeout=self._timeout,
+                headers={"User-Agent": USER_AGENT},
+            ) as client:
+                response = await client.get(
+                    WIKIPEDIA_URL.format(lang=language.code),
+                    params={
+                        "action": "query",
+                        "list": "search",
+                        "srsearch": f'"{wording}"',
+                        "srwhat": "text",
+                        "srlimit": USAGE_EXAMPLES,
+                        "format": "json",
+                    },
+                )
+                response.raise_for_status()
+                found = response.json()["query"]
+        except Exception as exc:  # noqa: BLE001 - every lookup boundary degrades to unknown
+            logger.warning("wikipedia lookup failed for %s/%r: %s", language.code, wording, exc)
+            return None
+        return Usage(
+            hits=int(found.get("searchinfo", {}).get("totalhits", 0)),
+            examples=[_plain(item.get("snippet", "")) for item in found.get("search", [])],
+            search_url=WIKIPEDIA_SEARCH_URL.format(
+                lang=language.code,
+                query=httpx.QueryParams({"q": f'"{wording}"'})["q"],
+            ),
+        )
+
+
+def _plain(snippet: str) -> str:
+    """The search fragment as text. Its markup marks the match and is not ours to keep."""
+    return " ".join(_TAGS.sub("", snippet).replace("&quot;", '"').replace("&amp;", "&").split())
 
 
 class Wiktionary:

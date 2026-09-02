@@ -402,7 +402,10 @@ etymology on the most recent tier, and what survives is the well-formed compound
 an invented origin. That is the measured cost of what no model catches. A
 dictionary is therefore asked as well — Wiktionary covers all three languages free
 and without a key — and where no wiki has the wording a note carries, the entry says
-so and offers the reader the lookups they would have run themselves. It warns and
+so and runs, on one tap, the search the reader would have run: how often the exact
+wording occurs in that language's encyclopedia, with the fragments that show it in
+use. Measured over the registered fixtures, every invented wording occurs nought
+times there and every real one at least six. It warns and
 never withholds, because the one measured false alarm is a real Serbian set
 expression, and refusing that would cost more than the warning does. Registered fixtures of
 both classes — real rare wording and well-formed nonsense — plus fresh semantic review

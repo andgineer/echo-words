@@ -3,7 +3,7 @@
 import httpx
 import pytest
 
-from echo_words.lexicon import Wiktionary
+from echo_words.lexicon import Wikipedia, Wiktionary
 
 pytestmark = pytest.mark.anyio
 
@@ -101,3 +101,69 @@ async def test_an_empty_wording_is_not_asked_about(languages, wiktionary):
 
     assert await lookup.documents("   ", languages["en"]) is None
     assert asked == []
+
+
+def encyclopedia(payload):
+    """A transport answering the Wikipedia search from one scripted result."""
+
+    def handle(_request: httpx.Request) -> httpx.Response:
+        if isinstance(payload, int):
+            return httpx.Response(payload)
+        return httpx.Response(200, json={"query": payload})
+
+    return handle
+
+
+@pytest.fixture
+def wikipedia(monkeypatch):
+    def build(payload):
+        original = httpx.AsyncClient
+
+        def client(**kwargs):
+            return original(transport=httpx.MockTransport(encyclopedia(payload)), **kwargs)
+
+        monkeypatch.setattr("echo_words.lexicon.httpx.AsyncClient", client)
+        return Wikipedia()
+
+    return build
+
+
+async def test_usage_reports_the_count_and_what_it_found(languages, wikipedia):
+    """The count is the whole answer: every invented wording measured occurs nought
+    times, and every real one at least six, so the reader can read it themselves."""
+    lookup = wikipedia(
+        {
+            "searchinfo": {"totalhits": 249},
+            "search": [{"snippet": 'неопходно је <span class="searchmatch">водити</span> рачуна'}],
+        },
+    )
+
+    found = await lookup.usage("водити рачуна", languages["sr"])
+
+    assert found.hits == 249
+    # The search markup marks the match and is not ours to keep.
+    assert found.examples == ["неопходно је водити рачуна"]
+    assert found.search_url.startswith("https://sr.wikipedia.org/w/index.php?search=")
+
+
+async def test_usage_of_a_wording_nobody_writes_is_nought(languages, wikipedia):
+    lookup = wikipedia({"searchinfo": {"totalhits": 0}, "search": []})
+
+    found = await lookup.usage("bookshelfy", languages["en"])
+
+    assert found.hits == 0
+    assert found.examples == []
+
+
+async def test_an_unreachable_encyclopedia_reports_nothing(languages, wikipedia):
+    """Nought occurrences and no answer read the same to a reader and mean opposite
+    things, so a failed lookup must never be shown as an empty one."""
+    lookup = wikipedia(429)
+
+    assert await lookup.usage("инат", languages["sr"]) is None
+
+
+async def test_an_empty_wording_is_not_searched_for(languages, wikipedia):
+    lookup = wikipedia({"searchinfo": {"totalhits": 0}, "search": []})
+
+    assert await lookup.usage("  ", languages["en"]) is None
