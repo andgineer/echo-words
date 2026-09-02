@@ -1689,6 +1689,7 @@ async def run(args, out: Path) -> None:
                     *attested_shots(),
                     *attestation_shots(),
                     *neighbour_shots(),
+                    *wordlist_shots(),
                 )
                 if shot.shot_id in requested
             ]
