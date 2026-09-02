@@ -26,14 +26,12 @@ tool looks for.
 - `spec/plan/` — work that is started and not finished, one file each.
   **Read these first when picking work up**: each says where its work
   stands, what is already built, what its experiments established and
-  what is left. Four are open.
-  `tier-rejected-findings.md` is the one to read first: the 2026-09-02
-  tier passed every gate and was rejected by its review, and it lists
-  what that cost. The others are `exact-boundaries.md`, the chip
-  boundary a tap depends on, whose repair the review passed;
-  `context-equality.md`, a correct answer rejected over a full stop; and
-  `attestation-refuses-real-words.md`, the judgement that both refuses
-  ordinary words and passes coinages. Write a new plan only for work
+  what is left. One is open: `release.md`, which is the
+  whole remaining path — every change is written and none is measured,
+  so it is one tier, one fresh review, and a release that deletes this
+  directory. Prefer recording an accepted limitation in a decision spec
+  over opening a new plan; plans that outlive their work are how this
+  directory grew. Write a new plan only for work
   that needs one, and delete it once that work has landed; what outlives
   it moves into a decision spec. A plan is not an archive.
 

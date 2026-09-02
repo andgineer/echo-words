@@ -10,7 +10,12 @@ from dataclasses import dataclass
 from html import escape, unescape
 from typing import Any, Literal
 
-from echo_words.languages import Language, fold_for_match, validate_word
+from echo_words.languages import (
+    Language,
+    fold_for_match,
+    sentence_is_source_language,
+    validate_word,
+)
 from echo_words.sanitizer import sanitize_html
 from echo_words.segments import Segment, fill_text_segments, parse_component_segments
 
@@ -145,6 +150,7 @@ def parse_answer_payload(  # noqa: C901, PLR0912 - the answer discriminator boun
     for raw_index, item in enumerate(raw_meanings):
         meaning = _parse_meaning(
             item,
+            language=language,
             context=context,
             selected_surface=submitted,
             target_lexeme=headword,
@@ -257,6 +263,7 @@ def _headword(value: Any, language: Language) -> str:
 def _parse_meaning(
     value: Any,
     *,
+    language: Language,
     context: str,
     selected_surface: str,
     target_lexeme: str,
@@ -276,6 +283,7 @@ def _parse_meaning(
         return None
     examples = _usable_examples(
         value.get("examples"),
+        language=language,
         context=context,
         selected_surface=selected_surface,
         target_lexeme=target_lexeme,
@@ -288,6 +296,7 @@ def _parse_meaning(
 def _usable_examples(
     value: Any,
     *,
+    language: Language,
     context: str,
     selected_surface: str,
     target_lexeme: str,
@@ -299,6 +308,7 @@ def _usable_examples(
     for item in values:
         if example := _parse_example(
             item,
+            language=language,
             context=context,
             selected_surface=selected_surface,
             target_lexeme=target_lexeme,
@@ -312,6 +322,7 @@ def _usable_examples(
 def _parse_example(
     value: Any,
     *,
+    language: Language,
     context: str,
     selected_surface: str,
     target_lexeme: str,
@@ -334,7 +345,7 @@ def _parse_example(
             highlighted, gapped = contextual
             # The backend owns the context, so the card carries ours, never the copy.
             return Example(context, translation, highlighted, gapped)
-    sentence_forms = _normalized_sentence_forms(sanitize_html(marked))
+    sentence_forms = _normalized_sentence_forms(sanitize_html(marked), language)
     if sentence_forms is None or (
         not context
         and not _generated_target_covers_submitted_tokens(
@@ -352,22 +363,29 @@ def _copies_context(text: str, context: str) -> bool:
     return text.rstrip(_TRAILING_SENTENCE_MARKS) == context.rstrip(_TRAILING_SENTENCE_MARKS)
 
 
-def _normalized_sentence_forms(highlighted: str) -> tuple[str, str] | None:
+def _normalized_sentence_forms(
+    highlighted: str,
+    language: Language | None = None,
+) -> tuple[str, str] | None:
     # Neighbouring spans are tried merged first: one contiguous unit earns one blank.
     for candidate in (_ADJACENT_BOLD_SPANS.sub(r"\1", highlighted), highlighted):
-        if _marked_sentence_usable(candidate):
+        if _marked_sentence_usable(candidate, language):
             return candidate, _BOLD_SPAN.sub("___", candidate)
     return None
 
 
-def _marked_sentence_usable(highlighted: str) -> bool:
+def _marked_sentence_usable(highlighted: str, language: Language | None = None) -> bool:
     spans = list(_BOLD_SPAN.finditer(highlighted))
     if not spans or "___" in highlighted:
         return False
-    outside = _BOLD_SPAN.sub("", highlighted)
+    outside = unescape(_BOLD_SPAN.sub("", highlighted))
+    # The sentence around the unit has to be in the language being learned. A target
+    # sentence with the source word wedged into it is a card front teaching nothing.
+    if language is not None and not sentence_is_source_language(outside, language):
+        return False
     return bool(
         "<" not in outside
-        and any(char.isalpha() for char in unescape(outside))
+        and any(char.isalpha() for char in outside)
         and all(any(char.isalpha() for char in unescape(match.group(1))) for match in spans),
     )
 

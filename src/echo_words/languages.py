@@ -163,6 +163,25 @@ def reflexive_markers(language: Language) -> frozenset[str]:
     return _REFLEXIVE_MARKERS.get(language.code, frozenset())
 
 
+# Letters that cannot occur in a source language, used to tell its sentences from
+# sentences in the target one. Serbian is the awkward case: it shares Cyrillic with
+# Russian, so only the letters Russian has and Serbian does not can separate them.
+# The Serbian Cyrillic alphabet has none of these; Russian has all of them.
+_RUSSIAN_ONLY = frozenset("ёйщъыьэюя")
+_CYRILLIC = frozenset("абвгдежзийклмнопрстуфхцчшщъыьэюяђјљњћџѐѝ")
+
+
+def sentence_is_source_language(text: str, language: Language) -> bool:
+    """Whether a card sentence is written in the source language rather than the target.
+
+    A card example is the front of a card, so a target-language sentence with the
+    source word wedged into it teaches nothing and is rejected outright.
+    """
+    letters = {char for char in unicodedata.normalize("NFC", text).casefold() if char.isalpha()}
+    foreign = _RUSSIAN_ONLY if language.script == "latin+cyrillic" else _CYRILLIC
+    return not (letters & foreign)
+
+
 def fold_for_match(text: str, language: Language) -> str:
     """Fold a string for comparison against another spelling of the same language."""
     folded = unicodedata.normalize("NFC", text).casefold()

@@ -367,9 +367,18 @@ therefore one paid call per suspected misspelling, inside the daily cap, and non
 the vast majority of submissions. Stepping up on this policy is not a complaint about
 the answer, so the pool model that produced it keeps its rating.
 
+**A card sentence must be written in the language being learned.** An example whose
+sentence is in the target language with the source word wedged into it — "Мы должны
+receive письмо" — is a card front that teaches nothing, and answers produce them. The
+sentence outside the highlight is therefore tested for letters the source language
+does not have, and an example failing it is dropped; an entry left with no usable
+example is unusable and steps up. Serbian shares its Cyrillic with Russian, so there
+the test is the nine letters Russian has and Serbian does not.
+
 **None of this proves linguistic intent, and the operating point is accepted rather
 than solved.** A model can still call a coinage attested: none to three of six survive
-both judgements, and what survives is the well-formed compound — `Fahrradsuppe`,
+both judgements, one of them carded with an invented register and an invented
+etymology on the most recent tier, and what survives is the well-formed compound — `Fahrradsuppe`,
 `bookshelfy`, `tablewards` — carded with an invented sense, an invented register and
 an invented origin. That is the known cost of shipping without an attestation source,
 and no free source covers English, German and Serbian alike. Registered fixtures of

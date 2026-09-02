@@ -765,3 +765,50 @@ def test_a_word_changed_inside_the_context_is_still_rejected(languages):
             unit_intent=True,
             context="We sat on the bank.",
         )
+
+
+def test_a_target_language_sentence_is_not_a_card_front(languages):
+    """The card front must be a sentence in the language being learned. A Russian
+    sentence with the English word wedged into it teaches nothing, and the guard that
+    only asked for letters counted its Cyrillic as sentence context."""
+    russian = example()
+    russian.update(highlighted="Мы должны <b>receive</b> письмо до конца недели.")
+
+    with pytest.raises(CardParseError, match="no usable meaning"):
+        parse_answer_payload(
+            payload(word="receive", meanings=[meaning(examples=[russian])]),
+            "recieve",
+            languages["en"],
+            unit_intent=True,
+        )
+
+
+def test_a_serbian_sentence_survives_the_russian_letters_it_does_not_share(languages):
+    serbian = example()
+    serbian.update(
+        text="Деца се играју напољу цео дан.",
+        highlighted="Деца <b>се играју</b> напољу цео дан.",
+    )
+
+    parsed = parse_answer_payload(
+        payload(word="играти се", meanings=[meaning(examples=[serbian])]),
+        "се играју",
+        languages["sr"],
+        unit_intent=True,
+    )
+
+    assert isinstance(parsed, ParsedUnit)
+    assert parsed.note.meaning.examples[0].text == "Деца се играју напољу цео дан."
+
+
+def test_a_russian_sentence_is_rejected_even_where_the_source_shares_its_script(languages):
+    russian = example()
+    russian.update(highlighted="Он <b>вратио</b> домой поздно вечером.")
+
+    with pytest.raises(CardParseError, match="no usable meaning"):
+        parse_answer_payload(
+            payload(word="вратити се", meanings=[meaning(examples=[russian])]),
+            "вратио",
+            languages["sr"],
+            unit_intent=True,
+        )

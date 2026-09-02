@@ -223,7 +223,20 @@ it passes the same validation and the same repeats-the-headword drop, so a field
 the model fills carelessly can add an offer but never a claim.
 It is a consistency boundary, not an independent spelling judge: a model can
 still call a misspelling morphology, so registered typo fixtures and fresh
-review remain required. For an explicit context request, the selected meaning's
+review remain required.
+
+**What the answers are known to get wrong, and what no contract catches.** The
+structural checks bind the shape of a note, never its content, so these are found
+by reading answers and not by any gate. An article can invert the sense of the
+expression it heads — `in Frage kommen` glossed "не может быть и речи", the
+reverse of what it means, with the answer's own origin paragraph contradicting the
+gloss two lines below. It can state grammar that is simply false: a wrong case, an
+invented pronoun form, `es` described as `er`. It can give a confident etymology
+for a word it invented one. It can print a forms table naming case, tense and
+person where the functional description forbids naming them, put a table on an
+invariable word, or print a bare part of speech. These are article defects rather
+than card defects — the payload is usually clean while the visible prose carries
+them — and the mandatory semantic review is the only thing that sees them. For an explicit context request, the selected meaning's
 first plain example must be the supplied context, allowing only the sentence's
 final punctuation to differ — a difference anywhere further in is a rewrite, and
 a rewrite is what the rule exists to reject. The card then carries the context
