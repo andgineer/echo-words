@@ -1232,6 +1232,12 @@ def vocab_metrics(shot: Shot, parsed: ParsedUnit, analysis: str) -> dict:
         typo_case.suggestion,
         shot.lang,
     )
+    # The harm this arm exists to prevent: an entry headed by the very spelling the
+    # reader mistyped, which is the one card that would teach them the mistake.
+    typo_heads_submission = typo_case is not None and normalize(
+        note.word,
+        shot.lang,
+    ) == normalize(typo_case.submitted, shot.lang)
     typo_relation_exact = typo_case is None or parsed.word_relation == "typo"
     typo_suggestion_exact = typo_case is None or not parsed.suggestion
     neighbour_case = NEIGHBOUR_BY_ID.get(shot.shot_id)
@@ -1301,6 +1307,7 @@ def vocab_metrics(shot: Shot, parsed: ParsedUnit, analysis: str) -> dict:
         "raw_sentence_forms_exact": not raw_sentence_issues,
         "word_relation": parsed.word_relation,
         "typo_word_exact": typo_word_exact,
+        "typo_heads_submission": typo_heads_submission,
         "typo_relation_exact": typo_relation_exact,
         "typo_suggestion_exact": typo_suggestion_exact,
         "typo_success": (
@@ -1808,6 +1815,24 @@ def quality_counts(initial_rows: list[Shot], context_rows: list[Shot]) -> dict[s
         "expression_success": len(
             {row.shot_id for row in bare_rows if expression_success(row)},
         ),
+        # Zero tolerance, and the only typo gate: what the reader ends up with. A
+        # refusal counts as safe, because production shows nothing rather than a card.
+        "typo_carded_misspelling": len(
+            {
+                row.shot_id
+                for row in typo_rows
+                if row.metrics.get("payload_valid")
+                and row.metrics.get("typo_heads_submission")
+                and not attested_refused(row)
+                and row.shot_id not in refused_apart
+            },
+        ),
+        # Diagnostics. How often the pool names the misspelling as one measures its
+        # manners, not the reader's card: an entry that silently heads itself with the
+        # correct spelling gives the right card and scores nothing here.
+        "typo_word_exact": len(
+            {row.shot_id for row in typo_rows if row.metrics.get("typo_word_exact")},
+        ),
         "typo_success": len(
             {row.shot_id for row in typo_rows if row.metrics.get("typo_success")},
         ),
@@ -1869,7 +1894,8 @@ def quality_gates(counts: dict[str, int], tier: str) -> dict[str, bool]:
     # settled by the paid model at six of six, and an undetected one that the
     # standalone judgement refuses is not carded at all. Measured here: three and
     # four of six across runs.
-    typo_min = 2 if tier == "smoke" else 3
+    # No floor on how often the pool names a misspelling as one: that number measures
+    # the answer's manners, and the reader's card is gated by the harm rule instead.
     # Measured on the free pool over these fixtures, with the prompts the app sends.
     # Real rare wording survives every run. Coinages: the article's own leading verdict
     # withholds two of six, the standalone judgement three to six over six samples, and
@@ -1896,7 +1922,7 @@ def quality_gates(counts: dict[str, int], tier: str) -> dict[str, bool]:
         "successful click cases": counts["click_success"] >= MIN_CLICK_SUCCESS,
         "successful expression cases": counts["expression_success"]
         >= MIN_EXPRESSION_SUCCESS,
-        "exact typo correction cases": counts["typo_success"] >= typo_min,
+        "a misspelling is never carded": counts["typo_carded_misspelling"] == 0,
         "a likelier near neighbour is offered": counts["neighbour_success"] >= neighbour_min,
         "no near neighbour is invented for an ordinary word": counts["neighbour_false_offers"]
         == 0,
@@ -2356,10 +2382,10 @@ def report(out: Path, tier: str) -> None:
             f">= {MIN_EXPRESSION_SUCCESS}",
         ),
         (
-            "exact typo correction cases",
-            counts["typo_success"],
+            "a misspelling is never carded",
+            counts["typo_carded_misspelling"],
             typo_total,
-            f">= {2 if tier == 'smoke' else 3}",
+            "== 0",
         ),
         (
             "a likelier near neighbour is offered",
@@ -2467,10 +2493,12 @@ def report(out: Path, tier: str) -> None:
     print(f"  floor, at the spread's bottom {MIN_CARDABLE_UNITS}\n")
 
     typo_rows = [row for row in current_initial if row.kind == "typo"]
-    print("TYPO DETAIL")
-    print(f"  corrected spelling carded     {ratio(typo_rows, 'typo_word_exact')}")
+    print("TYPO DETAIL — diagnostics; the reader's outcome is gated above")
+    print(f"  entry is about the right word {ratio(typo_rows, 'typo_word_exact')}")
+    print(f"  headed by the mistyped word   {ratio(typo_rows, 'typo_heads_submission')}")
     print(f"  typo relation declared        {ratio(typo_rows, 'typo_relation_exact')}")
-    print(f"  no redundant suggestion       {ratio(typo_rows, 'typo_suggestion_exact')}\n")
+    print(f"  no redundant suggestion       {ratio(typo_rows, 'typo_suggestion_exact')}")
+    print(f"  named as a typo and corrected {ratio(typo_rows, 'typo_success')}\n")
 
     neighbour_rows = [row for row in current_initial if row.kind == "neighbour"]
     wanted = [row for row in neighbour_rows if NEIGHBOUR_BY_ID[row.shot_id].neighbour]

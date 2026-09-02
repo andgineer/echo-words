@@ -203,6 +203,7 @@ def _passing_quality_counts() -> dict[str, int]:
         "click_success": bench.MIN_CLICK_SUCCESS,
         "expression_success": bench.MIN_EXPRESSION_SUCCESS,
         "typo_success": 3,
+        "typo_carded_misspelling": 0,
         "neighbour_success": 4,
         "neighbour_false_offers": 0,
         "attested_kept": 3,
@@ -243,7 +244,6 @@ def test_quality_thresholds_fail_immediately_below_each_minimum():
         "cardable_units",
         "click_success",
         "expression_success",
-        "typo_success",
         "attested_kept",
         "unused_refused",
     )
@@ -281,6 +281,55 @@ def test_a_word_list_carded_as_a_unit_is_the_failure_and_a_refusal_is_not():
     assert scored.metrics["wordlist_carded"] is False
     # The reader still gets a chip for each submitted word.
     assert scored.metrics["wordlist_chips"] == 2
+
+
+def test_only_a_card_under_the_mistyped_spelling_fails_the_typo_arm():
+    """The reader is harmed by exactly one outcome: a card headed by the spelling they
+    mistyped. An entry that silently heads itself with the correction hands over the
+    right card, and a withheld one hands over none — both are safe."""
+    counts = _passing_quality_counts()
+    counts["typo_success"] = 0
+    assert bench.quality_gates(counts, "full")["a misspelling is never carded"] is True
+    counts["typo_carded_misspelling"] = 1
+    assert bench.quality_gates(counts, "full")["a misspelling is never carded"] is False
+
+
+def test_an_entry_headed_by_the_mistyped_spelling_is_flagged():
+    shot = next(row for row in bench.typo_shots() if row.shot_id == "typo-de-vieleicht")
+    shot.text = (
+        "translation===CARD==="
+        '{"kind":"unit","word":"vieleicht","word_relation":"same","suggestion":"",'
+        '"meanings":[{"label":"","translations":["может быть"],"examples":['
+        '{"text":"Vieleicht kommt er.","translation":"x",'
+        '"highlighted":"<b>Vieleicht</b> kommt er.","gapped":"___ kommt er."}]}],'
+        '"segments":[]}'
+    )
+
+    scored = bench.score(shot)
+
+    assert scored.metrics["typo_heads_submission"] is True
+    assert scored.metrics["typo_word_exact"] is False
+
+
+def test_a_silently_corrected_spelling_is_a_safe_outcome():
+    """`podrska` came back headed `podrška` with relation `same`: the reader gets the
+    right card and is simply not told they mistyped. Safe, and not a gate failure."""
+    shot = next(row for row in bench.typo_shots() if row.shot_id == "typo-sr-podrska")
+    shot.text = (
+        "translation===CARD==="
+        '{"kind":"unit","word":"podrška","word_relation":"same","suggestion":"",'
+        '"meanings":[{"label":"","translations":["поддержка"],"examples":['
+        '{"text":"Hvala na podršci.","translation":"x",'
+        '"highlighted":"Hvala na <b>podršci</b>.","gapped":"Hvala na ___."}]}],'
+        '"segments":[]}'
+    )
+
+    scored = bench.score(shot)
+
+    assert scored.metrics["typo_heads_submission"] is False
+    assert scored.metrics["typo_word_exact"] is True
+    # It never named the misspelling, which is a manners diagnostic and gates nothing.
+    assert scored.metrics["typo_success"] is False
 
 
 def test_tier_manifests_have_frozen_non_overlapping_counts():

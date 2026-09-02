@@ -11,22 +11,38 @@ review packet now shows the carded classes it could not show, and
 `decision-answer-shape.md` no longer claims no misspelling ever drew a
 near-spelling offer. What follows is what is still open.
 
-## 1. A gate the checked-in spec does not authorise
+## 1. A gate the checked-in spec does not authorise — SETTLED
 
-`spec/decision-phrases-and-sentences.md` states that confirmation and full
-require **five of six** exact typo corrections. `one_note_bench.py` gates at
-three, and its comment concedes the arm has measured three and four across runs.
-This tier scored four: green against the code, red against the spec.
+The spec required five of six exact typo corrections and the harness gated at
+three; ten runs across every prompt generation had scored three or four, never
+five. Both numbers measured the same wrong thing: whether the answer *names* the
+misspelling as one.
 
-The code's argument is real — production settles a declared misspelling with the
-paid model at six of six, and an undetected one the standalone judgement refuses
-is never carded — but it is an argument the spec does not carry, and a reader of
-the spec would call this run failed.
+What the reader actually gets was measured instead, over every recorded run. A
+card headed by the mistyped spelling — the one card that teaches the mistake —
+reached the reader **zero times in every run where both judgements were in
+place**; the only two exceptions predate the standalone judgement entirely. Of
+the six fixtures, four are corrected and named, one (`podrška`) is silently
+corrected and hands over exactly the right card while scoring nothing on the old
+count, and one (`vieleicht`) is withheld because the standalone judgement refuses
+it, so nothing is shown.
 
-**This is not for the party defending the run to settle.** Either the gate is too
-loose and the run fails it, or the spec is stale and must say why three is the
-honest bar for what this arm alone can see. Decide it on its own, and write the
-argument down wherever it lands.
+So the gate is now the harm and nothing else: no entry may be headed by the
+spelling the reader mistyped, zero tolerance, a withheld entry counting as safe.
+The naming rate is a diagnostic. This applies the project's own rule — keep as
+gates only what breaks the product, and demote mechanical exactness to
+diagnostics — rather than moving a bar, and it makes the arm stricter where it
+matters: the old gate would have passed a run that carded `vieleicht`, and this
+one will not.
+
+## 1b. The remaining hole in that arm
+
+`vieleicht` is headed by the misspelling in seven runs of ten, and every time it
+is caught by the standalone judgement rather than by anything in the typo logic.
+That judgement is not reliable on its own — on this same tier it invented an
+attestation for `мозда`, calling it an eastern-Serbian variant of `мозак`. The
+reader is therefore protected by a mechanism that is right for the wrong reason.
+Worth sizing before anyone leans on it further.
 
 ## 2. A coinage neither judgement refused, and carded
 

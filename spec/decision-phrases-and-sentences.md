@@ -538,12 +538,27 @@ gray/stable anchors. The availability-collapsed v2 arm is not used to invent a
 The six typo fixtures are `recieve` → `receive`, `Strase` → `Straße`, `мозда` →
 `можда`, `definately` → `definitely`, `vieleicht` → `vielleicht` and `podrska` →
 `podrška`. They are validated source-language inputs and always use explicit
-unit intent. Success requires the parsed headword to be the registered
-correction: the card carries the attested wording, and the entry tells the reader
-which word it is for. Smoke requires two of three; confirmation and full require
-five of six. The zero-tolerance contract binds the parsed note rather than the
-raw payload: no accepted note may be headed by a spelling nothing under it
-describes. This is typo coverage, not a morphology rule.
+unit intent.
+
+**What is gated is the card the reader ends up with, and nothing else: no entry
+may be headed by the spelling they mistyped.** That is the only card a
+misspelling can produce which teaches the mistake, and it is zero tolerance. A
+withheld entry counts as safe, because production shows nothing rather than a
+card — the reader is told the wording is not vouched for, and the correction is a
+tap away. Measured across every run in which both judgements were in place, this
+has been zero.
+
+How often the answer *names* the misspelling as one is a diagnostic and gates
+nothing. It measures the answer's manners rather than the reader's card: an entry
+which silently heads itself with the correct spelling hands over exactly the right
+card and scores nothing on that count. The free pool names three or four of six
+across runs and has never named five; the entry is nonetheless about the right
+word four to six times, and the paid model, which every declared misspelling is
+handed to, corrects six of six. Gating the naming would hold the arm to a number
+its own product does not depend on.
+
+The zero-tolerance contract binds the parsed note rather than the raw payload.
+This is typo coverage, not a morphology rule.
 
 Every report labels itself **AUTOMATED SCREEN** and writes a structured review
 packet containing every non-exact boundary/label, acceptable or ambiguous
