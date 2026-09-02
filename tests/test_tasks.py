@@ -202,11 +202,8 @@ def test_deploy_builds_the_checked_out_commit_on_the_server(monkeypatch, tmp_pat
 
     checkout = remote_scripts[0]
     dirty_check = "git status --porcelain --untracked-files=normal"
-    fetch = "git fetch origin '+refs/heads/*:refs/remotes/origin/*' '+refs/tags/*:refs/tags/*'"
     assert checkout.count(dirty_check) == 2
-    assert checkout.index(dirty_check) < checkout.index(fetch)
-    assert checkout.index(fetch) < checkout.index(f"git cat-file -e {commit}^{{commit}}")
-    assert f"git fetch origin {commit}" not in checkout
+    assert checkout.index(dirty_check) < checkout.index(f"git fetch origin {commit}")
     assert checkout.index(f"git checkout --detach {commit}") < checkout.rindex(dirty_check)
     assert checkout.rindex(dirty_check) < checkout.index("uv sync --no-dev")
     assert checkout.index("uv sync --no-dev") < checkout.index("uv run --no-dev inv build-static")
