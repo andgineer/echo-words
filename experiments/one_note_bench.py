@@ -1,14 +1,18 @@
-"""Production-flow bench for the merged answer, complete chips and four cards.
+"""Production-flow bench for the answer contract, complete chips and four cards.
 
-The `run` and `run-clicks` actions call the real free pool. The report uses
-production prompt construction and answer parsing, combines the verdict matrix
-with downstream text/unit checks, separates archived prompt generations, and
-separates deterministic contracts from thresholded model quality. Provider
-availability and exact-boundary diagnostics stay visible without being
-misreported as semantic success or zero-tolerance product contracts.
+The calling actions ask the real free pool, or the paid tier with `--paid
+<alias>`, which spends real money. The report uses production prompt
+construction and answer parsing, combines the verdict matrix with downstream
+text/unit checks, separates archived prompt generations, and separates
+deterministic contracts from thresholded model quality. Provider availability
+and exact-boundary diagnostics stay visible without being misreported as
+semantic success or zero-tolerance product contracts.
 
 Raw answers are append-only so scoring can be changed without buying them again.
-The default smoke tier is 55 calls; confirmation is 125 and full is at most 216.
+The smoke tier is 55 calls, confirmation 125 and full 216, plus the second
+judgements a run happens to need. A tier answered by a different tier of model
+belongs in its own `--out`: answers are matched by prompt hash, which two tiers
+share, so one directory would let them stand in for each other.
 
 Run:
     uv run python experiments/one_note_bench.py run --tier smoke --resume \
@@ -17,6 +21,8 @@ Run:
     uv run python experiments/one_note_bench.py run-clicks --tier smoke --resume \
       --wait 300 --pace 2 --concurrency 1 \
       --out experiments/.bench-one-note-post
+    uv run python experiments/one_note_bench.py run-corrections --tier smoke \
+      --resume --out experiments/.bench-one-note-post
     uv run python experiments/one_note_bench.py report \
       --tier smoke --out experiments/.bench-one-note-post
 """
@@ -48,6 +54,7 @@ from backend_bench import (  # noqa: E402
     load_keys,
     log,
     parse_json_object,
+    resolve_paid,
     split_answer,
 )
 from bench_items import SENTENCES  # noqa: E402
@@ -69,6 +76,7 @@ from echo_words.prompt import (  # noqa: E402
 from echo_words.sanitizer import sanitize_html  # noqa: E402
 from echo_words.segments import fill_text_segments  # noqa: E402
 from llmbroker import AsyncBroker  # noqa: E402
+from llmbroker.direct import AsyncDirectClient  # noqa: E402
 from unit_verdict_bench import FIXTURES as VERDICT_FIXTURES  # noqa: E402
 
 TARGET_CODE = "ru"
@@ -1676,11 +1684,12 @@ def expression_gate(rows: list[Shot]) -> dict[str, bool]:
 async def run_batch(args, out: Path, broker: AsyncBroker, jobs: list[Shot]) -> None:
     gate = asyncio.Semaphore(args.concurrency)
     pacer = Pacer(args.pace)
+    paid = resolve_paid(args.paid) if args.paid else None
+    keys = load_keys() if paid else {}
 
-    async def one(shot: Shot) -> None:
-        shot.prompt_hash = prompt_fingerprint(shot)
-        await pacer.wait()
-        async with gate:
+    async def answer(shot: Shot) -> None:
+        """One call, through whichever tier this run is measuring."""
+        if paid is None:
             handle = broker.stream(
                 prompt_for(shot),
                 operation=f"one-note-{shot.kind}-{shot.lang}",
@@ -1688,12 +1697,30 @@ async def run_batch(args, out: Path, broker: AsyncBroker, jobs: list[Shot]) -> N
             )
             try:
                 await drain(handle, shot)
+            finally:
                 shot.answered_by = handle.llm_name
+                await handle.aclose()
+            return
+        client = AsyncDirectClient(
+            base_url=paid["base_url"],
+            model=paid["model"],
+            api_key=keys.get(paid["api_key_ref"], ""),
+            timeout=args.wait,
+        )
+        shot.answered_by = args.paid
+        try:
+            await drain(client.stream(prompt_for(shot), timeout=args.wait), shot)
+        finally:
+            await client.aclose()
+
+    async def one(shot: Shot) -> None:
+        shot.prompt_hash = prompt_fingerprint(shot)
+        await pacer.wait()
+        async with gate:
+            try:
+                await answer(shot)
             except Exception as exc:  # noqa: BLE001 - provider failure is benchmark data
                 shot.error = f"{type(exc).__name__}: {exc}"
-                shot.answered_by = handle.llm_name
-            finally:
-                await handle.aclose()
         score(shot)
         append(out, shot)
         log(
@@ -2711,6 +2738,11 @@ def main() -> None:
     parser.add_argument("--wait", type=float, default=180.0)
     parser.add_argument("--shot", nargs="+", default=[])
     parser.add_argument("--out", default=str(Path(__file__).parent / ".bench-one-note"))
+    parser.add_argument(
+        "--paid",
+        default="",
+        help="paid catalog alias to measure instead of the free pool; spends real money",
+    )
     args = parser.parse_args()
     out = Path(args.out)
     if args.action == "run":
