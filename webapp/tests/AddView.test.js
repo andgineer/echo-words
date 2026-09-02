@@ -611,8 +611,8 @@ describe("AddView", () => {
       expect(wrapper.find(".entry-card-status").text()).toBe(
         "⚠️ note type EchoWords is misconfigured",
       );
-      expect(wrapper.find(".entry-error").text()).toBe(
-        "Не удалось получить разбор. Попробуйте отправить слово ещё раз.",
+      expect(wrapper.find(".entry-error .error-text").text()).toBe(
+        "Не удалось получить разбор.",
       );
     });
 
@@ -712,6 +712,42 @@ describe("AddView", () => {
       },
     });
     expect(wrapper.find(".hint").text()).toBe("Letters, spaces, hyphens and apostrophes only.");
+  });
+
+  it("offers a failed entry back as a chip instead of asking for it to be retyped", async () => {
+    entries.value = [{
+      entry_id: "entry-1",
+      word: "Ampel",
+      lang: "de",
+      language: "Deutsch",
+      lookup_only: false,
+      context: "Die Ampel ist rot.",
+      requested_shape: "unit",
+      status: "error",
+      error: "analysis_failed",
+    }];
+    apiRequest.mockImplementation(async (path) => {
+      if (path === "/api/languages") return OPTIONS;
+      if (path === "/api/words") return { entry_id: "entry-2" };
+      throw new Error(`Unexpected request: ${path}`);
+    });
+    const wrapper = mount(AddView);
+    await flushPromises();
+
+    await wrapper.find(".entry-error .retry").trigger("click");
+    await flushPromises();
+
+    expect(apiRequest).toHaveBeenCalledWith("/api/words", {
+      method: "POST",
+      body: {
+        word: "Ampel",
+        lang: "de",
+        lookup_only: false,
+        context: "Die Ampel ist rot.",
+        shape: "unit",
+        request_id: expect.any(String),
+      },
+    });
   });
 
   it("renders correction, rebuild and detail controls on a finished history entry", async () => {

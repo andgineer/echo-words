@@ -36,7 +36,7 @@ from echo_words.prompt import (
     strip_verdict,
 )
 from echo_words.sanitizer import sanitize_html
-from echo_words.segments import Segment, display_text
+from echo_words.segments import Segment, display_text, fill_text_segments
 
 UPDATE_INTERVAL_SECONDS = 0.5
 # Codes, not sentences: the client owns every user-facing wording, so a
@@ -578,6 +578,14 @@ class WordPipeline:
             refused = judged and (
                 _refuses(verdict) or (_refuses(attested) and not _declares_a_typo(parsed))
             )
+            # The judgement is a question about one lexical unit. Asked of a multi-word
+            # submission it can only say the answer took the wrong branch, so the reader
+            # gets the text branch instead of nothing: a chip per word, which the backend
+            # builds from the submission itself and never from the refused answer.
+            as_text = refused and _read_as_text(job)
+            if as_text:
+                parsed = ParsedText("text", fill_text_segments([], job.word, job.language))
+                refused = False
             stored = (
                 # A refused lookup is still a lookup: it made no card either way.
                 StoreResult(UNATTESTED_STATUS, "lookup" if job.lookup_only else "unattested")
@@ -618,6 +626,11 @@ class WordPipeline:
                 last_published = ""
                 parsed = None
                 entry.analysed_as, entry.typo_suspected = None, False
+            elif as_text:
+                # The chips stand because they are the submitted words. Whatever the
+                # answer wrote about wording it had just refused does not.
+                entry.text = raw = ""
+                last_published = ""
             entry.context_audio_file = context_audio_path.name if context_audio_path else None
             suggestion = self._correction_target(job, parsed)
             chips, segment_kind = _segments_for(parsed, job)
@@ -1216,6 +1229,11 @@ def _task_verdict(task: "asyncio.Task[Verdict | None]") -> Verdict | None:
     if not task.done() or task.cancelled() or task.exception() is not None:
         return None
     return task.result()
+
+
+def _read_as_text(job: Job) -> bool:
+    """Whether the submission is running text rather than the one unit a verdict judges."""
+    return job.intent != "unit" and len(split_words(job.word)) > 1
 
 
 def _declares_a_typo(parsed: ParsedAnswer | None) -> bool:

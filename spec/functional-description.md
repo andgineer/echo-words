@@ -302,6 +302,15 @@ audio, and the entry says the wording is not vouched for. Rarity is never a reas
 refuse; wording real speakers use in any register, field, dialect or period is used,
 however uncommon.
 
+**A refusal is a judgement about one lexical unit, so it cannot withhold running
+text.** The standalone question is asked only where the submission is one unit, and
+a verdict at the head of an answer to a multi-word submission says the answer took
+the unit branch when it should have taken the text one. Such a submission is read as
+text instead of refused: no card, nothing the answer wrote about wording it had just
+refused, and a chip for each submitted word — a row the backend builds from the
+submission itself. Losing the whole submission to a question that was never about it
+would cost the reader more than the mis-branched answer did.
+
 **The question is asked apart because the framing is what decides the answer.** The
 same instruction, on the same free pool and the same fixtures: prose inside the
 article rules withheld none of six coinages, a verdict at the head of the article

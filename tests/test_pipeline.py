@@ -486,6 +486,50 @@ async def test_a_refused_verdict_stores_nothing_and_shows_nothing(languages):
         await pipeline.close()
 
 
+async def test_a_refused_multi_word_submission_falls_back_to_a_chip_per_word(languages):
+    """The verdict judges one lexical unit, so refusing running text says the answer
+    took the wrong branch. The reader keeps the words as chips rather than losing the
+    submission to a judgement that was never about it."""
+    anki = RecordingAnki(Added(1, None, ("Recognition",)))
+    cascade = ScriptedCascade([Completion([verdict_line(False), "an article anyway"])])
+    pipeline = WordPipeline(cascade, target_lang="ru", anki=anki)
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(languages["de"], "ampel links", False)
+        await pipeline.join()
+
+        assert entry.card_status != UNATTESTED_STATUS
+        assert entry.shape == "text"
+        assert [segment["label"] for segment in entry.segments] == ["ampel", "links"]
+        # The answer refused the wording, so nothing it wrote about it is shown.
+        assert entry.text == ""
+        assert anki.calls == []
+    finally:
+        await pipeline.close()
+
+
+async def test_a_refused_single_word_submission_still_shows_nothing(languages):
+    """The fallback is for running text only: one word is the unit the verdict judged,
+    so a chip row of that same word would hand back the refused string as a lookup."""
+    anki = RecordingAnki(Added(1, None, ("Recognition",)))
+    cascade = ScriptedCascade(
+        [
+            Completion([verdict_line(False)]),
+            Completion([verdict_line(False)]),
+        ],
+    )
+    pipeline = WordPipeline(cascade, target_lang="ru", anki=anki)
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(languages["de"], "Fahrradsuppe", False)
+        await pipeline.join()
+
+        assert (entry.card_status, entry.action) == (UNATTESTED_STATUS, "unattested")
+        assert entry.segments == []
+    finally:
+        await pipeline.close()
+
+
 async def test_a_refusal_is_never_handed_to_the_paid_model(languages):
     """Sending a refusal up would overturn the very judgement it is made of: the paid
     models were measured to withhold fewer coinages than the pool, so the one asked to

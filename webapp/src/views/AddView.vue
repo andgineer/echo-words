@@ -75,6 +75,9 @@ async function sendWord(
       language: languages.value.find((item) => item.code === lang)?.name || "",
       lookup_only: submittedLookupOnly,
       context,
+      // Kept so a failed entry can be sent again as submitted: `shape` is what the
+      // answer turned out to be, which a failed entry never has.
+      requested_shape: shape,
     };
     const alreadyStreaming = entries.value.some((entry) => entry.entry_id === accepted.entry_id);
     upsertEntry(
@@ -96,6 +99,17 @@ async function sendWord(
   } finally {
     busy.value = false;
   }
+}
+
+async function retry(entry) {
+  if (busy.value) return;
+  await sendWord(
+    entry.word,
+    entry.lookup_only ?? false,
+    entry.context || "",
+    entry.requested_shape ?? null,
+    entry.lang,
+  );
 }
 
 async function entryAction(entry, action) {
@@ -314,7 +328,12 @@ async function undo() {
         </div>
       </div>
       <p v-if="entry.card_status" class="entry-card-status">{{ cardStatusText(entry) }}</p>
-      <p v-if="entry.error" class="entry-error">{{ errorText(entry.error) }}</p>
+      <div v-if="entry.error" class="entry-error">
+        <p class="error-text">{{ errorText(entry.error) }}</p>
+        <button v-if="entry.word" class="btn-inline retry" :disabled="busy" @click="retry(entry)">
+          {{ t("add.retry", { word: entry.word }) }}
+        </button>
+      </div>
       <p v-if="entry.detail_error" class="entry-error">{{ entry.detail_error }}</p>
       <p v-if="entry.control_error" class="entry-error">{{ entry.control_error }}</p>
       <div v-if="entry.status === 'done'" class="entry-actions">
@@ -508,6 +527,10 @@ async function undo() {
 
 .entry-error {
   color: var(--error);
+}
+
+.entry-error .btn-inline {
+  margin-top: 0.4rem;
 }
 
 .about {
