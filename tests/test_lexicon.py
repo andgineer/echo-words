@@ -103,13 +103,16 @@ async def test_an_empty_wording_is_not_asked_about(languages, wiktionary):
     assert asked == []
 
 
-def encyclopedia(payload):
-    """A transport answering the Wikipedia search from one scripted result."""
+def encyclopedia(payload, asked):
+    """A transport answering the Wikipedia search, per searched string where scripted."""
 
-    def handle(_request: httpx.Request) -> httpx.Response:
-        if isinstance(payload, int):
-            return httpx.Response(payload)
-        return httpx.Response(200, json={"query": payload})
+    def handle(request: httpx.Request) -> httpx.Response:
+        wanted = request.url.params["srsearch"].strip('"')
+        asked.append(wanted)
+        answer = payload.get(wanted, payload) if isinstance(payload, dict) else payload
+        if isinstance(answer, int):
+            return httpx.Response(answer)
+        return httpx.Response(200, json={"query": answer})
 
     return handle
 
@@ -117,13 +120,15 @@ def encyclopedia(payload):
 @pytest.fixture
 def wikipedia(monkeypatch):
     def build(payload):
+        asked: list[str] = []
         original = httpx.AsyncClient
 
         def client(**kwargs):
-            return original(transport=httpx.MockTransport(encyclopedia(payload)), **kwargs)
+            transport = httpx.MockTransport(encyclopedia(payload, asked))
+            return original(transport=transport, **kwargs)
 
         monkeypatch.setattr("echo_words.lexicon.httpx.AsyncClient", client)
-        return Wikipedia()
+        return Wikipedia(), asked
 
     return build
 
@@ -131,10 +136,15 @@ def wikipedia(monkeypatch):
 async def test_usage_reports_the_count_and_what_it_found(languages, wikipedia):
     """The count is the whole answer: every invented wording measured occurs nought
     times, and every real one at least six, so the reader can read it themselves."""
-    lookup = wikipedia(
+    lookup, _asked = wikipedia(
         {
-            "searchinfo": {"totalhits": 249},
-            "search": [{"snippet": 'неопходно је <span class="searchmatch">водити</span> рачуна'}],
+            "водити рачуна": {
+                "searchinfo": {"totalhits": 249},
+                "search": [
+                    {"snippet": 'неопходно је <span class="searchmatch">водити</span> рачуна'},
+                ],
+            },
+            "voditi računa": {"searchinfo": {"totalhits": 0}, "search": []},
         },
     )
 
@@ -146,8 +156,32 @@ async def test_usage_reports_the_count_and_what_it_found(languages, wikipedia):
     assert found.search_url.startswith("https://sr.wikipedia.org/w/index.php?search=")
 
 
+async def test_a_two_script_language_is_counted_in_both(languages, wikipedia):
+    """The search matches an exact string, so one script counts a fraction of the use:
+    `прозор` occurs ten times as often as `prozor`, and a note may carry either."""
+    lookup, asked = wikipedia(
+        {
+            "svraka": {"searchinfo": {"totalhits": 3}, "search": [{"snippet": "gnijezdo"}]},
+            "сврака": {"searchinfo": {"totalhits": 87}, "search": [{"snippet": "гнездо"}]},
+        },
+    )
+
+    found = await lookup.usage("svraka", languages["sr"])
+
+    assert found.hits == 90
+    assert asked == ["svraka", "сврака"]
+
+
+async def test_a_one_script_language_is_asked_once(languages, wikipedia):
+    lookup, asked = wikipedia({"searchinfo": {"totalhits": 12}, "search": []})
+
+    await lookup.usage("ledge", languages["en"])
+
+    assert asked == ["ledge"]
+
+
 async def test_usage_of_a_wording_nobody_writes_is_nought(languages, wikipedia):
-    lookup = wikipedia({"searchinfo": {"totalhits": 0}, "search": []})
+    lookup, _asked = wikipedia({"searchinfo": {"totalhits": 0}, "search": []})
 
     found = await lookup.usage("bookshelfy", languages["en"])
 
@@ -158,12 +192,27 @@ async def test_usage_of_a_wording_nobody_writes_is_nought(languages, wikipedia):
 async def test_an_unreachable_encyclopedia_reports_nothing(languages, wikipedia):
     """Nought occurrences and no answer read the same to a reader and mean opposite
     things, so a failed lookup must never be shown as an empty one."""
-    lookup = wikipedia(429)
+    lookup, _asked = wikipedia(429)
 
     assert await lookup.usage("инат", languages["sr"]) is None
 
 
+async def test_one_script_failing_leaves_the_count_the_other_gave(languages, wikipedia):
+    """A second script is extra evidence, not a precondition: losing it must not turn
+    a wording the encyclopedia does have into one it says nothing about."""
+    lookup, _asked = wikipedia(
+        {
+            "клупа": {"searchinfo": {"totalhits": 298}, "search": []},
+            "klupa": 429,
+        },
+    )
+
+    found = await lookup.usage("клупа", languages["sr"])
+
+    assert found.hits == 298
+
+
 async def test_an_empty_wording_is_not_searched_for(languages, wikipedia):
-    lookup = wikipedia({"searchinfo": {"totalhits": 0}, "search": []})
+    lookup, _asked = wikipedia({"searchinfo": {"totalhits": 0}, "search": []})
 
     assert await lookup.usage("  ", languages["en"]) is None

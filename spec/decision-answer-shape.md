@@ -281,6 +281,19 @@ the smallest of the three encyclopedias and still leaves that margin.
 Nought occurrences and a failed lookup read alike to a reader and mean opposite
 things, so a search that did not answer is never shown as one that found nothing.
 
+**The count is evidence about a wording, never a threshold.** It is not comparable
+across languages — the same bird is `сврака` 87 in the Serbian encyclopedia against
+`magpie` 5315 and `Elster` 6416, which measures the size of the three encyclopedias
+and nothing about the word — and it is per exact string, so inflected forms are
+counted apart from the lemma. Only nought against not-nought separates anything in
+what has been measured, and even that is shown to the reader rather than acted on.
+
+A language written in two scripts is searched in both and the counts added, because
+one script alone counts a fraction of the use: `прозор` occurs 1676 times against
+`prozor` 170, and `сврака` 87 against `svraka` 3. A note carries whichever script the
+answer wrote, so without this a real Serbian word in Latin could come back near
+nought — the number a coinage returns.
+
 The question is asked of the headword rather than the submission, because the
 headword is what the note teaches. It is an existence check and nothing more: a
 wrong gloss on a real word passes it untouched, and that class stays open.

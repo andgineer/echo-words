@@ -13,7 +13,7 @@ from dataclasses import dataclass
 
 import httpx
 
-from echo_words.languages import Language
+from echo_words.languages import Language, other_script
 
 # The English wiki documents every language, and the source-language wiki holds what
 # it has not reached yet — `вратити се` is in the Serbian wiki and not the English one.
@@ -56,10 +56,29 @@ class Wikipedia:
         self._timeout = timeout
 
     async def usage(self, word: str, language: Language) -> Usage | None:
-        """What the encyclopedia has, or None where the question could not be asked."""
+        """What the encyclopedia has, or None where the question could not be asked.
+
+        A language written in two scripts is searched in both and the counts added:
+        the search matches an exact string, so one script alone counts a fraction of
+        what a wording is used in — `прозор` occurs ten times as often as `prozor`.
+        """
         wording = word.strip()
         if not wording:
             return None
+        found = await self._search(wording, language)
+        alternate = other_script(wording, language)
+        if found is None or not alternate or alternate == wording.casefold():
+            return found
+        also = await self._search(alternate, language)
+        if also is None:
+            return found
+        return Usage(
+            hits=found.hits + also.hits,
+            examples=(found.examples + also.examples)[:USAGE_EXAMPLES],
+            search_url=found.search_url,
+        )
+
+    async def _search(self, wording: str, language: Language) -> Usage | None:
         try:
             async with httpx.AsyncClient(
                 timeout=self._timeout,

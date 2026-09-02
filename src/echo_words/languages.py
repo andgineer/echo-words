@@ -190,6 +190,30 @@ def fold_for_match(text: str, language: Language) -> str:
     return "".join(_SERBIAN_LATIN.get(char, char) for char in folded)
 
 
+# The inverse of the fold, longest first so a digraph is not read as two letters.
+_SERBIAN_CYRILLIC = sorted(
+    ((latin, cyrillic) for cyrillic, latin in _SERBIAN_LATIN.items()),
+    key=lambda pair: -len(pair[0]),
+)
+
+
+def other_script(text: str, language: Language) -> str:
+    """The same wording in the language's other script, or empty where it has one.
+
+    Serbian is written in both, and a count of occurrences is per exact string, so
+    one script alone counts a fraction of what a wording is used in.
+    """
+    if language.script != "latin+cyrillic":
+        return ""
+    normalized = unicodedata.normalize("NFC", text)
+    if any(char.casefold() in _SERBIAN_LATIN for char in normalized):
+        return "".join(_SERBIAN_LATIN.get(char.casefold(), char) for char in normalized)
+    lowered = normalized.casefold()
+    for latin, cyrillic in _SERBIAN_CYRILLIC:
+        lowered = lowered.replace(latin, cyrillic)
+    return lowered
+
+
 def split_words(text: str) -> list[str]:
     """Split into words, dropping the punctuation that hangs off their edges."""
     return [word for word in (_WORD_EDGES.sub("", part) for part in text.split()) if word]
