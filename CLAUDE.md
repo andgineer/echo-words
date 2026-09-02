@@ -26,15 +26,14 @@ tool looks for.
 - `spec/plan/` — work that is started and not finished, one file each.
   **Read these first when picking work up**: each says where its work
   stands, what is already built, what its experiments established and
-  what is left. One is open: `release.md`, and it holds
-  everything still unfinished — four open defects, an unchosen operating
-  point, two experiments to run or abandon on the record, then one tier,
-  one fresh review and a release that deletes this directory. Add to it
-  rather than opening a second plan. Writing a defect into a decision
-  spec documents it; it does not accept it, and only the operator
-  accepts a limitation of the product. Write a new plan only for work
-  that needs one, and delete it once that work has landed; what outlives
-  it moves into a decision spec. A plan is not an archive.
+  what is left. One is open: `two-prompts.md` — replacing the one large
+  merged prompt with two short ones, each with a single job, and a cheap
+  call to choose between them only where the branch is not already known.
+  It is not started. Writing a defect into a decision spec documents it;
+  it does not accept it, and only the operator accepts a limitation of
+  the product. Write a new plan only for work that needs one, and delete
+  it once that work has landed; what outlives it moves into a decision
+  spec. A plan is not an archive.
 
 ---
 

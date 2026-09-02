@@ -706,7 +706,9 @@ def test_senses_that_all_lack_a_label_are_kept_rather_than_dropped(languages):
     assert [item.translations for item in parsed.note.meanings] == [["банк"], ["берег"]]
 
 
-def test_an_unlabelled_sense_still_yields_to_a_labelled_one(languages):
+def test_an_unlabelled_sense_is_kept_beside_a_labelled_one_and_still_cards(languages):
+    # Measured cost of dropping it: Serbian `клупа` returned "скамейка" unlabelled and
+    # "тиски" under `техника`, and the note went out teaching the vise.
     parsed = parse_answer_payload(
         payload(meanings=[meaning(), meaning("о реке", translations=["берег"])]),
         "bank",
@@ -714,7 +716,8 @@ def test_an_unlabelled_sense_still_yields_to_a_labelled_one(languages):
     )
 
     assert isinstance(parsed, ParsedUnit)
-    assert [item.label for item in parsed.note.meanings] == ["о реке"]
+    assert [item.label for item in parsed.note.meanings] == ["", "о реке"]
+    assert parsed.note.meaning.translations == ["банк"]
 
 
 def test_a_context_copy_missing_its_final_stop_still_cards_our_context(languages):

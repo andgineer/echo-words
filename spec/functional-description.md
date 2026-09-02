@@ -370,10 +370,18 @@ the answer, so the pool model that produced it keeps its rating.
 **A card sentence must be written in the language being learned.** An example whose
 sentence is in the target language with the source word wedged into it — "Мы должны
 receive письмо" — is a card front that teaches nothing, and answers produce them. The
-sentence outside the highlight is therefore tested for letters the source language
-does not have, and an example failing it is dropped; an entry left with no usable
-example is unusable and steps up. Serbian shares its Cyrillic with Russian, so there
-the test is the nine letters Russian has and Serbian does not.
+prompt asks for the sentence to be written entirely in the source language and in one
+script from end to end.
+
+Behind that, the sentence outside the highlight is tested for letters the source
+language does not have, and an example failing it is dropped; an entry left with no
+usable example is unusable and steps up. That test is a filter and not a proof, and
+for Serbian it is the weakest: Serbian shares its Cyrillic with Russian, so only the
+nine letters Russian has and Serbian does not can separate them, and a Russian
+sentence using none of the nine passes — "Он живет в великом граду на берегу реки"
+shipped as a Serbian card front. Writing the sentence in the right language is the
+answer's job; no deterministic test can finish it, and widening this one is not the
+way to try.
 
 **None of this proves linguistic intent, and the operating point is accepted rather
 than solved.** A model can still call a coinage attested: none to three of six survive

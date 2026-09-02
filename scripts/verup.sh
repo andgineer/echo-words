@@ -73,7 +73,11 @@ if ! [[ "$response" =~ ^([yY][eE][sS]|[yY])$ ]]; then
 fi
 
 for file in ${VERSION_FILES[*]}; do
-  sed -i'' -e "s/__version__[[:blank:]]*=[[:blank:]]*\"[0-9.]*\"/__version__ = \"$NEW_VERSION\"/" $file
+  # BSD sed reads the -e that follows as the backup suffix, so an in-place edit
+  # leaves a stray `<file>-e` behind on macOS. Rewriting through a temporary is the
+  # one spelling both seds agree on.
+  sed -e "s/__version__[[:blank:]]*=[[:blank:]]*\"[0-9.]*\"/__version__ = \"$NEW_VERSION\"/" "$file" >"$file.new"
+  mv "$file.new" "$file"
   git add $file
 done
 

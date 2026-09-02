@@ -227,18 +227,32 @@ review remain required.
 
 **What the answers are known to get wrong, and what no contract catches.** The
 structural checks bind the shape of a note, never its content, so these are found
-by reading answers and not by any gate. An article can invert the sense of the
-expression it heads — `in Frage kommen` glossed "не может быть и речи", the
-reverse of what it means, with the answer's own origin paragraph contradicting the
-gloss two lines below. It can state grammar that is simply false: a wrong case, an
-invented pronoun form, `es` described as `er`. It can give a confident etymology
-for a word it invented one. It can print a forms table naming case, tense and
-person where the functional description forbids naming them, put a table on an
-invariable word, or print a bare part of speech. These are article defects rather
-than card defects — the payload is usually clean while the visible prose carries
-them — and the mandatory semantic review is the only thing that sees them. This
-records what has been observed; whether the product accepts it is open, and is
-tracked as a decision rather than settled here. For an explicit context request, the selected meaning's
+by reading answers and not by any gate. The product accepts these as the free
+pool's own quality, measured and not hoped for; the fixtures and the mandatory
+review stay because the numbers move with the prompt.
+
+An article can invert the sense of the unit it heads — `Zeit haben` glossed "не
+иметь времени", `wissen` glossed "не знаю". The cause is a branch call rather than
+a translation slip: a clause the answer should have read as text is read as a unit,
+and the answer then names the positive lemma while glossing the whole clause,
+negation included. Where the branch is right no card is made and nothing is
+inverted. The prompt therefore asks for the heading, the translations and the
+examples to be about one and the same wording, and reads a clause with its own
+subject and finite verb as text.
+
+An article can state grammar that is simply false: a wrong case, an invented
+pronoun form, `es` described as `er`. It can give a confident etymology for a word
+it invented one, and requiring an origin for every word is part of why. It can put
+a table on an invariable word or print a bare part of speech. A forms table naming
+case, tense or person is the one of these the prompt now forbids in those words:
+naming a grammatical category in a table fell from 26% to 11% of tables when the
+rule was stated, measured over 139 tables before and 56 after.
+
+These are article defects rather than card defects — the payload is usually clean
+while the visible prose carries them — and the mandatory semantic review is the
+only thing that sees them. Over a reviewed full tier, roughly half of a packet's
+items carry a defect the reader would read and about a fifth one that reaches a
+card they would drill. For an explicit context request, the selected meaning's
 first plain example must be the supplied context, allowing only the sentence's
 final punctuation to differ — a difference anywhere further in is a rewrite, and
 a rewrite is what the rule exists to reject. The card then carries the context

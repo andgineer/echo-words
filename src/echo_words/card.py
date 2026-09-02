@@ -158,11 +158,10 @@ def parse_answer_payload(  # noqa: C901, PLR0912 - the answer discriminator boun
         if meaning is None:
             continue
         candidates.append((raw_index, meaning))
-    labelled = [item for item in candidates if item[1].label]
-    # Labels tell several senses apart; with none returned they cannot, and dropping
-    # every sense over a missing label would throw away an otherwise usable answer.
-    if len(candidates) > 1 and labelled:
-        candidates = labelled
+    # A missing label never drops a sense. Labels tell retained senses apart on a bare
+    # front, and an unlabelled front is merely less informative; dropping the sense
+    # instead cards whichever sibling happened to carry a label, and the answer orders
+    # the commonest sense first, so that is the one a label rule would delete.
     retained: list[Meaning] = []
     remap: dict[int, int] = {}
     for raw_index, meaning in candidates:

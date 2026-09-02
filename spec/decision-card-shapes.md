@@ -60,8 +60,15 @@ deliberately not deduplicated.
 There is no sense-count ceiling. The 16,000-character complete-answer bound is
 the resource guard and is enforced before JSON decoding or segment filling. A
 malformed meaning is dropped independently after harmless schema variation is
-normalized. Only then are labels required when several cardable meanings remain,
-so a malformed sibling cannot erase a valid unlabeled singleton. The contextual
+normalized. A missing label never drops a sense. The label tells retained senses
+apart on a bare front, and a front without one is merely less informative, while
+dropping the sense cards whichever sibling happened to carry a label — and since
+the answer orders the commonest sense first and leaves the obvious one unlabelled,
+that is exactly the sense a label requirement deletes. Measured by replaying the
+production parser over four tiers of recorded answers, the requirement changed five
+notes of 448 and made every one of them worse: `клупа` carded "тиски" instead of
+"скамейка", `kitchen` the cooking style instead of the room, `aufstehen` "восставать"
+instead of "вставать" on a click about getting up in the morning. The contextual
 index is remapped from the raw list to that retained list; an answer with no
 retained cardable meaning is unusable and takes the ordinary fallback.
 

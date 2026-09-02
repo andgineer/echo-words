@@ -450,7 +450,20 @@ and `unter die Lupe nehmen` without `nehmen`.
 
 The coinage operating point is accepted as measured, not as hoped: none to three of
 six survive both judgements, and what survives is the well-formed compound carded with
-an invented sense and origin. The review's quality observations — a Serbian card
+an invented sense and origin. The band is a property of particular strings rather than
+of a run. Counted over eleven samples of the standalone judgement, `Löffelangst`,
+`змркалица` and `blorptium` are refused eleven times out of eleven and `Fahrradsuppe`
+nine, while `tablewards` is refused three times and `bookshelfy` once. Asking the same
+question twice would therefore buy almost nothing on the two that get through, and a
+third check of the same kind is not the lever; only an attestation source would be, and
+no free one covers English, German and Serbian alike.
+
+The false-refusal half is accepted with it. Rare real wording drew no refusal in
+forty-four samples, and ordinary mid-frequency wording scored five of six on two
+successive tiers with the same word — `сврака` — refused both times. Eleven of twelve
+ordinary lookups keeping their entry, with the single failure being one repeatable
+item rather than a different word each time, is the measured cost of the judgement
+that withholds the coinages. The review's quality observations — a Serbian card
 headed by a Russian verb, an imperative kept as a headword, three registered Serbian
 combinations missed — are recorded as this arm's known cost; they sit inside the
 declared tolerances and are properties of the free pool rather than of the contract.
@@ -490,6 +503,16 @@ and `morphology` are presence regexes, so a false etymology scores as an etymolo
 a case-labelled table scores as morphology — the most common real defect in the run is
 invisible to every gate. The review packet should also carry the screen's own counts
 and thresholds, which it does not.
+
+### Two experiments that were not run, and why
+
+Worked examples in the prompt — one positive and one negative instead of restating
+the boundary rule — are abandoned. They cannot be accepted on one run, and the misses
+they would address are proposals the model never made at all, which no example of a
+boundary reaches. Tapping the chips a repair produces, against unrepaired controls,
+stays available but unspent: the repair was measured to remove most failing taps at
+source, so the measurement is worth its calls only where a tier shows the boundary
+still costing cards.
 
 ## What the shorter prompt cost and bought
 

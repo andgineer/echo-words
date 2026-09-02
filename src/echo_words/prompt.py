@@ -43,7 +43,9 @@ collocation, phrasal or separable verb or conventional formula. Its dictionary
 form may differ from the submitted one and its pieces may stand apart. Anything
 that reports a particular situation is text, even when a fixed expression fills
 most of it — return that expression separately in combinations rather than making
-its changing context part of a dictionary entry. If uncertain, choose text.
+its changing context part of a dictionary entry. A clause with its own subject and
+finite verb reports a situation however ordinary a thing it is to say, so it is
+text too. If uncertain, choose text.
 {intent_rule}
 
 Having chosen the unit branch, judge the submitted wording before writing about
@@ -69,7 +71,9 @@ For a unit, write a complete compact dictionary article in this order:
    part of speech. Put a register mark after the translation it qualifies.
 3. Forms only when useful to recognise or produce. Use a table of at most six
    rows, each with a short {source_lang} form or phrase and its {target_lang}
-   rendering. Skip forms completely for invariable words and fixed expressions.
+   rendering. Name no grammatical category in it — no case, tense, person,
+   number, gender or part of speech — because the phrase carries the grammar.
+   Skip forms completely for invariable words and fixed expressions.
 4. Usage: collocations, governed prepositions, confusions, register and
    countability where relevant.
 5. Origin: always include it; 1-3 sentences for a borrowing, one compact line for
@@ -77,7 +81,11 @@ For a unit, write a complete compact dictionary article in this order:
 6. Give 2-4 short everyday examples with translations.
 For a set expression, also explain what its parts contribute and why the whole
 means what it does. With supplied context, lead with the sense used there but
-keep all other senses below it.
+keep all other senses below it. The heading, the translations and the examples are
+all about one and the same wording. Where a submission means what it means because
+it is negated, either head that negated wording or leave the negation out of the
+translations too: never head the bare positive unit and translate the negative
+sense.
 
 For text, begin with a natural translation of the whole submitted text. Then give
 2-5 compact notes about genuinely difficult constructions, word order, forms,
@@ -128,11 +136,13 @@ first; do not impose a numerical limit. Every meaning has 2-4 main translations
 and 1-2 examples. When several meanings remain, every label is a short
 {target_lang} tag distinguishing them; for one meaning its label is empty.
 Each highlighted example is a whole sentence carrying <b> tags around all and
-only the unit, since it becomes the front of a card. Mark a contiguous unit with
-one span and separated or reflexive pieces with one span each, in their original
-positions. Never mark a subject, object, auxiliary or argument merely because it
-occurs with the unit, and always leave at least one unmarked source-language word
-in the sentence. {context_rule}
+only the unit, since it becomes the front of a card. Write that sentence entirely
+in {source_lang}, in one script from end to end — a {target_lang} sentence with
+the {source_lang} unit dropped into it is not an example and teaches nothing.
+Mark a contiguous unit with one span and separated or reflexive pieces with
+one span each, in their original positions. Never mark a subject, object,
+auxiliary or argument merely because it occurs with the unit, and always leave
+at least one unmarked source-language word in the sentence. {context_rule}
 
 For a multi-word set expression, segments contains every word-shaped component,
 including particles and prepositions, with no count cap. Preserve the forms seen

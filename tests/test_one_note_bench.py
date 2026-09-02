@@ -712,6 +712,50 @@ def test_unmarked_exact_bare_unit_token_is_exposed_even_when_parser_rejects_it()
     )
 
 
+def test_forms_table_terms_reads_tables_and_not_the_prose_around_them():
+    named = (
+        "<b>Kübel</b> ведро<table><tr><td>der Kübel</td><td>именительный падеж</td></tr></table>"
+    )
+    phrases = (
+        "<b>Kübel</b> ведро"
+        "<table><tr><td>zwei Kübel Wasser</td><td>два ведра воды</td></tr></table>"
+    )
+    # The same word outside a table is ordinary usage prose and not a violation.
+    prose = "<b>Kübel</b> ведро, существительное мужского рода в обиходной речи"
+
+    assert bench.forms_table_terms(named) == ["именительный падеж"]
+    assert bench.forms_table_terms(phrases) == []
+    assert bench.forms_table_terms(prose) == []
+
+
+def test_review_packet_shows_a_forms_table_that_names_a_grammatical_category():
+    shot = bench.bare_shots()[0]
+    article = (
+        f"<b>{shot.source}</b> перевод"
+        "<table><tr><td>формы</td><td>прошедшее время</td></tr></table>"
+    )
+    payload = _unit_answer(shot.source).split("===CARD===", 1)[1]
+    scored = bench.score(replace(shot, text=f"{article}===CARD==={payload}"))
+
+    assert scored.metrics["has_forms_table"] is True
+    assert scored.metrics["forms_table_terms"] == ["прошедшее время"]
+
+    packet = bench.review_packet("smoke", [scored], {scored.shot_id: scored})
+    item = next(one for one in packet["items"] if one["fixture_id"] == scored.shot_id)
+
+    assert "forms_table_terms" in item["categories"]
+    assert item["actual"]["forms_table_terms"] == ["прошедшее время"]
+
+
+def test_review_packet_carries_the_screen_counts_the_reviewer_reads_past():
+    typo = bench.typo_shots()[0]
+    screen = {"counts": {"tables_naming_terms": 3}, "quality_thresholds": {"gate": True}}
+
+    packet = bench.review_packet("smoke", [typo], {typo.shot_id: typo}, screen)
+
+    assert packet["screen"] == screen
+
+
 def test_review_packet_lists_typo_click_and_raw_evidence():
     typo = bench.typo_shots()[0]
     payload = json.loads(_unit_answer(typo.source).split("===CARD===", 1)[1])
@@ -723,7 +767,7 @@ def test_review_packet_lists_typo_click_and_raw_evidence():
 
     packet = bench.review_packet("smoke", [typo], {typo.shot_id: typo})
 
-    assert packet["screen"] == "AUTOMATED SCREEN"
+    assert packet["screen"] == {}
     assert packet["prompt_status"] == "unmeasured"
     assert packet["semantic_review_required"] is True
     typo_item = next(item for item in packet["items"] if item["fixture_id"] == typo.shot_id)

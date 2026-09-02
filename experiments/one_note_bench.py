@@ -8,7 +8,7 @@ availability and exact-boundary diagnostics stay visible without being
 misreported as semantic success or zero-tolerance product contracts.
 
 Raw answers are append-only so scoring can be changed without buying them again.
-The default smoke tier is 39 calls; confirmation is 93 and full is at most 169.
+The default smoke tier is 55 calls; confirmation is 125 and full is at most 216.
 
 Run:
     uv run python experiments/one_note_bench.py run --tier smoke --resume \
@@ -1094,6 +1094,43 @@ def _registered_units_found(
     return int(_registered_unit_matches(shot, expected_surfaces, filled)["found"])
 
 
+# Mostly written in the target language, because that is what a forms table labels its
+# rows in and this bench answers into Russian only. The Latin names are here because a
+# German or Serbian article labels a paradigm in its own grammatical tradition, and the
+# abbreviations because a table cell is where a category gets shortened.
+_GRAMMAR_TERMS = re.compile(
+    r"падеж|именительн|родительн|дательн|винительн|творительн|предложн|звательн|местн"
+    r"|\b(?:им|род|дат|вин|твор|предл|мест)\.?\s?п(?:ад)?\.|"
+    r"настоящ|прошедш|будущ|наклонени|спряжен|склонен|"
+    r"[123]-е лицо|лицо\b|единственное число|множественное число|\b(?:ед|мн)\.\s?ч\.|"
+    r"мужской род|женский род|средний род|"
+    r"инфинитив|причасти|деепричасти|императив|"
+    r"существительное|прилагательное|наречие|глагол\b|предлог\b|союз\b|местоимение|"
+    r"\bон, она, оно\b|"
+    r"\b(?:Nominativ|Genitiv|Dativ|Akkusativ|Vokativ|Instrumental|Lokativ|"
+    r"Präsens|Präteritum|Perfekt|Futur|Konjunktiv|Imperativ|Partizip|Infinitiv|"
+    r"Singular|Plural|Maskulinum|Femininum|Neutrum)\b",
+    re.IGNORECASE,
+)
+
+
+def forms_table_terms(analysis: str) -> list[str]:
+    """Forms-table cells naming a grammatical category, which the answer may not do.
+
+    A presence regex over the whole article would score an ordinary usage note as a
+    violation, so only table cells are read, and the cell itself is returned rather
+    than the fragment that matched: the reviewer needs to see what was printed.
+    """
+    return sorted(
+        {
+            cell
+            for table in re.findall(r"<table>.*?</table>", analysis, re.DOTALL)
+            for raw in re.findall(r"<td>(.*?)</td>", table, re.DOTALL)
+            if _GRAMMAR_TERMS.search(cell := re.sub(r"<[^>]*>", "", raw).strip())
+        },
+    )
+
+
 def format_ok(analysis: str) -> bool:
     tags = {tag.casefold() for tag in re.findall(r"</?([A-Za-z][A-Za-z0-9]*)", analysis)}
     markdown = bool(
@@ -1274,6 +1311,8 @@ def vocab_metrics(shot: Shot, parsed: ParsedUnit, analysis: str) -> dict:
         "usage": bool(_USAGE.search(analysis)),
         "morphology": bool(_MORPHOLOGY.search(analysis)),
         "morphology_required": shot.expects_morphology,
+        "has_forms_table": "<table>" in analysis,
+        "forms_table_terms": forms_table_terms(analysis),
         "context_example_exact": example.text == shot.context if shot.context else True,
         "context_parts_highlighted": all(
             part in highlighted_parts for part in requested_parts
@@ -1842,6 +1881,15 @@ def quality_counts(initial_rows: list[Shot], context_rows: list[Shot]) -> dict[s
         "neighbour_false_offers": len(
             {row.shot_id for row in neighbour_rows if row.metrics.get("neighbour_false_offer")},
         ),
+        # Diagnostic. The functional description forbids naming a grammatical category
+        # in a forms table, and until this counted it the defect was invisible to every
+        # gate: a case-labelled table scored as morphology like any other.
+        "tables_printed": sum(
+            bool(row.metrics.get("has_forms_table")) for row in initial_rows
+        ),
+        "tables_naming_terms": sum(
+            bool(row.metrics.get("forms_table_terms")) for row in initial_rows
+        ),
         "attested_kept": len(
             {
                 row.shot_id
@@ -2128,6 +2176,7 @@ def review_packet(
     tier: str,
     expected_initial: list[Shot],
     current: dict[str, Shot],
+    screen: dict[str, object] | None = None,
 ) -> dict[str, object]:
     items = []
     expected_rows = [*expected_initial]
@@ -2180,6 +2229,9 @@ def review_packet(
         if shot.metrics.get("raw_sentence_issues"):
             categories.add("non_exact")
             actual["sentence_form_issues"] = shot.metrics["raw_sentence_issues"]
+        if shot.metrics.get("forms_table_terms"):
+            categories.add("forms_table_terms")
+            actual["forms_table_terms"] = shot.metrics["forms_table_terms"]
         if shot.kind == "context":
             categories.add("click")
             expected["surface"] = CLICK_BY_ID[shot.shot_id].label
@@ -2230,7 +2282,9 @@ def review_packet(
     expected_ids = {shot.shot_id for shot in expected_rows}
     attempted = expected_ids & set(current)
     return {
-        "screen": "AUTOMATED SCREEN",
+        # The reviewer reads concrete items, and the numbers the screen already passed
+        # are what tells them which of those items the screen was blind to.
+        "screen": screen if screen is not None else {},
         "tier": tier,
         "prompt_status": (
             "pending_semantic_review" if attempted == expected_ids else "unmeasured"
@@ -2249,12 +2303,13 @@ def write_review_packet(
     tier: str,
     expected_initial: list[Shot],
     current: dict[str, Shot],
+    screen: dict[str, object] | None = None,
 ) -> Path:
     path = out / f"review-packet-{tier}.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         json.dumps(
-            review_packet(tier, expected_initial, current),
+            review_packet(tier, expected_initial, current, screen),
             ensure_ascii=False,
             indent=2,
         )
@@ -2429,6 +2484,12 @@ def report(out: Path, tier: str) -> None:
             "  ordinary real wording still cards "
             f"{counts['ordinary_kept']}/{ordinary_total}  (diagnostic, gates nothing)",
         )
+    if counts["tables_printed"]:
+        print(
+            "  forms tables naming a grammatical category "
+            f"{counts['tables_naming_terms']}/{counts['tables_printed']}"
+            "  (diagnostic, gates nothing)",
+        )
     for name, numerator, denominator, threshold in quality_lines:
         passed = quality[name]
         print(
@@ -2531,7 +2592,13 @@ def report(out: Path, tier: str) -> None:
     if times:
         print(f"\nlatency p50 {statistics.median(times):.1f}s")
 
-    packet_path = write_review_packet(out, tier, wanted_initial, current)
+    packet_path = write_review_packet(
+        out,
+        tier,
+        wanted_initial,
+        current,
+        {"counts": counts, "deterministic_contracts": hard, "quality_thresholds": quality},
+    )
     print(f"review packet: {packet_path}")
     print("AUTOMATED SCREEN ONLY — semantic acceptance is not auto-proven.")
 

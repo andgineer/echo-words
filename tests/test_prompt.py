@@ -115,7 +115,7 @@ def test_unit_examples_target_only_the_lexical_surface(languages):
     )
 
     assert "<b> tags around all and\nonly the unit" in prompt
-    assert "Never mark a subject, object, auxiliary or argument" in prompt
+    assert "Never mark a subject, object,\nauxiliary or argument" in prompt
     assert "at least one unmarked source-language word" in prompt
     assert "mark those selected tokens and no others" in prompt
     assert "do not expand the selection to neighbouring context" in prompt
@@ -146,8 +146,8 @@ def test_the_prompt_asks_for_the_spelling_relation_in_one_rule(languages):
 def test_contiguous_unit_uses_one_bold_span(languages):
     prompt = build_prompt(languages["en"], "give up", "Russian", unit_intent=True)
 
-    assert "Mark a contiguous unit with\none span" in prompt
-    assert "separated or reflexive pieces with one span each" in prompt
+    assert "Mark a contiguous unit with one span" in prompt
+    assert "separated or reflexive pieces with\none span each" in prompt
 
 
 def test_answer_extraction_returns_the_discriminated_branch(languages):
