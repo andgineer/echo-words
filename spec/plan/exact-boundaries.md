@@ -78,6 +78,33 @@ spread, on the same reasoning the old floor used: a floor inside the spread
 reddens on the draw. After the repair the `partial boundary` match kind stops
 appearing in full runs altogether.
 
+## What the tier measured
+
+Run on 2026-09-02 into `experiments/.bench-repair`, 216 calls, pool healthy —
+204 of 204 provider answers, the workhorse answering 176 of them.
+
+The repair passed its semantic review outright, and on a wider sample than the
+report shows. The reviewer read every text payload in the store rather than the
+three the packet flagged, and found **no chip anywhere that reverses or distorts
+its sentence** — the failure the withhold rule exists to prevent. Two cases prove
+the repair rather than the screen: `text-sr-3` returned `није ... изненадио`,
+negation in and the obligatory reflexive out, and `text-de-1` returned `freue ...
+auf` with `mich` missing; neither appears in the packet, because the repair had
+already made both exact. Unrepaired, the first would have carded "was not
+surprised" under `изненадити се`.
+
+`text-sr-4` shows the withhold rule costing a boundary and being right to: the
+chip stays `ми се уопште не иде` rather than becoming affirmative, because
+`уопште` is free material no trim may leave behind.
+
+Cardable units read 15 of 21, inside the 13-17 spread and below the 16 the
+previous tier re-scores to. The three German misses are proposals the model never
+made.
+
+**The run as a whole was rejected**, for reasons outside this plan: a carded
+coinage, a gate the spec does not authorise, and a review packet that could not
+show either. The repair is not accepted until that run is.
+
 ## What is left
 
 - **A tier, and a fresh semantic review.** The repair is deterministic and its

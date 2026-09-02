@@ -52,6 +52,31 @@ The same measurement covers the refusal risk on the replaced Serbian neighbour
 pair: `месо` is an ordinary word of exactly the class being scored, so a separate
 probe call before the tier would buy nothing the tier does not already report.
 
+## What the tier measured, and what it turned up instead
+
+The ordinary class scored **5 of 6**, against 4 of 4 for the famous class. The
+one refusal is `сврака` — an ordinary Serbian noun for a magpie — refused by the
+standalone judgement while the article call vouched for it and wrote a correct
+entry. That is a fourth observation of this defect and the first caught by a
+registered fixture, so the hypothesis above now has evidence: the famous four
+were measuring recall, not the judgement.
+
+One tier is one sample, and 5 of 6 against 4 of 4 does not yet size the gap.
+What it does establish is that the class is not decorative.
+
+The same run turned up the opposite error, which matters more and belongs here
+because it is the other half of the same trade. **`bookshelfy` was refused by
+neither judgement and was carded**, with invented senses, an invented register
+and an invented etymology. And the article's own leading verdict vouched for all
+five coinages in the arm — `Fahrradsuppe`, `Löffelangst`, `tablewards`,
+`змркалица` and `bookshelfy` — so on this tier the standalone question was the
+only thing withholding any of them, and it missed one.
+
+So the operating point is worse on both sides than the spec records: the
+judgement refuses ordinary words, and it passes coinages. Neither number can be
+read off a single tier, and the choice in the next section cannot be made until
+both are sized.
+
 ## What is left
 
 Score the class on a tier, and read the two classes apart. If ordinary words are
