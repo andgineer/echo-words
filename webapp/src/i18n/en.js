@@ -30,7 +30,8 @@ export default {
     "“{word}” looks like a typo for “{suggestion}”, so no card was made.",
   "add.moreCommon": "The card is for “{word}”; “{suggestion}” is named the more usual spelling.",
   "add.notInReferences":
-    "No dictionary has “{word}”, and it is not written once in this language's Wikipedia. Every invented word tested behaved this way — the card was still made.",
+    "No dictionary has “{word}” and Wikipedia never writes it — nor any invented " +
+    "word tested. The card was still made.",
   "add.seeUsageSearch": "See the search",
   "add.rebuild": "Rebuild the card",
   "add.detailReady": "Full analysis ready",

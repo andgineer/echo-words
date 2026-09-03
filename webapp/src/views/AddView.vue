@@ -469,7 +469,7 @@ async function undo() {
 /* Unverified wording is marked apart from a spelling notice: one is about how the
    word is written, the other about whether it is a word. */
 .entry-notice.unverified {
-  border-left-color: var(--warn, #b8860b);
+  border-left-color: var(--warning);
 }
 
 

@@ -311,7 +311,7 @@ describe("AddView", () => {
 
     const notice = wrapper.find(".entry-notice.unverified");
     expect(notice.text()).toContain("No dictionary has “bookshelfy”");
-    expect(notice.text()).toContain("not written once in this language's Wikipedia");
+    expect(notice.text()).toContain("Wikipedia never writes it");
     // Both sources were already asked, so the reader is shown the search, not sent to run it.
     expect(notice.find(".usage-search").attributes("href")).toContain("en.wikipedia.org");
     expect(wrapper.find(".entry-text").exists()).toBe(true);
