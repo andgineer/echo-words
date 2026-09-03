@@ -73,44 +73,26 @@ what the free model gets right first time. The small chance that the paid
 model would translate differently is ignored for now. The endpoint and
 its pipeline path stay; only the button goes.
 
-## The bench gate, and what M3 does to it
+## The bench gate does not apply, and M3 is built so it keeps not applying
 
 `CLAUDE.md` requires a real-model run for anything that changes what the
-app says to an LLM or what it does with the answer.
+app says to an LLM or what it does with the answer. No milestone here
+does. No template, prompt fragment, payload contract or parser is read
+or written, and no existing value that reaches a prompt is edited.
 
-**M1 and M2 never touch a prompt.** No template, fragment, payload
-contract or parser is read or written. The gate plainly does not apply.
+The one place this could have gone wrong is `prompt_hints`. It is not
+inert configuration: it is interpolated into `_SELECTED_PROMPT` and
+`_OPEN_PROMPT` as `{source_hints}` (`src/echo_words/prompt.py:247`), so
+the string in `languages.toml` is literally part of what the model is
+asked. Serbian already ships one: `"for nouns give gender and plural, for
+verbs give aspect"` (`languages.example.toml:32`).
 
-**M3 needs a sharper answer, because `prompt_hints` is prompt text.** It
-is interpolated into `_SELECTED_PROMPT` and `_OPEN_PROMPT` as
-`{source_hints}` (`src/echo_words/prompt.py:247`), so the string in
-`languages.toml` is literally part of what the model is asked. Serbian
-already ships one: `"for nouns give gender and plural, for verbs give
-aspect"` (`languages.example.toml:32`).
+**So the editor does not expose it** — see M3. A prompt fragment stays in
+the repository, where a change to it goes through review and carries the
+gate, instead of becoming a text box that can silently rewrite every
+future answer for a language with nothing to catch it.
 
-What this plan changes about it: **nothing.** No existing value is
-edited, and the templates around it are untouched, so every prompt the
-app sends after M3 is byte-identical to before. There is nothing for a
-bench run to measure, and running one would compare a prompt against
-itself.
-
-What M3 *does* change is who can edit that fragment and when. Today it
-lives in a file, under review, and a change to it is a prompt change that
-carries the gate. After M3 the operator can edit it from a phone, at
-runtime, and CI will never see it. That is a deliberate trade: the whole
-point of the editor was to replace hand-editing the file, and hiding this
-one field would leave the file as the only way to reach it.
-
-So the rule survives the move, and this plan restates it rather than
-letting the editor become a hole in it:
-
-- **Shipping the editor: no bench run.** Values unchanged.
-- **Changing any `prompt_hints` value — through the editor, through the
-  file, or in a fixture — is a prompt change** and carries the full gate:
-  `experiments/one_note_bench.py` against real models, fixtures covering
-  the behaviour the hint is meant to produce, and a fresh-agent semantic
-  review of the review packet. An agent must never edit one without it.
-- Any milestone that drifts into prompt text stops and runs the bench.
+If a milestone drifts into prompt text anyway, stop and run the bench.
 
 ---
 
@@ -481,7 +463,20 @@ language. Reached from the pencil in the language row, not from
 optional. `load_languages` reads the TOML at `settings.languages_config`
 and nothing writes it.
 
-**The editor never exposes `api_model`.** That matters beyond tidiness:
+**The editor exposes neither `api_model` nor `prompt_hints`.** Both stay
+file-only, for the same reason in two forms: they are the two fields
+whose value reaches machinery the editor cannot validate or show the
+effect of.
+
+`prompt_hints` is prompt text (see the bench-gate section). Every other
+field in the editor is inert data with a visible, immediate, reversible
+effect — a wrong deck name shows up on the next card, a wrong voice is
+heard at once. A wrong hint degrades every future answer for that
+language quietly, and only a bench run would find it. It is also set once
+per language by whoever tunes prompts, not by whoever adds a language, so
+it does not belong on the screen for adding a language.
+
+`api_model` matters beyond tidiness:
 `create_broker` (`broker.py:57-61`) builds its `direct` map from
 `paid_aliases(languages, settings)`, so a change to `api_model` would
 require rebuilding the broker at runtime. Leaving it out of the editor
@@ -532,6 +527,14 @@ Entries already in `History` for a deleted language stay. The rail
 filters by the selected language, so they simply stop being reachable —
 no cleanup, no migration.
 
+### What the editor does not cover
+
+With those two fields excluded, the editor covers everything a reader
+does — add a language, remove one, fix its name, deck, script, voice,
+dictionary and accent. Tuning a prompt hint or pinning a paid model stays
+a `languages.toml` edit and a restart. That is the intended split, not a
+gap to close later: those two are development, not use.
+
 ### Frontend
 
 - `views/LanguagesView.vue` — the list. Each row: name, code badge,
@@ -544,8 +547,9 @@ no cleanup, no migration.
 - `views/LanguageDetailView.vue` — name, deck, and a script segmented
   control up top; `Дополнительно` collapses over the TTS engine
   (segmented `piper` / `edge`), the voice field for whichever engine is
-  chosen, `dict_api` and `accent` side by side in a two-column grid, and
-  `prompt_hints` in a textarea. Save and, at the bottom, delete.
+  chosen, and `dict_api` and `accent` side by side in a two-column grid.
+  Save and, at the bottom, delete. **No `prompt_hints` field and no
+  `api_model` field** — see above.
 - `App.vue` grows two more `view` values. The pencil in
   `LanguagePicker` emits its way up.
 - After a delete, if the removed language was selected, `useLanguage`
@@ -566,7 +570,11 @@ Python:
   minimal entry and for one with every optional field;
 - the write is atomic — a failure leaves the original file intact;
 - `PUT` rejects a bad code, an unknown script, a missing deck;
-- `PUT` never writes `api_model`, so `paid_aliases` is unchanged;
+- `PUT` never writes `api_model`, so `paid_aliases` is unchanged, and
+  never writes `prompt_hints`, so no prompt changes without the gate;
+- `PUT` on a language that already has `api_model` or `prompt_hints` in
+  the file preserves both untouched — the editor must round-trip fields
+  it does not show, or saving a voice would silently drop a hint;
 - `DELETE` of the last language is refused with 409;
 - `DELETE` leaves the Anki collection untouched — assert the fake store
   saw no call;
