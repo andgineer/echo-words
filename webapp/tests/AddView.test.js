@@ -35,18 +35,31 @@ afterEach(() => {
   localStorage.clear();
 });
 
-function textEntry(segments = [
-  {
-    label: "steht auf",
-    reason: "Trennbares Verb.",
-    context: "Er steht jeden Morgen um sechs auf.",
-  },
-  {
-    label: "fällt aus",
-    reason: "Trennbares Verb.",
-    context: "Er steht jeden Morgen um sechs auf.",
-  },
-]) {
+function accepts(entryId) {
+  apiRequest.mockImplementation(async (path) => {
+    if (path === "/api/languages") return OPTIONS;
+    if (path === "/api/words") return { entry_id: entryId };
+    throw new Error(`Unexpected request: ${path}`);
+  });
+}
+
+function unit(entryId, word, lang = "en", extra = {}) {
+  return {
+    entry_id: entryId,
+    word,
+    lang,
+    language: lang === "de" ? "Deutsch" : "English",
+    lookup_only: false,
+    status: "done",
+    shape: "unit",
+    text: `${word} — meaning`,
+    card_status: "added",
+    card_kinds: ["Recognition"],
+    ...extra,
+  };
+}
+
+function textEntry() {
   return {
     entry_id: "entry-1",
     word: "Er steht jeden Morgen um sechs auf.",
@@ -56,68 +69,46 @@ function textEntry(segments = [
     shape: "text",
     status: "done",
     text: "Он встаёт каждое утро в шесть.",
-    card_status: "text",
     detail_available: false,
     segment_kind: "text",
-    segments,
-  };
-}
-
-function senseEntry() {
-  return {
-    entry_id: "entry-1",
-    word: "bank",
-    lang: "en",
-    language: "English",
-    lookup_only: false,
-    shape: "unit",
-    status: "done",
-    text: "берег",
-    card_status: "added",
-    card_kinds: ["Recognition", "Recall", "ContextRecognition", "ContextProduction"],
-    context: "We sat on the bank.",
-    segment_kind: "senses",
     segments: [
-      { label: "bank", reason: "банк", context: "The bank opens at nine." },
       {
-        label: "bank",
-            reason: "склон",
-        context: "The bank of the hill is steep.",
+        label: "steht auf",
+        reason: "Trennbares Verb.",
+        context: "Er steht jeden Morgen um sechs auf.",
       },
     ],
   };
 }
 
 describe("AddView", () => {
-  it("renders the configured language selector and M1 controls", async () => {
+  it("renders the language row, one field, and the empty state", async () => {
     const wrapper = mount(AddView);
     await flushPromises();
 
-    expect(wrapper.findAll("#lang option").map((option) => option.text())).toEqual([
+    expect(wrapper.findAll(".lang-btn").map((button) => button.text())).toEqual([
       "English",
       "Deutsch",
     ]);
-    expect(wrapper.find("#word").exists()).toBe(true);
-    expect(wrapper.find('.lookup input[type="checkbox"]').exists()).toBe(true);
-    expect(wrapper.text()).toContain("Look up only");
+    expect(wrapper.get('[data-testid="lang-en"]').classes()).toContain("active");
+    expect(wrapper.get("#word").attributes("placeholder")).toBe("a word or a phrase");
     expect(wrapper.text()).toContain("Word analyses will appear here");
+    // The field label, the lookup checkbox and undo are all gone; the placeholder
+    // carries the whole instruction and the card carries the deletion.
+    expect(wrapper.find("label[for='word']").exists()).toBe(false);
+    expect(wrapper.find(".lookup").exists()).toBe(false);
+    expect(wrapper.find(".undo").exists()).toBe(false);
+    expect(wrapper.find(".chips").exists()).toBe(false);
   });
 
-  it("submits the selected language and lookup-only flag, then renders the pending entry", async () => {
-    apiRequest.mockImplementation(async (path) => {
-      if (path === "/api/languages") return OPTIONS;
-      if (path === "/api/words") {
-        return { entry_id: "entry-1" };
-      }
-      throw new Error(`Unexpected request: ${path}`);
-    });
+  it("submits the word for the selected language and shows it pending at once", async () => {
+    accepts("entry-1");
     const wrapper = mount(AddView);
     await flushPromises();
-    await wrapper.find("#lang").setValue("de");
-    await wrapper.find("#word").setValue("Straße");
-    await wrapper.find('.lookup input[type="checkbox"]').setValue(true);
+    await wrapper.get('[data-testid="lang-de"]').trigger("click");
+    await wrapper.get("#word").setValue("Straße");
 
-    await wrapper.find(".btn-primary").trigger("click");
+    await wrapper.get(".submit").trigger("click");
     await flushPromises();
 
     expect(apiRequest).toHaveBeenCalledWith("/api/words", {
@@ -125,14 +116,15 @@ describe("AddView", () => {
       body: {
         word: "Straße",
         lang: "de",
-        lookup_only: true,
+        lookup_only: false,
         request_id: expect.any(String),
       },
     });
-    expect(wrapper.find(".entry-head").text()).toContain("Straße");
-    expect(wrapper.find(".entry-meta").text()).toContain("Deutsch · no card");
-    expect(wrapper.find("#word").element.value).toBe("");
-    expect(wrapper.find('.lookup input[type="checkbox"]').element.checked).toBe(false);
+    // No event has arrived yet: the pending state is the app's own answer to the tap.
+    expect(wrapper.get(".entry-title").text()).toBe("Straße");
+    expect(wrapper.get(".working").text()).toContain("Analysing “Straße”");
+    expect(wrapper.get('[data-testid="chip-entry-1"]').classes()).toContain("running");
+    expect(wrapper.get("#word").element.value).toBe("");
   });
 
   it("shows a backend validation hint without creating an entry", async () => {
@@ -142,13 +134,13 @@ describe("AddView", () => {
     });
     const wrapper = mount(AddView);
     await flushPromises();
-    await wrapper.find("#word").setValue("слово");
+    await wrapper.get("#word").setValue("слово");
 
-    await wrapper.find(".btn-primary").trigger("click");
+    await wrapper.get(".submit").trigger("click");
     await flushPromises();
 
-    expect(wrapper.find(".hint").text()).toBe("“English” needs the Latin script.");
-    expect(wrapper.find(".entry").exists()).toBe(false);
+    expect(wrapper.get(".hint").text()).toBe("“English” needs the Latin script.");
+    expect(wrapper.find(".deck").exists()).toBe(false);
   });
 
   it("queues a word when its POST cannot reach the backend", async () => {
@@ -158,9 +150,9 @@ describe("AddView", () => {
     });
     const wrapper = mount(AddView);
     await flushPromises();
-    await wrapper.find("#word").setValue("offline");
+    await wrapper.get("#word").setValue("offline");
 
-    await wrapper.find(".btn-primary").trigger("click");
+    await wrapper.get(".submit").trigger("click");
     await flushPromises();
 
     const saved = JSON.parse(localStorage.getItem("echo-words-resend-queue"));
@@ -172,583 +164,8 @@ describe("AddView", () => {
     });
     const posted = apiRequest.mock.calls.find(([path]) => path === "/api/words")[1].body;
     expect(saved[0].body.request_id).toBe(posted.request_id);
-    expect(wrapper.find(".hint").text()).toContain("will be sent later");
-    expect(wrapper.find("#word").element.value).toBe("");
-  });
-
-  it("shows streamed text while an entry is still pending", async () => {
-    entries.value = [{
-      entry_id: "entry-1",
-      word: "Word",
-      language: "English",
-      lookup_only: false,
-      status: "pending",
-      text: "<b>Word</b> — meaning",
-    }];
-    const wrapper = mount(AddView);
-    await flushPromises();
-
-    expect(wrapper.find(".entry-text").html()).toContain("<b>Word</b> — meaning");
-    expect(wrapper.find(".entry-head").exists()).toBe(false);
-  });
-
-  it("shows the Anki result attached to a completed answer", async () => {
-    await labelBehavior(EPIC.ANKI_CARDS, FEATURE.COLLECTION, "Card delivery status");
-    entries.value = [{
-      entry_id: "entry-1",
-      word: "Word",
-      language: "English",
-      lookup_only: false,
-      status: "done",
-      text: "<b>Word</b> — meaning",
-      card_status: "added",
-    }];
-    const wrapper = mount(AddView);
-    await flushPromises();
-
-    expect(wrapper.find(".entry-card-status").text()).toBe("✅ added to Anki");
-  });
-
-
-  it("says which word the card is for when a misspelling was corrected onto it", async () => {
-    await labelBehavior(EPIC.ANKI_CARDS, FEATURE.COLLECTION, "Card delivery status");
-    entries.value = [{
-      entry_id: "entry-1",
-      word: "envi",
-      language: "English",
-      status: "done",
-      shape: "unit",
-      text: "<b>envy</b> — зависть",
-      card_status: "added",
-      card_kinds: ["Recognition"],
-      analysed_as: "envy",
-      typo_suspected: true,
-    }];
-    const wrapper = mount(AddView);
-    await flushPromises();
-
-    expect(wrapper.find(".entry-notice").text()).toBe(
-      "“envi” looks like a typo, so the card is for “envy” instead.",
-    );
-    const html = wrapper.html();
-    expect(html.indexOf("entry-notice")).toBeLessThan(html.indexOf("entry-text"));
-  });
-
-  it("says nothing about the spelling when the card is for the word as typed", async () => {
-    await labelBehavior(EPIC.ANKI_CARDS, FEATURE.COLLECTION, "Card delivery status");
-    entries.value = [{
-      entry_id: "entry-1",
-      word: "receive",
-      language: "English",
-      status: "done",
-      shape: "unit",
-      text: "<b>receive</b> — получать",
-      card_status: "added",
-      card_kinds: ["Recognition"],
-    }];
-    const wrapper = mount(AddView);
-    await flushPromises();
-
-    expect(wrapper.find(".entry-notice").exists()).toBe(false);
-  });
-
-  it("shows no card and no article for wording the answer would not vouch for", async () => {
-    await labelBehavior(EPIC.ANKI_CARDS, FEATURE.COLLECTION, "Card delivery status");
-    entries.value = [{
-      entry_id: "entry-1",
-      word: "blorptium",
-      language: "English",
-      status: "done",
-      text: "",
-      card_status: "unattested",
-    }];
-    const wrapper = mount(AddView);
-    await flushPromises();
-
-    expect(wrapper.find(".entry-notice").text()).toBe(
-      "“blorptium” — the model does not vouch for this word. No card was made.",
-    );
-    expect(wrapper.find(".entry-card-status").text()).toBe("🚫 no card");
-    expect(wrapper.find(".entry-text").exists()).toBe(false);
-    expect(wrapper.find(".rebuild").exists()).toBe(false);
-  });
-
-  it("does not tell a lookup that a card was withheld from it", async () => {
-    await labelBehavior(EPIC.ANKI_CARDS, FEATURE.COLLECTION, "Card delivery status");
-    entries.value = [{
-      entry_id: "entry-1",
-      word: "blorptium",
-      language: "English",
-      status: "done",
-      text: "",
-      card_status: "unattested",
-      lookup_only: true,
-    }];
-    const wrapper = mount(AddView);
-    await flushPromises();
-
-    expect(wrapper.find(".entry-notice").text()).toBe(
-      "“blorptium” — the model does not vouch for this word.",
-    );
-  });
-
-  it("says when no reference work has the word, and still shows the card", async () => {
-    await labelBehavior(EPIC.ANKI_CARDS, FEATURE.COLLECTION, "Card delivery status");
-    entries.value = [{
-      entry_id: "entry-1",
-      word: "bookshelfy",
-      lang: "en",
-      language: "English",
-      status: "done",
-      text: "<b>bookshelfy</b>",
-      card_status: "added",
-      card_kinds: ["Recognition"],
-      not_in_references: true,
-      usage_search_url: "https://en.wikipedia.org/w/index.php?search=bookshelfy",
-    }];
-    const wrapper = mount(AddView);
-    await flushPromises();
-
-    const notice = wrapper.find(".entry-notice.unverified");
-    expect(notice.text()).toContain("No dictionary has “bookshelfy”");
-    expect(notice.text()).toContain("Wikipedia never writes it");
-    // Both sources were already asked, so the reader is shown the search, not sent to run it.
-    expect(notice.find(".usage-search").attributes("href")).toContain("en.wikipedia.org");
-    expect(wrapper.find(".entry-text").exists()).toBe(true);
-  });
-
-  it("asks about the word the card carries, not the one that was typed", async () => {
-    await labelBehavior(EPIC.ANKI_CARDS, FEATURE.COLLECTION, "Card delivery status");
-    entries.value = [{
-      entry_id: "entry-1",
-      word: "recieve",
-      lang: "en",
-      language: "English",
-      status: "done",
-      text: "<b>receive</b>",
-      card_status: "added",
-      analysed_as: "receive",
-      not_in_references: true,
-    }];
-    const wrapper = mount(AddView);
-    await flushPromises();
-
-    expect(wrapper.find(".entry-notice.unverified").text()).toContain("“receive”");
-  });
-
-  it("says nothing when the reference works had the word", async () => {
-    await labelBehavior(EPIC.ANKI_CARDS, FEATURE.COLLECTION, "Card delivery status");
-    entries.value = [{
-      entry_id: "entry-1",
-      word: "petrichor",
-      lang: "en",
-      language: "English",
-      status: "done",
-      text: "<b>petrichor</b>",
-      card_status: "added",
-      not_in_references: false,
-    }];
-    const wrapper = mount(AddView);
-    await flushPromises();
-
-    expect(wrapper.find(".entry-notice.unverified").exists()).toBe(false);
-  });
-
-  it("points the offer back once the entry shows the other spelling", async () => {
-    await labelBehavior(EPIC.ANKI_CARDS, FEATURE.CORRECTION_AND_DETAIL, "Correction control");
-    entries.value = [{
-      entry_id: "entry-1",
-      word: "envy",
-      language: "English",
-      status: "done",
-      shape: "unit",
-      text: "<b>envy</b> — зависть",
-      card_status: "added",
-      card_kinds: ["Recognition"],
-      suggestion: "envi",
-      showing_other_spelling: true,
-    }];
-    const wrapper = mount(AddView);
-    await flushPromises();
-
-    // Calling the learner's own spelling "the usual one" is what the flag prevents.
-    expect(wrapper.find(".entry-notice").text()).toContain(
-      "This is “envy”, not the “envi” you typed.",
-    );
-    expect(wrapper.find(".correction").text()).toBe("↩︎ Go back to a card for “envi”");
-  });
-
-  // Reached after a switch back: the learner returned to their own spelling, this
-  // answer accepted it as a word, and the other one stays on offer beside it.
-  it("does not call a misspelling a more usual spelling on a lookup", async () => {
-    await labelBehavior(EPIC.ANKI_CARDS, FEATURE.CORRECTION_AND_DETAIL, "Correction control");
-    entries.value = [{
-      entry_id: "entry-1",
-      word: "recieve",
-      language: "English",
-      status: "done",
-      shape: "unit",
-      text: "<b>recieve</b> — получать",
-      card_status: "lookup_only",
-      suggestion: "receive",
-      typo_suspected: true,
-    }];
-    const wrapper = mount(AddView);
-    await flushPromises();
-
-    // There is no card here, and the answer called this spelling wrong — the other
-    // wording is the correction, not a more usual way of writing a good word.
-    expect(wrapper.find(".entry-notice").text()).toContain(
-      "“recieve” looks like a typo for “receive”",
-    );
-  });
-
-  it("names the other spelling once the entry is back on the one typed", async () => {
-    await labelBehavior(EPIC.ANKI_CARDS, FEATURE.CORRECTION_AND_DETAIL, "Correction control");
-    entries.value = [{
-      entry_id: "entry-1",
-      word: "envi",
-      language: "English",
-      status: "done",
-      shape: "unit",
-      text: "<b>envi</b> — зависть",
-      card_status: "added",
-      card_kinds: ["Recognition"],
-      suggestion: "envy",
-    }];
-    const wrapper = mount(AddView);
-    await flushPromises();
-
-    expect(wrapper.find(".entry-notice").text()).toContain(
-      "The card is for “envi”; “envy” is named the more usual spelling.",
-    );
-    expect(wrapper.find(".correction").text()).toBe("Replace the card with “envy”");
-  });
-
-  it("names the word a card is for when it is not the word that was typed", async () => {
-    await labelBehavior(EPIC.ANKI_CARDS, FEATURE.COLLECTION, "Card delivery status");
-    entries.value = [{
-      entry_id: "entry-1",
-      word: "envi",
-      language: "English",
-      status: "done",
-      shape: "unit",
-      text: "<b>environment</b> — окружающая среда",
-      card_status: "added",
-      card_kinds: ["Recognition"],
-      analysed_as: "environment",
-      typo_suspected: false,
-    }];
-    const wrapper = mount(AddView);
-    await flushPromises();
-
-    // Saying nothing here is how a learner ends up drilling a word they never typed;
-    // calling it a typo is how every inflected submission gets accused of one.
-    expect(wrapper.find(".entry-notice").text()).toBe(
-      "The card is for “environment”, not the “envi” you typed.",
-    );
-  });
-
-  it("makes no card for a spelling the answer itself called wrong", async () => {
-    await labelBehavior(EPIC.ANKI_CARDS, FEATURE.COLLECTION, "Card delivery status");
-    entries.value = [{
-      entry_id: "entry-1",
-      word: "recieve",
-      language: "English",
-      status: "done",
-      shape: "unit",
-      text: "<b>recieve</b> — получать",
-      card_status: "misspelled",
-      suggestion: "receive",
-    }];
-    const wrapper = mount(AddView);
-    await flushPromises();
-
-    expect(wrapper.find(".entry-notice").text()).toContain(
-      "“recieve” looks like a typo for “receive”, so no card was made.",
-    );
-    // There is no card to replace, so the offer says what it will actually do.
-    expect(wrapper.find(".correction").text()).toBe("Analyse “receive” instead");
-  });
-
-  it("keeps the way back when the switch could not store its card", async () => {
-    await labelBehavior(EPIC.ANKI_CARDS, FEATURE.CORRECTION_AND_DETAIL, "Correction control");
-    entries.value = [{
-      entry_id: "entry-1",
-      word: "receive",
-      language: "English",
-      status: "done",
-      shape: "unit",
-      text: "<b>receive</b> — получать",
-      card_status: "failed",
-      card_kept: true,
-      suggestion: "recieve",
-      showing_other_spelling: true,
-    }];
-    const wrapper = mount(AddView);
-    await flushPromises();
-
-    // Without this the entry shows another word than the deck holds, says nothing
-    // about it, and leaves retyping as the only way back.
-    expect(wrapper.find(".entry-notice").text()).toContain(
-      "This is “receive”, not the “recieve” you typed.",
-    );
-    expect(wrapper.find(".correction").text()).toBe("↩︎ Go back to a card for “recieve”");
-    expect(wrapper.find(".entry-card-status").text()).toContain("the card you had is untouched");
-  });
-
-  it("says which word a corrected lookup analysed, though it carded nothing", async () => {
-    await labelBehavior(EPIC.ANKI_CARDS, FEATURE.COLLECTION, "Card delivery status");
-    entries.value = [{
-      entry_id: "entry-1",
-      word: "recieve",
-      language: "English",
-      status: "done",
-      shape: "unit",
-      text: "<b>receive</b> — получать",
-      card_status: "lookup_only",
-      analysed_as: "receive",
-      typo_suspected: true,
-    }];
-    const wrapper = mount(AddView);
-    await flushPromises();
-
-    expect(wrapper.find(".entry-notice").text()).toBe(
-      "This is “receive”, not the “recieve” you typed.",
-    );
-  });
-
-  it("shows the submitted sentence above its translation", async () => {
-    await labelBehavior(EPIC.VOCABULARY_ANALYSIS, FEATURE.ANSWER_DELIVERY, "Streaming answers");
-    entries.value = [{
-      entry_id: "entry-1",
-      word: "Er steht jeden Morgen um sechs auf.",
-      language: "Deutsch",
-      status: "done",
-      shape: "text",
-      text: "Он встаёт каждое утро в шесть.",
-      card_status: "text",
-    }];
-    const wrapper = mount(AddView);
-    await flushPromises();
-
-    // A dictionary article opens with its own headword; a translation shows nothing
-    // of what was asked unless the entry carries it.
-    expect(wrapper.find(".entry-source").text()).toBe("Er steht jeden Morgen um sechs auf.");
-    const html = wrapper.html();
-    expect(html.indexOf("entry-source")).toBeLessThan(html.indexOf("entry-text"));
-  });
-
-  it("leaves a unit answer to open with its own headword", async () => {
-    await labelBehavior(EPIC.VOCABULARY_ANALYSIS, FEATURE.ANSWER_DELIVERY, "Streaming answers");
-    entries.value = [{
-      entry_id: "entry-1",
-      word: "aufstehen",
-      language: "Deutsch",
-      status: "done",
-      shape: "unit",
-      text: "<b>aufstehen</b> — вставать",
-      card_status: "added",
-    }];
-    const wrapper = mount(AddView);
-    await flushPromises();
-
-    expect(wrapper.find(".entry-source").exists()).toBe(false);
-  });
-
-
-
-  it("gives all four card kinds distinct localized status labels", async () => {
-    await labelBehavior(EPIC.ANKI_CARDS, FEATURE.COLLECTION, "Card delivery status");
-    entries.value = [{
-      entry_id: "entry-1",
-      word: "bank",
-      language: "English",
-      status: "done",
-      text: "meaning",
-      card_status: "added",
-      card_kinds: ["Recognition", "Recall", "ContextRecognition", "ContextProduction"],
-    }];
-    const wrapper = mount(AddView);
-    await flushPromises();
-
-    expect(wrapper.find(".entry-card-status").text()).toBe(
-      "✅ 4 cards: word → meaning, meaning → word, sentence → meaning, gap → word",
-    );
-
-    locale.value = "ru";
-    await flushPromises();
-
-    expect(wrapper.find(".entry-card-status").text()).toBe(
-      "✅ 4 карточки: слово → значение, значение → слово, предложение → значение, пропуск → слово",
-    );
-  });
-
-  it("falls back to the plain result when the kinds are not known", async () => {
-    await labelBehavior(EPIC.ANKI_CARDS, FEATURE.COLLECTION, "Card delivery status");
-    entries.value = [{
-      entry_id: "entry-1",
-      word: "bank",
-      language: "English",
-      status: "done",
-      text: "meaning",
-      card_status: "added",
-      card_kinds: [],
-    }];
-    const wrapper = mount(AddView);
-    await flushPromises();
-
-    expect(wrapper.find(".entry-card-status").text()).toBe("✅ added to Anki");
-  });
-
-  it("renders the Anki result in the interface language, switching with it", async () => {
-    await labelBehavior(EPIC.ANKI_CARDS, FEATURE.COLLECTION, "Card delivery status");
-    entries.value = [{
-      entry_id: "entry-1",
-      word: "Word",
-      language: "English",
-      status: "done",
-      text: "meaning",
-      card_status: "added",
-      no_audio: true,
-    }];
-    const wrapper = mount(AddView);
-    await flushPromises();
-    expect(wrapper.find(".entry-card-status").text()).toBe(
-      "✅ added to Anki · 🔇 submitted text has no audio",
-    );
-
-    locale.value = "ru";
-    await flushPromises();
-
-    expect(wrapper.find(".entry-card-status").text()).toBe(
-      "✅ добавлено в Anki · 🔇 исходный текст без озвучки",
-    );
-  });
-
-  it("reports missing card audio separately from submitted-text audio", async () => {
-    entries.value = [{
-      entry_id: "entry-1",
-      word: "gave up",
-      language: "English",
-      status: "done",
-      text: "meaning",
-      card_status: "added",
-      no_audio: false,
-      no_card_audio: true,
-    }];
-    const wrapper = mount(AddView);
-    await flushPromises();
-
-    expect(wrapper.find(".entry-card-status").text()).toBe(
-      "✅ added to Anki · 🔇 Anki card has no audio",
-    );
-  });
-
-  it("shows an Anki failure reason verbatim, and a failed analysis in the interface language",
-    async () => {
-      await labelBehavior(EPIC.ANKI_CARDS, FEATURE.COLLECTION, "Card delivery status");
-      entries.value = [
-        {
-          entry_id: "entry-1",
-          word: "Word",
-          language: "English",
-          status: "done",
-          text: "meaning",
-          card_status: "failed",
-          card_error: "note type EchoWords is misconfigured",
-        },
-        {
-          entry_id: "entry-2",
-          word: "Other",
-          language: "English",
-          status: "error",
-          error: "analysis_failed",
-        },
-      ];
-      locale.value = "ru";
-      const wrapper = mount(AddView);
-      await flushPromises();
-
-      expect(wrapper.find(".entry-card-status").text()).toBe(
-        "⚠️ note type EchoWords is misconfigured",
-      );
-      expect(wrapper.find(".entry-error .error-text").text()).toBe(
-        "Не удалось получить разбор.",
-      );
-    });
-
-  it("attaches a replayable pronunciation to a completed answer", async () => {
-    await labelBehavior(EPIC.PRONUNCIATION, FEATURE.AUDIO_DELIVERY, "Playback");
-    entries.value = [{
-      entry_id: "entry-1",
-      word: "Word",
-      language: "English",
-      lookup_only: false,
-      status: "done",
-      text: "<b>Word</b> — meaning",
-      audio_url: "/api/audio/pronunciation-aabbccddeeff00112233.mp3",
-    }];
-    const wrapper = mount(AddView);
-    await flushPromises();
-
-    const player = wrapper.find("audio.entry-audio");
-    expect(player.attributes("src")).toBe(entries.value[0].audio_url);
-    expect(player.attributes()).toHaveProperty("controls");
-    expect(player.attributes()).toHaveProperty("autoplay");
-  });
-
-  it("plays the whole text beside the pronunciation of the unit taken from it", async () => {
-    await labelBehavior(EPIC.PRONUNCIATION, FEATURE.AUDIO_DELIVERY, "Playback");
-    entries.value = [{
-      entry_id: "entry-1",
-      word: "aufstehen",
-      language: "Deutsch",
-      lookup_only: false,
-      status: "done",
-      text: "<b>aufstehen</b> — вставать",
-      context: "Er steht jeden Morgen um sechs auf.",
-      audio_url: "/api/audio/pronunciation-aabbccddeeff00112233.mp3",
-      context_audio_url: "/api/audio/pronunciation-1122334455667788990a.mp3",
-    }];
-    const wrapper = mount(AddView);
-    await flushPromises();
-
-    const players = wrapper.findAll("audio.entry-audio");
-    expect(players.map((player) => player.attributes("src"))).toEqual([
-      entries.value[0].audio_url,
-      entries.value[0].context_audio_url,
-    ]);
-    // Two players may not talk over each other: only the unit's own audio starts by itself.
-    expect(players[1].attributes()).not.toHaveProperty("autoplay");
-    expect(wrapper.find(".context-audio-title").text()).toBe("The whole text");
-  });
-
-  it("leaves a text answer with the single player that voices it whole", async () => {
-    await labelBehavior(EPIC.PRONUNCIATION, FEATURE.AUDIO_DELIVERY, "Playback");
-    entries.value = [{
-      ...textEntry(),
-      audio_url: "/api/audio/pronunciation-1122334455667788990a.mp3",
-    }];
-    const wrapper = mount(AddView);
-    await flushPromises();
-
-    const players = wrapper.findAll("audio.entry-audio");
-    expect(players).toHaveLength(1);
-    expect(players[0].attributes("src")).toBe(entries.value[0].audio_url);
-    expect(players[0].attributes()).toHaveProperty("autoplay");
-    expect(wrapper.find(".context-audio-title").exists()).toBe(false);
-  });
-
-  it("documents both lookup shortcuts and what becomes of a misspelling", async () => {
-    const wrapper = mount(AddView);
-    await flushPromises();
-
-    await wrapper.find(".about-toggle").trigger("click");
-
-    expect(wrapper.find(".about-text").text()).toContain("“? word”");
-    expect(wrapper.find(".about-text").text()).toContain("said above the analysis");
-    expect(wrapper.find(".about-text").text()).toContain("will not invent a word");
+    expect(wrapper.get(".hint").text()).toContain("will be sent later");
+    expect(wrapper.get("#word").element.value).toBe("");
   });
 
   it("passes punctuation on a direct single-word submission to server validation", async () => {
@@ -759,321 +176,345 @@ describe("AddView", () => {
     });
     const wrapper = mount(AddView);
     await flushPromises();
-    await wrapper.find("#word").setValue("hello!");
+    await wrapper.get("#word").setValue("hello!");
 
-    await wrapper.find(".btn-primary").trigger("click");
-    await flushPromises();
-
-    expect(apiRequest).toHaveBeenCalledWith("/api/words", {
-      method: "POST",
-      body: {
-        word: "hello!",
-        lang: "en",
-        lookup_only: false,
-        request_id: expect.any(String),
-      },
-    });
-    expect(wrapper.find(".hint").text()).toBe("Letters, spaces, hyphens and apostrophes only.");
-  });
-
-  it("offers a failed entry back as a chip instead of asking for it to be retyped", async () => {
-    entries.value = [{
-      entry_id: "entry-1",
-      word: "Ampel",
-      lang: "de",
-      language: "Deutsch",
-      lookup_only: false,
-      context: "Die Ampel ist rot.",
-      requested_shape: "unit",
-      status: "error",
-      error: "analysis_failed",
-    }];
-    apiRequest.mockImplementation(async (path) => {
-      if (path === "/api/languages") return OPTIONS;
-      if (path === "/api/words") return { entry_id: "entry-2" };
-      throw new Error(`Unexpected request: ${path}`);
-    });
-    const wrapper = mount(AddView);
-    await flushPromises();
-
-    await wrapper.find(".entry-error .retry").trigger("click");
-    await flushPromises();
-
-    expect(apiRequest).toHaveBeenCalledWith("/api/words", {
-      method: "POST",
-      body: {
-        word: "Ampel",
-        lang: "de",
-        lookup_only: false,
-        context: "Die Ampel ist rot.",
-        shape: "unit",
-        request_id: expect.any(String),
-      },
-    });
-  });
-
-  it("renders correction, rebuild and detail controls on a finished history entry", async () => {
-    entries.value = [{
-      entry_id: "entry-1",
-      word: "recieve",
-      language: "English",
-      lookup_only: false,
-      status: "done",
-      text: "analysis",
-      suggestion: "receive",
-      detail_available: true,
-      model: "free-flash",
-      shape: "unit",
-      card_status: "added",
-    }];
-    const wrapper = mount(AddView);
-    await flushPromises();
-
-    // The card exists for what was typed, so the control replaces it rather than "corrects".
-    expect(wrapper.find(".correction").text()).toContain("Replace the card with “receive”");
-    expect(wrapper.find(".rebuild").exists()).toBe(true);
-    expect(wrapper.find(".detail").element.disabled).toBe(false);
-    expect(wrapper.find(".entry-meta").text()).toContain("English · free-flash");
-  });
-
-  it("posts a multi-word input whole and never asks which word was meant", async () => {
-    apiRequest.mockImplementation(async (path) => {
-      if (path === "/api/languages") return OPTIONS;
-      if (path === "/api/words") return { entry_id: "entry-1" };
-      throw new Error(`Unexpected request: ${path}`);
-    });
-    const wrapper = mount(AddView);
-    await flushPromises();
-    await wrapper.find("#lang").setValue("de");
-    await wrapper.find("#word").setValue("Rad fahren");
-
-    await wrapper.find(".btn-primary").trigger("click");
-    await flushPromises();
-
-    expect(apiRequest).toHaveBeenCalledWith("/api/words", {
-      method: "POST",
-      body: {
-        word: "Rad fahren",
-        lang: "de",
-        lookup_only: false,
-        request_id: expect.any(String),
-      },
-    });
-    expect(wrapper.find(".picker").exists()).toBe(false);
-  });
-
-  it("leaves a leading lookup shortcut to the backend", async () => {
-    apiRequest.mockImplementation(async (path) => {
-      if (path === "/api/languages") return OPTIONS;
-      if (path === "/api/words") return { entry_id: "entry-1" };
-      throw new Error(`Unexpected request: ${path}`);
-    });
-    const wrapper = mount(AddView);
-    await flushPromises();
-    await wrapper.find("#word").setValue("? kick the bucket");
-
-    await wrapper.find(".btn-primary").trigger("click");
+    await wrapper.get(".submit").trigger("click");
     await flushPromises();
 
     expect(apiRequest.mock.calls.find(([path]) => path === "/api/words")[1].body.word).toBe(
-      "? kick the bucket",
+      "hello!",
     );
+    expect(wrapper.get(".hint").text()).toBe("Letters, spaces, hyphens and apostrophes only.");
   });
 
-  it("offers the suggested units of a running text as buttons", async () => {
-    await labelBehavior(EPIC.VOCABULARY_ANALYSIS, FEATURE.ANSWER_DELIVERY, "Suggested units");
-    entries.value = [textEntry()];
+  it("posts a multi-word input whole and never asks which word was meant", async () => {
+    accepts("entry-1");
     const wrapper = mount(AddView);
     await flushPromises();
+    await wrapper.get('[data-testid="lang-de"]').trigger("click");
+    await wrapper.get("#word").setValue("Rad fahren");
 
-    expect(wrapper.findAll(".segment-label").map((button) => button.text())).toEqual([
-      "steht auf",
-      "fällt aus",
-    ]);
-    expect(wrapper.find(".segments").text()).toContain("Words and combinations");
-    expect(wrapper.find(".segment-reason").text()).toBe("Trennbares Verb.");
-    expect(wrapper.find(".entry-meta").text()).toContain("Deutsch · text — no card");
+    await wrapper.get(".submit").trigger("click");
+    await flushPromises();
+
+    expect(apiRequest.mock.calls.find(([path]) => path === "/api/words")[1].body).toEqual({
+      word: "Rad fahren",
+      lang: "de",
+      lookup_only: false,
+      request_id: expect.any(String),
+    });
   });
 
-  it("posts a tapped unit in the language of its own text, carrying that text as context", async () => {
-    await labelBehavior(EPIC.VOCABULARY_ANALYSIS, FEATURE.INPUT_AND_LANGUAGES, "Word submission");
-    apiRequest.mockImplementation(async (path) => {
-      if (path === "/api/languages") return OPTIONS;
-      if (path === "/api/words") return { entry_id: "entry-2" };
-      throw new Error(`Unexpected request: ${path}`);
-    });
-    entries.value = [textEntry()];
+  // The checkbox is gone; the shortcut it duplicated is not.
+  it("leaves a leading lookup shortcut to the backend", async () => {
+    accepts("entry-1");
     const wrapper = mount(AddView);
     await flushPromises();
-    expect(wrapper.find("#lang").element.value).toBe("en");
+    await wrapper.get("#word").setValue("? kick the bucket");
 
-    await wrapper.find(".segment-label").trigger("click");
+    await wrapper.get(".submit").trigger("click");
     await flushPromises();
 
-    expect(apiRequest).toHaveBeenCalledWith("/api/words", {
-      method: "POST",
-      body: {
-        word: "steht auf",
-        lang: "de",
-        lookup_only: false,
-        context: "Er steht jeden Morgen um sechs auf.",
-        shape: "unit",
-        request_id: expect.any(String),
-      },
-    });
-    expect(entries.value.find((entry) => entry.entry_id === "entry-2").language).toBe("Deutsch");
+    const body = apiRequest.mock.calls.find(([path]) => path === "/api/words")[1].body;
+    expect(body.word).toBe("? kick the bucket");
+    expect(body.lookup_only).toBe(false);
   });
 
-  it("keeps the lookup-only choice when a suggested unit is tapped", async () => {
-    await labelBehavior(EPIC.VOCABULARY_ANALYSIS, FEATURE.INPUT_AND_LANGUAGES, "Word submission");
-    apiRequest.mockImplementation(async (path) => {
-      if (path === "/api/languages") return OPTIONS;
-      if (path === "/api/words") return { entry_id: "entry-2" };
-      throw new Error(`Unexpected request: ${path}`);
+  describe("the rail", () => {
+    it("shows only the selected language's entries, newest first", async () => {
+      entries.value = [
+        unit("entry-3", "Straße", "de"),
+        unit("entry-2", "window", "en"),
+        unit("entry-1", "house", "en"),
+      ];
+      const wrapper = mount(AddView);
+      await flushPromises();
+
+      expect(wrapper.findAll(".chip").map((chip) => chip.text())).toEqual(["window", "house"]);
+      expect(wrapper.get(".entry-title").text()).toBe("window");
+
+      await wrapper.get('[data-testid="lang-de"]').trigger("click");
+      await flushPromises();
+
+      expect(wrapper.findAll(".chip").map((chip) => chip.text())).toEqual(["Straße"]);
+      expect(wrapper.get(".entry-title").text()).toBe("Straße");
     });
-    entries.value = [textEntry()];
-    const wrapper = mount(AddView);
-    await flushPromises();
-    await wrapper.find('.lookup input[type="checkbox"]').setValue(true);
 
-    await wrapper.find(".segment-label").trigger("click");
-    await flushPromises();
+    it("opens the entry whose chip was tapped", async () => {
+      entries.value = [unit("entry-2", "window"), unit("entry-1", "house")];
+      const wrapper = mount(AddView);
+      await flushPromises();
+      expect(wrapper.get(".entry-title").text()).toBe("window");
 
-    expect(
-      apiRequest.mock.calls.find(([path]) => path === "/api/words")[1].body.lookup_only,
-    ).toBe(true);
+      await wrapper.get('[data-testid="chip-entry-1"]').trigger("click");
+      await flushPromises();
+
+      expect(wrapper.get(".entry-title").text()).toBe("house");
+      expect(wrapper.get('[data-testid="chip-entry-1"]').classes()).toContain("active");
+    });
+
+    it("walks the rail when the card is swiped, and stops at either end", async () => {
+      entries.value = [unit("entry-2", "window"), unit("entry-1", "house")];
+      const wrapper = mount(AddView);
+      await flushPromises();
+
+      const deck = wrapper.get(".deck");
+      await deck.trigger("pointerdown", { clientX: 200 });
+      await deck.trigger("pointermove", { clientX: 100 });
+      await deck.trigger("pointerup");
+      await flushPromises();
+      expect(wrapper.get(".entry-title").text()).toBe("house");
+
+      // Nothing older to move on to; the card stays where it is.
+      await deck.trigger("pointerdown", { clientX: 200 });
+      await deck.trigger("pointermove", { clientX: 100 });
+      await deck.trigger("pointerup");
+      await flushPromises();
+      expect(wrapper.get(".entry-title").text()).toBe("house");
+
+      await deck.trigger("pointerdown", { clientX: 100 });
+      await deck.trigger("pointermove", { clientX: 200 });
+      await deck.trigger("pointerup");
+      await flushPromises();
+      expect(wrapper.get(".entry-title").text()).toBe("window");
+    });
+
+    it("returns each language to the word it was left on", async () => {
+      entries.value = [
+        unit("entry-4", "Fenster", "de"),
+        unit("entry-3", "Straße", "de"),
+        unit("entry-2", "window", "en"),
+        unit("entry-1", "house", "en"),
+      ];
+      const wrapper = mount(AddView);
+      await flushPromises();
+
+      await wrapper.get('[data-testid="chip-entry-1"]').trigger("click");
+      await wrapper.get('[data-testid="lang-de"]').trigger("click");
+      await flushPromises();
+      expect(wrapper.get(".entry-title").text()).toBe("Fenster");
+
+      await wrapper.get('[data-testid="lang-en"]').trigger("click");
+      await flushPromises();
+
+      expect(wrapper.get(".entry-title").text()).toBe("house");
+    });
+
+    it("has no rail and no card for a language with nothing in it yet", async () => {
+      entries.value = [unit("entry-1", "house", "en")];
+      const wrapper = mount(AddView);
+      await flushPromises();
+
+      await wrapper.get('[data-testid="lang-de"]').trigger("click");
+      await flushPromises();
+
+      expect(wrapper.find(".chips").exists()).toBe(false);
+      expect(wrapper.find(".deck").exists()).toBe(false);
+      expect(wrapper.get(".empty").text()).toBe("Word analyses will appear here.");
+    });
+
+    // A number and a pair of arrows say less than the chip under the card does.
+    it("shows no pager", async () => {
+      entries.value = [unit("entry-2", "window"), unit("entry-1", "house")];
+      const wrapper = mount(AddView);
+      await flushPromises();
+
+      expect(wrapper.text()).not.toContain("1 / 2");
+      expect(wrapper.find(".pager").exists()).toBe(false);
+    });
   });
 
-  it("renders a suggested unit as text, so model markup can never become markup", async () => {
-    await labelBehavior(EPIC.VOCABULARY_ANALYSIS, FEATURE.ANSWER_DELIVERY, "Suggested units");
-    entries.value = [
-      textEntry([
+  describe("the controls on the open card", () => {
+    it("asks the backend to switch onto the suggested spelling", async () => {
+      entries.value = [unit("entry-1", "envi", "en", { suggestion: "envy" })];
+      apiRequest.mockImplementation(async (path) => {
+        if (path === "/api/languages") return OPTIONS;
+        if (path === "/api/words/entry-1/switch") return { queued: true };
+        throw new Error(`Unexpected request: ${path}`);
+      });
+      const wrapper = mount(AddView);
+      await flushPromises();
+
+      await wrapper.get(".correction").trigger("click");
+      await flushPromises();
+
+      expect(apiRequest).toHaveBeenCalledWith("/api/words/entry-1/switch", { method: "POST" });
+    });
+
+    it("deletes only the open card's own note, and only once confirmed", async () => {
+      await labelBehavior(EPIC.ANKI_CARDS, FEATURE.COLLECTION, "Card deletion");
+      entries.value = [unit("entry-2", "window"), unit("entry-1", "house")];
+      apiRequest.mockImplementation(async (path) => {
+        if (path === "/api/languages") return OPTIONS;
+        if (path === "/api/words/entry-2/delete-card") return { deleted: "window" };
+        throw new Error(`Unexpected request: ${path}`);
+      });
+      const wrapper = mount(AddView);
+      await flushPromises();
+
+      await wrapper.get(".delete-card").trigger("click");
+      await flushPromises();
+      expect(
+        apiRequest.mock.calls.filter(([path]) => path.endsWith("/delete-card")),
+      ).toHaveLength(0);
+
+      await wrapper.get(".confirm-yes").trigger("click");
+      await flushPromises();
+
+      expect(
+        apiRequest.mock.calls.filter(([path]) => path.endsWith("/delete-card")),
+      ).toEqual([["/api/words/entry-2/delete-card", { method: "POST" }]]);
+    });
+
+    it("marks the paid call as running on the card and on its chip", async () => {
+      let settle;
+      apiRequest.mockImplementation(async (path) => {
+        if (path === "/api/languages") return OPTIONS;
+        if (path === "/api/words/entry-1/detail") {
+          return new Promise((resolve) => {
+            settle = () => resolve({ queued: true });
+          });
+        }
+        throw new Error(`Unexpected request: ${path}`);
+      });
+      entries.value = [unit("entry-1", "house", "en", { detail_available: true })];
+      const wrapper = mount(AddView);
+      await flushPromises();
+
+      await wrapper.get(".detail").trigger("click");
+      await flushPromises();
+
+      expect(wrapper.find(".progress").exists()).toBe(true);
+      expect(wrapper.get(".working").text()).toContain("Building the full entry");
+      expect(wrapper.get('[data-testid="chip-entry-1"]').classes()).toContain("running");
+
+      settle();
+      await flushPromises();
+      // Still running: only the streamed answer ends it.
+      expect(wrapper.get('[data-testid="chip-entry-1"]').classes()).toContain("running");
+    });
+
+    it("stops saying a paid call is running when it is refused", async () => {
+      apiRequest.mockImplementation(async (path) => {
+        if (path === "/api/languages") return OPTIONS;
+        if (path === "/api/words/entry-1/detail") throw new Error("the daily cap is spent");
+        throw new Error(`Unexpected request: ${path}`);
+      });
+      entries.value = [unit("entry-1", "house", "en", { detail_available: true })];
+      const wrapper = mount(AddView);
+      await flushPromises();
+
+      await wrapper.get(".detail").trigger("click");
+      await flushPromises();
+
+      expect(wrapper.get(".hint").text()).toBe("the daily cap is spent");
+      expect(wrapper.find(".progress").exists()).toBe(false);
+      expect(wrapper.get('[data-testid="chip-entry-1"]').classes()).not.toContain("running");
+    });
+
+    it("shows an article the backend already had without waiting on an event", async () => {
+      apiRequest.mockImplementation(async (path) => {
+        if (path === "/api/languages") return OPTIONS;
+        if (path === "/api/words/entry-1/detail") {
+          return { entry_id: "entry-1", detail_html: "<p>kept</p>", cached: true };
+        }
+        throw new Error(`Unexpected request: ${path}`);
+      });
+      entries.value = [unit("entry-1", "house", "en", { detail_available: true })];
+      const wrapper = mount(AddView);
+      await flushPromises();
+
+      await wrapper.get(".detail").trigger("click");
+      await flushPromises();
+
+      expect(wrapper.get(".entry-detail").html()).toContain("kept");
+      expect(wrapper.find(".progress").exists()).toBe(false);
+    });
+
+    it("offers a failed entry back as a chip instead of asking for it to be retyped", async () => {
+      entries.value = [
         {
-          label: "<img src=x onerror=alert(1)>",
-          reason: "<script>alert(2)</script><b>steht</b>",
+          entry_id: "entry-1",
+          word: "Ampel",
+          lang: "de",
+          language: "Deutsch",
+          lookup_only: false,
+          context: "Die Ampel ist rot.",
+          requested_shape: "unit",
+          status: "error",
+          error: "analysis_failed",
         },
-      ]),
-    ];
-    const wrapper = mount(AddView);
-    await flushPromises();
+      ];
+      accepts("entry-2");
+      const wrapper = mount(AddView);
+      await flushPromises();
+      await wrapper.get('[data-testid="lang-de"]').trigger("click");
+      await flushPromises();
 
-    const segment = wrapper.find(".segment");
-    expect(segment.find(".segment-label").text()).toBe("<img src=x onerror=alert(1)>");
-    expect(segment.html()).toContain("&lt;img src=x onerror=alert(1)&gt;");
-    expect(segment.find("img").exists()).toBe(false);
-    expect(segment.find("b").exists()).toBe(false);
-    expect(segment.find("script").exists()).toBe(false);
-  });
+      await wrapper.get(".entry-error .retry").trigger("click");
+      await flushPromises();
 
-  it("offers the other senses of a carded word as chips telling them apart", async () => {
-    await labelBehavior(EPIC.VOCABULARY_ANALYSIS, FEATURE.ANSWER_DELIVERY, "Suggested units");
-    entries.value = [senseEntry()];
-    const wrapper = mount(AddView);
-    await flushPromises();
-
-    expect(wrapper.findAll(".segment-label").map((button) => button.text())).toEqual([
-      "bank",
-      "bank",
-    ]);
-    const reasons = wrapper.findAll(".segment-reason").map((node) => node.text());
-    expect(reasons).toEqual(["банк", "склон"]);
-  });
-
-  it("uses distinct headings for text, expression and sense chips", async () => {
-    await labelBehavior(EPIC.VOCABULARY_ANALYSIS, FEATURE.ANSWER_DELIVERY, "Suggested units");
-    entries.value = [senseEntry()];
-    const wrapper = mount(AddView);
-    await flushPromises();
-
-    expect(wrapper.find(".segments-title").text()).toBe(
-      "Senses of this word — tap one to analyse it:",
-    );
-
-    entries.value = [textEntry()];
-    await flushPromises();
-
-    expect(wrapper.find(".segments-title").text()).toBe(
-      "Words and combinations — tap one to analyse it:",
-    );
-
-    entries.value = [{ ...senseEntry(), segment_kind: "expression" }];
-    await flushPromises();
-
-    expect(wrapper.find(".segments-title").text()).toBe(
-      "Words in this expression — tap one to analyse it:",
-    );
-  });
-
-  it("keeps the sense chips on a lookup-only answer, heading them without a card", async () => {
-    await labelBehavior(EPIC.VOCABULARY_ANALYSIS, FEATURE.ANSWER_DELIVERY, "Suggested units");
-    entries.value = [
-      { ...senseEntry(), lookup_only: true, card_status: "lookup_only", card_kinds: [] },
-    ];
-    const wrapper = mount(AddView);
-    await flushPromises();
-
-    expect(wrapper.findAll(".segment-label")).toHaveLength(2);
-    expect(wrapper.find(".segments-title").text()).toBe(
-      "Senses of this word — tap one to analyse it:",
-    );
-
-    locale.value = "ru";
-    await flushPromises();
-
-    expect(wrapper.find(".segments-title").text()).toBe(
-      "Значения этого слова — нажмите, чтобы разобрать:",
-    );
-  });
-
-  it("submits a sense chip with that sense's own sentence as the context", async () => {
-    await labelBehavior(EPIC.VOCABULARY_ANALYSIS, FEATURE.INPUT_AND_LANGUAGES, "Word submission");
-    apiRequest.mockImplementation(async (path) => {
-      if (path === "/api/languages") return OPTIONS;
-      if (path === "/api/words") return { entry_id: "entry-2" };
-      throw new Error(`Unexpected request: ${path}`);
+      expect(apiRequest).toHaveBeenCalledWith("/api/words", {
+        method: "POST",
+        body: {
+          word: "Ampel",
+          lang: "de",
+          lookup_only: false,
+          context: "Die Ampel ist rot.",
+          shape: "unit",
+          request_id: expect.any(String),
+        },
+      });
     });
-    entries.value = [senseEntry()];
-    const wrapper = mount(AddView);
-    await flushPromises();
 
-    await wrapper.find(".segment-label").trigger("click");
-    await flushPromises();
+    it("posts a tapped chip in the language of its own text, and opens the new entry",
+      async () => {
+        await labelBehavior(
+          EPIC.VOCABULARY_ANALYSIS,
+          FEATURE.INPUT_AND_LANGUAGES,
+          "Word submission",
+        );
+        accepts("entry-2");
+        entries.value = [textEntry()];
+        const wrapper = mount(AddView);
+        await flushPromises();
+        await wrapper.get('[data-testid="lang-de"]').trigger("click");
+        await flushPromises();
 
-    expect(apiRequest).toHaveBeenCalledWith("/api/words", {
-      method: "POST",
-      body: {
-        word: "bank",
-        lang: "en",
-        lookup_only: false,
-        context: "The bank opens at nine.",
-        shape: "unit",
-        request_id: expect.any(String),
-      },
-    });
+        await wrapper.get(".segment-label").trigger("click");
+        await flushPromises();
+
+        expect(apiRequest).toHaveBeenCalledWith("/api/words", {
+          method: "POST",
+          body: {
+            word: "steht auf",
+            lang: "de",
+            lookup_only: false,
+            context: "Er steht jeden Morgen um sechs auf.",
+            shape: "unit",
+            request_id: expect.any(String),
+          },
+        });
+        expect(entries.value.find((entry) => entry.entry_id === "entry-2").language).toBe(
+          "Deutsch",
+        );
+        // The tapped word is what the reader wants to read, so it is what opens.
+        expect(wrapper.get(".entry-title").text()).toBe("steht auf");
+        expect(wrapper.get('[data-testid="chip-entry-2"]').classes()).toContain("active");
+      });
   });
 
-  it("offers neither rebuild nor deeper analysis on a running-text entry", async () => {
-    await labelBehavior(EPIC.VOCABULARY_ANALYSIS, FEATURE.ANSWER_DELIVERY, "Suggested units");
-    entries.value = [textEntry()];
+  it("documents the lookup shortcut and what becomes of a misspelling", async () => {
     const wrapper = mount(AddView);
     await flushPromises();
 
-    expect(wrapper.find(".rebuild").exists()).toBe(false);
-    expect(wrapper.find(".detail").exists()).toBe(false);
-  });
+    await wrapper.get(".about-toggle").trigger("click");
 
-  it("keeps detail but hides rebuild on a lookup-only unit", async () => {
-    entries.value = [{
-      ...senseEntry(),
-      lookup_only: true,
-      card_status: "lookup_only",
-      card_kinds: [],
-      detail_available: true,
-    }];
-    const wrapper = mount(AddView);
-    await flushPromises();
-
-    expect(wrapper.find(".rebuild").exists()).toBe(false);
-    expect(wrapper.find(".detail").exists()).toBe(true);
+    const help = wrapper.get(".about-text").text();
+    expect(help).toContain("“? word”");
+    expect(help).toContain("said above the analysis");
+    expect(help).toContain("will not invent a word");
+    // The checkbox it used to open with no longer exists.
+    expect(help).not.toContain("checkbox");
   });
 });

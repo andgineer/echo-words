@@ -280,11 +280,13 @@ on the same rule as the judgement: silence is not an objection, so a lookup that
 not answer never confirms one that did. Nought occurrences and a failed search read
 alike to a reader and mean opposite things.
 
-**And the reader is shown the search rather than sent to run it.** Both sources have
-already been asked by the time the warning appears, so the entry links the
-encyclopedia search that came back empty and the reader can see for themselves. The
-warning states what was established and nothing more — no dictionary has the wording,
-and this language's encyclopedia never writes it.
+**And the way out of the warning leads somewhere that can answer.** Both sources have
+already been asked by the time the warning appears, so linking the encyclopedia search
+would send the reader to the query that just returned nought, on the one source whose
+register cannot carry slang — which is exactly what the residual `иде ми се` is. The
+entry links a general web search for the exact quoted wording instead. The warning
+states what was established and nothing more — no dictionary has the wording, and this
+language's encyclopedia never writes it.
 
 **The count is evidence about a wording, never a threshold.** It is not comparable
 across languages — the same bird is `сврака` 90 in the Serbian encyclopedia against

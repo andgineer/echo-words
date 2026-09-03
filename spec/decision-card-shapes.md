@@ -125,7 +125,8 @@ remain model-owned morphology rather than something the backend guesses.
 The model supplies linguistic content; the backend enforces structure and
 safety. It does not adjudicate whether a translation, inflection or example is
 linguistically correct. The entry reports the four distinct template kinds as
-soon as the note is stored, and undo removes the note with all four cards. A
+soon as the note is stored, and deleting the card removes the note with all four
+cards. A
 future setting may let the reader disable stimuli, but v0.1 always uses all
 four.
 

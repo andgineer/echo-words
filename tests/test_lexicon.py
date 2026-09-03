@@ -103,12 +103,14 @@ async def test_an_empty_wording_is_not_asked_about(languages, wiktionary):
     assert asked == []
 
 
-def encyclopedia(payload, asked):
+def encyclopedia(payload, asked, queried=None):
     """A transport answering the Wikipedia search, per searched string where scripted."""
 
     def handle(request: httpx.Request) -> httpx.Response:
         wanted = request.url.params["srsearch"].strip('"')
         asked.append(wanted)
+        if queried is not None:
+            queried.append(str(request.url))
         answer = payload.get(wanted, payload) if isinstance(payload, dict) else payload
         if isinstance(answer, int):
             return httpx.Response(answer)
@@ -119,12 +121,12 @@ def encyclopedia(payload, asked):
 
 @pytest.fixture
 def wikipedia(monkeypatch):
-    def build(payload):
+    def build(payload, queried=None):
         asked: list[str] = []
         original = httpx.AsyncClient
 
         def client(**kwargs):
-            transport = httpx.MockTransport(encyclopedia(payload, asked))
+            transport = httpx.MockTransport(encyclopedia(payload, asked, queried))
             return original(transport=transport, **kwargs)
 
         monkeypatch.setattr("echo_words.lexicon.httpx.AsyncClient", client)
@@ -153,7 +155,26 @@ async def test_usage_reports_the_count_and_what_it_found(languages, wikipedia):
     assert found.hits == 249
     # The search markup marks the match and is not ours to keep.
     assert found.examples == ["неопходно је водити рачуна"]
-    assert found.search_url.startswith("https://sr.wikipedia.org/w/index.php?search=")
+    assert found.search_url.startswith("https://duckduckgo.com/?q=")
+
+
+async def test_the_way_out_of_the_warning_is_a_web_search_for_the_exact_wording(
+    languages,
+    wikipedia,
+):
+    """The encyclopedia is the source that just answered nought, and its register
+    carries no slang — `иде ми се` is the residual false warning it cannot settle."""
+    queried: list[str] = []
+    lookup, _asked = wikipedia({"searchinfo": {"totalhits": 0}, "search": []}, queried)
+
+    found = await lookup.usage("иде ми се", languages["sr"])
+
+    assert found.search_url == (
+        "https://duckduckgo.com/?q=%22%D0%B8%D0%B4%D0%B5+%D0%BC%D0%B8+%D1%81%D0%B5%22"
+    )
+    # The count itself is still asked of Wikipedia; only the reader's way out moved.
+    assert all(url.startswith("https://sr.wikipedia.org/w/api.php") for url in queried)
+    assert all("list=search" in url for url in queried)
 
 
 async def test_a_two_script_language_is_counted_in_both(languages, wikipedia):

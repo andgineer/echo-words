@@ -305,19 +305,22 @@ it is finished, not running.
 
 ### Actions
 
-Two, for a unit entry that has a card:
+Two on a finished unit entry, the second only where a note exists:
 
 - `add.detail` → `"Полная статья"` / `"The full entry"`, becoming
   `add.detailReady` → `"Статья готова"` / `"The entry is ready"` once
-  `detail_html` is set, disabled from then on.
+  `detail_html` is set, disabled from then on. The functional description
+  puts it on any finished word answer and excludes only running text
+  ("It does not apply to running text, which has no single word to go
+  deeper on"), so a lookup-only entry keeps it: it never touches Anki.
 - **New**: delete this card, `"Удалить из Anki"` / `"Delete from Anki"`,
   in `--error`. Pressing it turns the action row into an inline
   confirmation — `"Удалить карточки для «{word}» из Anki? Разбор
   останется на экране."` with `Удалить` / `Отмена` — never a modal and
   never a `confirm()`. Plural "карточки": one word makes four.
 
-A lookup-only entry gets neither. A text entry gets neither. The rebuild
-button is removed (see Deferred).
+A lookup-only entry gets no delete action — it carded nothing. A text entry
+gets neither. The rebuild button is removed (see Deferred).
 
 ### Per-card deletion — backend
 

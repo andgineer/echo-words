@@ -10,6 +10,7 @@ import logging
 import re
 from collections import OrderedDict
 from dataclasses import dataclass
+from urllib.parse import quote_plus
 
 import httpx
 
@@ -24,7 +25,9 @@ CACHE_LIMIT = 2048
 # Wikimedia asks for a user agent that identifies the caller.
 USER_AGENT = "echo-words/1 (private vocabulary assistant)"
 WIKIPEDIA_URL = "https://{lang}.wikipedia.org/w/api.php"
-WIKIPEDIA_SEARCH_URL = "https://{lang}.wikipedia.org/w/index.php?search={query}"
+# The reader is sent to a general web search rather than back to the encyclopedia,
+# whose register carries no slang: it is the one source that just answered nought.
+USAGE_SEARCH_URL = "https://duckduckgo.com/?q={query}"
 USAGE_EXAMPLES = 3
 _TAGS = re.compile(r"<[^>]*>")
 
@@ -103,10 +106,7 @@ class Wikipedia:
         return Usage(
             hits=int(found.get("searchinfo", {}).get("totalhits", 0)),
             examples=[_plain(item.get("snippet", "")) for item in found.get("search", [])],
-            search_url=WIKIPEDIA_SEARCH_URL.format(
-                lang=language.code,
-                query=httpx.QueryParams({"q": f'"{wording}"'})["q"],
-            ),
+            search_url=USAGE_SEARCH_URL.format(query=quote_plus(f'"{wording}"')),
         )
 
 

@@ -49,6 +49,7 @@ export function useEventStream({
         card_kinds: [],
         no_audio: false,
         no_card_audio: false,
+        detail_pending: false,
         ...(Object.hasOwn(data, "detail_html") ? { detail_html: data.detail_html } : {}),
       });
     } else if (name === "done") {
@@ -58,6 +59,7 @@ export function useEventStream({
         entry_id: data.entry_id,
         detail_html: data.text,
         detail_error: data.error,
+        detail_pending: false,
       });
     } else if (name === "control_error") {
       upsertEntry({ entry_id: data.entry_id, control_error: data.message });

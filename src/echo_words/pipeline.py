@@ -47,6 +47,7 @@ TEXT_STATUS = "text"
 CARD_FAILED_STATUS = "failed"
 UNATTESTED_STATUS = "unattested"
 MISSPELLED_STATUS = "misspelled"
+DELETED_STATUS = "deleted"
 REQUEST_EXPIRED = "request expired"
 MAX_POST_GENERATION_AUDIO_WAIT_SECONDS = 10
 # How long the judgement may still take once the article is complete. It is one line
@@ -383,6 +384,48 @@ class WordPipeline:
             ),
         )
         return {"entry_id": entry_id, "queued": True}
+
+    async def delete_card(self, entry_id: str) -> str | None:
+        """Remove this entry's own note from Anki, leaving its analysis on the screen."""
+        entry, state = self._active_control(entry_id)
+        note_id = state.note_id
+        if note_id is None or self.anki is None:
+            return None
+        await self.anki.remove_note(note_id, state.media_filename)
+        removed_audio = state.audio_path
+        self._delete_audio(removed_audio)
+        if state.card_audio_path != removed_audio:
+            self._delete_audio(state.card_audio_path)
+        word = state.carded_word or state.shown_spelling
+        state.note_id = None
+        state.media_filename = None
+        state.audio_path = None
+        state.card_audio_path = None
+        undo = self.history.undo.get(state.language.code)
+        if undo is not None and undo.note_id == note_id:
+            self.history.undo.pop(state.language.code, None)
+        if removed_audio is not None:
+            # The pronunciation was the note's media; a player over a file this call
+            # has just unlinked would answer the tap with nothing at all.
+            entry.audio_file = None
+        entry.card_status = DELETED_STATUS
+        entry.card_kinds = []
+        entry.card_error = None
+        entry.card_kept = False
+        entry.no_card_audio = False
+        await self.events.publish(
+            "done",
+            {
+                "entry_id": entry.entry_id,
+                "card_status": entry.card_status,
+                "card_kinds": [],
+                "card_error": None,
+                "card_kept": False,
+                "no_card_audio": False,
+                "audio_url": entry.audio_url,
+            },
+        )
+        return word
 
     async def undo(self, language: Language) -> str | None:
         state = self.history.undo.get(language.code)

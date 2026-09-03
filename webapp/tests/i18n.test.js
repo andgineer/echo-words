@@ -37,10 +37,10 @@ describe("interface language", () => {
   });
 
   it("interpolates named placeholders and passes an unknown key through", () => {
-    expect(t("add.undone", { word: "Straße" })).toBe("Removed: Straße");
+    expect(t("add.retry", { word: "Straße" })).toBe("Send “Straße” again");
     locale.value = "ru";
-    expect(t("add.undone", { word: "Straße" })).toBe("Удалено: Straße");
-    expect(t("add.undone")).toBe("Удалено: {word}");
+    expect(t("add.retry", { word: "Straße" })).toBe("Отправить «Straße» ещё раз");
+    expect(t("add.retry")).toBe("Отправить «{word}» ещё раз");
     expect(t("nothing.here")).toBe("nothing.here");
   });
 
@@ -77,7 +77,7 @@ describe("interface language", () => {
 
     expect(wrapper.get('[data-testid="nav-add"]').attributes("aria-label")).toBe("Слова");
     expect(wrapper.text()).toContain("Разобрать");
-    expect(wrapper.text()).toContain("Только посмотреть");
+    expect(wrapper.text()).toContain("Здесь появятся разборы слов");
     expect(wrapper.text()).not.toContain("Analyse");
   });
 });

@@ -5,14 +5,8 @@ export default {
   "nav.label": "Navigation",
   "nav.locale": "Interface language",
 
-  "add.language": "Language",
-  "add.word": "Word or phrase",
-  "add.wordPlaceholder": "word",
-  "add.lookupOnly": "Look up only — no Anki card",
+  "add.wordPlaceholder": "a word or a phrase",
   "add.submit": "Analyse",
-  "add.undo": "Undo the last one",
-  "add.undone": "Removed: {word}",
-  "add.nothingToUndo": "Nothing to undo",
   "add.queued": "No connection — the word is saved and will be sent later.",
   "add.empty": "Word analyses will appear here.",
   "add.revert": "↩︎ Go back to a card for “{word}”",
@@ -32,39 +26,48 @@ export default {
   "add.notInReferences":
     "No dictionary has “{word}” and Wikipedia never writes it — nor any invented " +
     "word tested. The card was still made.",
-  "add.seeUsageSearch": "See the search",
-  "add.rebuild": "Rebuild the card",
-  "add.detailReady": "Full analysis ready",
-  "add.detail": "More detail",
-  "add.noCard": "no card",
-  "add.textNoCard": "text — no card",
+  "add.seeUsageSearch": "Search the web",
+  "add.detail": "The full entry",
+  "add.detailReady": "The entry is ready",
+  "add.deleteCard": "Delete from Anki",
+  "add.deleteCardConfirm":
+    "Delete the cards for “{word}” from Anki? The analysis stays on the screen.",
+  "add.deleteCardYes": "Delete",
+  "add.deleteCardNo": "Cancel",
+  "add.analysing": "Analysing “{word}” — usually a couple of seconds",
+  "add.buildingEntry": "Building the full entry — usually about 10 seconds",
   "add.analysisFailed": "Could not get the analysis.",
   "add.retry": "Send “{word}” again",
   "add.contextAudio": "The whole text",
-  "add.text": "Words and combinations — tap one to analyse it:",
-  "add.expression": "Words in this expression — tap one to analyse it:",
-  "add.senses": "Senses of this word — tap one to analyse it:",
+  "add.sentence": "Sentence",
+  "add.railLabel": "Analysed words",
   "add.aboutHide": "Hide",
   "add.aboutShow": "What this is and how to use it",
   "add.aboutIntro":
     "echo-words analyses a word or a whole expression in the language you pick: translation, " +
     "senses, usage, origin and examples — and adds one selected sense to Anki as four cards, " +
     "so it is reviewed from both bare and sentence prompts. An expression is analysed as one thing, " +
-    "and its component words remain available as separate chips.",
+    "and its component words remain available as separate chips. Everything analysed stays in the " +
+    "rail of words above the card: tap a word, or swipe the card sideways.",
   "add.aboutText":
     "<b>A sentence or a longer text</b> gets a different answer: it is translated and its hard " +
     "parts are explained, and it makes no card — a whole sentence is not reviewable. Under the " +
     "answer comes every source word, with multi-word combinations kept together; one tap " +
     "analyses that chip as a unit, with the text kept as its context.",
   "add.aboutLookup":
-    "<b>Look up only.</b> The checkbox next to the input gives you the analysis and the " +
-    "pronunciation without creating a card. A leading <b>?</b> does the same: “? word”.",
+    "<b>Look up only.</b> A leading <b>?</b> — “? word” — gives you the analysis and the " +
+    "pronunciation without creating a card. It is rarely needed: every card offers " +
+    "“Delete from Anki”.",
   "add.aboutCorrection":
     "<b>Spelling.</b> What became of the word you typed is always said above the analysis. When " +
-    "no such word exists, the card is made for the corrected one and says so; undo removes it. " +
+    "no such word exists, the card is made for the corrected one and says so; the card's own " +
+    "“Delete from Anki” removes it. " +
     "When the word exists but another spelling is the usual one, the card is yours and a button " +
     "offers to replace it. When the model does not vouch for the word at all, there is no card " +
     "and no article: it will not invent a word that nobody uses.",
+
+  "languages.title": "Languages you study",
+  "languages.edit": "Edit the languages",
 
   "card.added": "✅ added to Anki",
   "card.addedCount.one": "✅ 1 card: {kinds}",
@@ -77,7 +80,7 @@ export default {
   "card.kind.contextRecognition": "sentence → meaning",
   "card.kind.contextProduction": "gap → word",
   "card.lookupOnly": "👁 lookup only",
-  "card.text": "👁 text — no card",
+  "card.deleted": "🗑 cards deleted from Anki",
   "card.failed": "⚠️ card failed",
   "card.unattested": "🚫 no card",
   "card.misspelled": "🚫 no card — looks misspelled",

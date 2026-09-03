@@ -86,11 +86,12 @@ The four requirements every design decision is weighed against:
 
 ## Core flow
 
-1. The user picks the source language (the selector remembers the last
-   choice) and submits exactly the word, expression, fragment or text they
-   want analysed. A lookup-only request — the answer and audio arrive as
-   usual but no Anki note is created — is made with the control next to the
-   input; prefixing the text with `?` does the same.
+1. The user picks the source language from a row of buttons above the whole
+   screen (the row remembers the last choice, and filters both the input and
+   the rail of analysed words) and submits exactly the word, expression,
+   fragment or text they want analysed. A lookup-only request — the answer and
+   audio arrive as usual but no Anki note is created — is made by prefixing the
+   text with `?`.
    Every compact answer ends in one hidden discriminated payload, and the
    prompt that asks for it carries only the branches the request can still be
    in. A single source word is a known vocabulary unit, and so is a tapped
@@ -353,8 +354,8 @@ analysed another spelling, the card is for that word — applied, not offered, b
 a note pairing the learner's spelling with another word's meanings, examples and gap
 teaches a word no sentence on it contains. Nothing is silent about it: whenever the
 entry is about wording other than what was submitted, it says so above the analysis,
-for a lookup and a failed card as much as for a stored one, and undo removes what was
-stored. Only a misspelling the answer declares is *named* as one — a dictionary lemma
+for a lookup and a failed card as much as for a stored one, and the card's own
+deletion removes what was stored. Only a misspelling the answer declares is *named* as one — a dictionary lemma
 for an inflected form is the ordinary case, and calling it a typo would accuse the
 learner on a large share of everything they submit. The parser keeps the analysed
 headword and drops a suggestion that merely repeats it.
@@ -514,8 +515,8 @@ both in the answer entry and on the flashcard.
   senses, forms where useful, usage, origin and examples. The six Anki fields
   contain only the selected sense's word, audio, optional label, translations,
   highlighted sentence and gapped sentence.
-- The status line reports all four distinct template kinds. Undo removes the
-  note with all four cards.
+- The status line reports all four distinct template kinds. Deleting the card
+  removes the note with all four cards.
 
 - **One deck per source language**, set in the languages configuration
   (e.g. `EchoWords: English`, `EchoWords: German`,
@@ -535,21 +536,35 @@ both in the answer entry and on the flashcard.
 
 Kept minimal — everything beyond typing a word:
 
-- **About/help note** — what the app does, the two input shapes, the
-  lookup-only control and `?` shortcut, and the ✏️ correction button for
-  a suspected typo.
+- **About/help note** — what the app does, the two input shapes, the `?`
+  lookup shortcut, and the correction button for a suspected typo.
+- **The rail and the card** — the analysed words of the selected language sit
+  as a scrollable strip of chips above a single card, newest first. The chip
+  is the index and the card is the reader: one tap opens any entry, and the
+  card is swiped sideways between neighbours. The selected chip scrolls itself
+  to the middle, so a word from the middle of two dozen is one tap away. A chip
+  whose entry is still being answered, or whose paid call is running, carries a
+  live dot, so the reader can move away and still see the work continuing.
+  There is no page counter and no arrows: position is which chip is centred.
 - **Chips** — under a text answer, every source word plus one chip for each
   accepted combination, each combination standing before its first word; under a set
   expression, its component words; under a single word or any explicit card
   request, every retained sense. Each chip submits its own stored context and
   explicit unit intent rather than making the frontend reconstruct either.
-- **History** — the answer area shows recent words with their finished
-  analyses, pronunciation, and status; in-progress entries appear with
-  their text accumulated so far. History is served by the backend, so
-  it survives reloads, a dropped connection mid-generation, and
-  switching devices — but it is held **in memory only** and starts
-  empty after a restart. The cards it produced are unaffected; a word
-  whose analysis scrolled away can always be looked up again.
+- **History** — the rail holds recent words with their finished analyses,
+  pronunciation, and status; an entry still being answered shows its text
+  accumulated so far. History is served by the backend, so it survives
+  reloads, a dropped connection mid-generation, and switching devices — but
+  it is held **in memory only** and starts empty after a restart. Both sides
+  bound it to the same number of entries and neither evicts one still being
+  answered. The cards it produced are unaffected; a word whose analysis fell
+  off the end can always be looked up again.
+- **Delete this card** — on the entry in front of the reader, remove the Anki
+  note that entry created, its media and its recordings. The analysis stays on
+  the screen and the entry stays in the rail; only the cards go, and the
+  question is asked inside the card rather than in a modal. It acts on the
+  entry being read rather than on whichever word happened to be last, and it
+  is offered only where a note actually exists to delete.
 - **Deeper analysis** — on a finished word answer, a control that asks the
   same word again from the paid model with a fuller brief: every sense
   the word has rather than the card-worthy few, a real etymology, more
@@ -563,18 +578,20 @@ Kept minimal — everything beyond typing a word:
   configured or the daily cap is spent, the control says so instead of
   quietly answering from the pool: the user asked for the better model.
   It does not apply to running text, which has no single word to go
-  deeper on.
-- **Rebuild the card** — on a unit entry that successfully added a note,
-  ask the paid model to build the note again: for a weak or plainly wrong card, and for the
-  case the context was only understood afterwards. It uses the entry's
-  context when there is one, reuses the stored unit headword and explicit unit
-  intent, and replaces the note that entry produced. It reuses card audio only
-  when the rebuilt answer returns the same headword.
-  Unlike the deeper analysis, this one *is* about the deck — it is the
-  only control that rewrites a card, and it never fires on its own.
-  Bounded by the same daily cap, and refused with a reason when the cap
-  is spent or no paid model is configured. It does not apply to running
-  text, which produced no card to rebuild.
+  deeper on. The call takes about ten seconds, so pressing it changes the
+  card at once: a progress strip, a line saying roughly how long it takes,
+  and a live dot on that word's chip in the rail.
+- **Rebuild the card** — rewriting an existing note with the paid model. The
+  pipeline path and its endpoint stand, but **no control offers it**: the
+  reader never sees the note, and the plain translation a card needs is what
+  the free model gets right the first time. The small chance that the paid
+  model would translate differently does not earn a button. It uses the
+  entry's context when there is one, reuses the stored unit headword and
+  explicit unit intent, replaces the note that entry produced, and reuses card
+  audio only when the rebuilt answer returns the same headword. Bounded by the
+  same daily cap, and refused with a reason when the cap is spent or no paid
+  model is configured. It does not apply to running text, which produced no
+  card to rebuild.
 - **Status view** — backend health, AnkiWeb sync state (last result,
   whether unsynced changes are waiting).
 - **Version in the header** — the version of the build the page is
@@ -587,17 +604,15 @@ Kept minimal — everything beyond typing a word:
   regardless of restarts. Lookup-only sends create no card and are
   therefore counted in memory, labeled as being since the last restart.
 - **Undo** — remove the note created by the last submitted word of the
-  currently selected language (mistaken sends). When the last word
-  created nothing — a lookup-only request, a running text, or a card that
-  failed — undo reports that there is nothing to undo and changes
-  nothing: it must never delete a note that existed before the last
-  send.
-Undo acts on the most recent word **per source language** and only since
-the backend started — acceptable for a personal tool. There is no plain
-"run it again" control: re-rolling the same model on the same prompt is
-not how a weak answer gets fixed. Rebuilding the card is, and it acts on
-the entry the user is looking at rather than on whichever word happened
-to be last.
+  currently selected language. The endpoint stands, but **no control offers
+  it**: asking the reader to remember which word was last is worse than
+  letting them delete the card in front of them, which "delete this card"
+  does. When the last word created nothing — a lookup-only request, a running
+  text, or a card that failed — undo reports that there is nothing to undo and
+  changes nothing: it must never delete a note that existed before the last
+  send, and deleting a card takes that note out of undo's reach as well.
+There is no plain "run it again" control: re-rolling the same model on the
+same prompt is not how a weak answer gets fixed.
 
 ## Non-functional requirements
 

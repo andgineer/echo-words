@@ -13,6 +13,7 @@ from echo_words.pipeline import (
     ADDED_STATUS,
     ANALYSIS_FAILED_CODE,
     CARD_FAILED_STATUS,
+    DELETED_STATUS,
     LOOKUP_ONLY_STATUS,
     MISSPELLED_STATUS,
     TEXT_STATUS,
@@ -2961,12 +2962,137 @@ async def test_pending_latest_send_never_reexposes_the_previous_card_to_undo(lan
         await pipeline.close()
 
 
+async def test_delete_card_removes_the_note_its_media_and_both_recordings(languages, tmp_path):
+    submitted = tmp_path / "pronunciation-aabbccddeeff00112233.mp3"
+    headword = tmp_path / "pronunciation-1122334455667788990a.mp3"
+    for path in (submitted, headword):
+        path.write_bytes(b"audio")
+
+    async def fetch(word, _language):
+        return submitted if word == "gave up" else headword
+
+    anki = MutableAnki([Added(7, "media.mp3")])
+    pipeline = WordPipeline(
+        ScriptedCascade([Completion([corrected_card("give up", word_relation="morphology")])]),
+        target_lang="Russian",
+        anki=anki,
+        audio=fetch,
+        audio_dir=tmp_path,
+    )
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(languages["en"], "gave up", False, intent="unit")
+        await pipeline.join()
+
+        assert await pipeline.delete_card(entry.entry_id) == "give up"
+
+        assert anki.removed == [(7, "media.mp3")]
+        assert not submitted.exists()
+        assert not headword.exists()
+        assert pipeline.history.entries[entry.entry_id].card_status == DELETED_STATUS
+        # A player over a file the same call unlinked would answer the tap with nothing.
+        assert pipeline.history.entries[entry.entry_id].audio_file is None
+        # The control kept nothing to delete a second time.
+        assert await pipeline.delete_card(entry.entry_id) is None
+        assert anki.removed == [(7, "media.mp3")]
+    finally:
+        await pipeline.close()
+
+
+async def test_delete_card_leaves_undo_nothing_to_delete_twice(languages):
+    anki = MutableAnki([Added(7, "media.mp3")])
+    pipeline = WordPipeline(
+        ScriptedCascade([Completion([valid_card("word")])]),
+        target_lang="Russian",
+        anki=anki,
+    )
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(languages["en"], "word", False)
+        await pipeline.join()
+
+        assert await pipeline.delete_card(entry.entry_id) == "word"
+        assert await pipeline.undo(languages["en"]) is None
+
+        assert anki.removed == [(7, "media.mp3")]
+    finally:
+        await pipeline.close()
+
+
+async def test_delete_card_on_an_entry_that_carded_nothing_is_a_noop(languages):
+    anki = MutableAnki([])
+    pipeline = WordPipeline(
+        ScriptedCascade([Completion([valid_card("word")])]),
+        target_lang="Russian",
+        anki=anki,
+    )
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(languages["en"], "word", True)
+        await pipeline.join()
+
+        assert await pipeline.delete_card(entry.entry_id) is None
+        assert anki.removed == []
+        assert pipeline.history.entries[entry.entry_id].card_status == LOOKUP_ONLY_STATUS
+    finally:
+        await pipeline.close()
+
+
+async def test_delete_card_tells_the_open_page_the_cards_are_gone(languages):
+    events = EventHub()
+    anki = MutableAnki([Added(7, "media.mp3")])
+    pipeline = WordPipeline(
+        ScriptedCascade([Completion([valid_card("word")])]),
+        target_lang="Russian",
+        anki=anki,
+        events=events,
+    )
+    pipeline.start()
+    try:
+        async with events.subscribe() as subscriber:
+            entry = await pipeline.enqueue(languages["en"], "word", False)
+            await pipeline.join()
+            drain(subscriber)
+
+            await pipeline.delete_card(entry.entry_id)
+            published = drain(subscriber)
+
+        assert [event.name for event in published] == ["done"]
+        assert published[0].data["entry_id"] == entry.entry_id
+        assert published[0].data["card_status"] == DELETED_STATUS
+        assert published[0].data["card_kinds"] == []
+        assert published[0].data["audio_url"] is None
+    finally:
+        await pipeline.close()
+
+
+async def test_delete_card_on_a_pending_entry_raises_the_expired_error(languages):
+    release = asyncio.Event()
+    pipeline = WordPipeline(
+        ScriptedCascade([Completion([valid_card("word")], gate=release)]),
+        target_lang="Russian",
+        anki=MutableAnki([Added(7, "media.mp3")]),
+    )
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(languages["en"], "word", False)
+
+        with pytest.raises(KeyError, match="request expired"):
+            await pipeline.delete_card(entry.entry_id)
+
+        release.set()
+        await pipeline.join()
+    finally:
+        await pipeline.close()
+
+
 async def test_unknown_or_expired_entry_refuses_all_controls():
     pipeline = WordPipeline(ScriptedCascade([]), target_lang="Russian")
     for request in (
         pipeline.request_rebuild,
         pipeline.request_switch,
         pipeline.request_detail,
+        pipeline.delete_card,
     ):
         with pytest.raises(KeyError, match="request expired"):
             await request("unknown")

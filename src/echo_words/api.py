@@ -302,6 +302,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:  # noqa: C901, PLR0
         except BackendError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
 
+    @app.post("/api/words/{entry_id}/delete-card")
+    async def delete_word_card(request: Request, entry_id: str) -> dict[str, object]:
+        try:
+            word = await request.app.state.pipeline.delete_card(entry_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=410, detail="request expired") from exc
+        return {"deleted": word}
+
     @app.post("/api/languages/{code}/undo")
     async def undo_word(request: Request, code: str) -> dict[str, object]:
         locale = pick_locale(request.headers.get("accept-language"))

@@ -22,7 +22,8 @@ the work again. **Do not re-open any of it.**
   misspelling is corrected on the card rather than offered, because a note
   pairing the learner's spelling with another word's meanings and examples
   teaches a word no sentence on it contains; the entry names the carded word
-  above the analysis and undo removes it. Wording the judgement will not vouch
+  above the analysis and the card's own deletion removes it. Wording the judgement
+  will not vouch
   for as used gets no card, no article and no audio: a model asked for a
   dictionary entry invents one for any well-formed string, so a unit submission
   is judged by a parallel call that asks nothing else. Asking apart is what makes
@@ -73,11 +74,12 @@ the work again. **Do not re-open any of it.**
   `spec/decision-spaced-repetition.md`.
 - Anki sync to AnkiWeb runs automatically after additions,
   debounced and retried; `ECHOWORDS_ANKI_SYNC=false` turns it off.
-- Lookup-only (the UI control or the `?` prefix): analysis and audio,
-  no Anki card. Its unit entry may still request deeper detail, but cannot offer
-  rebuild because there is no note to replace.
-- Undo removes what the last send created and is an explicit no-op
-  after a lookup-only send — it never deletes a note that existed before.
+- Lookup-only (the `?` prefix): analysis and audio, no Anki card. Its unit entry
+  may still request deeper detail, but offers no deletion because there is no note.
+- Deleting a card removes the note the entry in front of the reader created, and
+  takes that note out of undo's reach as well. Undo removes what the last send
+  created and is an explicit no-op after a lookup-only send — it never deletes a
+  note that existed before — but no control offers it any more.
   A rebuild replaces the note the entry produced rather than adding a
   second one. Rebuild and detail use the stored unit headword and explicit
   unit intent; rebuild reuses card audio only while the NFC-normalized returned

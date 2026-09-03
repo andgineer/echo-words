@@ -247,10 +247,21 @@ def test_context_is_capped(client: TestClient):
 
 
 def test_unknown_control_entries_are_expired(client: TestClient):
-    for action in ("switch", "rebuild", "detail"):
+    for action in ("switch", "rebuild", "detail", "delete-card"):
         response = client.post(f"/api/words/unknown/{action}")
         assert response.status_code == 410
         assert response.json()["detail"] == "request expired"
+
+
+def test_deleting_a_card_names_the_word_whose_note_went(client: TestClient):
+    pipeline = client.app.state.pipeline
+    pipeline.delete_card = AsyncMock(return_value="give up")
+
+    response = client.post("/api/words/entry/delete-card")
+
+    assert response.status_code == 200
+    assert response.json() == {"deleted": "give up"}
+    assert pipeline.delete_card.await_args.args == ("entry",)
 
 
 def test_stats_keep_collection_windows_separate_from_startup_counters(
