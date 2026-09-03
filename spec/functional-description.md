@@ -592,6 +592,27 @@ Kept minimal — everything beyond typing a word:
   same daily cap, and refused with a reason when the cap is spent or no paid
   model is configured. It does not apply to running text, which produced no
   card to rebuild.
+- **Language editor** — reached from the pencil beside the language row, not
+  from the navigation. A list with add and remove, and a settings screen per
+  language: name, deck and script above, and voice engine, voice, dictionary
+  code and accent behind "Advanced". Adding one needs a name or a code alone;
+  the deck is derived from it. Both deletions ask inside the row they came
+  from rather than in a modal. A write replaces the languages table on disk
+  atomically and takes effect without a restart; a new voice is fetched in the
+  background. Removing a language **never** deletes its Anki deck — the cards
+  are the reader's — and the last remaining language cannot be removed,
+  because the app does not start without one. Entries already in history for a
+  removed language stay; the rail filters by language, so they simply stop
+  being reachable.
+  The editor does **not** expose `api_model` or `prompt_hints`, and refuses a
+  request that carries either. They are the two fields whose value reaches
+  machinery the editor can neither show nor check: a prompt hint is
+  interpolated into the prompt, so a bad one degrades every later answer for
+  that language with nothing to catch it, and `api_model` builds the paid-model
+  map when the process starts, so no write can invalidate a broker the app is
+  already running on. Both are preserved untouched across every save, so
+  changing a voice cannot silently drop a hint. Tuning either stays a
+  configuration edit and a restart — that is the intended split, not a gap.
 - **Status view** — backend health, AnkiWeb sync state (last result,
   whether unsynced changes are waiting).
 - **Version in the header** — the version of the build the page is

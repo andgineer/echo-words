@@ -8,6 +8,7 @@ from echo_words.languages import (
     MAX_WORD_LENGTH,
     Language,
     LanguagesConfigError,
+    LanguageValidationError,
     fold_for_match,
     load_languages,
     normalize_submission,
@@ -16,10 +17,12 @@ from echo_words.languages import (
     reflexive_forms,
     reflexive_markers,
     sanitize_context,
+    save_languages,
     unit_excluded_words,
     unknown_language_hint,
     validate_text,
     validate_word,
+    validated_language,
 )
 
 
@@ -286,3 +289,125 @@ def test_a_language_without_closed_class_data_gets_no_boundary_repair():
     assert unit_excluded_words(language) == frozenset()
     assert reflexive_forms(language) == frozenset()
     assert reflexive_markers(language) == frozenset()
+
+
+MINIMAL = Language(code="fr", name="Français", deck="EchoWords: French", script="latin")
+COMPLETE = Language(
+    code="sr",
+    name="Српски",
+    deck="EchoWords: Serbian",
+    script="latin+cyrillic",
+    dict_api="sr",
+    tts="edge",
+    tts_voice="sr_RS-unusable-medium",
+    edge_tts_voice="sr-RS-SophieNeural",
+    accent="ekavian",
+    api_model="gpt-fast",
+    prompt_hints="for nouns give gender and plural",
+)
+
+
+def test_a_saved_table_reads_back_exactly_as_it_was_written(tmp_path):
+    path = tmp_path / "languages.toml"
+
+    save_languages(path, {"fr": MINIMAL, "sr": COMPLETE})
+
+    assert load_languages(path) == {"fr": MINIMAL, "sr": COMPLETE}
+
+
+def test_an_absent_optional_field_is_left_out_rather_than_written_empty(tmp_path):
+    path = tmp_path / "languages.toml"
+
+    save_languages(path, {"fr": MINIMAL})
+
+    # `dict_api = ""` would claim the language has a dictionary code that is blank.
+    assert "dict_api" not in path.read_text(encoding="utf-8")
+    assert load_languages(path)["fr"].dict_api is None
+
+
+def test_a_failed_write_leaves_the_previous_table_intact(tmp_path, monkeypatch):
+    path = tmp_path / "languages.toml"
+    save_languages(path, {"fr": MINIMAL})
+    before = path.read_text(encoding="utf-8")
+
+    def refuse(*_args, **_kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr("echo_words.languages.os.replace", refuse)
+    with pytest.raises(OSError, match="disk full"):
+        save_languages(path, {"sr": COMPLETE})
+
+    assert path.read_text(encoding="utf-8") == before
+    # And nothing half-written is left beside it.
+    assert [child.name for child in tmp_path.iterdir()] == ["languages.toml"]
+
+
+def test_saving_an_empty_table_is_refused(tmp_path):
+    path = tmp_path / "languages.toml"
+
+    with pytest.raises(LanguageValidationError, match="cannot run without one"):
+        save_languages(path, {})
+
+    assert not path.exists()
+
+
+def test_a_submitted_language_is_built_from_the_fields_the_editor_shows():
+    language = validated_language(
+        "fr",
+        {
+            "name": " Français ",
+            "deck": "EchoWords: French",
+            "script": "latin",
+            "dict_api": "  ",
+            "tts": "edge",
+            "edge_tts_voice": "fr-FR-DeniseNeural",
+        },
+    )
+
+    assert language == Language(
+        code="fr",
+        name="Français",
+        deck="EchoWords: French",
+        script="latin",
+        tts="edge",
+        edge_tts_voice="fr-FR-DeniseNeural",
+    )
+
+
+def test_the_two_file_only_fields_survive_a_save_of_the_fields_the_editor_shows():
+    """The editor cannot show a prompt hint or a paid model, so it must round-trip
+    them: saving a voice would otherwise silently drop the hint."""
+    language = validated_language(
+        "sr",
+        {"name": "Српски", "deck": "EchoWords: Serbian", "script": "cyrillic"},
+        COMPLETE,
+    )
+
+    assert language.api_model == "gpt-fast"
+    assert language.prompt_hints == "for nouns give gender and plural"
+    assert language.script == "cyrillic"
+
+
+@pytest.mark.parametrize(
+    ("code", "fields", "expected"),
+    [
+        ("Fr", {"name": "n", "deck": "d", "script": "latin"}, "is not a language code"),
+        ("f", {"name": "n", "deck": "d", "script": "latin"}, "is not a language code"),
+        ("fr", {"name": "", "deck": "d", "script": "latin"}, "Fill in: name"),
+        ("fr", {"name": "n", "deck": " ", "script": "latin"}, "Fill in: deck"),
+        ("fr", {"name": "n", "deck": "d", "script": "runic"}, "Unknown script"),
+        (
+            "fr",
+            {"name": "n", "deck": "d", "script": "latin", "tts": "festival"},
+            "Unknown voice engine",
+        ),
+    ],
+)
+def test_an_unusable_submission_is_refused_with_a_hint(code, fields, expected):
+    with pytest.raises(LanguageValidationError, match=expected):
+        validated_language(code, fields)
+
+
+def test_the_refusals_have_a_russian_wording():
+    with pytest.raises(LanguageValidationError, match="не код языка"):
+        validated_language("Fr", {"name": "n", "deck": "d", "script": "latin"}, None, "ru")

@@ -17,6 +17,11 @@ MESSAGES: dict[str, dict[str, str]] = {
         "script.cyrillic": "the Cyrillic script",
         "script.latin+cyrillic": "the Latin or the Cyrillic script",
         "language.unknown": "Unknown language “{code}” — pick one from the list.",
+        "language.bad_code": "“{code}” is not a language code: two to eight lowercase letters.",
+        "language.missing": "Fill in: {fields}.",
+        "language.bad_script": "Unknown script “{script}”: pick one of {allowed}.",
+        "language.bad_tts": "Unknown voice engine “{tts}”: pick one of {allowed}.",
+        "language.last": "This is the only language left; the app cannot run without one.",
     },
     "ru": {
         "word.empty": "Введите слово.",
@@ -32,6 +37,11 @@ MESSAGES: dict[str, dict[str, str]] = {
         "script.cyrillic": "кириллица",
         "script.latin+cyrillic": "латиница или кириллица",
         "language.unknown": "Неизвестный язык «{code}» — выберите язык из списка.",
+        "language.bad_code": "«{code}» — не код языка: от двух до восьми строчных букв.",
+        "language.missing": "Заполните: {fields}.",
+        "language.bad_script": "Неизвестная письменность «{script}»: выберите из {allowed}.",
+        "language.bad_tts": "Неизвестный движок озвучки «{tts}»: выберите из {allowed}.",
+        "language.last": "Это единственный язык — без языка приложение не работает.",
     },
 }
 

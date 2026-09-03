@@ -15,6 +15,7 @@ from echo_words import __version__
 from echo_words.anki import SyncState
 from echo_words.api import SubmissionRegistry, create_app
 from echo_words.backend import CallRecord
+from echo_words.broker import paid_aliases
 from echo_words.config import Settings
 from echo_words.events import EventHub
 from echo_words.languages import (
@@ -22,6 +23,7 @@ from echo_words.languages import (
     MAX_TEXT_LENGTH,
     MAX_WORD_LENGTH,
     LanguagesConfigError,
+    load_languages,
 )
 
 
@@ -622,3 +624,151 @@ def test_a_retried_request_id_with_a_different_shape_conflicts(client: TestClien
     assert first.status_code == 200
     assert conflict.status_code == 409
     assert conflict.json() == {"detail": "request_id was already used for another submission"}
+
+
+FRENCH = {
+    "name": "Français",
+    "deck": "EchoWords: French",
+    "script": "latin",
+    "tts": "edge",
+    "edge_tts_voice": "fr-FR-DeniseNeural",
+}
+
+
+def test_the_editor_reads_the_whole_table_while_the_app_keeps_the_slim_list(
+    client: TestClient,
+):
+    full = client.get("/api/languages/config").json()
+
+    assert [language["code"] for language in full] == ["en", "de", "sr"]
+    serbian = next(language for language in full if language["code"] == "sr")
+    assert serbian["edge_tts_voice"] == "sr-RS-SophieNeural"
+    assert serbian["prompt_hints"] == "for nouns give gender and plural"
+    # The rest of the app is not widened by the editor's needs.
+    assert client.get("/api/languages").json()[0] == {"code": "en", "name": "English"}
+
+
+def test_an_added_language_is_written_and_served_without_a_restart(
+    client: TestClient,
+    languages_file: Path,
+):
+    response = client.put("/api/languages/fr", json=FRENCH)
+
+    assert response.status_code == 200
+    assert response.json() == {"code": "fr"}
+    written = load_languages(languages_file)["fr"]
+    assert written.name == "Français"
+    assert written.edge_tts_voice == "fr-FR-DeniseNeural"
+    assert {language["code"] for language in client.get("/api/languages").json()} == {
+        "en",
+        "de",
+        "sr",
+        "fr",
+    }
+
+
+def test_saving_a_language_keeps_the_two_fields_the_editor_cannot_show(
+    client: TestClient,
+    languages_file: Path,
+    settings: Settings,
+):
+    """A prompt hint is part of what the model is asked, and `api_model` builds the
+    broker's direct map at startup. Saving a voice must drop neither."""
+    before = paid_aliases(load_languages(languages_file), settings)
+
+    response = client.put(
+        "/api/languages/sr",
+        json={
+            "name": "Српски",
+            "deck": "Serbian::Vocabulary",
+            "script": "latin+cyrillic",
+            "tts": "edge",
+            "edge_tts_voice": "sr-RS-NicholasNeural",
+        },
+    )
+
+    assert response.status_code == 200
+    written = load_languages(languages_file)["sr"]
+    assert written.edge_tts_voice == "sr-RS-NicholasNeural"
+    assert written.prompt_hints == "for nouns give gender and plural"
+    assert written.api_model == "gpt-fast"
+    # So no write can invalidate the broker the app is already running on.
+    assert paid_aliases(load_languages(languages_file), settings) == before
+
+
+def test_the_editor_may_not_write_a_prompt_hint_or_a_paid_model(client: TestClient):
+    for field, value in (("prompt_hints", "always answer in verse"), ("api_model", "gpt-4")):
+        response = client.put("/api/languages/fr", json={**FRENCH, field: value})
+
+        assert response.status_code == 422
+        assert client.get("/api/languages/config").status_code == 200
+        assert "fr" not in {language["code"] for language in client.get("/api/languages").json()}
+
+
+@pytest.mark.parametrize(
+    ("code", "body", "expected"),
+    [
+        ("FR", FRENCH, "is not a language code"),
+        ("fr", {**FRENCH, "script": "runic"}, "Unknown script"),
+        ("fr", {**FRENCH, "deck": " "}, "Fill in: deck"),
+        ("fr", {**FRENCH, "tts": "festival"}, "Unknown voice engine"),
+    ],
+)
+def test_an_unusable_language_is_refused_and_written_nowhere(
+    client: TestClient,
+    languages_file: Path,
+    code,
+    body,
+    expected,
+):
+    before = languages_file.read_text(encoding="utf-8")
+
+    response = client.put(f"/api/languages/{code}", json=body)
+
+    assert response.status_code == 400
+    assert expected in response.json()["detail"]
+    assert languages_file.read_text(encoding="utf-8") == before
+
+
+def test_a_removed_language_leaves_the_table_and_the_anki_collection(
+    client: TestClient,
+    languages_file: Path,
+):
+    removed = []
+    client.app.state.anki.remove_note = AsyncMock(side_effect=lambda *args: removed.append(args))
+
+    response = client.delete("/api/languages/de")
+
+    assert response.status_code == 200
+    assert response.json() == {"deleted": "de"}
+    assert set(load_languages(languages_file)) == {"en", "sr"}
+    # The cards are the reader's: the deck and its notes are untouched.
+    assert removed == []
+    assert client.app.state.anki.remove_note.await_count == 0
+
+
+def test_removing_an_unknown_language_says_so(client: TestClient):
+    response = client.delete("/api/languages/fr")
+
+    assert response.status_code == 400
+    assert "fr" in response.json()["detail"]
+
+
+def test_the_last_language_cannot_be_removed(client: TestClient, languages_file: Path):
+    client.delete("/api/languages/de")
+    client.delete("/api/languages/sr")
+
+    response = client.delete("/api/languages/en")
+
+    assert response.status_code == 409
+    assert "cannot run without one" in response.json()["detail"]
+    assert set(load_languages(languages_file)) == {"en"}
+
+
+def test_the_editor_refusals_speak_the_interface_language(client: TestClient):
+    russian = {"Accept-Language": "ru-RU,ru;q=0.9"}
+
+    response = client.put("/api/languages/FR", json=FRENCH, headers=russian)
+
+    assert response.status_code == 400
+    assert "не код языка" in response.json()["detail"]

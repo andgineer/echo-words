@@ -1,10 +1,15 @@
 """The source-language table (``languages.toml``) and per-language input validation."""
 
+import os
 import re
+import tempfile
 import tomllib
 import unicodedata
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, fields
 from pathlib import Path
+
+import tomli_w
 
 from echo_words.i18n import DEFAULT_LOCALE, message
 
@@ -30,9 +35,21 @@ _WORD_EDGES = re.compile(r"^[^\w]+|[^\w]+$", re.UNICODE)
 
 _REQUIRED_FIELDS = ("name", "deck", "script")
 
+TTS_ENGINES = ("piper", "edge")
+_CODE_PATTERN = re.compile(r"^[a-z]{2,8}$")
+# The two fields the editor never writes: both reach machinery it can neither show
+# nor check. `prompt_hints` is interpolated into the prompt, and a bad hint degrades
+# every future answer silently; `api_model` builds the broker's direct map at
+# startup, so a change to it would need the broker rebuilt underneath a live app.
+FILE_ONLY_FIELDS = ("api_model", "prompt_hints")
+
 
 class LanguagesConfigError(RuntimeError):
     """The languages table is missing or unusable — a startup config error."""
+
+
+class LanguageValidationError(ValueError):
+    """A submitted language entry is unusable, with a hint for the person who sent it."""
 
 
 @dataclass(frozen=True)
@@ -83,6 +100,104 @@ def _language_from_entry(code: str, entry: object, path: Path) -> Language:
         )
     known = {field.name for field in Language.__dataclass_fields__.values()} - {"code"}
     return Language(code=code, **{k: v for k, v in entry.items() if k in known})
+
+
+def _optional(value: object) -> str | None:
+    """An empty box means the key is absent; only a real value is written."""
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def validated_language(
+    code: str,
+    submitted: Mapping[str, object],
+    existing: "Language | None" = None,
+    locale: str = DEFAULT_LOCALE,
+) -> Language:
+    """Build a `Language` from an editor submission, or refuse it with a hint.
+
+    The two file-only fields are carried over from `existing` untouched: saving a
+    voice must never drop a prompt hint the editor cannot see.
+    """
+    if not _CODE_PATTERN.match(code):
+        raise LanguageValidationError(message("language.bad_code", locale, code=code))
+    required = {field: _optional(submitted.get(field)) for field in _REQUIRED_FIELDS}
+    missing = [field for field, value in required.items() if value is None]
+    if missing:
+        raise LanguageValidationError(
+            message("language.missing", locale, fields=", ".join(missing)),
+        )
+    script = required["script"]
+    if script not in _ALLOWED_SCRIPTS:
+        raise LanguageValidationError(
+            message(
+                "language.bad_script",
+                locale,
+                script=script,
+                allowed=", ".join(sorted(_ALLOWED_SCRIPTS)),
+            ),
+        )
+    tts = _optional(submitted.get("tts"))
+    if tts is not None and tts not in TTS_ENGINES:
+        raise LanguageValidationError(
+            message("language.bad_tts", locale, tts=tts, allowed=", ".join(TTS_ENGINES)),
+        )
+    return Language(
+        code=code,
+        name=required["name"] or "",
+        deck=required["deck"] or "",
+        script=script or "",
+        dict_api=_optional(submitted.get("dict_api")),
+        tts=tts,
+        tts_voice=_optional(submitted.get("tts_voice")),
+        edge_tts_voice=_optional(submitted.get("edge_tts_voice")),
+        accent=_optional(submitted.get("accent")),
+        **{field: getattr(existing, field, None) for field in FILE_ONLY_FIELDS},
+    )
+
+
+def save_languages(path: Path, table: dict[str, Language]) -> None:
+    """Replace the whole table on disk, atomically.
+
+    Written beside the target and renamed over it: a crash halfway through would
+    otherwise leave the app with no readable config at all.
+    """
+    if not table:
+        raise LanguageValidationError(message("language.last"))
+    document = tomli_w.dumps(
+        {
+            "languages": {
+                code: {
+                    field.name: getattr(language, field.name)
+                    for field in fields(Language)
+                    if field.name != "code" and getattr(language, field.name) is not None
+                }
+                for code, language in table.items()
+            },
+        },
+    )
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    handle = tempfile.NamedTemporaryFile(  # noqa: SIM115 - replaced onto the target below
+        "w",
+        encoding="utf-8",
+        dir=path.parent,
+        prefix=".languages-",
+        suffix=".toml",
+        delete=False,
+    )
+    temporary = Path(handle.name)
+    try:
+        with handle:
+            handle.write(document)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    except OSError:
+        temporary.unlink(missing_ok=True)
+        raise
 
 
 def normalize_submission(text: str, lookup_only: bool = False) -> tuple[str, bool]:

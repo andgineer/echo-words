@@ -75,11 +75,13 @@ function arrive() {
     dragging.value = false;
     dragX.value = 0;
   };
+  // Two frames so the offset is painted before it is released. The timer is the
+  // fallback: a hidden tab throttles rAF, and a card left 44px off-centre until
+  // the tab comes back would be worse than skipping the animation.
   if (typeof requestAnimationFrame === "function") {
     requestAnimationFrame(() => requestAnimationFrame(settle));
-  } else {
-    setTimeout(settle, 20);
   }
+  setTimeout(settle, 60);
 }
 
 // `setPointerCapture` is deliberately not called: in Chrome it lands the click on

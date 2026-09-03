@@ -1,16 +1,30 @@
 <script setup>
-import { onMounted, onUnmounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useI18n } from "./i18n/index.js";
 import { flushQueue } from "./composables/useResendQueue.js";
 import HeaderNav from "./components/HeaderNav.vue";
 import AddView from "./views/AddView.vue";
+import LanguageDetailView from "./views/LanguageDetailView.vue";
+import LanguagesView from "./views/LanguagesView.vue";
 import StatsView from "./views/StatsView.vue";
 import StatusView from "./views/StatusView.vue";
 
 const APP_VERSION = typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "dev";
 
+const TABS = ["add", "stats", "status"];
+
 const { t, locale, locales } = useI18n();
 const view = ref("add");
+const editing = ref("");
+
+// The editor is reached from the words screen, not from the navigation: the three
+// tabs stay as they are, and both of its screens belong to the words tab.
+const tab = computed(() => (TABS.includes(view.value) ? view.value : "add"));
+
+function openLanguage(code) {
+  editing.value = code;
+  view.value = "language";
+}
 
 function retryQueuedWords() {
   void flushQueue();
@@ -31,7 +45,7 @@ onUnmounted(() => window.removeEventListener("online", retryQueuedWords));
       <span class="header-version">v{{ APP_VERSION }}</span>
     </h1>
     <div class="header-controls">
-      <HeaderNav v-model:view="view" />
+      <HeaderNav :view="tab" @update:view="view = $event" />
       <select v-model="locale" class="locale" :aria-label="t('nav.locale')">
         <option v-for="item in locales" :key="item.code" :value="item.code">
           {{ item.label }}
@@ -40,9 +54,16 @@ onUnmounted(() => window.removeEventListener("online", retryQueuedWords));
     </div>
   </header>
   <main class="app-main">
-    <AddView v-if="view === 'add'" />
+    <AddView v-if="view === 'add'" @navigate="view = $event" />
     <StatsView v-else-if="view === 'stats'" />
-    <StatusView v-else />
+    <StatusView v-else-if="view === 'status'" />
+    <LanguagesView v-else-if="view === 'languages'" @back="view = 'add'" @open="openLanguage" />
+    <LanguageDetailView
+      v-else
+      :code="editing"
+      @back="view = 'languages'"
+      @done="view = 'languages'"
+    />
   </main>
 </template>
 

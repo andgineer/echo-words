@@ -512,6 +512,7 @@ dependencies = [
     { name = "pydantic-settings" },
     { name = "python-dotenv" },
     { name = "rich-click" },
+    { name = "tomli-w" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
@@ -525,7 +526,6 @@ dev = [
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "ruff" },
-    { name = "tomli-w" },
     { name = "zensical" },
 ]
 
@@ -543,6 +543,7 @@ requires-dist = [
     { name = "pydantic-settings", specifier = ">=2.6.0" },
     { name = "python-dotenv", specifier = ">=1.2.3" },
     { name = "rich-click", specifier = ">=1.8.8" },
+    { name = "tomli-w", specifier = ">=1.2.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.32.0" },
 ]
 
@@ -556,7 +557,6 @@ dev = [
     { name = "pytest", specifier = ">=8.3.5" },
     { name = "pytest-cov", specifier = ">=6.1.1" },
     { name = "ruff", specifier = ">=0.16.0" },
-    { name = "tomli-w", specifier = ">=1.2.0" },
     { name = "zensical", specifier = ">=0.0.41" },
 ]
 

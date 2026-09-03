@@ -16,7 +16,7 @@ from uuid import UUID
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from echo_words import __version__
 from echo_words.anki import AnkiStore
@@ -27,20 +27,23 @@ from echo_words.config import Settings
 from echo_words.config import settings as default_settings
 from echo_words.events import EventHub
 from echo_words.history import Entry
-from echo_words.i18n import pick_locale
+from echo_words.i18n import message, pick_locale
 from echo_words.languages import (
     MAX_CONTEXT_LENGTH,
     MAX_TEXT_LENGTH,
     Language,
+    LanguageValidationError,
     load_languages,
     normalize_submission,
     plain_text,
     plain_unit,
     sanitize_context,
+    save_languages,
     split_words,
     unknown_language_hint,
     validate_text,
     validate_word,
+    validated_language,
 )
 from echo_words.lexicon import Wikipedia, Wiktionary
 from echo_words.pipeline import WordPipeline
@@ -50,6 +53,7 @@ from echo_words.pipeline import WordPipeline
 _MAX_WORD_INPUT = MAX_TEXT_LENGTH * 4
 _MAX_CONTEXT_INPUT = MAX_CONTEXT_LENGTH * 4
 _MAX_LANG_INPUT = 32
+_MAX_FIELD_INPUT = 200
 
 logger = logging.getLogger(__name__)
 SSE_KEEP_ALIVE_SECONDS = 15
@@ -121,6 +125,17 @@ def _report_voice_task(task: asyncio.Task[None]) -> None:
         logger.exception("Piper voice provisioning failed unexpectedly")
 
 
+def _provision_voices(app: FastAPI, settings: Settings, languages: list[Language]) -> None:
+    """Download any missing Piper voice off the request, tracked so shutdown cancels it."""
+    task = asyncio.create_task(
+        prepare_configured_voices(languages, settings),
+        name="echo-words-piper-voices",
+    )
+    app.state.voice_tasks.add(task)
+    task.add_done_callback(app.state.voice_tasks.discard)
+    task.add_done_callback(_report_voice_task)
+
+
 async def _event_messages(events: EventHub) -> AsyncIterator[str]:
     async with events.subscribe() as subscriber:
         while True:
@@ -153,11 +168,8 @@ def _lifespan(settings: Settings):
         app.state.languages = load_languages(settings.languages_config)
         app.state.anki = AnkiStore(settings)
         await app.state.anki.open()
-        voice_task = asyncio.create_task(
-            prepare_configured_voices(app.state.languages.values(), settings),
-            name="echo-words-piper-voices",
-        )
-        voice_task.add_done_callback(_report_voice_task)
+        app.state.voice_tasks = set()
+        _provision_voices(app, settings, list(app.state.languages.values()))
         app.state.cascade = None
         app.state.events = EventHub()
         broker = None
@@ -184,8 +196,8 @@ def _lifespan(settings: Settings):
             yield
         finally:
             await app.state.pipeline.close()
-            if not voice_task.done():
-                voice_task.cancel()
+            for task in list(app.state.voice_tasks):
+                task.cancel()
             await app.state.anki.close()
             if broker is not None:
                 await broker.aclose()
@@ -212,6 +224,26 @@ class LanguageOption(BaseModel):
     name: str
 
 
+class LanguageConfig(BaseModel):
+    """One language as the editor reads and writes it.
+
+    `api_model` and `prompt_hints` are absent on purpose and refused rather than
+    ignored: a prompt fragment must not become a text box, and the broker's direct
+    map is built once at startup. Both stay file-only (`languages.FILE_ONLY_FIELDS`).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(max_length=_MAX_FIELD_INPUT)
+    deck: str = Field(max_length=_MAX_FIELD_INPUT)
+    script: str = Field(max_length=_MAX_FIELD_INPUT)
+    dict_api: str | None = Field(default=None, max_length=_MAX_FIELD_INPUT)
+    tts: str | None = Field(default=None, max_length=_MAX_FIELD_INPUT)
+    tts_voice: str | None = Field(default=None, max_length=_MAX_FIELD_INPUT)
+    edge_tts_voice: str | None = Field(default=None, max_length=_MAX_FIELD_INPUT)
+    accent: str | None = Field(default=None, max_length=_MAX_FIELD_INPUT)
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:  # noqa: C901, PLR0915
     settings = settings or default_settings
     app = FastAPI(title="echo-words", version=__version__, lifespan=_lifespan(settings))
@@ -226,6 +258,45 @@ def create_app(settings: Settings | None = None) -> FastAPI:  # noqa: C901, PLR0
             LanguageOption(code=language.code, name=language.name)
             for language in request.app.state.languages.values()
         ]
+
+    @app.get("/api/languages/config")
+    async def languages_config(request: Request) -> list[dict[str, object]]:
+        return [asdict(language) for language in request.app.state.languages.values()]
+
+    @app.put("/api/languages/{code}")
+    async def save_language(
+        request: Request,
+        code: str,
+        submission: LanguageConfig,
+    ) -> dict[str, object]:
+        locale = pick_locale(request.headers.get("accept-language"))
+        table = dict(request.app.state.languages)
+        try:
+            language = validated_language(
+                code,
+                submission.model_dump(),
+                table.get(code),
+                locale,
+            )
+        except LanguageValidationError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        table[code] = language
+        save_languages(settings.languages_config, table)
+        _reload_languages(request.app, settings, [language])
+        return {"code": code}
+
+    @app.delete("/api/languages/{code}")
+    async def remove_language(request: Request, code: str) -> dict[str, object]:
+        locale = pick_locale(request.headers.get("accept-language"))
+        table = dict(request.app.state.languages)
+        _resolve_language(table, code, locale)
+        if len(table) == 1:
+            raise HTTPException(status_code=409, detail=message("language.last", locale))
+        # The cards are the reader's: removing a language never touches its deck.
+        del table[code]
+        save_languages(settings.languages_config, table)
+        _reload_languages(request.app, settings, [])
+        return {"deleted": code}
 
     @app.post("/api/words")
     async def submit_word(request: Request, submission: WordSubmission) -> SubmissionAccepted:
@@ -357,6 +428,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:  # noqa: C901, PLR0
         app.mount("/", StaticFiles(directory=str(settings.static_dir), html=True), name="static")
 
     return app
+
+
+def _reload_languages(app: FastAPI, settings: Settings, provision: list[Language]) -> None:
+    """Re-read the table the write just produced, and fetch any new Piper voice.
+
+    The broker is deliberately left alone: it builds its direct map from `api_model`
+    at startup, and the editor cannot write that field, so no write can invalidate it.
+    """
+    app.state.languages = load_languages(settings.languages_config)
+    if provision:
+        _provision_voices(app, settings, provision)
 
 
 def _resolve_language(languages: dict[str, Language], code: str, locale: str) -> Language:

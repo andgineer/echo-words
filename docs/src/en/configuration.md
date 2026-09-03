@@ -38,6 +38,23 @@ carries complete English, German, and Serbian entries.
     Serbian is spoken in Cyrillic on purpose: the `sr-RS` voices mispronounce
     the Latin spelling.
 
+### Editing it from the app
+
+The pencil beside the language row on the words screen opens an editor that
+adds a language, removes one, and changes its name, deck, script, voice
+engine, voice, dictionary code and accent. It rewrites this file and takes
+effect without a restart; a new Piper voice downloads in the background.
+Removing a language never touches its Anki deck, and the last remaining
+language cannot be removed — the app does not start without one. A save
+rewrites the whole file, so comments in it do not survive one.
+
+`api_model` and `prompt_hints` stay a file edit and a restart. They are the
+two fields whose value reaches machinery the editor can neither show nor
+check: `prompt_hints` is interpolated into the prompt, so a bad hint would
+degrade every later answer for that language silently, and `api_model` builds
+the paid-model map when the process starts. The editor preserves whatever this
+file already holds for both, so saving a voice never drops a hint.
+
 ## Environment variables
 
 Every variable is prefixed `ECHOWORDS_`. The committed `.deploy.example/.env`
