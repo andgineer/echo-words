@@ -6,6 +6,12 @@
  */
 
 :root {
+  /* The dark values stay the base: every scoped block in the app was written
+     against them, so a missed override degrades to the old screen, not to an
+     unstyled one. `color-scheme` makes the UA paint scrollbars and the
+     overscroll gutter to match. */
+  color-scheme: light dark;
+
   --bg: #1a1a2e;
   --surface: #16213e;
   --surface-2: #0f3460;
@@ -27,6 +33,31 @@
   --nav-words: var(--accent);
   --nav-stats: #818cf8;
   --nav-status: #22d3ee;
+}
+
+/* The brand red gives white text 3.9:1 on a filled button, under the 4.5:1
+   floor; #c81e42 reaches 5.6:1. Do not restore #e94560 here. */
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f4f5fa;
+    --surface: #ffffff;
+    --surface-2: #dfe3ee;
+    --accent: #c81e42;
+    --accent-hover: #a81836;
+    --text: #1a1a2e;
+    --text-muted: #5b6478;
+    --success: #16a34a;
+    --warning: #b45309;
+    --error: #dc2626;
+
+    --field: rgba(26, 26, 46, 0.03);
+    --field-deep: rgba(26, 26, 46, 0.06);
+    --border: rgba(26, 26, 46, 0.1);
+    --border-strong: rgba(26, 26, 46, 0.16);
+
+    --nav-stats: #5b5bd6;
+    --nav-status: #0e8fa8;
+  }
 }
 
 * {
@@ -96,6 +127,13 @@ select {
   background-repeat: no-repeat;
   background-position: right 0.75rem center;
   padding-right: 2.5rem;
+}
+
+/* A data URI cannot read a token, so the caret carries the muted ink twice. */
+@media (prefers-color-scheme: light) {
+  select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%235b6478' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  }
 }
 
 label {
