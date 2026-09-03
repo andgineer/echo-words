@@ -24,6 +24,7 @@ from echo_words.languages import (
     fold_for_match,
     split_words,
 )
+from echo_words.lexicon import Usage
 from echo_words.prompt import (
     CARD_DELIMITER,
     Verdict,
@@ -88,6 +89,7 @@ class CardStore(Protocol):
 
 AudioFetcher = Callable[[str, Language], Coroutine[Any, Any, Path | None]]
 DictionaryLookup = Callable[[str, Language], Coroutine[Any, Any, bool | None]]
+UsageLookup = Callable[[str, Language], Coroutine[Any, Any, Usage | None]]
 JobKind = Literal["submit", "rebuild", "switch"]
 
 
@@ -97,6 +99,11 @@ async def _no_audio(_word: str, _language: Language) -> Path | None:
 
 async def _no_lookup(_word: str, _language: Language) -> bool | None:
     """No dictionary configured, which says nothing about any word."""
+    return None
+
+
+async def _no_usage(_word: str, _language: Language) -> Usage | None:
+    """No encyclopedia configured, which says nothing about any word."""
     return None
 
 
@@ -171,6 +178,7 @@ class WordPipeline:
         anki: CardStore | None = None,
         audio: AudioFetcher = _no_audio,
         dictionary: DictionaryLookup = _no_lookup,
+        usage: UsageLookup = _no_usage,
         audio_timeout: float = 10,
         audio_dir: Path | None = None,
         history_size: int = 50,
@@ -181,6 +189,7 @@ class WordPipeline:
         self.anki = anki
         self.audio = audio
         self.dictionary = dictionary
+        self.usage = usage
         self.audio_timeout = audio_timeout
         self.audio_dir = audio_dir
         self.target_lang = target_lang
@@ -608,7 +617,10 @@ class WordPipeline:
             entry.card_kept = _kept_previous_note(job, stored)
             entry.analysed_as = _analysed_as(job, parsed)
             entry.typo_suspected = _declares_a_typo(parsed)
-            entry.not_in_dictionary = await self._dictionary_miss(job, parsed)
+            entry.not_in_references, entry.usage_search_url = await self._absent_from_references(
+                job,
+                parsed,
+            )
             withheld = stored.status == UNATTESTED_STATUS
             if withheld:
                 # Everything read out of a withheld answer goes with it: a chip is the
@@ -643,16 +655,33 @@ class WordPipeline:
                     _cancel_task(pending)
             attestation.cancel()
 
-    async def _dictionary_miss(self, job: Job, parsed: ParsedAnswer | None) -> bool:
-        """Whether no dictionary has the wording this note would carry.
+    async def _absent_from_references(
+        self,
+        job: Job,
+        parsed: ParsedAnswer | None,
+    ) -> tuple[bool, str | None]:
+        """Whether no reference work outside the models has the wording, and where the
+        reader can see the search that came back empty.
+
+        A dictionary alone accuses set expressions no wiki carries: over the registered
+        fixtures the wikis lack `у реду`, `zur Verfügung stehen` and ten more, against
+        four coinages they rightly lack. So a miss is only reported once the
+        encyclopedia has also never written the wording, which every coinage measured
+        satisfies and every real wording but a colloquial clause does not.
 
         Asked of the headword rather than the submission, because the headword is what
         the note teaches. Only a definite absence is reported: an unreachable service
         says nothing, and a text answer teaches no single wording.
         """
         if not isinstance(parsed, ParsedUnit):
-            return False
-        return await self.dictionary(parsed.note.word, job.language) is False
+            return False, None
+        wording = parsed.note.word
+        if await self.dictionary(wording, job.language) is not False:
+            return False, None
+        found = await self.usage(wording, job.language)
+        if found is None or found.hits:
+            return False, None
+        return True, found.search_url
 
     def _attestation_task(self, job: Job) -> "asyncio.Task[Verdict | None] | None":
         """Ask the pool in parallel whether the submitted wording is used at all.

@@ -203,32 +203,6 @@ function taughtWord(entry) {
   return entry.analysed_as || entry.shown_spelling || entry.word;
 }
 
-// The dictionary has already been asked, so the reader is not sent back to it. What
-// it cannot answer is whether anyone writes the wording, and that search is run for
-// them rather than described to them.
-const usage = ref({});
-
-async function findUsage(entry) {
-  const word = taughtWord(entry);
-  usage.value = { ...usage.value, [entry.entry_id]: { pending: true } };
-  try {
-    const found = await apiRequest(
-      `/api/usage?lang=${encodeURIComponent(entry.lang)}&word=${encodeURIComponent(word)}`,
-    );
-    usage.value = { ...usage.value, [entry.entry_id]: { ...found, word } };
-  } catch (error) {
-    usage.value = { ...usage.value, [entry.entry_id]: { error: String(error.message || error) } };
-  }
-}
-
-function usageSummary(found) {
-  if (found.pending) return t("add.usageSearching");
-  if (found.error) return t("add.usageUnavailable");
-  return found.hits
-    ? tn("add.usageFound", found.hits, { word: found.word, count: found.hits })
-    : t("add.usageNone", { word: found.word });
-}
-
 function correctionLabel(entry) {
   // The offer points back to the reader's own spelling once the entry shows another,
   // and its wording follows the card: there is nothing to replace without one.
@@ -315,35 +289,18 @@ async function undo() {
           {{ correctionLabel(entry) }}
         </button>
       </div>
-      <div v-if="entry.not_in_dictionary" class="entry-notice unverified">
+      <div v-if="entry.not_in_references" class="entry-notice unverified">
         <p class="notice-text">
-          {{ t("add.notInDictionary", { word: taughtWord(entry) }) }}
+          {{ t("add.notInReferences", { word: taughtWord(entry) }) }}
         </p>
-        <button
-          v-if="!usage[entry.entry_id]"
-          class="btn-inline find-usage"
-          @click="findUsage(entry)"
+        <a
+          v-if="entry.usage_search_url"
+          class="btn-inline usage-search"
+          :href="entry.usage_search_url"
+          target="_blank"
+          rel="noopener noreferrer"
+          >{{ t("add.seeUsageSearch") }}</a
         >
-          {{ t("add.findUsage") }}
-        </button>
-        <div v-else class="usage-result">
-          <p class="notice-text">{{ usageSummary(usage[entry.entry_id]) }}</p>
-          <p
-            v-for="(example, index) in usage[entry.entry_id].examples || []"
-            :key="index"
-            class="usage-example"
-          >
-            …{{ example }}…
-          </p>
-          <a
-            v-if="usage[entry.entry_id].hits"
-            class="btn-inline"
-            :href="usage[entry.entry_id].search_url"
-            target="_blank"
-            rel="noopener noreferrer"
-            >{{ t("add.usageAll") }}</a
-          >
-        </div>
       </div>
       <p v-if="entry.shape === 'text' && entry.text" class="entry-source">{{ entry.word }}</p>
       <div v-if="entry.text" class="entry-text" v-html="entry.text"></div>
@@ -515,13 +472,6 @@ async function undo() {
   border-left-color: var(--warn, #b8860b);
 }
 
-.usage-example {
-  font-size: 0.85rem;
-  opacity: 0.85;
-  margin-top: 0.3rem;
-  padding-left: 0.6rem;
-  border-left: 2px solid var(--border);
-}
 
 .entry-source {
   margin-bottom: 0.5rem;

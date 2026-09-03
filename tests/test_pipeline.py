@@ -8,6 +8,7 @@ from echo_words import pipeline as pipeline_module
 from echo_words.anki import Added, MisconfiguredNoteTypeError
 from echo_words.broker import BackendError
 from echo_words.events import Event, EventHub
+from echo_words.lexicon import Usage
 from echo_words.pipeline import (
     ADDED_STATUS,
     ANALYSIS_FAILED_CODE,
@@ -1167,9 +1168,9 @@ async def test_a_corrected_misspelling_names_the_word_the_card_is_for(languages)
         await pipeline.close()
 
 
-async def test_a_headword_no_dictionary_has_is_said_and_still_carded(languages):
-    """The reader is told, not overruled. Withholding on absence would refuse a real
-    set expression no wiki happens to carry, and a false refusal is the worse error."""
+async def test_a_wording_no_reference_work_has_is_said_and_still_carded(languages):
+    """The reader is told, not overruled: a wording absent from the wikis that the
+    encyclopedia also never writes is what every measured coinage looks like."""
     anki = RecordingAnki(Added(1, None, ("Recognition",)))
     asked = []
 
@@ -1178,41 +1179,116 @@ async def test_a_headword_no_dictionary_has_is_said_and_still_carded(languages):
         return False
 
     cascade = ScriptedCascade([Completion([valid_card("bookshelfy")])])
-    pipeline = WordPipeline(cascade, target_lang="ru", anki=anki, dictionary=dictionary)
+    pipeline = WordPipeline(
+        cascade,
+        target_lang="ru",
+        anki=anki,
+        dictionary=dictionary,
+        usage=_usage(hits=0),
+    )
     pipeline.start()
     try:
         entry = await pipeline.enqueue(languages["en"], "bookshelfy", False, intent="unit")
         await pipeline.join()
 
-        assert entry.not_in_dictionary is True
+        assert entry.not_in_references is True
+        assert entry.usage_search_url == "https://example.invalid/search"
         assert entry.card_status == ADDED_STATUS
         assert asked == [("bookshelfy", "en")]
     finally:
         await pipeline.close()
 
 
+async def test_a_set_expression_the_encyclopedia_writes_is_not_accused(languages):
+    """No wiki carries `у реду`, and the encyclopedia writes it more than a thousand
+    times. A dictionary alone would call the commonest Serbian phrase no word at all."""
+    anki = RecordingAnki(Added(1, None, ("Recognition",)))
+
+    async def dictionary(_word, _language):
+        return False
+
+    cascade = ScriptedCascade([Completion([valid_card("у реду")])])
+    pipeline = WordPipeline(
+        cascade,
+        target_lang="ru",
+        anki=anki,
+        dictionary=dictionary,
+        usage=_usage(hits=1183),
+    )
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(languages["sr"], "у реду", False, intent="unit")
+        await pipeline.join()
+
+        assert entry.not_in_references is False
+        assert entry.usage_search_url is None
+    finally:
+        await pipeline.close()
+
+
+async def test_an_unreachable_usage_search_does_not_confirm_a_dictionary_miss(languages):
+    """Nought occurrences is evidence about a wording; a search that never answered is
+    not, and accusing a word on our own outage is the error the second source removes."""
+    anki = RecordingAnki(Added(1, None, ("Recognition",)))
+
+    async def dictionary(_word, _language):
+        return False
+
+    async def unavailable(_word, _language):
+        return None
+
+    cascade = ScriptedCascade([Completion([valid_card("bookshelfy")])])
+    pipeline = WordPipeline(
+        cascade,
+        target_lang="ru",
+        anki=anki,
+        dictionary=dictionary,
+        usage=unavailable,
+    )
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(languages["en"], "bookshelfy", False, intent="unit")
+        await pipeline.join()
+
+        assert entry.not_in_references is False
+    finally:
+        await pipeline.close()
+
+
 async def test_the_dictionary_is_asked_about_the_wording_the_note_carries(languages):
     """The note teaches the headword, so that is what has to be in a dictionary — not
-    the spelling the reader typed and the answer corrected away."""
+    the spelling the reader typed and the answer corrected away. A wording the
+    dictionary has raises no question, so the encyclopedia is not asked about it."""
     anki = RecordingAnki(Added(1, None, ("Recognition",)))
     asked = []
+    searched = []
 
-    async def dictionary(word, language):  # noqa: ARG001
+    async def dictionary(word, _language):
         asked.append(word)
         return True
+
+    async def usage(word, _language):
+        searched.append(word)
 
     cascade = ScriptedCascade(
         [Completion([typo_card("receive")])],
         attestations=[REFUSED, '{"used": true, "where": "everyday"}'],
     )
-    pipeline = WordPipeline(cascade, target_lang="ru", anki=anki, dictionary=dictionary)
+    pipeline = WordPipeline(
+        cascade,
+        target_lang="ru",
+        anki=anki,
+        dictionary=dictionary,
+        usage=usage,
+    )
     pipeline.start()
     try:
         entry = await pipeline.enqueue(languages["en"], "recieve", False, intent="unit")
         await pipeline.join()
 
         assert asked == ["receive"]
-        assert entry.not_in_dictionary is False
+        assert searched == []
+        assert entry.not_in_references is False
     finally:
         await pipeline.close()
 
@@ -1226,13 +1302,19 @@ async def test_an_unreachable_dictionary_says_nothing_about_the_word(languages):
         return None
 
     cascade = ScriptedCascade([Completion([valid_card("petrichor")])])
-    pipeline = WordPipeline(cascade, target_lang="ru", anki=anki, dictionary=dictionary)
+    pipeline = WordPipeline(
+        cascade,
+        target_lang="ru",
+        anki=anki,
+        dictionary=dictionary,
+        usage=_usage(hits=0),
+    )
     pipeline.start()
     try:
         entry = await pipeline.enqueue(languages["en"], "petrichor", False, intent="unit")
         await pipeline.join()
 
-        assert entry.not_in_dictionary is False
+        assert entry.not_in_references is False
     finally:
         await pipeline.close()
 
@@ -1256,9 +1338,16 @@ async def test_a_text_answer_is_never_asked_about_in_a_dictionary(languages):
         await pipeline.join()
 
         assert asked == []
-        assert entry.not_in_dictionary is False
+        assert entry.not_in_references is False
     finally:
         await pipeline.close()
+
+
+def _usage(*, hits: int):
+    async def usage(_word, _language):
+        return Usage(hits=hits, examples=[], search_url="https://example.invalid/search")
+
+    return usage
 
 
 async def test_a_vouched_word_keeps_the_article_it_was_given(languages):

@@ -48,9 +48,11 @@ class Entry:
     # The entry shows a spelling other than the one submitted, so the offer beside
     # it points back rather than forward.
     showing_other_spelling: bool = False
-    # No dictionary has the wording this note carries. Said rather than acted on: the
-    # reader is told it is a rare word, an unexpected form or no word at all.
-    not_in_dictionary: bool = False
+    # No reference work outside the models has the wording this note carries: no wiki
+    # documents it and the encyclopedia never writes it. Said rather than acted on.
+    not_in_references: bool = False
+    # Where the reader sees the search that came back empty, so the claim is checkable.
+    usage_search_url: str | None = None
     error: str | None = None
     model: str | None = None
     detail_available: bool = False

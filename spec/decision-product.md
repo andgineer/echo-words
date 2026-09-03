@@ -34,15 +34,15 @@ the work again. **Do not re-open any of it.**
   **What cannot be verified is said, not hidden.** No judgement makes a model
   incapable of a confident article about a string nobody says, so the promise is not
   that a card never carries one — it is that unverified wording is never presented as
-  verified. A dictionary outside the models is asked about the wording each note
-  carries, and where none has it the entry says it may be a rare word, an unexpected
-  form or no word at all, and one control runs the search they would have run — how
-  often the exact wording occurs in that language's encyclopedia, with the fragments
-  showing it in use. The dictionary is not offered back: it has already been asked,
-  and what it cannot answer is whether anyone writes the word. A card the reader was warned about is the product working, not failing;
-  a card that quietly teaches an invention is the failure. The check never withholds,
-  because its measured false alarm is a real set expression and a false refusal costs
-  more than a warning does.
+  verified. Two reference works outside the models are asked about the wording each
+  note carries — a dictionary, for whether anyone wrote it down, and the encyclopedia,
+  for whether anyone writes it — and the entry says so only where both come back
+  empty, with the search that came back empty linked so the claim is checkable. A
+  dictionary alone accuses set expressions no wiki carries, which is most of what a
+  learner of Serbian submits; requiring the second source is what makes the warning
+  mean something. A card the reader was warned about is the product working, not
+  failing; a card that quietly teaches an invention is the failure. The check never
+  withholds, because a false refusal costs more than a warning does.
   A declared misspelling is settled by the paid model, which is measurably better
   at spelling than the pool; a refusal is not sent to it, because the paid models
   withhold fewer coinages than the pool does. Ordinary wording reaches neither.

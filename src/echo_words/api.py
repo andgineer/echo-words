@@ -174,10 +174,10 @@ def _lifespan(settings: Settings):
             anki=app.state.anki,
             audio=partial(fetch_pronunciation, settings=settings),
             dictionary=Wiktionary().documents,
+            usage=Wikipedia().usage,
             audio_timeout=settings.audio_timeout,
             audio_dir=settings.data_dir / "audio",
         )
-        app.state.usage = Wikipedia().usage
         app.state.submissions = SubmissionRegistry()
         app.state.pipeline.start()
         try:
@@ -270,29 +270,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:  # noqa: C901, PLR0
         limit: int = Query(default=20, ge=1, le=100),
     ) -> list[dict[str, object]]:
         return request.app.state.pipeline.recent(limit)
-
-    @app.get("/api/usage")
-    async def word_usage(
-        request: Request,
-        lang: str,
-        word: str = Query(max_length=MAX_CONTEXT_LENGTH),
-    ) -> dict[str, object]:
-        """How often the encyclopedia has this wording, for a reader the dictionary
-        told nothing. The question a reader asks next, asked for them."""
-        language = request.app.state.languages.get(lang)
-        if language is None:
-            raise HTTPException(status_code=404, detail="unknown language")
-        wording = plain_unit(word)
-        if not wording:
-            raise HTTPException(status_code=422, detail="nothing to look up")
-        found = await request.app.state.usage(wording, language)
-        if found is None:
-            raise HTTPException(status_code=503, detail="usage lookup unavailable")
-        return {
-            "hits": found.hits,
-            "examples": found.examples,
-            "search_url": found.search_url,
-        }
 
     @app.post("/api/words/{entry_id}/switch")
     async def switch_word(request: Request, entry_id: str) -> dict[str, object]:

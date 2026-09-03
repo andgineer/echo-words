@@ -23,7 +23,6 @@ from echo_words.languages import (
     MAX_WORD_LENGTH,
     LanguagesConfigError,
 )
-from echo_words.lexicon import Usage
 
 
 class BlockingHandle:
@@ -612,48 +611,3 @@ def test_a_retried_request_id_with_a_different_shape_conflicts(client: TestClien
     assert first.status_code == 200
     assert conflict.status_code == 409
     assert conflict.json() == {"detail": "request_id was already used for another submission"}
-
-
-def test_usage_is_looked_up_for_the_reader(client: TestClient):
-    """The reader was told no dictionary has the wording. The next question — does
-    anyone write it — is answered rather than described."""
-    client.app.state.usage = _fake_usage(hits=249, examples=["…водити рачуна…"])
-
-    response = client.get("/api/usage", params={"lang": "en", "word": "bookshelfy"})
-
-    assert response.status_code == 200
-    assert response.json()["hits"] == 249
-    assert response.json()["examples"] == ["…водити рачуна…"]
-
-
-def test_usage_of_an_unknown_language_is_refused(client: TestClient):
-    response = client.get("/api/usage", params={"lang": "zz", "word": "word"})
-
-    assert response.status_code == 404
-
-
-def test_an_unreachable_usage_search_is_not_reported_as_nothing_found(client: TestClient):
-    """Nought occurrences is evidence about a word; a failed lookup is not, and the
-    two must never reach the reader as the same answer."""
-
-    async def unavailable(_word, _language):
-        return None
-
-    client.app.state.usage = unavailable
-
-    response = client.get("/api/usage", params={"lang": "en", "word": "bookshelfy"})
-
-    assert response.status_code == 503
-
-
-def test_usage_of_nothing_is_refused(client: TestClient):
-    response = client.get("/api/usage", params={"lang": "en", "word": "   "})
-
-    assert response.status_code == 422
-
-
-def _fake_usage(*, hits: int, examples: list[str]):
-    async def usage(_word, _language):
-        return Usage(hits=hits, examples=examples, search_url="https://example.invalid")
-
-    return usage

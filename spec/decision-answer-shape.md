@@ -237,7 +237,7 @@ contract silently includes answers that did not. The other is a product
 strictness: a contextual analysis correct in every other respect is discarded
 because it reproduced the supplied sentence without its final period.
 
-### A dictionary is asked, and the reader is told rather than overruled
+### Two reference works are asked, and the reader is told rather than overruled
 
 Neither model tier reaches "no card ever carries a word nobody says". Over the same
 fixtures, six notes of 42 on the free pool and four of 42 on `gpt-fast` carry
@@ -246,51 +246,56 @@ well-formed nonsense carded with a confident sense. Requiring both models to vou
 buys nothing: both vouch for `bookshelfy` and both for `tablewards`, so the blind
 spot is shared and agreement cannot separate a productive derivation from a word.
 
-The lever is a source outside the models, and one exists. **Wiktionary covers
-English, German and Serbian, free and without a key** — the source-language wiki
-for what it has, the English one, which documents every language, for the rest;
-present in either is present. Scored over every headword the two recorded tiers
-would have carded, 31 free and 34 paid, exactly four are absent from both wikis:
-`bookshelfy` and `змркалица`, both coinages that reach the reader; `водити рачуна`,
-a real Serbian set expression neither wiki carries; and `das Fenster`, real and
-present as `Fenster`, where the answer kept the article. One lookup is 183 ms at the
-median against a 2.5 s answer.
+The lever is a source outside the models, and two exist, free and without a key.
+**Wiktionary** covers English, German and Serbian — the source-language wiki for what
+it has, the English one, which documents every language, for the rest; present in
+either is present. **The encyclopedia in that language** answers the other question:
+not whether a wording was written down, but whether anyone writes it — how often the
+exact wording occurs, with the fragments that show it in use. One lookup is 183 ms at
+the median against a 2.5 s answer.
 
-**The check warns and never withholds.** Withholding on absence would refuse
-`водити рачуна`, and the product's own rule is that a false refusal costs the reader
-more than a warning they can act on. So where no wiki has the wording a note carries,
-the entry says so in the terms that are true — a rare word, an unexpected form, or no
-word at all. An unreachable Wiktionary is not a miss, on the same rule as the
-judgement: silence is not an objection.
+**A dictionary alone cannot carry the warning.** It answers for headwords, and a
+learner's set expressions are not headwords. Over 31 registered wordings the wikis
+lack sixteen; twelve of the sixteen are real — `у реду`, the commonest Serbian
+phrase, `водити рачуна`, `нема на чему`, `сваки дан`, `zur Verfügung stehen`,
+`es geht um` among them — against four coinages they rightly lack. Three warnings in
+four were false, and the ones they fell on were the everyday phrases a learner
+submits most.
 
-**And the question the warning raises is answered rather than described.** A
-dictionary cannot settle whether a wording is used — it holds only what someone wrote
-down, and no dictionary holds everything — so the reader is not sent back to the one
-already asked. One control runs the search they would have run: how often the exact
-wording occurs in the encyclopedia in that language, with the fragments that show it
-in use.
+**The count separates what the dictionary cannot.** Over the same 31, every coinage
+occurs **nought** times — `bookshelfy`, `tablewards`, `змркалица`, `Fahrradsuppe`,
+`прозорити се`, `водити змркало`, `Tischwärts gehen` — and every real wording but one
+at least once: `правити се луд` 1, `хвала лепо` 4, `Kummerspeck` 6, `како се зовеш`
+15, `сврака` 90, `водити рачуна` 314, `у реду` 1183, `zur Verfügung stehen` 5241.
 
-Measured over the same fixtures, the count separates the two cases the dictionary
-leaves open. Every invented wording occurs **nought** times — `bookshelfy`,
-`tablewards`, `змркалица`, `Fahrradsuppe`. Every real one occurs at least six:
-`Kummerspeck` 6, `сврака` 87, `Rad fahren` 100, `водити рачуна` 249 — which is the
-dictionary check's own false alarm, rescued here — `petrichor` 147, and ordinary
-colloquial wording in the hundreds or thousands in all three languages. Serbian is
-the smallest of the three encyclopedias and still leaves that margin.
+**So the entry says so only where both come back empty**, and the residual is one
+wording in 31: `иде ми се`, a colloquial clause the encyclopedia has no register for.
+Against the dictionary alone that is twelve false warnings reduced to one, with all
+four coinages still caught.
 
-Nought occurrences and a failed lookup read alike to a reader and mean opposite
-things, so a search that did not answer is never shown as one that found nothing.
+**The check warns and never withholds.** Withholding on absence would refuse the
+false alarm that remains, and the product's own rule is that a false refusal costs
+the reader more than a warning they can act on. An unreachable wiki is not a miss,
+on the same rule as the judgement: silence is not an objection, so a lookup that did
+not answer never confirms one that did. Nought occurrences and a failed search read
+alike to a reader and mean opposite things.
+
+**And the reader is shown the search rather than sent to run it.** Both sources have
+already been asked by the time the warning appears, so the entry links the
+encyclopedia search that came back empty and the reader can see for themselves. The
+warning states what was established and nothing more — no dictionary has the wording,
+and this language's encyclopedia never writes it.
 
 **The count is evidence about a wording, never a threshold.** It is not comparable
-across languages — the same bird is `сврака` 87 in the Serbian encyclopedia against
+across languages — the same bird is `сврака` 90 in the Serbian encyclopedia against
 `magpie` 5315 and `Elster` 6416, which measures the size of the three encyclopedias
 and nothing about the word — and it is per exact string, so inflected forms are
 counted apart from the lemma. Only nought against not-nought separates anything in
-what has been measured, and even that is shown to the reader rather than acted on.
+what has been measured.
 
 A language written in two scripts is searched in both and the counts added, because
-one script alone counts a fraction of the use: `прозор` occurs 1676 times against
-`prozor` 170, and `сврака` 87 against `svraka` 3. A note carries whichever script the
+one script alone counts a fraction of the use: `прозор` occurs 1846 times against
+`prozor` 170, and `сврака` 90 against `svraka` 3. A note carries whichever script the
 answer wrote, so without this a real Serbian word in Latin could come back near
 nought — the number a coinage returns.
 

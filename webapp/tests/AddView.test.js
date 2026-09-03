@@ -292,7 +292,7 @@ describe("AddView", () => {
     );
   });
 
-  it("says when no dictionary has the word, and still shows the card", async () => {
+  it("says when no reference work has the word, and still shows the card", async () => {
     await labelBehavior(EPIC.ANKI_CARDS, FEATURE.COLLECTION, "Card delivery status");
     entries.value = [{
       entry_id: "entry-1",
@@ -303,82 +303,18 @@ describe("AddView", () => {
       text: "<b>bookshelfy</b>",
       card_status: "added",
       card_kinds: ["Recognition"],
-      not_in_dictionary: true,
+      not_in_references: true,
+      usage_search_url: "https://en.wikipedia.org/w/index.php?search=bookshelfy",
     }];
     const wrapper = mount(AddView);
     await flushPromises();
 
     const notice = wrapper.find(".entry-notice.unverified");
     expect(notice.text()).toContain("No dictionary has “bookshelfy”");
-    expect(notice.text()).toContain("rare word, an unexpected form, or not a word at all");
-    // The dictionary was already asked, so nothing points back at it.
-    expect(notice.findAll("a")).toHaveLength(0);
-    expect(notice.find(".find-usage").exists()).toBe(true);
+    expect(notice.text()).toContain("not written once in this language's Wikipedia");
+    // Both sources were already asked, so the reader is shown the search, not sent to run it.
+    expect(notice.find(".usage-search").attributes("href")).toContain("en.wikipedia.org");
     expect(wrapper.find(".entry-text").exists()).toBe(true);
-  });
-
-  it("runs the usage search for the reader and reports that nobody writes the word", async () => {
-    await labelBehavior(EPIC.ANKI_CARDS, FEATURE.COLLECTION, "Card delivery status");
-    apiRequest.mockImplementation(async (path) => {
-      if (path === "/api/languages") return OPTIONS;
-      if (path.startsWith("/api/usage")) {
-        return { hits: 0, examples: [], search_url: "https://en.wikipedia.org/w/index.php" };
-      }
-      throw new Error(`Unexpected request: ${path}`);
-    });
-    entries.value = [{
-      entry_id: "entry-1",
-      word: "bookshelfy",
-      lang: "en",
-      language: "English",
-      status: "done",
-      text: "<b>bookshelfy</b>",
-      card_status: "added",
-      not_in_dictionary: true,
-    }];
-    const wrapper = mount(AddView);
-    await flushPromises();
-    await wrapper.find(".find-usage").trigger("click");
-    await flushPromises();
-
-    expect(apiRequest).toHaveBeenCalledWith("/api/usage?lang=en&word=bookshelfy");
-    expect(wrapper.find(".usage-result").text()).toContain("does not occur once");
-    // Nothing to look through, so no link out of an empty result.
-    expect(wrapper.find(".usage-result a").exists()).toBe(false);
-  });
-
-  it("shows the wording in real use when the encyclopedia has it", async () => {
-    await labelBehavior(EPIC.ANKI_CARDS, FEATURE.COLLECTION, "Card delivery status");
-    apiRequest.mockImplementation(async (path) => {
-      if (path === "/api/languages") return OPTIONS;
-      if (path.startsWith("/api/usage")) {
-        return {
-          hits: 249,
-          examples: ["неопходно је водити рачуна о психолошком"],
-          search_url: "https://sr.wikipedia.org/w/index.php?search=test",
-        };
-      }
-      throw new Error(`Unexpected request: ${path}`);
-    });
-    entries.value = [{
-      entry_id: "entry-1",
-      word: "водити рачуна",
-      lang: "sr",
-      language: "Српски",
-      status: "done",
-      text: "<b>водити рачуна</b>",
-      card_status: "added",
-      not_in_dictionary: true,
-    }];
-    const wrapper = mount(AddView);
-    await flushPromises();
-    await wrapper.find(".find-usage").trigger("click");
-    await flushPromises();
-
-    const result = wrapper.find(".usage-result");
-    expect(result.text()).toContain("249");
-    expect(result.find(".usage-example").text()).toContain("водити рачуна");
-    expect(result.find("a").attributes("href")).toContain("sr.wikipedia.org");
   });
 
   it("asks about the word the card carries, not the one that was typed", async () => {
@@ -392,7 +328,7 @@ describe("AddView", () => {
       text: "<b>receive</b>",
       card_status: "added",
       analysed_as: "receive",
-      not_in_dictionary: true,
+      not_in_references: true,
     }];
     const wrapper = mount(AddView);
     await flushPromises();
@@ -400,7 +336,7 @@ describe("AddView", () => {
     expect(wrapper.find(".entry-notice.unverified").text()).toContain("“receive”");
   });
 
-  it("says nothing about the dictionary when it had the word", async () => {
+  it("says nothing when the reference works had the word", async () => {
     await labelBehavior(EPIC.ANKI_CARDS, FEATURE.COLLECTION, "Card delivery status");
     entries.value = [{
       entry_id: "entry-1",
@@ -410,7 +346,7 @@ describe("AddView", () => {
       status: "done",
       text: "<b>petrichor</b>",
       card_status: "added",
-      not_in_dictionary: false,
+      not_in_references: false,
     }];
     const wrapper = mount(AddView);
     await flushPromises();
