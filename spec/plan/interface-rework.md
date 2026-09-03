@@ -73,16 +73,44 @@ what the free model gets right first time. The small chance that the paid
 model would translate differently is ignored for now. The endpoint and
 its pipeline path stay; only the button goes.
 
-## The bench gate does not apply to this plan
+## The bench gate, and what M3 does to it
 
 `CLAUDE.md` requires a real-model run for anything that changes what the
-app says to an LLM or what it does with the answer. Nothing here does.
-No prompt, prompt fragment, payload contract or parser is touched. The
-language editor writes values the existing config already carries
-(`prompt_hints` included) — it changes the data a prompt is filled with,
-never the prompt itself, and that path is already live for anyone editing
-`languages.toml` by hand. If a milestone drifts into prompt text, stop
-and run the bench.
+app says to an LLM or what it does with the answer.
+
+**M1 and M2 never touch a prompt.** No template, fragment, payload
+contract or parser is read or written. The gate plainly does not apply.
+
+**M3 needs a sharper answer, because `prompt_hints` is prompt text.** It
+is interpolated into `_SELECTED_PROMPT` and `_OPEN_PROMPT` as
+`{source_hints}` (`src/echo_words/prompt.py:247`), so the string in
+`languages.toml` is literally part of what the model is asked. Serbian
+already ships one: `"for nouns give gender and plural, for verbs give
+aspect"` (`languages.example.toml:32`).
+
+What this plan changes about it: **nothing.** No existing value is
+edited, and the templates around it are untouched, so every prompt the
+app sends after M3 is byte-identical to before. There is nothing for a
+bench run to measure, and running one would compare a prompt against
+itself.
+
+What M3 *does* change is who can edit that fragment and when. Today it
+lives in a file, under review, and a change to it is a prompt change that
+carries the gate. After M3 the operator can edit it from a phone, at
+runtime, and CI will never see it. That is a deliberate trade: the whole
+point of the editor was to replace hand-editing the file, and hiding this
+one field would leave the file as the only way to reach it.
+
+So the rule survives the move, and this plan restates it rather than
+letting the editor become a hole in it:
+
+- **Shipping the editor: no bench run.** Values unchanged.
+- **Changing any `prompt_hints` value — through the editor, through the
+  file, or in a fixture — is a prompt change** and carries the full gate:
+  `experiments/one_note_bench.py` against real models, fixtures covering
+  the behaviour the hint is meant to produce, and a fresh-agent semantic
+  review of the review packet. An agent must never edit one without it.
+- Any milestone that drifts into prompt text stops and runs the bench.
 
 ---
 
@@ -197,9 +225,10 @@ Delete the field label (`AddView.vue:242`, `:251`), the lookup checkbox
 (`:264-267`) and the undo button (`:271`). The placeholder carries the
 whole instruction: `add.wordPlaceholder` becomes `"слово или выражение"` /
 `"a word or a phrase"`. Delete the `lookupOnly` ref (`:19`), drop it from
-the `watch` (`:24`) and pass `false` where `sendWord` wants it — the `?`
-prefix still works, because the server strips it in
-`languages.normalize_submission` and ORs the flag.
+the `watch` (`:24`) and pass `false` where `sendWord` wants it — both at
+the call in `submit` (`:41`) and at the one in `analyseSegment` (`:47`),
+which reads the same ref today. The `?` prefix still works: the server
+strips it in `languages.normalize_submission` and ORs the flag.
 
 ### The rail
 
@@ -223,7 +252,38 @@ selected entry id per language code. Rules:
   `--border-strong` thumb, 4px tall. macOS otherwise paints a white bar
   across the dark card.
 - A chip whose entry is pending, or whose paid call is running, carries a
-  pulsing accent dot (`::after`, 6px, `opacity` 1 → 0.2 over 1.1s).
+  pulsing accent dot (`::after`, 6px, `opacity` 1 → 0.2 over 1.1s). A
+  pending chip shows the word alone — no `⏳` prefix; the dot says it, and
+  a prefix makes the chip jump in width when the answer lands.
+- Chips press: `transform: scale(0.94)` over 100ms, matching `.btn:active`
+  in `base.css`.
+
+### Movement on every switch
+
+Decision 4 is not satisfied by the press state alone. Whenever the
+selected entry changes — a chip tap, a swipe, a language switch, a new
+submission — the card **arrives from the side it came from**: set its
+`translateX` to `+44px` when moving to a later entry and `-44px` when
+moving to an earlier one, with the transition suppressed for that frame,
+then release it to `0` on the next tick with `transition: transform
+0.18s ease-out, opacity 0.18s ease-out`. Reuse the same transform the
+drag writes, so a swipe continues into the settle instead of fighting it.
+
+Swipe itself: pointer events on the card, `touch-action: pan-y` so the
+page still scrolls vertically, a 55px threshold, and the card following
+the finger with `opacity` easing to about 0.6 at full travel. Do **not**
+call `setPointerCapture` — it makes the click land on the capturing
+element in Chrome and eats taps on the buttons inside the card. Ignore a
+drag that starts on a `button` instead.
+
+### Nothing yet
+
+A language with no entries has no rail and no card — render `add.empty`
+where the card would be, as the feed does today (`AddView.vue:277`). This
+is the normal state of a language added a minute ago in M3, so it is not
+an edge case: check it after every rail change. The rail element itself
+is hidden rather than rendered empty, so the form does not float above a
+blank strip.
 
 ### The card
 
@@ -248,13 +308,26 @@ Order, top to bottom:
 9. **No meta line.** Delete `.entry-meta` and its markup
    (`AddView.vue:374-376`, `:499-503`).
 
+**And no pager.** The `‹ 1 / 20 ›` counter with its arrows is not part of
+this design and must not be added back: the rail says where the reader is
+far better than a number, and the arrows duplicate the swipe. Position is
+shown by which chip is centred and highlighted, nothing else.
+
+**Errors keep their place in the card.** An entry that failed is still an
+entry in the rail, and one card is all there is to show it in. Below the
+analysis slot render, in order: `entry.error` with the retry button
+(`add.retry`), `entry.detail_error`, and `entry.control_error` — the same
+three blocks the feed has today (`AddView.vue:352-359`, `:377-381`), just
+scoped to the selected entry. A failed entry's chip carries no live dot;
+it is finished, not running.
+
 ### Actions
 
 Two, for a unit entry that has a card:
 
 - `add.detail` → `"Полная статья"` / `"The full entry"`, becoming
-  `add.detailReady` → `"Статья готова"` / `"The entry is below"` once
-  `detail_html` is set.
+  `add.detailReady` → `"Статья готова"` / `"The entry is ready"` once
+  `detail_html` is set, disabled from then on.
 - **New**: delete this card, `"Удалить из Anki"` / `"Delete from Anki"`,
   in `--error`. Pressing it turns the action row into an inline
   confirmation — `"Удалить карточки для «{word}» из Anki? Разбор
@@ -339,7 +412,12 @@ catalogues` fails.
 Remove: `add.language`, `add.word`, `add.lookupOnly`, `add.undo`,
 `add.undone`, `add.nothingToUndo`, `add.rebuild`, `add.noCard`,
 `add.textNoCard`, `add.text`, `add.expression`, `add.senses`,
-`card.text`.
+`card.text`. Removing `card.text` also means dropping `text:` from
+`CARD_STATUS_KEYS` (`AddView.vue:128`), which is otherwise a lookup at a
+key that no longer exists.
+
+Keep `card.lookupOnly`: the `?` prefix still produces an entry with no
+card, and its status line is the only thing that says so.
 
 Add: `add.deleteCard`, `add.deleteCardConfirm`, `add.deleteCardYes`,
 `add.deleteCardNo`, `card.deleted`, `add.analysing`, `add.buildingEntry`.
