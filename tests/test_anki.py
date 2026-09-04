@@ -755,7 +755,7 @@ def synced_settings(tmp_path: Path, **values: object) -> Settings:
         "data_dir": tmp_path,
         "anki_sync": True,
         "ankiweb_user": "owner@example.com",
-        "ankiweb_password": "secret",  # noqa: S105 - explicit fake test credential
+        "ankiweb_password": "secret",
     }
     defaults.update(values)
     return Settings(
@@ -1138,8 +1138,8 @@ async def test_local_sync_status_distinguishes_ok_unsynced_and_full_sync(tmp_pat
     assert (await store.status()).unsynced_changes is False
     assert (await store.status()).full_sync_required is False
 
-    store._sync_generation = 2  # noqa: SLF001
-    store._synced_generation = 1  # noqa: SLF001
+    store._sync_generation = 2
+    store._synced_generation = 1
     assert (await store.status()).unsynced_changes is False
 
     store.sync_error = "Anki requires a one-way full sync — resolve it manually"
@@ -1154,8 +1154,8 @@ async def test_sync_status_reads_collection_state_after_a_restart(tmp_path):
     store = AnkiStore(synced_settings(tmp_path), sync_backend=backend)
     await store.open()
     try:
-        store._sync_generation = 0  # noqa: SLF001 - simulates fresh process memory.
-        store._synced_generation = 0  # noqa: SLF001
+        store._sync_generation = 0
+        store._synced_generation = 0
         assert (await store.status()).unsynced_changes is True
     finally:
         await store.close()
@@ -1214,7 +1214,7 @@ async def test_collection_errors_propagate_to_the_caller(tmp_path, monkeypatch):
 async def test_cancelled_add_finishes_its_writer_before_collection_close(tmp_path, monkeypatch):
     store = AnkiStore(local_settings(tmp_path))
     await store.open()
-    original_add = store._add_note_blocking  # noqa: SLF001 - test replaces the thread boundary.
+    original_add = store._add_note_blocking
     writer_started = threading.Event()
     release_writer = threading.Event()
     writer_finished = threading.Event()

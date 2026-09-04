@@ -342,7 +342,7 @@ def test_status_reports_pool_keys_cap_memory_journal_and_anki_state(
             True,
             datetime(2026, 8, 19, tzinfo=UTC),
         )
-        live_client.app.state.cascade._paid_calls = 4  # noqa: SLF001
+        live_client.app.state.cascade._paid_calls = 4
         live_client.app.state.anki.sync_error = "Anki requires a one-way full sync"
         live_client.app.state.anki.status = AsyncMock(
             return_value=SyncState(

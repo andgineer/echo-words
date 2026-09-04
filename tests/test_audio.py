@@ -396,7 +396,7 @@ async def test_one_shared_voice_synthesizes_one_word_at_a_time(
 
     class FakeVoice:
         @classmethod
-        def load(cls, _model, *, config_path=None):  # noqa: ARG003 - matches Piper's signature.
+        def load(cls, _model, *, config_path=None):
             return cls()
 
         def synthesize_wav(self, word, wav_file):

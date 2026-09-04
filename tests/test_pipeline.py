@@ -27,7 +27,7 @@ pytestmark = pytest.mark.anyio
 
 
 class Completion:
-    def __init__(  # noqa: PLR0913 - stream timing controls keep race tests explicit.
+    def __init__(
         self,
         deltas: Iterable[str],
         *,
@@ -103,7 +103,7 @@ class ScriptedCascade:
         self.usable_checks: list[object] = []
         self.stepped_up: list[str] = []
 
-    def stream_completion(  # noqa: PLR0913 - the real signature, every switch of it.
+    def stream_completion(
         self,
         prompt,
         language,
@@ -112,7 +112,7 @@ class ScriptedCascade:
         on_reset=None,
         usable=None,
         hand_over=None,
-        pool_only=False,  # noqa: ARG002 - the real signature; the fake never steps up.
+        pool_only=False,
         reported=True,
     ):
         self.reported.append(reported)
@@ -874,7 +874,7 @@ async def test_a_cancellation_during_the_paint_wait_is_not_swallowed():
         await never.wait()
 
     task = asyncio.create_task(forever())
-    attestation = pipeline_module._Attestation(task)  # noqa: SLF001 - the wait under test
+    attestation = pipeline_module._Attestation(task)
     waiter = asyncio.create_task(attestation.lands_within(10))
     await asyncio.sleep(0)
     waiter.cancel()
@@ -1825,7 +1825,7 @@ async def test_card_audio_uses_the_returned_headword_without_replacing_pwa_audio
     assert entry.no_card_audio is False
 
 
-async def test_three_hanging_audio_roles_use_one_shared_wait_budget(  # noqa: PLR0915
+async def test_three_hanging_audio_roles_use_one_shared_wait_budget(
     languages,
     monkeypatch,
     caplog,

@@ -85,7 +85,7 @@ VOUCHED_ANSWER = '{"used": true, "where": "everyday"}'
 class FakeBroker:
     """Stands in for the one ``AsyncBroker``: hands out prepared handles and clients."""
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         home=None,
         direct: Iterable[str] = (),

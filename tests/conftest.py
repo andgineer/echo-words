@@ -247,9 +247,9 @@ def _no_real_voice_downloads(monkeypatch: pytest.MonkeyPatch) -> None:
 def _no_voice_kept_between_tests() -> Iterator[None]:
     # A loaded voice outlives the test that faked it, and the next test's fake would
     # never be asked for one.
-    audio._VOICES.clear()  # noqa: SLF001 - the cache under test is process-wide by design.
+    audio._VOICES.clear()
     yield
-    audio._VOICES.clear()  # noqa: SLF001 - the cache under test is process-wide by design.
+    audio._VOICES.clear()
 
 
 @pytest.fixture(autouse=True)

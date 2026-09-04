@@ -14,9 +14,9 @@ from echo_words.languages import DEFAULT_TARGET_LANGUAGE
 # copy overrides what it needs through the environment.
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
-# .deploy/.env is deliberately NOT read here: it holds the production secrets
-# and systemd hands it to the server process as an EnvironmentFile. Reading it
-# locally would run a dev box against the real AnkiWeb account.
+# .deploy/.env is not loaded here because systemd hands it to the server process
+# as an EnvironmentFile. A local run may still source it for the provider keys —
+# with ECHOWORDS_ANKI_SYNC=false, or the dev box syncs the real AnkiWeb account.
 ENV_FILE = REPO_ROOT / ".env"
 
 _DEFAULT_EDGE_TTS_VOICE = {"us": "en-US-AriaNeural", "uk": "en-GB-SoniaNeural"}

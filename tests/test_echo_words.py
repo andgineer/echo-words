@@ -59,7 +59,7 @@ def test_the_rebuild_subcommand_reads_the_env_file_the_service_is_given(monkeypa
     settings, confirmed = seen[0]
     assert (settings.data_dir, confirmed) == (data_dir, False)
     assert settings.ankiweb_user == "owner@example.com"
-    assert settings.ankiweb_password == 'pa"ss$(touch pwned)'  # noqa: S105 - fake credential
+    assert settings.ankiweb_password == 'pa"ss$(touch pwned)'
     assert not (tmp_path / "pwned").exists()
 
 
