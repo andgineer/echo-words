@@ -594,16 +594,24 @@ describe("EntryCard", () => {
     expect(wrapper.text()).not.toContain("tap one to analyse");
   });
 
-  it("keeps the reason that tells two chips of the same word apart", () => {
+  // Every sense of one word carries that same word, so a row of them reads as one
+  // button repeated, and what tells them apart sits in the caption underneath.
+  it("names a sense chip by its meaning rather than repeating the word", () => {
     const wrapper = card(senseEntry());
 
     expect(wrapper.findAll(".segment-label").map((button) => button.text())).toEqual([
-      "bank",
-      "bank",
-    ]);
-    expect(wrapper.findAll(".segment-reason").map((node) => node.text())).toEqual([
       "банк",
       "склон",
+    ]);
+    expect(wrapper.findAll(".segment-reason")).toHaveLength(0);
+  });
+
+  it("keeps a phrase's own parts on its chips, where the wording already differs", () => {
+    const wrapper = card(textEntry());
+
+    expect(wrapper.findAll(".segment-label").map((button) => button.text())).toEqual([
+      "steht auf",
+      "fällt aus",
     ]);
   });
 

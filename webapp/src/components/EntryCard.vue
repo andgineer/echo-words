@@ -222,6 +222,19 @@ const detailErrorText = computed(() =>
     : props.entry.detail_error,
 );
 
+// Every sense of one word is chipped under that same word, so the label repeats down
+// the row and the meaning underneath is the only thing telling them apart. On a rail
+// of senses the meaning is the chip; the parts of a phrase keep their own wording.
+const chipsAreSenses = computed(() => props.entry.segment_kind === "senses");
+
+function chipLabel(segment) {
+  return chipsAreSenses.value && segment.reason ? segment.reason : segment.label;
+}
+
+function chipReason(segment) {
+  return chipsAreSenses.value && segment.reason ? "" : segment.reason;
+}
+
 function confirmDelete() {
   confirming.value = false;
   emit("delete-card");
@@ -306,9 +319,9 @@ function confirmDelete() {
         class="segment"
       >
         <button class="segment-label" :disabled="busy" @click="emit('segment', segment)">
-          {{ segment.label }}
+          {{ chipLabel(segment) }}
         </button>
-        <p v-if="segment.reason" class="segment-reason">{{ segment.reason }}</p>
+        <p v-if="chipReason(segment)" class="segment-reason">{{ chipReason(segment) }}</p>
       </div>
     </div>
 

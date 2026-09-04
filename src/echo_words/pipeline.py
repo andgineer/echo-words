@@ -643,6 +643,16 @@ class WordPipeline:
                 # all that is done here: a recording is addressed by its text, so the
                 # same file may already be serving another live entry.
                 audio_path = context_audio_path = card_audio_path = None
+            # A corrected misspelling is not a word anyone says, so the player must
+            # speak the headword the note was made about rather than teaching the
+            # reader to pronounce the slip the answer just fixed.
+            if (
+                card_audio_path is not None
+                and _declares_a_typo(parsed)
+                and isinstance(parsed, ParsedUnit)
+                and not _same_text(job.word, parsed.note.word)
+            ):
+                audio_path = card_audio_path
             entry.audio_file = audio_path.name if audio_path else None
             entry.no_audio = audio_path is None and stored.status != UNATTESTED_STATUS
             entry.no_card_audio = stored.action == "added" and card_audio_path is None

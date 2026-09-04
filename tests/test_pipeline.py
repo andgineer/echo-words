@@ -3086,6 +3086,37 @@ async def test_delete_card_removes_the_note_and_its_media_and_keeps_the_recordin
         await pipeline.close()
 
 
+async def test_a_corrected_misspelling_is_spoken_as_the_headword(languages, tmp_path):
+    """The note is about the correction, so the player says the correction. Speaking the
+    submitted slip instead teaches a pronunciation of a word nobody writes: `uber` read
+    by a German voice is not `über`."""
+    submitted = tmp_path / "pronunciation-00112233445566778899.mp3"
+    headword = tmp_path / "pronunciation-99887766554433221100.mp3"
+    for path in (submitted, headword):
+        path.write_bytes(b"audio")
+
+    async def fetch(word, _language):
+        return headword if word == "über" else submitted
+
+    anki = MutableAnki([Added(7, "media.mp3")])
+    pipeline = WordPipeline(
+        ScriptedCascade([Completion([typo_card("über")])]),
+        target_lang="Russian",
+        anki=anki,
+        audio=fetch,
+    )
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(languages["de"], "uber", False, intent="unit")
+        await pipeline.join()
+
+        assert entry.analysed_as == "über"
+        assert entry.audio_file == headword.name
+        assert pipeline.history.entries[entry.entry_id].audio_file == headword.name
+    finally:
+        await pipeline.close()
+
+
 async def test_a_switch_keeps_the_recording_a_second_entry_is_still_playing(
     languages,
     tmp_path,
