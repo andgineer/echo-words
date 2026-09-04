@@ -5,6 +5,14 @@
 the near neighbour as prose, and the conditional origin. What is left open is the
 architectural change the earlier steps were the precondition for.
 
+**Held until `model-tier.md` reports.** No observed defect stands behind this step:
+nothing in local use has failed because one prompt carries both branches. What it
+does add is a third call and a second round trip in sequence, against an app whose
+standing complaint is how long a reader waits. If a fast model is found, the merged
+prompt stops being worth splitting; if none is, adding a round trip is the last
+thing to do. Reopen when that plan has its answer, and read the latency section
+below against the numbers it produces rather than against the ones here.
+
 ## What is already true
 
 A request whose branch the reader's own action settled — a chip tap, a one-word
@@ -27,6 +35,14 @@ The app already issues two calls per unit submission — the article and the
 judgement — so a second call is not a new cost shape. The free pool's daily quota
 is a bench problem rather than a product one: a reader does not ask enough
 questions in a day to approach it.
+
+Those two calls go to the pool **at the same time**, and a classifier makes three.
+That matters beyond quota: when the pool's first choice refuses, every concurrent
+call meets the same refusal, so one user action counts as several against that
+provider. A classifier is therefore measured on the pool as it behaves after
+llmbroker's queued routing fix, not against numbers taken before it — and a cheap
+classifier is a candidate for a low reasoning effort once that parameter exists,
+which is what decides whether its round trip costs a second or five.
 
 ## What the measurement has to answer
 

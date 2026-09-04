@@ -36,7 +36,10 @@ reader feels: 0.9 s of waiting becomes 7 s.
 
 **And the survey that chose the tier was partial.** It measured `sonnet`, `gpt` and
 `gpt-fast`. llmbroker's curated paid catalog carries nine aliases, and the ones
-whose whole selling point is speed were never called even once:
+whose whole selling point is speed were never called even once. Reaching them no
+longer means reading preset files out of the installed package by path: llmbroker's
+queue carries programmatic catalog access, so the arm list below comes from the
+catalog itself once that lands.
 
 | alias | model | why it is a candidate |
 |---|---|---|
@@ -53,6 +56,24 @@ every other experiment here — one change per tier, the quota does not fit two 
 does not apply. What a paid arm spends is money, and the operator's approval for
 that spend is the only gate.
 
+## The first arm, and what it waits on
+
+`gpt-fast`'s latency is reasoning, not throughput: the answer is *shorter* than the
+pool's, and seven of ten seconds pass before the first character. Every paid
+measurement taken so far is therefore of one model's **default** effort, because
+the request carries the model, the messages, the tools and the streaming options
+and nothing else.
+
+Measuring `gpt-fast` at a low effort is the cheapest route to "fast and obeys" —
+that model's quality is already measured and accepted, so the only open variable is
+whether the thinking phase can be shortened without losing it. It is the first arm
+of step 1, not a side experiment, and the only one whose outcome could end the plan
+early in the good direction.
+
+It waits on llmbroker: request parameters for a model reached by name are queued
+there, and until they ship this arm cannot be run at all. Nothing else in step 1
+depends on that, so the remaining arms proceed meanwhile.
+
 ## Step 1 — screen on latency alone
 
 Latency is a property a handful of calls establishes; quality is not. So screen
@@ -67,6 +88,11 @@ first and spend nothing on quality until the candidate can be fast.
   character ≤ 1.5 s. That is the band where the change does not read as a
   regression to a reader used to 2.2 s. An arm that misses it is out, whatever it
   scores on quality.
+- **Re-take the pool's own numbers in the same run.** The 2.2 s baseline was
+  measured before a silent pool member was found able to hold a caller's whole
+  budget and send every request to the paid step; llmbroker's queue changes what
+  the pool does when that happens. A candidate compared against a stale baseline
+  is compared against nothing.
 
 ## Step 2 — a quality tier on the survivors only
 
@@ -92,17 +118,6 @@ reads every item of the review packet. A green screen is conformance, not qualit
 - If nothing clears the bar, the choice is between `gpt-fast` at ten seconds and
   the pool at two, and it is a product judgement about waiting rather than a
   measurement. Put the numbers to the operator and let them choose.
-
-## The side experiment worth running with it
-
-`gpt-fast`'s latency is reasoning, not throughput: the answer is *shorter* than the
-pool's, and seven of ten seconds pass before the first character. llmbroker sends
-no reasoning-effort parameter at all, so every paid measurement so far is of a
-model's default effort. llmbroker is ours to change.
-
-Adding an effort setting and measuring `gpt-fast` at a low one is the cheapest
-possible route to "fast and obeys", because that model's quality is already
-measured and accepted. Run it as its own arm in step 1, not folded into another.
 
 ## What this plan must not do
 

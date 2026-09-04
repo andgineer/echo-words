@@ -26,18 +26,26 @@ tool looks for.
 - `spec/plan/` — work that is started and not finished, one file each.
   **Read these first when picking work up**: each says where its work
   stands, what is already built, what its experiments established and
-  what is left. Two are open. `two-prompts.md` — a cheap model call to
-  choose the branch for the submit box, where it is still unknown. The
-  prompt split it depended on has landed and is measured; the classifier
-  call has not. `model-tier.md` — whether any model is both fast enough
-  for an interactive tool and obedient enough to retire some of the
+  what is left. Three are open, and one of them is held.
+  `model-tier.md` — whether any model is both fast enough for an
+  interactive tool and obedient enough to retire some of the
   deterministic repairs in the answer path; the paid catalog's fast
   aliases have never been called, and latency rather than money is the
-  constraint. Writing a defect into a decision spec documents it;
-  it does not accept it, and only the operator accepts a limitation of
-  the product. Write a new plan only for work that needs one, and delete
-  it once that work has landed; what outlives it moves into a decision
-  spec. A plan is not an archive.
+  constraint. Its first arm — the incumbent paid model at a low
+  reasoning effort — waits on llmbroker, which cannot yet send a
+  request parameter to a model reached by name.
+  `observed-defects.md` — five faults reproduced in local use and left
+  unfixed, each with its
+  evidence, from an unignored `.env` to a search that denies a language
+  it merely already carries. `two-prompts.md` — a cheap model call to
+  choose the branch for the submit box; **held** until `model-tier.md`
+  reports, because no observed defect stands behind it and it adds a
+  round trip to an app whose complaint is waiting.
+  Writing a defect into a decision spec documents it; it does not accept
+  it, and only the operator accepts a limitation of the product. Write
+  a new plan only for work that needs one, and delete it once that work
+  has landed; what outlives it moves into a decision spec. A plan is not
+  an archive.
 
 ---
 
