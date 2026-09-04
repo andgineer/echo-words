@@ -385,15 +385,36 @@ receive письмо" — is a card front that teaches nothing, and answers prod
 prompt asks for the sentence to be written entirely in the source language and in one
 script from end to end.
 
-Behind that, the sentence outside the highlight is tested for letters the source
-language does not have, and an example failing it is dropped; an entry left with no
-usable example is unusable and steps up. That test is a filter and not a proof, and
-for Serbian it is the weakest: Serbian shares its Cyrillic with Russian, so only the
-nine letters Russian has and Serbian does not can separate them, and a Russian
-sentence using none of the nine passes — "Он живет в великом граду на берегу реки"
-shipped as a Serbian card front. Writing the sentence in the right language is the
-answer's job; no deterministic test can finish it, and widening this one is not the
-way to try.
+Behind that, the sentence outside the highlight is tested for the letters of the
+**configured** target language that the source language does not spell, and an example
+failing it is dropped; an entry left with no usable example is unusable and steps up.
+The target language is configuration, so the test follows it rather than assuming
+Russian: with a target the language directory does not know, its alphabet is unknown
+and no letter test runs at all.
+
+How much that catches depends on the pair, and on the two alphabets rather than on
+the two scripts: what a language writes is the directory's, letter by letter. Where the
+two are written in different scripts the test is near-total: with the default Russian
+target, no letter of a Latin-script language's sentence may be Cyrillic. Where they
+share a script it narrows to the letters the target has and the source does not — with
+a Russian target, three for Bulgarian, four for Ukrainian, nine for Serbian and for
+Macedonian; between two Latin-script languages, the target's own letters beyond the
+plain twenty-six, which is nine for a Polish target against an English source. Where
+that set is empty the test does not run: Kazakh, Kyrgyz, Mongolian and Tatar spell every
+Russian letter, Russian itself is the target, and an English target is written in
+letters every Latin-script source also writes. A filter that cannot separate the two
+would only reject the source language's own sentences.
+
+That test is therefore a filter and not a proof, and where the scripts are shared it
+is barely a filter at all. With the default Russian target, "Он живет в великом граду
+на берегу реки" passes as Serbian, "Кошка сидит на окне." passes as Bulgarian and
+"Мама читает книгу дома." passes as Ukrainian: none of them spells one of the three or
+four letters that separate the pair, so a target-language sentence walks onto the card
+front. Writing the sentence in the right language is the answer's job; no
+deterministic test can finish it, and widening this one is not the way to try. What
+this means in practice is that a source language written in the target's script rests
+on the answer alone, and is only as good as the model is at not drifting into the
+target language.
 
 **None of this proves linguistic intent, and the operating point is accepted rather
 than solved.** A model can still call a coinage attested: none to three of six survive
@@ -454,6 +475,21 @@ both in the answer entry and on the flashcard.
   outage only affects words added during it. If the chosen engine fails
   for any reason, the free online TTS is tried as a last resort for
   every language.
+- **A voice is never borrowed from another language.** The last resort
+  speaks only where a voice is configured for that language, or where the
+  app-wide default voice is that language's own; a language added without
+  one has no recording at all until it gets one. A word read aloud in the
+  wrong language is worse than a word with no recording: the entry says a
+  recording is missing, while a fluent English reading of a Bulgarian word
+  is a lesson in the wrong pronunciation, and it is carded.
+- **The recording belongs to the cache, not to a card.** A file is addressed
+  by its language and its text, so one recording serves every entry and every
+  note for that wording. Nothing deletes it: removing a card takes the note and
+  the copy in the Anki collection and leaves the app's own recording where it
+  is, still played by the entry on the screen and reused by the next send of
+  the same word. A shared file has no one owner to delete it on, and the cache
+  is disposable in any case: every file in it is fetched again, one word at a
+  time, the next time that word is asked for.
 - **Delivery**:
   - In the app: the pronunciation is attached to the answer entry —
     one tap to hear, replayable from the history. Where the whole text
@@ -560,11 +596,12 @@ Kept minimal — everything beyond typing a word:
   answered. The cards it produced are unaffected; a word whose analysis fell
   off the end can always be looked up again.
 - **Delete this card** — on the entry in front of the reader, remove the Anki
-  note that entry created, its media and its recordings. The analysis stays on
-  the screen and the entry stays in the rail; only the cards go, and the
-  question is asked inside the card rather than in a modal. It acts on the
-  entry being read rather than on whichever word happened to be last, and it
-  is offered only where a note actually exists to delete.
+  note that entry created and the media it put in the collection. The analysis
+  stays on the screen, the entry stays in the rail and the word stays audible;
+  only the cards go, and the question is asked inside the card rather than in a
+  modal. It acts on the entry being read rather than on whichever word happened
+  to be last, and it is offered only where a note actually exists to delete. An entry whose note
+  has already gone is told so rather than answered with silence.
 - **Deeper analysis** — on a finished word answer, a control that asks the
   same word again from the paid model with a fuller brief: every sense
   the word has rather than the card-worthy few, a real etymology, more
@@ -594,16 +631,39 @@ Kept minimal — everything beyond typing a word:
   card to rebuild.
 - **Language editor** — reached from the pencil beside the language row, not
   from the navigation. A list with add and remove, and a settings screen per
-  language: name, deck and script above, and voice engine, voice, dictionary
-  code and accent behind "Advanced". Adding one needs a name or a code alone;
-  the deck is derived from it. Both deletions ask inside the row they came
-  from rather than in a modal. A write replaces the languages table on disk
+  language: the deck above, with the script beside it as a fact rather than a
+  choice, and voice engine, voice, dictionary code and accent behind
+  "Advanced". A Piper voice is picked from the ones this build can install,
+  never typed: the editor accepts only a voice the server can actually put on
+  disk, so choosing one is never choosing silence. An Edge voice stays free
+  text — there are hundreds of them and the app installs none. Both deletions ask inside the row they came from
+  rather than in a modal. A write replaces the languages table on disk
   atomically and takes effect without a restart; a new voice is fetched in the
   background. Removing a language **never** deletes its Anki deck — the cards
   are the reader's — and the last remaining language cannot be removed,
   because the app does not start without one. Entries already in history for a
   removed language stay; the rail filters by language, so they simply stop
   being reachable.
+- **The language directory** — a language is added by searching a reference
+  table of the languages the app can **reach** and pressing the one wanted; it
+  is found by its own name, its English name, its Russian name or its code. The
+  table gives the language its **code**, its **name**, its script and its
+  dictionary code, and the deck is named after it. Reaching a language is not
+  vouching for its answers, and the two are never conflated: every row carries
+  what is known about that language — vouched for, measured and unreliable, or
+  nobody has looked — and says it in the row where the language is picked and
+  again in its editor afterwards, because a reader cannot tell a fluent
+  invention from an answer. The code and the name are
+  the directory's rather than the reader's, and a submission carrying a name is
+  refused: the code addresses the encyclopedia, the dictionary and the audio
+  cache and cannot be changed once the language exists, and the name is what
+  the prompt calls the source language. Under a code the directory does carry,
+  the name and the script are the directory's whatever the file says, from the
+  moment the table is read rather than from the next save: the input field, the
+  card-sentence filter, the editor and the prompt have to be testing one
+  alphabet and naming one language, and a file disagreeing is logged and
+  overridden. A language configured by hand under a code the directory does not
+  carry stays editable and keeps its own name.
   The editor does **not** expose `api_model` or `prompt_hints`, and refuses a
   request that carries either. They are the two fields whose value reaches
   machinery the editor can neither show nor check: a prompt hint is

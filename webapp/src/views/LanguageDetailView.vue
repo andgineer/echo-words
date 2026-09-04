@@ -12,13 +12,15 @@ const props = defineProps({
 });
 const emit = defineEmits(["back", "done"]);
 
-const SCRIPTS = ["latin", "cyrillic", "latin+cyrillic"];
 const ENGINES = ["piper", "edge"];
 
+const label = ref("");
+const script = ref("");
+const piperUnusable = ref(false);
+const piperVoices = ref([]);
+const answers = ref("unmeasured");
 const form = ref({
-  name: "",
   deck: "",
-  script: "latin",
   tts: "",
   tts_voice: "",
   edge_tts_voice: "",
@@ -31,16 +33,45 @@ const hint = ref("");
 const saved = ref(false);
 const busy = ref(false);
 
-const engine = computed(() => (form.value.tts === "edge" ? "edge" : "piper"));
-const voiceField = computed(() => (engine.value === "edge" ? "edge_tts_voice" : "tts_voice"));
+// A language with no engine set shows none chosen, rather than claiming the one it
+// would default to: nothing in the file says so, and a save would not write it.
+const engine = computed(() => (ENGINES.includes(form.value.tts) ? form.value.tts : ""));
 
-// Piper's only sr_RS model is Lower Sorbian, so choosing it for Serbian gets a voice
-// of another language rather than none (spec/decision-tts.md).
-const piperHasNoVoice = computed(() => engine.value === "piper" && props.code === "sr");
+// A Piper voice is offered rather than typed: only the app's own pinned downloads can
+// reach the server, and the backend refuses any other. One configured by hand stays on
+// the list, because the backend keeps accepting the value already in the file.
+const piperOptions = computed(() => {
+  const configured = form.value.tts_voice;
+  return configured && !piperVoices.value.includes(configured)
+    ? [...piperVoices.value, configured]
+    : piperVoices.value;
+});
 
-const voiceHint = computed(() =>
-  piperHasNoVoice.value ? t("languages.voiceNoSerbian") : t("languages.voiceHint"),
+// Which languages Piper's model actually voices is the directory's to know
+// (spec/decision-tts.md), and which of those voices this server can install is the
+// backend's; neither is this screen's. Offering the engine without one is a promise of
+// a download that never happens, so the choice is closed instead of explained after.
+// Over the options rather than the build's own list: a voice already in the file is
+// one the backend keeps accepting, so a language voiced by hand is offered Piper
+// instead of being told this build has none and locked out of the engine it is using.
+const piperOffered = computed(() => !piperUnusable.value && piperOptions.value.length > 0);
+const noPiperReason = computed(() =>
+  piperUnusable.value ? t("languages.voiceNoPiper") : t("languages.voiceNoPiperBuild"),
 );
+
+// What the bench has measured about this language's answers, in the reader's words: a
+// language nobody measured answers as fluently as one that was (decision-llm-backend).
+const answersNote = computed(() => {
+  if (answers.value === "unreliable") return t("languages.answersUnreliable");
+  if (answers.value === "unmeasured") return t("languages.answersUnmeasured");
+  return "";
+});
+
+const voiceHint = computed(() => {
+  if (engine.value !== "piper") return t("languages.voiceHint");
+  if (!piperOffered.value) return noPiperReason.value;
+  return t("languages.voicePiperInstalled", { voices: form.value.tts_voice });
+});
 
 onMounted(async () => {
   try {
@@ -50,16 +81,21 @@ onMounted(async () => {
       emit("done");
       return;
     }
+    label.value = found.name ?? "";
+    script.value = found.script ?? "";
     form.value = {
-      name: found.name ?? "",
       deck: found.deck ?? "",
-      script: found.script ?? "latin",
       tts: found.tts ?? "",
       tts_voice: found.tts_voice ?? "",
       edge_tts_voice: found.edge_tts_voice ?? "",
       dict_api: found.dict_api ?? "",
       accent: found.accent ?? "",
     };
+    const catalog = await apiRequest("/api/languages/catalog");
+    const listed = catalog.find((entry) => entry.code === props.code);
+    piperUnusable.value = Boolean(listed?.piper_unusable);
+    piperVoices.value = listed?.piper_voices ?? [];
+    answers.value = listed?.answers ?? "unmeasured";
   } catch (e) {
     hint.value = e.message;
   }
@@ -67,6 +103,10 @@ onMounted(async () => {
 
 function pickEngine(value) {
   form.value.tts = value;
+  // The one voice the server would install, so choosing Piper is not choosing silence.
+  if (value === "piper" && !form.value.tts_voice && piperVoices.value.length === 1) {
+    form.value.tts_voice = piperVoices.value[0];
+  }
   saved.value = false;
 }
 
@@ -112,34 +152,26 @@ async function remove() {
 
   <section class="card">
     <div class="detail-title">
-      <h2>{{ form.name || code }}</h2>
+      <h2>{{ label || code }}</h2>
       <span class="lang-code">{{ code }}</span>
     </div>
 
-    <div class="group">
-      <label for="lang-name">{{ t("languages.name") }}</label>
-      <input id="lang-name" v-model="form.name" type="text" autocomplete="off" />
-    </div>
+    <p
+      v-if="answersNote"
+      class="form-hint answers-note"
+      :class="{ warn: answers === 'unreliable' }"
+    >
+      {{ answersNote }}
+    </p>
 
     <div class="group">
       <label for="lang-deck">{{ t("languages.deck") }}</label>
       <input id="lang-deck" v-model="form.deck" type="text" autocomplete="off" />
     </div>
 
-    <div class="group">
+    <div v-if="script" class="group">
       <span class="group-label">{{ t("languages.script") }}</span>
-      <div class="seg-container opt-row">
-        <button
-          v-for="item in SCRIPTS"
-          :key="item"
-          class="opt-btn"
-          :class="{ active: form.script === item }"
-          :data-testid="`script-${item}`"
-          @click="form.script = item"
-        >
-          {{ t(`languages.script.${item}`) }}
-        </button>
-      </div>
+      <p class="script-fact" data-testid="script">{{ t(`languages.script.${script}`) }}</p>
     </div>
 
     <button class="collapse" data-testid="advanced" @click="advanced = !advanced">
@@ -161,19 +193,36 @@ async function remove() {
             class="opt-btn"
             :class="{ active: engine === item }"
             :data-testid="`tts-${item}`"
+            :disabled="item === 'piper' && !piperOffered && engine !== 'piper'"
             @click="pickEngine(item)"
           >
             {{ t(`languages.tts.${item}`) }}
           </button>
         </div>
+        <p v-if="!piperOffered" class="form-hint warn no-piper">{{ noPiperReason }}</p>
       </div>
 
-      <div class="group">
-        <label for="lang-voice">
-          {{ engine === "edge" ? t("languages.voiceEdge") : t("languages.voicePiper") }}
-        </label>
-        <input id="lang-voice" v-model="form[voiceField]" type="text" autocomplete="off" />
-        <p class="form-hint voice-hint" :class="{ warn: piperHasNoVoice }">{{ voiceHint }}</p>
+      <div v-if="engine === 'edge'" class="group">
+        <label for="lang-voice">{{ t("languages.voiceEdge") }}</label>
+        <input id="lang-voice" v-model="form.edge_tts_voice" type="text" autocomplete="off" />
+        <p class="form-hint voice-hint">{{ voiceHint }}</p>
+      </div>
+
+      <div v-else-if="engine === 'piper'" class="group">
+        <span class="group-label">{{ t("languages.voicePiper") }}</span>
+        <div v-if="piperOptions.length" class="seg-container opt-row">
+          <button
+            v-for="voice in piperOptions"
+            :key="voice"
+            class="opt-btn"
+            :class="{ active: form.tts_voice === voice }"
+            :data-testid="`voice-${voice}`"
+            @click="form.tts_voice = voice"
+          >
+            {{ voice }}
+          </button>
+        </div>
+        <p class="form-hint voice-hint" :class="{ warn: !piperOffered }">{{ voiceHint }}</p>
       </div>
 
       <div class="pair">
@@ -210,7 +259,7 @@ async function remove() {
     </div>
 
     <div v-else class="confirm">
-      <p class="confirm-text">{{ t("languages.removeConfirm", { name: form.name || code }) }}</p>
+      <p class="confirm-text">{{ t("languages.removeConfirm", { name: label || code }) }}</p>
       <div class="confirm-actions">
         <button class="btn-inline btn-danger confirm-yes" @click="remove">
           {{ t("languages.removeYes") }}
@@ -309,6 +358,16 @@ async function remove() {
   transform: scale(0.95);
 }
 
+.opt-btn:disabled {
+  background: var(--field-deep);
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+.opt-btn:disabled:active {
+  transform: none;
+}
+
 .opt-btn.active {
   background: var(--accent);
   color: #fff;
@@ -341,13 +400,29 @@ async function remove() {
   margin-bottom: 1rem;
 }
 
+.script-fact {
+  font-size: 0.95rem;
+}
+
 .voice-hint {
   margin-top: 0.4rem;
   line-height: 1.5;
 }
 
-.voice-hint.warn {
+.voice-hint.warn,
+.no-piper,
+.answers-note.warn {
   color: var(--warning);
+}
+
+.answers-note {
+  margin: 0 0 1rem;
+  line-height: 1.5;
+}
+
+.no-piper {
+  margin-top: 0.4rem;
+  line-height: 1.5;
 }
 
 .footer-actions {

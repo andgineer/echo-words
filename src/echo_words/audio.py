@@ -10,7 +10,6 @@ import tempfile
 import threading
 import wave
 from collections.abc import Iterable
-from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
 from typing import Any
@@ -23,10 +22,10 @@ import lameenc  # pyrefly: ignore[missing-import] - compiled extension has no ty
 from echo_words.config import Settings
 from echo_words.config import settings as default_settings
 from echo_words.languages import Language
+from echo_words.voices import PIPER_VOICES, PiperVoiceFiles, VoiceFile
 
 HTTP_TIMEOUT_SECONDS = 10
 _DICTIONARY_URL = "https://api.dictionaryapi.dev/api/v2/entries/{lang}/{word}"
-_VOICE_BASE_URL = "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0"
 _AUDIO_NAME_PATTERN = re.compile(r"pronunciation-[0-9a-f]{20}\.mp3")
 
 # Loading a voice costs seconds and around 110 MB, synthesizing with a loaded one
@@ -54,47 +53,6 @@ _SERBIAN_LETTERS = str.maketrans(
 )
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass(frozen=True)
-class VoiceFile:
-    suffix: str
-    url: str
-    sha256: str
-
-
-@dataclass(frozen=True)
-class PiperVoiceFiles:
-    model: VoiceFile
-    config: VoiceFile
-
-
-PIPER_VOICES = {
-    "en_US-lessac-medium": PiperVoiceFiles(
-        model=VoiceFile(
-            ".onnx",
-            f"{_VOICE_BASE_URL}/en/en_US/lessac/medium/en_US-lessac-medium.onnx",
-            "5efe09e69902187827af646e1a6e9d269dee769f9877d17b16b1b46eeaaf019f",
-        ),
-        config=VoiceFile(
-            ".onnx.json",
-            f"{_VOICE_BASE_URL}/en/en_US/lessac/medium/en_US-lessac-medium.onnx.json",
-            "efe19c417bed055f2d69908248c6ba650fa135bc868b0e6abb3da181dab690a0",
-        ),
-    ),
-    "de_DE-thorsten-medium": PiperVoiceFiles(
-        model=VoiceFile(
-            ".onnx",
-            f"{_VOICE_BASE_URL}/de/de_DE/thorsten/medium/de_DE-thorsten-medium.onnx",
-            "7e64762d8e5118bb578f2eea6207e1a35a8e0c30595010b666f983fc87bb7819",
-        ),
-        config=VoiceFile(
-            ".onnx.json",
-            f"{_VOICE_BASE_URL}/de/de_DE/thorsten/medium/de_DE-thorsten-medium.onnx.json",
-            "974adee790533adb273a1ac88f49027d2a1b8f0f2cf4905954a4791e79264e85",
-        ),
-    ),
-}
 
 
 async def fetch_pronunciation(
@@ -129,11 +87,11 @@ async def fetch_pronunciation(
             logger.warning("Piper audio failed for %s/%r: %s", lang.code, word, exc)
 
     try:
-        await _edge_audio(word, lang, output, settings)
-        return output
+        if await _edge_audio(word, lang, output, settings):
+            return output
     except Exception as exc:  # noqa: BLE001 - audio must never fail the answer.
         logger.warning("edge-tts audio failed for %s/%r: %s", lang.code, word, exc)
-        return None
+    return None
 
 
 async def prepare_configured_voices(
@@ -323,8 +281,11 @@ def _synthesize_piper(word: str, model: Path, config: Path) -> bytes:
         return encoder.encode(pcm) + encoder.flush()
 
 
-async def _edge_audio(word: str, lang: Language, output: Path, settings: Settings) -> None:
-    voice = lang.edge_tts_voice or settings.edge_tts_voice
+async def _edge_audio(word: str, lang: Language, output: Path, settings: Settings) -> bool:
+    voice = _edge_voice(lang, settings)
+    if voice is None:
+        logger.warning("no edge-tts voice speaks %s; %r stays silent", lang.code, word)
+        return False
     temporary = _temporary_path(output)
     try:
         await edge_tts.Communicate(_speech_text(word, voice), voice).save(str(temporary))
@@ -332,6 +293,20 @@ async def _edge_audio(word: str, lang: Language, output: Path, settings: Setting
         os.replace(temporary, output)
     finally:
         temporary.unlink(missing_ok=True)
+    return True
+
+
+def _edge_voice(lang: Language, settings: Settings) -> str | None:
+    """This language's voice, never one lent by another language.
+
+    The configured default speaks the accent's English, so a language with no voice of
+    its own would card its words read aloud as if they were English — worse than the
+    silence the entry reports instead.
+    """
+    if lang.edge_tts_voice:
+        return lang.edge_tts_voice
+    default = settings.edge_tts_voice
+    return default if default and default.split("-")[0] == lang.code else None
 
 
 def _serbian_cyrillic(text: str) -> str:

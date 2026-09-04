@@ -6,6 +6,8 @@ from typing import Literal, Self
 from pydantic import Field, ValidationInfo, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from echo_words.languages import DEFAULT_TARGET_LANGUAGE
+
 # Anchored to the repo root so systemd, cron and an interactive ``uv run`` all
 # resolve the same paths regardless of CWD. Only meaningful in a source
 # checkout, which is the single supported way to run the app; an installed
@@ -59,7 +61,7 @@ class Settings(BaseSettings):
     def _target_language_display_name(cls, value: object) -> object:
         # The documented default is the ISO code, while the LLM contract requires
         # a display name. Other target languages may be configured by display name.
-        return "Russian" if value == "ru" else value
+        return DEFAULT_TARGET_LANGUAGE if value == "ru" else value
 
     @field_validator("languages_config", "llmbroker_home", mode="before")
     @classmethod

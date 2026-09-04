@@ -11,6 +11,7 @@ from html import escape, unescape
 from typing import Any, Literal
 
 from echo_words.languages import (
+    DEFAULT_TARGET_LANGUAGE,
     Language,
     fold_for_match,
     sentence_is_source_language,
@@ -26,6 +27,17 @@ type WordRelation = Literal["same", "morphology", "typo"]
 
 class CardParseError(ValueError):
     """The hidden answer payload is not usable."""
+
+
+@dataclass(frozen=True)
+class _Request:
+    """What an answer is being read for: the two languages and the wording asked about."""
+
+    language: Language
+    target: str
+    context: str
+    selected_surface: str
+    target_lexeme: str
 
 
 @dataclass(frozen=True)
@@ -95,13 +107,14 @@ _SOURCE_TOKEN = re.compile(r"[^\W\d_]+(?:[-'’][^\W\d_]+)*", re.UNICODE)
 _TRAILING_SENTENCE_MARKS = " .!?…"
 
 
-def parse_answer_payload(  # noqa: C901, PLR0912 - the answer discriminator boundary.
+def parse_answer_payload(  # noqa: C901, PLR0912, PLR0913 - the answer discriminator.
     payload: str,
     submitted: str,
     language: Language,
     *,
     unit_intent: bool = False,
     context: str = "",
+    target: str = DEFAULT_TARGET_LANGUAGE,
 ) -> ParsedAnswer:
     """Parse the first JSON object and enforce the answer branch and request intent."""
     try:
@@ -136,15 +149,10 @@ def parse_answer_payload(  # noqa: C901, PLR0912 - the answer discriminator boun
     raw_meanings = card.get("meanings")
     if not isinstance(raw_meanings, list) or not raw_meanings:
         raise CardParseError("answer.meanings must be a non-empty list")
+    request = _Request(language, target, context, submitted, headword)
     candidates: list[tuple[int, Meaning]] = []
     for raw_index, item in enumerate(raw_meanings):
-        meaning = _parse_meaning(
-            item,
-            language=language,
-            context=context,
-            selected_surface=submitted,
-            target_lexeme=headword,
-        )
+        meaning = _parse_meaning(item, request)
         if meaning is None:
             continue
         candidates.append((raw_index, meaning))
@@ -226,6 +234,7 @@ def parse_card_payload(
     language: Language,
     *,
     context: str = "",
+    target: str = DEFAULT_TARGET_LANGUAGE,
 ) -> ParsedUnit:
     """Parse a payload which the caller already knows must be a unit."""
     parsed = parse_answer_payload(
@@ -234,6 +243,7 @@ def parse_card_payload(
         language,
         unit_intent=True,
         context=context,
+        target=target,
     )
     if not isinstance(parsed, ParsedUnit):
         raise CardParseError("answer is not a unit")
@@ -249,14 +259,7 @@ def _headword(value: Any, language: Language) -> str:
     return headword
 
 
-def _parse_meaning(
-    value: Any,
-    *,
-    language: Language,
-    context: str,
-    selected_surface: str,
-    target_lexeme: str,
-) -> Meaning | None:
+def _parse_meaning(value: Any, request: "_Request") -> Meaning | None:
     if not isinstance(value, dict) or not isinstance(value.get("label"), str):
         return None
     label = value["label"]
@@ -270,54 +273,29 @@ def _parse_meaning(
     ]
     if not translations:
         return None
-    examples = _usable_examples(
-        value.get("examples"),
-        language=language,
-        context=context,
-        selected_surface=selected_surface,
-        target_lexeme=target_lexeme,
-    )
+    examples = _usable_examples(value.get("examples"), request)
     if not examples:
         return None
     return Meaning(label.strip(), translations, examples)
 
 
-def _usable_examples(
-    value: Any,
-    *,
-    language: Language,
-    context: str,
-    selected_surface: str,
-    target_lexeme: str,
-) -> list[Example]:
+def _usable_examples(value: Any, request: "_Request") -> list[Example]:
     values = [value] if isinstance(value, dict) else value
     if not isinstance(values, list):
         return []
     examples: list[Example] = []
     for item in values:
-        if example := _parse_example(
-            item,
-            language=language,
-            context=context,
-            selected_surface=selected_surface,
-            target_lexeme=target_lexeme,
-        ):
+        if example := _parse_example(item, request):
             examples.append(example)
         if len(examples) == MAX_EXAMPLES_PER_MEANING:
             break
     return examples
 
 
-def _parse_example(
-    value: Any,
-    *,
-    language: Language,
-    context: str,
-    selected_surface: str,
-    target_lexeme: str,
-) -> Example | None:
+def _parse_example(value: Any, request: "_Request") -> Example | None:
     if not isinstance(value, dict):
         return None
+    context = request.context
     translation = _plain(value.get("translation"))
     highlighted_raw = value.get("highlighted")
     marked = _plain(highlighted_raw) if isinstance(highlighted_raw, str) else ""
@@ -329,19 +307,23 @@ def _parse_example(
     if not text:
         return None
     if context and _copies_context(text, context):
-        contextual = _context_sentence_forms(context, selected_surface)
+        contextual = _context_sentence_forms(context, request.selected_surface)
         if contextual is not None:
             highlighted, gapped = contextual
             # The backend owns the context, so the card carries ours, never the copy.
             return Example(context, translation, highlighted, gapped)
-    sentence_forms = _normalized_sentence_forms(sanitize_html(marked), language)
+    sentence_forms = _normalized_sentence_forms(
+        sanitize_html(marked),
+        request.language,
+        request.target,
+    )
     if sentence_forms is None or (
         not context
         and not _generated_target_covers_submitted_tokens(
             text,
             sentence_forms[0],
-            selected_surface,
-            target_lexeme,
+            request.selected_surface,
+            request.target_lexeme,
         )
     ):
         return None
@@ -355,22 +337,27 @@ def _copies_context(text: str, context: str) -> bool:
 def _normalized_sentence_forms(
     highlighted: str,
     language: Language | None = None,
+    target: str = DEFAULT_TARGET_LANGUAGE,
 ) -> tuple[str, str] | None:
     # Neighbouring spans are tried merged first: one contiguous unit earns one blank.
     for candidate in (_ADJACENT_BOLD_SPANS.sub(r"\1", highlighted), highlighted):
-        if _marked_sentence_usable(candidate, language):
+        if _marked_sentence_usable(candidate, language, target):
             return candidate, _BOLD_SPAN.sub("___", candidate)
     return None
 
 
-def _marked_sentence_usable(highlighted: str, language: Language | None = None) -> bool:
+def _marked_sentence_usable(
+    highlighted: str,
+    language: Language | None = None,
+    target: str = DEFAULT_TARGET_LANGUAGE,
+) -> bool:
     spans = list(_BOLD_SPAN.finditer(highlighted))
     if not spans or "___" in highlighted:
         return False
     outside = unescape(_BOLD_SPAN.sub("", highlighted))
     # The sentence around the unit has to be in the language being learned. A target
     # sentence with the source word wedged into it is a card front teaching nothing.
-    if language is not None and not sentence_is_source_language(outside, language):
+    if language is not None and not sentence_is_source_language(outside, language, target):
         return False
     return bool(
         "<" not in outside

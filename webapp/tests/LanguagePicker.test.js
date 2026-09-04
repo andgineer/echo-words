@@ -55,9 +55,12 @@ describe("LanguagePicker", () => {
     expect(wrapper.emitted("edit")).toHaveLength(1);
   });
 
-  it("renders nothing before the languages have loaded", () => {
+  // A table the app could not read is exactly when the editor has to stay reachable.
+  it("keeps the pencil when there is no language to show", () => {
     const wrapper = mount(LanguagePicker, { props: { languages: [], selected: "" } });
 
-    expect(wrapper.find(".lang-row").exists()).toBe(false);
+    expect(wrapper.findAll(".lang-btn")).toEqual([]);
+    expect(wrapper.get(".lang-none").text()).toBe("No language is configured.");
+    expect(wrapper.get('[data-testid="edit-languages"]').exists()).toBe(true);
   });
 });

@@ -4,6 +4,9 @@
 #
 # Required per language: name, deck, script (latin | cyrillic | latin+cyrillic).
 # Everything else is optional and documented in docs/src/en/configuration.md.
+#
+# The app writes this file too, from its own language editor, and a save replaces
+# the whole table: values survive, comments do not.
 
 [languages.en]
 name       = "English"

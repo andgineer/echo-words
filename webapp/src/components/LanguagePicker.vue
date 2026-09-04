@@ -12,8 +12,13 @@ const emit = defineEmits(["update:selected", "edit"]);
 </script>
 
 <template>
-  <div v-if="languages.length" class="lang-row">
-    <div class="seg-container lang-seg" role="tablist" :aria-label="t('languages.title')">
+  <div class="lang-row">
+    <div
+      v-if="languages.length"
+      class="seg-container lang-seg"
+      role="tablist"
+      :aria-label="t('languages.title')"
+    >
       <button
         v-for="lang in languages"
         :key="lang.code"
@@ -28,6 +33,9 @@ const emit = defineEmits(["update:selected", "edit"]);
         {{ lang.name }}
       </button>
     </div>
+    <!-- The pencil is kept even with nothing to show: a table the app could not read
+         is exactly when the editor has to stay reachable. -->
+    <p v-else class="lang-none">{{ t("languages.none") }}</p>
     <button
       type="button"
       class="icon-btn"
@@ -97,6 +105,13 @@ const emit = defineEmits(["update:selected", "edit"]);
   background: var(--accent);
   color: #fff;
   box-shadow: 0 4px 12px color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+.lang-none {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.85rem;
+  color: var(--text-muted);
 }
 
 .icon-btn {

@@ -26,10 +26,14 @@ tool looks for.
 - `spec/plan/` — work that is started and not finished, one file each.
   **Read these first when picking work up**: each says where its work
   stands, what is already built, what its experiments established and
-  what is left. One is open: `two-prompts.md` — a cheap model call to
+  what is left. Two are open. `two-prompts.md` — a cheap model call to
   choose the branch for the submit box, where it is still unknown. The
   prompt split it depended on has landed and is measured; the classifier
-  call has not. Writing a defect into a decision spec documents it;
+  call has not. `model-tier.md` — whether any model is both fast enough
+  for an interactive tool and obedient enough to retire some of the
+  deterministic repairs in the answer path; the paid catalog's fast
+  aliases have never been called, and latency rather than money is the
+  constraint. Writing a defect into a decision spec documents it;
   it does not accept it, and only the operator accepts a limitation of
   the product. Write a new plan only for work that needs one, and delete
   it once that work has landed; what outlives it moves into a decision
@@ -118,6 +122,13 @@ an instruction. Shipping a prompt change on a green mocked suite is releasing
 untested code into the only part of the system whose behavior we do not
 control. There is no "the sentence is only added on a new path, so the
 canonical prompt is unchanged" exemption: the new path is the change.
+
+The gate is on that machinery, not on the language directory: a row there is
+data, and adding one asks the same prompt with a different source-language
+name. What is known about a language's answers is carried by the row itself and
+shown to the reader — the operator accepted that in
+`spec/decision-llm-backend.md`, which is also where a row moves from unmeasured
+to vouched, by measurement and never by an edit.
 
 If running the bench needs something only the operator has — API budget, a
 manifest decision, time — say so and ask. Never present the work as finished

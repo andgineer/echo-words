@@ -18,6 +18,7 @@ _PLATFORM = "Application platform"
 _DEFAULT_BEHAVIOR_BY_FILE: dict[str, tuple[str, str, str | None]] = {
     "test_anki.py": (_VOCABULARY, "Anki cards", "Headless collection"),
     "test_audio.py": (_VOCABULARY, "Pronunciation audio", None),
+    "test_voices.py": (_VOCABULARY, "Pronunciation audio", "Piper voice catalogue"),
     "test_api.py": (_VOCABULARY, "Input and languages", None),
     "test_api_backend.py": (_VOCABULARY, "LLM cascade", "Paid attempt"),
     "test_backend.py": (_VOCABULARY, "LLM cascade", None),
@@ -26,6 +27,7 @@ _DEFAULT_BEHAVIOR_BY_FILE: dict[str, tuple[str, str, str | None]] = {
     "test_config.py": (_PLATFORM, "Configuration and lifecycle", "Settings"),
     "test_echo_words.py": (_PLATFORM, "Configuration and lifecycle", "CLI startup"),
     "test_i18n.py": (_PLATFORM, "Interface language", None),
+    "test_language_catalog.py": (_VOCABULARY, "Input and languages", "Language directory"),
     "test_languages.py": (_VOCABULARY, "Input and languages", None),
     "test_llm_backend.py": (_VOCABULARY, "LLM cascade", "Free pool attempt"),
     "test_one_note_bench.py": (

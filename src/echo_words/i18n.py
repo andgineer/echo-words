@@ -9,6 +9,7 @@ MESSAGES: dict[str, dict[str, str]] = {
         "text.too_long": "This text is too long: no more than {limit} characters.",
         "text.no_rebuild": "Running text makes no card, so there is nothing to rebuild.",
         "card.no_rebuild": "This entry has no card to rebuild.",
+        "card.no_delete": "This entry has no cards in Anki — there is nothing to delete.",
         "text.no_detail": "A deeper analysis is for a word, not for running text.",
         "word.non_letter": "Letters, spaces, hyphens and apostrophes only.",
         "word.mixed_scripts": "Do not mix Latin and Cyrillic in one word.",
@@ -18,8 +19,12 @@ MESSAGES: dict[str, dict[str, str]] = {
         "script.latin+cyrillic": "the Latin or the Cyrillic script",
         "language.unknown": "Unknown language “{code}” — pick one from the list.",
         "language.bad_code": "“{code}” is not a language code: two to eight lowercase letters.",
+        "language.not_in_catalog": (
+            "“{code}” is not in the language directory — search it for the language you want."
+        ),
         "language.missing": "Fill in: {fields}.",
-        "language.bad_script": "Unknown script “{script}”: pick one of {allowed}.",
+        "language.no_piper": "This app has no Piper voice for “{code}” — use Edge.",
+        "language.bad_voice": "Piper needs a voice this app can install: pick one of {allowed}.",
         "language.bad_tts": "Unknown voice engine “{tts}”: pick one of {allowed}.",
         "language.last": "This is the only language left; the app cannot run without one.",
     },
@@ -29,6 +34,7 @@ MESSAGES: dict[str, dict[str, str]] = {
         "text.too_long": "Текст слишком длинный: не больше {limit} символов.",
         "text.no_rebuild": "Текст не создаёт карточку — пересобирать нечего.",
         "card.no_rebuild": "У этой записи нет карточки — пересобирать нечего.",
+        "card.no_delete": "У этой записи нет карточек в Anki — удалять нечего.",
         "text.no_detail": "Подробный разбор бывает у слова, а не у текста.",
         "word.non_letter": "Только буквы, пробел, дефис и апостроф.",
         "word.mixed_scripts": "Не смешивайте латиницу и кириллицу в одном слове.",
@@ -38,8 +44,14 @@ MESSAGES: dict[str, dict[str, str]] = {
         "script.latin+cyrillic": "латиница или кириллица",
         "language.unknown": "Неизвестный язык «{code}» — выберите язык из списка.",
         "language.bad_code": "«{code}» — не код языка: от двух до восьми строчных букв.",
+        "language.not_in_catalog": (
+            "«{code}» нет в справочнике языков — найдите нужный язык поиском."
+        ),
         "language.missing": "Заполните: {fields}.",
-        "language.bad_script": "Неизвестная письменность «{script}»: выберите из {allowed}.",
+        "language.no_piper": "Для «{code}» у приложения нет голоса Piper — возьмите Edge.",
+        "language.bad_voice": (
+            "Piper нужен голос, который приложение умеет установить: выберите из {allowed}."
+        ),
         "language.bad_tts": "Неизвестный движок озвучки «{tts}»: выберите из {allowed}.",
         "language.last": "Это единственный язык — без языка приложение не работает.",
     },

@@ -336,9 +336,13 @@ def test_tier_manifests_have_frozen_non_overlapping_counts():
     assert len(bench.CONFIRMATION_ANCHOR_IDS) == 8
     assert len(bench.canonical_ids_for_tier("confirmation")) == 81
     assert len(bench.canonical_ids_for_tier("full")) == 157
-    assert len(bench.initial_jobs_for_tier("smoke")) + len(bench.CLICK_IDS) == 55
-    assert len(bench.initial_jobs_for_tier("confirmation")) + len(bench.CLICK_IDS) == 125
-    assert len(bench.initial_jobs_for_tier("full")) + len(bench.CLICK_IDS) == 216
+    assert len(bench.initial_jobs_for_tier("smoke")) + len(bench.CLICK_IDS) == 61
+    assert len(bench.initial_jobs_for_tier("confirmation")) + len(bench.CLICK_IDS) == 131
+    assert len(bench.initial_jobs_for_tier("full")) + len(bench.CLICK_IDS) == 222
+    # A source language written in the target language's script is six calls on every
+    # tier: no other fixture exercises the card path where the two scripts are shared.
+    assert len(bench.cyrillic_ids_for_tier("smoke")) == 6
+    assert {bench.CYRILLIC_BY_ID[i].lang for i in bench.CYRILLIC_IDS} == {"bg", "uk"}
     # A word list is measured on the full tier only, at three calls.
     assert len(bench.wordlist_ids_for_tier("full")) == 3
     assert bench.wordlist_ids_for_tier("confirmation") == frozenset()
@@ -1144,3 +1148,46 @@ def test_a_run_on_chip_drifting_by_more_than_one_word_is_a_miss():
     scored = bench.score(shot)
 
     assert "mi se čini" in scored.metrics["registered_unit_misses"]
+
+
+def test_a_cyrillic_shot_cards_its_own_sentence_and_reports_the_target_language_one():
+    """Both directions on one answer: the Bulgarian example becomes the card front, and
+    the Russian one is counted as dropped instead of being carded."""
+    shot = next(s for s in bench.cyrillic_shots() if s.shot_id == "cyrillic-bg-stol")
+    payload = {
+        "kind": "unit",
+        "word": "стол",
+        "word_relation": "same",
+        "suggestion": "",
+        "meanings": [
+            {
+                "label": "",
+                "translations": ["стул"],
+                "examples": [
+                    {
+                        "text": "Той седна на стола до прозореца.",
+                        "translation": "Он сел на стул у окна.",
+                        "highlighted": "Той седна на <b>стола</b> до прозореца.",
+                        "gapped": "Той седна на ___ до прозореца.",
+                    },
+                    {
+                        "text": "Он сел на стол у окна, где мы сидели вчера.",
+                        "translation": "Он сел на стул у окна.",
+                        "highlighted": "Он сел на <b>стол</b> у окна, где мы сидели вчера.",
+                        "gapped": "Он сел на ___ у окна, где мы сидели вчера.",
+                    },
+                ],
+            },
+        ],
+        "segments": [],
+    }
+    answer = "<b>стол</b> — стул===CARD===" + json.dumps(payload, ensure_ascii=False)
+
+    scored = bench.score(replace(shot, text=answer))
+
+    assert scored.metrics["actual_kind"] == "unit"
+    assert scored.metrics["meanings_valid"] is True
+    assert scored.metrics["card_fronts"][0] == "стол"
+    # The card front is the Bulgarian sentence; the Russian one never reaches a card.
+    assert "Той седна" in " ".join(scored.metrics["card_fronts"])
+    assert [item["example"] for item in scored.metrics["examples_with_foreign_letters"]] == [1]

@@ -3,7 +3,7 @@ import { ref } from "vue";
 // The server keeps the same number and evicts the same way, but the browser only
 // re-syncs to it on a stream reconnect, so a tab left open for weeks would keep
 // everything the stream ever sent.
-const MAX_ENTRIES = 50;
+export const MAX_ENTRIES = 50;
 
 export const entries = ref([]);
 

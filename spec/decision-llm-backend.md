@@ -498,6 +498,148 @@ default effort, and llmbroker is ours to change if a lower one is worth testing.
 `haiku` and the paid `gemini-3.7-flash` are neither reasoning-first nor measured. A full tier of 218 calls spent roughly 325K input and 102K output tokens,
 about a third of a month at a couple of dozen submissions a day.
 
+## A Cyrillic source language cards, and its answers are not fit for a learner — 2026-09-04
+
+Measured on the smoke tier (61 calls, free pool, `gemini-3.5-flash-lite` answering
+every one of the six), with six fixtures chosen before the run: an ordinary noun, a
+verb in its own citation form and a false friend, in Bulgarian and in Ukrainian. Both
+languages entered the bench exactly as the app's own editor writes a new one — a deck,
+a script, no dictionary code, no voice, no prompt hints. Pool availability first: 55 of
+55 answers, no errors, four of the five pool models in the tally.
+
+**The mechanism works, six for six.** Every fixture came back a unit, headed by the
+source language's own dictionary form — `разказвам` as the Bulgarian first person
+singular, not as a Russian-style infinitive — with source-language examples, and built
+a four-card note. All eighteen example sentences are genuinely Bulgarian or Ukrainian;
+not one is a target-language sentence with the word wedged in, which is the failure a
+shared script most invites. The same model wrote Russian examples for an English word
+elsewhere in the same run, so the failure is in reach and simply did not fire here.
+
+**The answers are not.** A fresh reviewer read every item and refused five of the six:
+two invented etymologies (`прозорец` derived from a fabricated root, `олівець` given
+Russian `карандаш`'s Turkic story), two non-existent forms printed as forms
+(`розмовляешь` for `розмовляєш`, `разказвам се` for `разказва се`), Russian grammar
+asserted about Bulgarian (a case system Bulgarian does not have), and — on the fixture
+built to catch exactly this — Ukrainian `неділя` carded with the Russian sense "week"
+as a second sense, whose chip mints a note drilling the interference error. Bulgarian
+and Ukrainian collocations are repeatedly given as target-language verbs, which the
+shared script hides.
+
+**So the decision splits.** The capability is landed and measured: a language written
+in the target's script reaches the model, parses, and cards. Offering these languages
+to a learner is not accepted on this evidence — one fixture in six is clean, and the
+language whose interference risk is highest is the one that failed. What it would take,
+in order: per-language `prompt_hints` (collocations and usage in the source language;
+Bulgarian has no cases; `неділя` is Sunday and a week is `тиждень`), a prompt fix for
+the Bulgarian definite article, which today leaves the suffix outside the blank on
+every definite noun's card front, and a re-measurement of the same six fixtures at
+confirmation tier — six single-shot answers from one model cannot separate a working
+prompt from a model that answered well.
+
+The interface carries this verdict rather than leaving it in a document: Bulgarian
+and Ukrainian are marked in the language directory as measured and unreliable, and the
+row that offers them says so before either is added — as every unmeasured row says that
+nobody has looked.
+
+## The forty-five nobody has measured are offered, and say so
+
+Status: **accepted by the operator 2026-09-04.**
+
+The directory holds fifty languages: three whose answers were read and vouched for,
+two measured and refused, and forty-five nobody has looked at. Measuring the rest is
+not a matter of getting to it. A tier is one change measured across the fixtures, the
+free pool holds a daily quota that does not fit two of them, and the bench spends the
+pool the app itself runs on; a tier per language is months of quota, and every prompt
+revision would spend them again. Waiting for that evidence means shipping a directory
+of three.
+
+So the app offers all fifty, and each row carries what is known about it — vouched
+for, measured and unreliable, or unmeasured — in the search row where the language is
+picked and again in the editor afterwards. This is an accepted limitation of the
+product rather than a gap being worked on: a reader adding Polish is told, before they
+add it, that nothing about its answers has been checked, and told again every time they
+open its settings. What the app cannot vouch for it declines to imply, and it withholds
+no language on evidence it does not have either.
+
+**What the bench gate covers, therefore.** The gate is on the machinery: the prompt,
+the fragments that vary it, the payload contract and the parser that reads it. Those
+are measured against real models before they ship, because their defects are invisible
+to a mocked suite. A directory row is data — the same prompt asked with a different
+source-language name — and the evidence about it lives in the row itself, as its own
+attribute, rather than in a release gate. Moving a row from unmeasured to vouched is a
+measurement in the order set out above: a tier over registered fixtures, then a fresh
+reviewer reading every item, then this document.
+
+**The letter test is no backstop here, and this is where that stops being theory.**
+`sentence_is_source_language` drops a sentence only for a letter the target spells and
+the source does not, which for Bulgarian and Ukrainian against Russian is three or four
+letters; a Russian sentence avoiding them passes. The bench's own count of dropped
+examples reads zero for this reason and proves nothing about the sentences, which is
+why every one of them was read instead.
+
+## The letter test is kept at its measured strength — 2026-09-04
+
+Counted over every recorded bench answer — 47 runs, 2,258 unit answers, 5,928
+example sentences — the test drops **149 examples, 2.5%**. Per answer: 3.3% lose at
+least one example, and **1.9% lose every example**, which is an entry with nothing
+to card and therefore an escalation. Where a drop is unambiguous because the two
+languages are written in different scripts — English and German against a Russian
+target — the rate is 76 of 4,277, **1.8%**.
+
+The drops are the defect and not a false alarm. Read one by one, the Serbian ones
+are Russian sentences with the unit dropped in — *Он всегда выполняет свои обещания
+и умеет **држати реч***  — with a handful of the neighbouring kind, a Serbian
+sentence carrying a Russian ending. Both are card fronts that teach the wrong thing.
+They concentrate on 35 of 157 fixtures, and on a recognisable class: coinages and
+rare words (`petrichor` 16%, `Löffelangst` 17%), set expressions (`с времена на
+време` 27%), and false friends (`град` 13%) — the places where the model runs out of
+source language and falls back on the one it is fluent in.
+
+**This is not a prompt defect.** The prompt states the rule and states it in the
+strongest form the measured phrasing rules allow: write the sentence entirely in the
+source language, in one script from end to end, and a target-language sentence with
+the unit dropped into it is not an example. Rates by answering model, over the same
+corpus, say where the defect actually lives:
+
+| model | target-language sentences |
+|---|---:|
+| `gpt-fast` (paid) | **0 / 286** |
+| `groq-gpt-oss-120b` | 0.8% |
+| `openrouter-nemotron-3-ultra` | 0.9% |
+| `google-gemini-3.5-flash-lite` — the pool primary | 2.8% |
+| `zai-glm-4.7-flash` | 5.3% |
+
+A model that follows instructions follows this one. What the test compensates for is
+adherence under strain by the tier this decision put the product on, and an
+instruction cannot repair a failure to follow instructions.
+
+**So the test stays exactly as strong as it is, and no stronger.** Its two halves
+have different force and are not to be conflated. Between two scripts it is near
+total and needs no alphabet: a Cyrillic letter cannot occur in a Latin-script
+language's sentence. Within one script it narrows to the letters the target spells
+and the source does not — nine for Serbian against Russian, four for Ukrainian,
+three for Bulgarian, none at all for Kazakh, Kyrgyz, Mongolian and Tatar, which
+spell every Russian letter, and none for any Latin-script source under an English
+target. Where that set is empty no test runs, because a filter that cannot separate
+the two would only reject the source language's own sentences. Widening the alphabet
+table is not a way to make the weak half strong, and the table is data: a row is
+added with a new language and never revised to buy the filter more reach.
+
+The cost of the test is its escalation rate, 1.9% of answers, and that is accepted
+against roughly one submission in thirty carrying a target-language card front
+without it.
+
+**Where the real repair lives is the tier, and that is open.** The paid arm writes
+none of these sentences, and the same pairing — 179 fixtures answered by both tiers
+under an identical prompt — shows what money does and does not buy: formatting
+98.3% against 93.3%, target-language sentences 0% against 1.15%, and payload repair
+unchanged at 13.4% on both, with coinage judgement measurably worse when paid. The
+tier survey behind this document covered three of the nine aliases in the curated
+paid catalog and none of the ones sold as fast. `spec/plan/model-tier.md` sets out
+the experiment that would settle it. Until it is run and read, the tier stands and
+so does the test.
+
+
 ## What would re-open this
 
 - The pool's primary model degrading or disappearing from the curated

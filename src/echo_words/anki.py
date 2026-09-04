@@ -544,7 +544,7 @@ class AnkiStore:
     def _remove_note_blocking(self, note_id: int, media_filename: str | None) -> None:
         collection = self._require_collection()
         collection.remove_notes([NoteId(note_id)])
-        if media_filename:
+        if media_filename and _media_is_orphaned(collection, media_filename):
             collection.media.trash_files([media_filename])
 
     async def note_counts(
@@ -888,16 +888,38 @@ def _rollback_note_replacement(
         ) from exc
     if media_filename and media_filename != old_media_filename:
         try:
-            collection.media.trash_files([media_filename])
+            if _media_is_orphaned(collection, media_filename):
+                collection.media.trash_files([media_filename])
         except Exception as exc:  # noqa: BLE001 - the note rollback already succeeded.
             logger.warning("could not trash rolled-back Anki media %r: %s", media_filename, exc)
 
 
 def _trash_replaced_media(collection: Collection, media_filename: str) -> None:
     try:
-        collection.media.trash_files([media_filename])
+        if _media_is_orphaned(collection, media_filename):
+            collection.media.trash_files([media_filename])
     except Exception as exc:  # noqa: BLE001 - the replacement itself is already durable.
         logger.warning("could not trash replaced Anki media %r: %s", media_filename, exc)
+
+
+# `*` and `_` are wildcards in an Anki search, inside quotes as well as outside.
+_SEARCH_WILDCARDS = str.maketrans({"*": r"\*", "_": r"\_"})
+
+
+def _media_is_orphaned(collection: Collection, media_filename: str) -> bool:
+    """Whether no note is left holding this recording.
+
+    A recording is named after its word, so every note ever made for that word names
+    the same file — including notes from before this process started, which no state in
+    memory knows about. An unreadable answer keeps the file: an orphan costs disk, a
+    wrongly trashed one silences a card.
+    """
+    name = _query_value(media_filename).translate(_SEARCH_WILDCARDS)
+    try:
+        return not collection.find_notes(f'note:{NOTE_TYPE_NAME} "Audio:*{name}*"')
+    except Exception as exc:  # noqa: BLE001 - a search failure must not delete media.
+        logger.warning("could not check who still holds Anki media %r: %s", media_filename, exc)
+        return False
 
 
 def _query_value(value: str) -> str:

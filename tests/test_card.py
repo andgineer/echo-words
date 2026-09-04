@@ -9,6 +9,7 @@ from echo_words.card import (
     ParsedUnit,
     parse_answer_payload,
 )
+from echo_words.languages import Language
 
 
 def example(word="bank"):
@@ -798,4 +799,67 @@ def test_a_russian_sentence_is_rejected_even_where_the_source_shares_its_script(
             "вратио",
             languages["sr"],
             unit_intent=True,
+        )
+
+
+def test_a_bulgarian_sentence_is_a_card_front_of_its_own():
+    """A source language written in Cyrillic is not the target language: only the
+    letters Russian has and it does not can tell the two apart, and a sentence using
+    none of them is the language being learned."""
+    bulgarian = Language(
+        code="bg",
+        name="Български",
+        deck="Bulgarian::Vocabulary",
+        script="cyrillic",
+    )
+    sentence = example()
+    sentence.update(
+        text="Той чете книга.",
+        highlighted="Той <b>чете</b> книга.",
+    )
+
+    parsed = parse_answer_payload(
+        payload(word="чета", meanings=[meaning(examples=[sentence])]),
+        "чете",
+        bulgarian,
+        unit_intent=True,
+    )
+
+    assert isinstance(parsed, ParsedUnit)
+    assert parsed.note.meaning.examples[0].text == "Той чете книга."
+
+
+def test_a_russian_sentence_is_rejected_for_a_cyrillic_source_language():
+    ukrainian = Language(
+        code="uk",
+        name="Українська",
+        deck="Ukrainian::Vocabulary",
+        script="cyrillic",
+    )
+    russian = example()
+    russian.update(highlighted="Она <b>читає</b> книгу каждый вечер.")
+
+    with pytest.raises(CardParseError, match="no usable meaning"):
+        parse_answer_payload(
+            payload(word="читати", meanings=[meaning(examples=[russian])]),
+            "читає",
+            ukrainian,
+            unit_intent=True,
+        )
+
+
+def test_the_card_front_is_tested_against_the_configured_target_language():
+    """With an English target, an English sentence is what may not be wedged into a
+    Russian card front — and the letters that catch it are Latin ones."""
+    russian = Language(code="ru", name="Русский", deck="Russian::Vocabulary", script="cyrillic")
+    english = example()
+    english.update(highlighted="He <b>читает</b> a book every evening.")
+
+    with pytest.raises(CardParseError, match="no usable meaning"):
+        parse_answer_payload(
+            payload(word="читать", meanings=[meaning(examples=[english])]),
+            "читает",
+            russian,
+            unit_intent=True,
+            target="English",
         )

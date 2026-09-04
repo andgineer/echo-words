@@ -20,7 +20,11 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from echo_words import __version__
 from echo_words.anki import AnkiStore
-from echo_words.audio import fetch_pronunciation, is_audio_filename, prepare_configured_voices
+from echo_words.audio import (
+    fetch_pronunciation,
+    is_audio_filename,
+    prepare_configured_voices,
+)
 from echo_words.backend import Cascade
 from echo_words.broker import BackendError, create_broker
 from echo_words.config import Settings
@@ -28,6 +32,7 @@ from echo_words.config import settings as default_settings
 from echo_words.events import EventHub
 from echo_words.history import Entry
 from echo_words.i18n import message, pick_locale
+from echo_words.language_catalog import CATALOG
 from echo_words.languages import (
     MAX_CONTEXT_LENGTH,
     MAX_TEXT_LENGTH,
@@ -47,6 +52,7 @@ from echo_words.languages import (
 )
 from echo_words.lexicon import Wikipedia, Wiktionary
 from echo_words.pipeline import WordPipeline
+from echo_words.voices import installable_piper_voices
 
 # Transport guards only, kept far above the real limits so that the short
 # localized hints stay the rejection a user actually meets.
@@ -188,7 +194,6 @@ def _lifespan(settings: Settings):
             dictionary=Wiktionary().documents,
             usage=Wikipedia().usage,
             audio_timeout=settings.audio_timeout,
-            audio_dir=settings.data_dir / "audio",
         )
         app.state.submissions = SubmissionRegistry()
         app.state.pipeline.start()
@@ -217,6 +222,10 @@ class WordSubmission(BaseModel):
 
 class SubmissionAccepted(BaseModel):
     entry_id: str
+    # What the submission became: the `?` shortcut and the normalization are the
+    # server's, so the page has nothing to mirror while it waits for the answer.
+    word: str
+    lookup_only: bool
 
 
 class LanguageOption(BaseModel):
@@ -227,16 +236,16 @@ class LanguageOption(BaseModel):
 class LanguageConfig(BaseModel):
     """One language as the editor reads and writes it.
 
-    `api_model` and `prompt_hints` are absent on purpose and refused rather than
-    ignored: a prompt fragment must not become a text box, and the broker's direct
-    map is built once at startup. Both stay file-only (`languages.FILE_ONLY_FIELDS`).
+    `name`, `script`, `api_model` and `prompt_hints` are absent on purpose and refused
+    rather than ignored. The name and the script are the language directory's — one is
+    what the prompt calls the source language, the other the alphabet its answers are
+    tested against; the other two reach machinery the editor can neither show nor check
+    (`languages.FILE_ONLY_FIELDS`).
     """
 
     model_config = ConfigDict(extra="forbid")
 
-    name: str = Field(max_length=_MAX_FIELD_INPUT)
     deck: str = Field(max_length=_MAX_FIELD_INPUT)
-    script: str = Field(max_length=_MAX_FIELD_INPUT)
     dict_api: str | None = Field(default=None, max_length=_MAX_FIELD_INPUT)
     tts: str | None = Field(default=None, max_length=_MAX_FIELD_INPUT)
     tts_voice: str | None = Field(default=None, max_length=_MAX_FIELD_INPUT)
@@ -247,6 +256,9 @@ class LanguageConfig(BaseModel):
 def create_app(settings: Settings | None = None) -> FastAPI:  # noqa: C901, PLR0915
     settings = settings or default_settings
     app = FastAPI(title="echo-words", version=__version__, lifespan=_lifespan(settings))
+    # Every write reads the whole table, changes one entry and writes it back, so two
+    # of them at once would lose one of the changes.
+    app.state.languages_lock = asyncio.Lock()
 
     @app.get("/api/health")
     async def health() -> dict[str, str]:
@@ -257,6 +269,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:  # noqa: C901, PLR0
         return [
             LanguageOption(code=language.code, name=language.name)
             for language in request.app.state.languages.values()
+        ]
+
+    @app.get("/api/languages/catalog")
+    async def languages_catalog() -> list[dict[str, object]]:
+        return [
+            {
+                **asdict(entry),
+                "deck": entry.deck,
+                "piper_voices": installable_piper_voices(entry.code),
+            }
+            for entry in CATALOG
         ]
 
     @app.get("/api/languages/config")
@@ -270,32 +293,34 @@ def create_app(settings: Settings | None = None) -> FastAPI:  # noqa: C901, PLR0
         submission: LanguageConfig,
     ) -> dict[str, object]:
         locale = pick_locale(request.headers.get("accept-language"))
-        table = dict(request.app.state.languages)
-        try:
-            language = validated_language(
-                code,
-                submission.model_dump(),
-                table.get(code),
-                locale,
-            )
-        except LanguageValidationError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-        table[code] = language
-        save_languages(settings.languages_config, table)
-        _reload_languages(request.app, settings, [language])
-        return {"code": code}
+        async with app.state.languages_lock:
+            table = dict(request.app.state.languages)
+            try:
+                language = validated_language(
+                    code,
+                    submission.model_dump(),
+                    table.get(code),
+                    locale,
+                )
+            except LanguageValidationError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            table[code] = language
+            save_languages(settings.languages_config, table)
+            _reload_languages(request.app, settings, [language])
+        return {"code": code, "name": language.name}
 
     @app.delete("/api/languages/{code}")
     async def remove_language(request: Request, code: str) -> dict[str, object]:
         locale = pick_locale(request.headers.get("accept-language"))
-        table = dict(request.app.state.languages)
-        _resolve_language(table, code, locale)
-        if len(table) == 1:
-            raise HTTPException(status_code=409, detail=message("language.last", locale))
-        # The cards are the reader's: removing a language never touches its deck.
-        del table[code]
-        save_languages(settings.languages_config, table)
-        _reload_languages(request.app, settings, [])
+        async with app.state.languages_lock:
+            table = dict(request.app.state.languages)
+            _resolve_language(table, code, locale)
+            if len(table) == 1:
+                raise HTTPException(status_code=409, detail=message("language.last", locale))
+            # The cards are the reader's: removing a language never touches its deck.
+            del table[code]
+            save_languages(settings.languages_config, table)
+            _reload_languages(request.app, settings, [])
         return {"deleted": code}
 
     @app.post("/api/words")
@@ -333,7 +358,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:  # noqa: C901, PLR0
             )
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
-        return SubmissionAccepted(entry_id=entry_id)
+        return SubmissionAccepted(entry_id=entry_id, word=word, lookup_only=lookup_only)
 
     @app.get("/api/words/recent")
     async def recent_words(
@@ -375,10 +400,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:  # noqa: C901, PLR0
 
     @app.post("/api/words/{entry_id}/delete-card")
     async def delete_word_card(request: Request, entry_id: str) -> dict[str, object]:
+        locale = pick_locale(request.headers.get("accept-language"))
         try:
-            word = await request.app.state.pipeline.delete_card(entry_id)
+            word = await request.app.state.pipeline.delete_card(entry_id, locale=locale)
         except KeyError as exc:
             raise HTTPException(status_code=410, detail="request expired") from exc
+        except BackendError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         return {"deleted": word}
 
     @app.post("/api/languages/{code}/undo")

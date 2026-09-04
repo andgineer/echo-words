@@ -1,5 +1,5 @@
 import { apiRequest } from "../api/_request.js";
-import { entries, replaceEntries, upsertEntry } from "./useEntries.js";
+import { MAX_ENTRIES, entries, replaceEntries, upsertEntry } from "./useEntries.js";
 
 function eventData(event) {
   try {
@@ -11,7 +11,8 @@ function eventData(event) {
 
 export function useEventStream({
   EventSourceClass = globalThis.EventSource,
-  fetchRecent = () => apiRequest("/api/words/recent"),
+  // The browser keeps this many, so it asks the backend for exactly that many back.
+  fetchRecent = () => apiRequest(`/api/words/recent?limit=${MAX_ENTRIES}`),
 } = {}) {
   let source = null;
   let activeRefresh = null;
@@ -59,7 +60,8 @@ export function useEventStream({
         entry_id: data.entry_id,
         detail_html: data.text,
         detail_error: data.error,
-        detail_pending: false,
+        // The text streams in, so the work is over on the event that carries no more.
+        detail_pending: data.streaming === true,
       });
     } else if (name === "control_error") {
       upsertEntry({ entry_id: data.entry_id, control_error: data.message });

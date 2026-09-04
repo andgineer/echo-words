@@ -37,6 +37,7 @@ export default {
   "add.analysing": "Разбираю «{word}» — обычно пара секунд",
   "add.buildingEntry": "Собираю полную статью — обычно около 10 секунд",
   "add.analysisFailed": "Не удалось получить разбор.",
+  "add.detailFailed": "Не удалось закончить подробный разбор.",
   "add.retry": "Отправить «{word}» ещё раз",
   "add.contextAudio": "Весь текст",
   "add.sentence": "Предложение",
@@ -64,6 +65,7 @@ export default {
     "кнопка заменить её на более частое написание. Если модель не подтверждает слово вовсе, " +
     "карточки нет и разбора тоже — сочинять несуществующее слово она не будет.",
 
+  "languages.none": "Ни одного языка не настроено.",
   "languages.title": "Изучаемые языки",
   "languages.edit": "Изменить языки",
   "languages.back": "К словам",
@@ -74,14 +76,21 @@ export default {
   "languages.removeYes": "Удалить",
   "languages.removeNo": "Отмена",
   "languages.addTitle": "Добавить язык",
-  "languages.addPlaceholder": "Español или es",
-  "languages.add": "Добавить",
-  "languages.deckHint":
-    "Колода «{deck}» создастся сама. Письменность, голос и словарь можно настроить потом.",
+  "languages.searchPlaceholder": "Найдите язык: «немецкий», «Deutsch», «de»",
+  "languages.noMatches": "В справочнике такого языка нет.",
   "languages.deckHintEmpty":
-    "Колода создастся сама по названию языка. Письменность, голос и словарь можно " +
+    "Язык выбирается из справочника: он задаёт код для словарей и название для " +
+    "разбора. Колода и письменность берутся оттуда же; голос и словарь можно " +
     "настроить потом.",
-  "languages.name": "Название",
+  "languages.answersUnmeasured":
+    "Ответы на этом языке не измерялись на реальных моделях. Разбор может врать так, " +
+    "что приложение этого не заметит.",
+  "languages.answersUnreliable":
+    "Измерено: большинство ответов на этом языке оказались неверными — выдуманное " +
+    "происхождение, несуществующие формы, значения из языка перевода. Прочитайте " +
+    "карточки, прежде чем им верить.",
+  "languages.answersUnmeasuredShort": "не измерен",
+  "languages.answersUnreliableShort": "измерен — ненадёжен",
   "languages.deck": "Колода Anki",
   "languages.script": "Письменность",
   "languages.script.latin": "латиница",
@@ -94,8 +103,13 @@ export default {
   "languages.voicePiper": "Голос Piper",
   "languages.voiceEdge": "Голос Edge",
   "languages.voiceHint": "Голос скачивается при первом слове и дальше берётся из кэша.",
-  "languages.voiceNoSerbian":
-    "У Piper нет сербского голоса: единственная модель sr_RS — нижнелужицкая. Возьмите Edge.",
+  "languages.voicePiperInstalled":
+    "Сервер поставит {voices} при первом слове и дальше возьмёт из кэша.",
+  "languages.voiceNoPiper":
+    "У Piper нет голоса для этого языка: модель под этим кодом, если она вообще есть, " +
+    "озвучивает другой язык. Возьмите Edge.",
+  "languages.voiceNoPiperBuild":
+    "В этой сборке нет голоса Piper для этого языка — Piper промолчит. Возьмите Edge.",
   "languages.dictApi": "Словарь",
   "languages.dictApiPlaceholder": "напр. en",
   "languages.accent": "Акцент",

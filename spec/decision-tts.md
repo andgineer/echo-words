@@ -127,6 +127,27 @@ the one deployment target — the 1 GB (+ swap) micro instance:
 - The dictionary-recording step (real native recordings) stays first in
   the chain for languages that have it; edge-tts stays the last-resort
   fallback for every language, and is simultaneously Serbian's primary.
+- **Piper is offered only where the app has a voice to install, and only
+  as the voices it can install.** A Piper voice arrives as one of the
+  app's own pinned downloads and in no other way, so a language it
+  carries none for has no Piper whatever Piper's catalogue lists for the
+  locale. The editor closes the engine off for such a language, and for
+  one Piper voices in name only — Serbian and Croatian above — rather
+  than accepting a setting whose whole effect is a background download
+  that never happens. Where the engine is open, the voice is picked from
+  the pinned list rather than typed, and the server refuses any other
+  value: the same silent nothing follows from a plausible voice name as
+  from an absent one. A voice already in the languages file is accepted
+  unchanged, because a voice installed by hand is a voice that works.
+- **The last resort speaks the language or stays silent.** edge-tts is
+  reached with the language's own voice, or with the app-wide default when
+  that default is a voice of the same language — never with another
+  language's. The default is the accent's English one, and handing it a
+  language added without a voice of its own would read that language's
+  words as English and card the result: the same foreign
+  grapheme-to-phoneme pass measured above for Latin Serbian, but for every
+  word of that language. A language with no voice it can use has no
+  recording, which the entry and the card both say plainly.
 
 ## Risks
 

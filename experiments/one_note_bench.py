@@ -9,7 +9,7 @@ and exact-boundary diagnostics stay visible without being misreported as
 semantic success or zero-tolerance product contracts.
 
 Raw answers are append-only so scoring can be changed without buying them again.
-The smoke tier is 55 calls, confirmation 125 and full 216, plus the second
+The smoke tier is 61 calls, confirmation 131 and full 222, plus the second
 judgements a run happens to need. A tier answered by a different tier of model
 belongs in its own `--out`: answers are matched by prompt hash, which two tiers
 share, so one directory would let them stand in for each other.
@@ -59,9 +59,12 @@ from backend_bench import (  # noqa: E402
 )
 from bench_items import SENTENCES  # noqa: E402
 from echo_words.card import ParsedAnswer, ParsedText, ParsedUnit  # noqa: E402
+from echo_words.language_catalog import catalog_language  # noqa: E402
 from echo_words.languages import (  # noqa: E402
+    Language,
     fold_for_match,
     load_languages,
+    sentence_is_source_language,
     split_words,
     validate_word,
 )
@@ -81,7 +84,24 @@ from unit_verdict_bench import FIXTURES as VERDICT_FIXTURES  # noqa: E402
 
 TARGET_CODE = "ru"
 TARGET_NAME = "Russian"
-LANGUAGES = load_languages(REPO / "languages.example.toml")
+
+
+def _as_the_editor_writes_it(code: str) -> Language:
+    """A language added from the app's directory: a deck, a script, and nothing else.
+
+    No dictionary code, no voice and no prompt hints — the editor writes none of them,
+    so this is what a Cyrillic source language actually reaches the prompt as.
+    """
+    entry = catalog_language(code)
+    if entry is None:
+        raise RuntimeError(f"{code} is not in the language directory")
+    return Language(code=code, name=entry.name, deck=entry.deck, script=entry.script)
+
+
+LANGUAGES = {
+    **load_languages(REPO / "languages.example.toml"),
+    **{code: _as_the_editor_writes_it(code) for code in ("bg", "uk")},
+}
 _WORD = re.compile(r"[^\W\d_]+(?:[-'’][^\W\d_]+)*", re.UNICODE)
 _ORIGIN = re.compile(r"происход|этимолог|заимств|восход|исконн|образован", re.IGNORECASE)
 _USAGE = re.compile(r"употреб|использ|сочетан|сочетаем", re.IGNORECASE)
@@ -276,6 +296,67 @@ ATTESTED_CASES = (
 ORDINARY_ATTESTED_IDS = frozenset(
     case.shot_id for case in ATTESTED_CASES if case.ordinary
 )
+
+
+@dataclass(frozen=True)
+class CyrillicCase:
+    """A source language written in the target language's own script.
+
+    Both halves of the sentence test live here. The card can only be built if the
+    answer's own example survives a filter that used to reject every Cyrillic
+    sentence, and every raw example is re-read against that filter, so a sentence
+    written in Russian shows up as dropped instead of as a card front.
+    """
+
+    shot_id: str
+    lang: str
+    submitted: str
+    why: str
+
+
+CYRILLIC_CASES = (
+    CyrillicCase(
+        "cyrillic-bg-prozorec",
+        "bg",
+        "прозорец",
+        "ordinary noun; Russian says окно, so a target-language sentence cannot hide "
+        "behind the headword",
+    ),
+    CyrillicCase(
+        "cyrillic-bg-razkazvam",
+        "bg",
+        "разказвам",
+        "Bulgarian cites a verb in the first person singular, where the target "
+        "language cites an infinitive",
+    ),
+    CyrillicCase(
+        "cyrillic-bg-stol",
+        "bg",
+        "стол",
+        "false friend: the same string is a chair in Bulgarian and a table in the "
+        "target language",
+    ),
+    CyrillicCase(
+        "cyrillic-uk-olivets",
+        "uk",
+        "олівець",
+        "ordinary noun; Russian says карандаш",
+    ),
+    CyrillicCase(
+        "cyrillic-uk-rozmovlyaty",
+        "uk",
+        "розмовляти",
+        "ordinary verb; Russian says разговаривать",
+    ),
+    CyrillicCase(
+        "cyrillic-uk-nedilya",
+        "uk",
+        "неділя",
+        "false friend: Sunday in Ukrainian, a week in the target language",
+    ),
+)
+CYRILLIC_BY_ID = {case.shot_id: case for case in CYRILLIC_CASES}
+CYRILLIC_IDS = frozenset(CYRILLIC_BY_ID)
 
 
 @dataclass(frozen=True)
@@ -738,6 +819,21 @@ def wordlist_shots() -> list[Shot]:
     ]
 
 
+def cyrillic_shots() -> list[Shot]:
+    rows = [
+        Shot(case.shot_id, "cyrillic", case.lang, case.submitted, expected_kind="unit")
+        for case in CYRILLIC_CASES
+    ]
+    invalid = [
+        shot.shot_id
+        for shot in rows
+        if validate_word(shot.source, LANGUAGES[shot.lang]) is not None
+    ]
+    if invalid:
+        raise RuntimeError("invalid Cyrillic inputs: " + ", ".join(invalid))
+    return rows
+
+
 def attested_shots() -> list[Shot]:
     return [
         Shot(
@@ -779,6 +875,12 @@ def attestation_ids_for_tier(tier: str) -> frozenset[str]:
     return frozenset(attestation_id(shot_id) for shot_id in judged)
 
 
+def cyrillic_ids_for_tier(_tier: str) -> frozenset[str]:
+    # Six calls on every tier: a source language sharing the target's script is a
+    # path no other fixture covers, and no tier is worth running blind to it.
+    return CYRILLIC_IDS
+
+
 def wordlist_ids_for_tier(tier: str) -> frozenset[str]:
     # Three calls, on the full tier only: the class exists to be measured, not gated.
     return WORDLIST_IDS if tier == "full" else frozenset()
@@ -792,6 +894,7 @@ def initial_jobs_for_tier(tier: str) -> list[Shot]:
         | attestation_ids_for_tier(tier)
         | neighbour_ids_for_tier(tier)
         | wordlist_ids_for_tier(tier)
+        | cyrillic_ids_for_tier(tier)
     )
     return [
         shot
@@ -802,6 +905,7 @@ def initial_jobs_for_tier(tier: str) -> list[Shot]:
             *attestation_shots(),
             *neighbour_shots(),
             *wordlist_shots(),
+            *cyrillic_shots(),
         )
         if shot.shot_id in wanted
     ]
@@ -903,6 +1007,7 @@ def read(out: Path, attempts: list[Shot] | None = None) -> dict[str, Shot]:
             *attestation_shots(),
             *neighbour_shots(),
             *wordlist_shots(),
+            *cyrillic_shots(),
         )
     }
     rows = _select_canonical(recorded, initial)
@@ -1296,6 +1401,42 @@ def _raw_sentence_issues(shot: Shot) -> list[dict[str, object]]:
     return issues
 
 
+_BOLD_SPAN_RAW = re.compile(r"<b>(.*?)</b>", re.DOTALL)
+
+
+def _examples_with_foreign_letters(shot: Shot) -> list[dict[str, object]]:
+    """Raw examples the production filter drops for a letter the source cannot spell.
+
+    The card front the reader would have got is what this walks: the sentence around
+    the highlight, tested exactly as the parser tests it. A non-empty list is the drop
+    happening on a real answer, and that answer's card is built from what survived.
+    An empty one proves only that no sentence used a separating letter — for a source
+    language sharing the target's script there are three or four of those, so it is no
+    evidence that the sentences were in the source language. Only reading them is.
+    """
+    dropped = []
+    language = LANGUAGES[shot.lang]
+    meanings = shot.payload.get("meanings")
+    if not isinstance(meanings, list):
+        return dropped
+    for meaning_index, meaning in enumerate(meanings):
+        if not isinstance(meaning, dict) or not isinstance(meaning.get("examples"), list):
+            continue
+        for example_index, example in enumerate(meaning["examples"]):
+            if not isinstance(example, dict) or not isinstance(example.get("highlighted"), str):
+                continue
+            outside = unescape(_BOLD_SPAN_RAW.sub("", example["highlighted"]))
+            if not sentence_is_source_language(outside, language, TARGET_NAME):
+                dropped.append(
+                    {
+                        "meaning": meaning_index,
+                        "example": example_index,
+                        "evidence": example,
+                    },
+                )
+    return dropped
+
+
 def vocab_metrics(shot: Shot, parsed: ParsedUnit, analysis: str) -> dict:
     note = parsed.note
     example = note.meaning.examples[0]
@@ -1382,6 +1523,9 @@ def vocab_metrics(shot: Shot, parsed: ParsedUnit, analysis: str) -> dict:
         ),
         "raw_sentence_issues": raw_sentence_issues,
         "raw_sentence_forms_exact": not raw_sentence_issues,
+        "examples_with_foreign_letters": (
+            _examples_with_foreign_letters(shot) if shot.payload.get("kind") == "unit" else []
+        ),
         "word_relation": parsed.word_relation,
         "typo_word_exact": typo_word_exact,
         "typo_heads_submission": typo_heads_submission,
@@ -1499,6 +1643,7 @@ def score(shot: Shot) -> Shot:
         LANGUAGES[shot.lang],
         unit_intent=unit_intent,
         context=shot.context,
+        target=TARGET_NAME,
     )
     semantic_parsed = parsed
     unit_intent_wrong_branch = False
@@ -1781,6 +1926,7 @@ async def run(args, out: Path) -> None:
                     *attestation_shots(),
                     *neighbour_shots(),
                     *wordlist_shots(),
+                    *cyrillic_shots(),
                 )
                 if shot.shot_id in requested
             ]
@@ -1870,6 +2016,7 @@ def quality_counts(
     neighbour_rows = [row for row in initial_rows if row.kind == "neighbour"]
     wordlist_rows = [row for row in initial_rows if row.kind == "wordlist"]
     attested_rows = [row for row in initial_rows if row.kind == "attested"]
+    cyrillic_rows = [row for row in initial_rows if row.kind == "cyrillic"]
     withheld = _withheld_in_production([*initial_rows, *corrections])
     actual_text_rows = [
         row
@@ -1880,7 +2027,20 @@ def quality_counts(
         "usable_initial": sum(
             usable_result(row)
             for row in initial_rows
-            if row.kind not in {"typo", "attested", "attestation", "neighbour", "wordlist"}
+            # The Cyrillic class is measured on its own line and enters no gate here:
+            # a new class inside an old denominator moves what the old numbers mean.
+            if row.kind
+            not in {"typo", "attested", "attestation", "neighbour", "wordlist", "cyrillic"}
+        ),
+        "cyrillic_answered": sum(bool(row.metrics.get("answered")) for row in cyrillic_rows),
+        "cyrillic_cardable": sum(
+            usable_result(row)
+            and row.metrics.get("actual_kind") == "unit"
+            and bool(row.metrics.get("meanings_valid"))
+            for row in cyrillic_rows
+        ),
+        "cyrillic_foreign_letter_examples": sum(
+            len(row.metrics.get("examples_with_foreign_letters", [])) for row in cyrillic_rows
         ),
         "usable_verdicts": len(usable_verdicts),
         "hard_verdict_errors": sum(
@@ -2082,6 +2242,7 @@ def deterministic_gates(  # noqa: PLR0913 - the screen's inputs, and every arm o
     expected_attestation_count = len(attestation_ids_for_tier(tier))
     expected_neighbour_count = len(neighbour_ids_for_tier(tier))
     expected_wordlist_count = len(wordlist_ids_for_tier(tier))
+    expected_cyrillic_count = len(cyrillic_ids_for_tier(tier))
     return {
         "all tier manifest fixtures attempted": len(initial_rows) == len(canonical)
         and {row.shot_id for row in initial_rows} == expected_ids,
@@ -2092,8 +2253,10 @@ def deterministic_gates(  # noqa: PLR0913 - the screen's inputs, and every arm o
             - expected_attestation_count
             - expected_neighbour_count
             - expected_wordlist_count
+            - expected_cyrillic_count
         ]
         == tier
+        and sum(row.kind == "cyrillic" for row in canonical) == expected_cyrillic_count
         and sum(row.kind == "wordlist" for row in canonical) == expected_wordlist_count
         and sum(row.kind == "neighbour" for row in canonical) == expected_neighbour_count
         and sum(row.kind == "typo" for row in canonical) == expected_typo_count
@@ -2101,7 +2264,7 @@ def deterministic_gates(  # noqa: PLR0913 - the screen's inputs, and every arm o
         and sum(row.kind == "attestation" for row in canonical) == expected_attestation_count
         and len(CLICK_IDS) == CLICK_FIXTURES
         and len(canonical) + len(CLICK_IDS)
-        == {"smoke": 55, "confirmation": 125, "full": 216}[tier],
+        == {"smoke": 61, "confirmation": 131, "full": 222}[tier],
         "accepted payloads contain one branch": all(
             not row.metrics.get("mixed_branch") for row in accepted
         ),
@@ -2296,7 +2459,7 @@ def review_packet(
             actual["success"] = click_success(shot)
             actual["context_exact"] = shot.metrics.get("context_example_exact")
             actual["surface_exact"] = shot.metrics.get("context_surface_exact")
-        if shot.kind in {"attested", "bare", "neighbour", "wordlist"}:
+        if shot.kind in {"attested", "bare", "cyrillic", "neighbour", "wordlist"}:
             # Every one of these is read, whatever it scored. The first thing this
             # review exists to catch is a coinage carded with a confident sense, and a
             # carded coinage scores nothing: it earns no category of its own, so a
@@ -2327,6 +2490,15 @@ def review_packet(
             if shot.kind == "wordlist":
                 actual["chips"] = shot.metrics.get("wordlist_chips")
                 actual["carded_as_unit"] = shot.metrics.get("wordlist_carded")
+            if shot.kind == "cyrillic":
+                expected["why_this_fixture"] = CYRILLIC_BY_ID[shot.shot_id].why
+                expected["read_every_sentence"] = (
+                    "the letter test cannot tell this source language from the target: "
+                    "whether each example is really in it is the reviewer's to judge"
+                )
+                actual["examples_dropped_for_a_foreign_letter"] = shot.metrics.get(
+                    "examples_with_foreign_letters",
+                )
         if shot.kind in {"attestation", "correction"}:
             # The judge's own answer, so a reviewer can see it invent an attestation.
             # It carries no card block by design, so it is never an unusable answer.
@@ -2435,8 +2607,14 @@ def report(out: Path, tier: str) -> None:
     attested_total = len(attested_ids_for_tier(tier))
     attestation_total = len(attestation_ids_for_tier(tier))
     neighbour_total = len(neighbour_ids_for_tier(tier))
+    cyrillic_total = len(cyrillic_ids_for_tier(tier))
     initial_total = (
-        canonical_total + typo_total + attested_total + attestation_total + neighbour_total
+        canonical_total
+        + typo_total
+        + attested_total
+        + attestation_total
+        + neighbour_total
+        + cyrillic_total
     )
     usable_min = {"smoke": 27, "confirmation": 73, "full": 142}[tier]
 
@@ -2557,6 +2735,14 @@ def report(out: Path, tier: str) -> None:
             f"  word list carded as a unit    {counts['wordlist_carded']}/{wordlist_total}"
             f"  ·  reader keeps chips {counts['wordlist_chipped']}/{wordlist_total}"
             "  (diagnostic, gates nothing)",
+        )
+    if cyrillic_total:
+        print(
+            "  a Cyrillic source language cards "
+            f"{counts['cyrillic_cardable']}/{cyrillic_total}"
+            "  ·  examples dropped for a letter it cannot spell "
+            f"{counts['cyrillic_foreign_letter_examples']}"
+            "  (diagnostic; the sentences themselves are the reviewer's to read)",
         )
     ordinary_total = sum(1 for i in attested_ids_for_tier(tier) if ATTESTED_BY_ID[i].ordinary)
     if ordinary_total:

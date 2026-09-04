@@ -41,6 +41,7 @@ UPDATE_INTERVAL_SECONDS = 0.5
 # Codes, not sentences: the client owns every user-facing wording, so a
 # stored entry re-renders in whatever interface language is picked later.
 ANALYSIS_FAILED_CODE = "analysis_failed"
+DETAIL_FAILED_CODE = "detail_failed"
 ADDED_STATUS = "added"
 LOOKUP_ONLY_STATUS = "lookup_only"
 TEXT_STATUS = "text"
@@ -181,7 +182,6 @@ class WordPipeline:
         dictionary: DictionaryLookup = _no_lookup,
         usage: UsageLookup = _no_usage,
         audio_timeout: float = 10,
-        audio_dir: Path | None = None,
         history_size: int = 50,
         clock: Clock = time.monotonic,
     ) -> None:
@@ -192,7 +192,6 @@ class WordPipeline:
         self.dictionary = dictionary
         self.usage = usage
         self.audio_timeout = audio_timeout
-        self.audio_dir = audio_dir
         self.target_lang = target_lang
         self._clock = clock
         self._queue: asyncio.Queue[QueueJob] = asyncio.Queue()
@@ -306,7 +305,13 @@ class WordPipeline:
         return entry
 
     def recent(self, limit: int = 20) -> list[dict[str, object]]:
-        return self.history.recent(limit)
+        # A running paid call is the pipeline's state, not the page's: without it here a
+        # reload, or a trip to another screen, would drop the strip and the live dot
+        # from a call that is still going.
+        return [
+            {**item, "detail_pending": item["entry_id"] in self._details_pending}
+            for item in self.history.recent(limit)
+        ]
 
     def counters(self, lang: str) -> dict[str, int]:
         return self.history.counts(lang)
@@ -385,29 +390,25 @@ class WordPipeline:
         )
         return {"entry_id": entry_id, "queued": True}
 
-    async def delete_card(self, entry_id: str) -> str | None:
+    async def delete_card(self, entry_id: str, *, locale: str = DEFAULT_LOCALE) -> str:
         """Remove this entry's own note from Anki, leaving its analysis on the screen."""
         entry, state = self._active_control(entry_id)
         note_id = state.note_id
         if note_id is None or self.anki is None:
-            return None
+            # Refused rather than passed over in silence: the note may have gone from
+            # Anki itself, and a button that answers a confirmed deletion with nothing
+            # leaves the reader unable to tell which.
+            raise BackendError(message("card.no_delete", locale))
+        # The collection answers for its own media. The app's cached recording is
+        # addressed by its text and shared with every entry for that wording, so it is
+        # not this note's to take: the word stays audible on the screen.
         await self.anki.remove_note(note_id, state.media_filename)
-        removed_audio = state.audio_path
-        self._delete_audio(removed_audio)
-        if state.card_audio_path != removed_audio:
-            self._delete_audio(state.card_audio_path)
         word = state.carded_word or state.shown_spelling
         state.note_id = None
         state.media_filename = None
-        state.audio_path = None
-        state.card_audio_path = None
         undo = self.history.undo.get(state.language.code)
         if undo is not None and undo.note_id == note_id:
             self.history.undo.pop(state.language.code, None)
-        if removed_audio is not None:
-            # The pronunciation was the note's media; a player over a file this call
-            # has just unlinked would answer the tap with nothing at all.
-            entry.audio_file = None
         entry.card_status = DELETED_STATUS
         entry.card_kinds = []
         entry.card_error = None
@@ -434,9 +435,6 @@ class WordPipeline:
         if self.anki is None:
             return None
         await self.anki.remove_note(state.note_id, state.media_filename)
-        self._delete_audio(self._audio_path(state.audio_file))
-        if state.card_audio_file != state.audio_file:
-            self._delete_audio(self._audio_path(state.card_audio_file))
         self.history.undo.pop(language.code, None)
         for control in self._controls.values():
             if control.note_id == state.note_id:
@@ -516,6 +514,7 @@ class WordPipeline:
                     job.language,
                     unit_intent=job.intent == "unit",
                     context=job.context,
+                    target=self.target_lang,
                 )
 
             def complete(answer: str) -> bool:
@@ -634,18 +633,9 @@ class WordPipeline:
                 if refused
                 else await self._store_card(job, parsed, card_audio_path)
             )
-            if job.kind == "switch" and not _kept_previous_note(job, stored):
-                # The switch stored its own note, so what the replaced one used goes —
-                # except a cached file the new spelling happens to share with it.
-                if job.replaced_audio != audio_path:
-                    self._delete_audio(job.replaced_audio)
-                if job.replaced_card_audio != card_audio_path:
-                    self._delete_audio(job.replaced_card_audio)
-            elif job.kind == "switch":
-                if audio_path != job.replaced_audio:
-                    self._delete_audio(audio_path)
-                if card_audio_path not in (job.replaced_card_audio, job.replaced_audio):
-                    self._delete_audio(card_audio_path)
+            if job.kind == "switch" and _kept_previous_note(job, stored):
+                # The switch stored nothing, so the entry stays on the note it had and
+                # keeps playing the recording of the spelling that note carries.
                 audio_path = job.replaced_audio
             if stored.status == UNATTESTED_STATUS:
                 # Speaking a string the answer would not vouch for tells the reader it
@@ -791,8 +781,18 @@ class WordPipeline:
                     entry.detail_html = sanitize_html(visible_analysis(raw))
                     await self.events.publish(
                         "detail",
-                        {"entry_id": entry.entry_id, "text": entry.detail_html},
+                        {
+                            "entry_id": entry.entry_id,
+                            "text": entry.detail_html,
+                            "streaming": True,
+                        },
                     )
+            # The text arrives in pieces, so only this says the call is over: without it
+            # the reader would lose the progress strip at the first piece of ten seconds.
+            await self.events.publish(
+                "detail",
+                {"entry_id": entry.entry_id, "text": entry.detail_html},
+            )
         except BackendError as exc:
             if not self._is_detail_current(job):
                 return
@@ -801,6 +801,17 @@ class WordPipeline:
                 "detail",
                 {"entry_id": entry.entry_id, "error": str(exc)},
             )
+        except Exception:
+            # Only an event ends the strip and the live dot, so a failure that is not the
+            # backend's own has to send one too: the reader would otherwise sit in front
+            # of a call that stopped running until the page is reloaded.
+            if self._is_detail_current(job):
+                entry.detail_html = ""
+                await self.events.publish(
+                    "detail",
+                    {"entry_id": entry.entry_id, "error": DETAIL_FAILED_CODE},
+                )
+            raise
         finally:
             self._details_pending.discard(job.entry_id)
 
@@ -1167,16 +1178,6 @@ class WordPipeline:
 
     def _is_detail_current(self, job: DetailJob) -> bool:
         return self._detail_revisions.get(job.entry_id) == job.revision
-
-    def _audio_path(self, audio_file: str | None) -> Path | None:
-        if not audio_file or self.audio_dir is None:
-            return None
-        return self.audio_dir / audio_file
-
-    @staticmethod
-    def _delete_audio(path: Path | None) -> None:
-        if path is not None:
-            path.unlink(missing_ok=True)
 
 
 def visible_analysis(raw: str) -> str:

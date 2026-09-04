@@ -37,6 +37,7 @@ export default {
   "add.analysing": "Analysing “{word}” — usually a couple of seconds",
   "add.buildingEntry": "Building the full entry — usually about 10 seconds",
   "add.analysisFailed": "Could not get the analysis.",
+  "add.detailFailed": "Could not finish the full entry.",
   "add.retry": "Send “{word}” again",
   "add.contextAudio": "The whole text",
   "add.sentence": "Sentence",
@@ -66,6 +67,7 @@ export default {
     "offers to replace it. When the model does not vouch for the word at all, there is no card " +
     "and no article: it will not invent a word that nobody uses.",
 
+  "languages.none": "No language is configured.",
   "languages.title": "Languages you study",
   "languages.edit": "Edit the languages",
   "languages.back": "Back to the words",
@@ -76,13 +78,21 @@ export default {
   "languages.removeYes": "Remove",
   "languages.removeNo": "Cancel",
   "languages.addTitle": "Add a language",
-  "languages.addPlaceholder": "Español, or es",
-  "languages.add": "Add",
-  "languages.deckHint":
-    "The deck “{deck}” is created for it. Script, voice and dictionary can be set afterwards.",
+  "languages.searchPlaceholder": "Search for a language: “German”, “Deutsch”, “de”",
+  "languages.noMatches": "The directory has no such language.",
   "languages.deckHintEmpty":
-    "The deck is named after the language. Script, voice and dictionary can be set afterwards.",
-  "languages.name": "Name",
+    "The language comes from the directory, which sets the code the dictionaries are " +
+    "asked under and the name the analysis is asked for. The deck and the script come " +
+    "from there too; voice and dictionary can be set afterwards.",
+  "languages.answersUnmeasured":
+    "No answer in this language has been measured against a real model. What the " +
+    "analysis says about it can be wrong in ways the app cannot catch.",
+  "languages.answersUnreliable":
+    "Measured, and most answers in this language were wrong: invented origins, forms " +
+    "that do not exist, senses carried over from the target language. Read the cards " +
+    "it makes before trusting them.",
+  "languages.answersUnmeasuredShort": "not measured",
+  "languages.answersUnreliableShort": "measured — unreliable",
   "languages.deck": "Anki deck",
   "languages.script": "Script",
   "languages.script.latin": "Latin",
@@ -95,8 +105,14 @@ export default {
   "languages.voicePiper": "Piper voice",
   "languages.voiceEdge": "Edge voice",
   "languages.voiceHint": "The voice is fetched with the first word and cached from then on.",
-  "languages.voiceNoSerbian":
-    "Piper has no Serbian voice: its lone sr_RS model is Lower Sorbian. Use Edge.",
+  "languages.voicePiperInstalled":
+    "The server installs {voices} with the first word and caches it from then on.",
+  "languages.voiceNoPiper":
+    "Piper has no voice for this language: its model under this code speaks another " +
+    "one, when it lists one at all. Use Edge.",
+  "languages.voiceNoPiperBuild":
+    "This build ships no Piper voice for this language, so Piper would stay silent. " +
+    "Use Edge.",
   "languages.dictApi": "Dictionary",
   "languages.dictApiPlaceholder": "e.g. en",
   "languages.accent": "Accent",

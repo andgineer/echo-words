@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, watch } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "../i18n/index.js";
 
 const { t, tn } = useI18n();
@@ -65,6 +65,10 @@ watch(
   },
 );
 
+// The card is mounted afresh whenever the language it belongs to had nothing to show
+// a moment ago, and that switch is a switch like any other.
+onMounted(arrive);
+
 // A tap that silently swaps the text reads as nothing having happened, so every
 // switch is a movement: the card is placed to one side without a transition, then
 // released into the settle the drag itself uses.
@@ -101,12 +105,24 @@ function onPointerMove(event) {
 
 function onPointerUp() {
   if (!held) return;
+  const shift = release();
+  if (shift <= -SWIPE_THRESHOLD) emit("swipe", 1);
+  else if (shift >= SWIPE_THRESHOLD) emit("swipe", -1);
+}
+
+// `touch-action: pan-y` hands a mostly-vertical drag to the page, and the browser
+// says so by cancelling the gesture. Committing its sideways part would switch the
+// card under a reader who was only scrolling.
+function onPointerCancel() {
+  if (held) release();
+}
+
+function release() {
   held = false;
   const shift = dragX.value;
   dragging.value = false;
   dragX.value = 0;
-  if (shift <= -SWIPE_THRESHOLD) emit("swipe", 1);
-  else if (shift >= SWIPE_THRESHOLD) emit("swipe", -1);
+  return shift;
 }
 
 const deckStyle = computed(() => ({
@@ -200,6 +216,12 @@ const errorText = computed(() =>
   props.entry.error === "analysis_failed" ? t("add.analysisFailed") : props.entry.error,
 );
 
+const detailErrorText = computed(() =>
+  props.entry.detail_error === "detail_failed"
+    ? t("add.detailFailed")
+    : props.entry.detail_error,
+);
+
 function confirmDelete() {
   confirming.value = false;
   emit("delete-card");
@@ -214,7 +236,7 @@ function confirmDelete() {
     @pointerdown="onPointerDown"
     @pointermove="onPointerMove"
     @pointerup="onPointerUp"
-    @pointercancel="onPointerUp"
+    @pointercancel="onPointerCancel"
     @pointerleave="onPointerUp"
   >
     <div v-if="working" class="progress"><div class="progress-bar"></div></div>
@@ -298,7 +320,7 @@ function confirmDelete() {
         {{ t("add.retry", { word: entry.word }) }}
       </button>
     </div>
-    <p v-if="entry.detail_error" class="entry-error">{{ entry.detail_error }}</p>
+    <p v-if="entry.detail_error" class="entry-error">{{ detailErrorText }}</p>
     <p v-if="entry.control_error" class="entry-error">{{ entry.control_error }}</p>
 
     <div v-if="showsActions && !confirming" class="entry-actions">

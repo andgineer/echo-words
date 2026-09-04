@@ -1,17 +1,28 @@
 """The source-language table (``languages.toml``) and per-language input validation."""
 
+import logging
 import os
 import re
+import string
 import tempfile
 import tomllib
 import unicodedata
 from collections.abc import Mapping
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, fields, replace
+from functools import lru_cache
 from pathlib import Path
 
 import tomli_w
 
 from echo_words.i18n import DEFAULT_LOCALE, message
+from echo_words.language_catalog import (
+    CatalogLanguage,
+    catalog_language,
+    catalog_language_named,
+)
+from echo_words.voices import installable_piper_voices
+
+logger = logging.getLogger(__name__)
 
 MAX_WORD_LENGTH = 50
 MAX_CONTEXT_LENGTH = 500
@@ -34,6 +45,10 @@ _EXTRA_WORD_CHARS = frozenset(" -'’")
 _WORD_EDGES = re.compile(r"^[^\w]+|[^\w]+$", re.UNICODE)
 
 _REQUIRED_FIELDS = ("name", "deck", "script")
+# What the editor itself has to supply. Neither `name` nor `script` is among them:
+# both come from the language directory, because the name is what the prompt calls the
+# source language and the script is the alphabet its answers are tested against.
+_EDITOR_FIELDS = ("deck",)
 
 TTS_ENGINES = ("piper", "edge")
 _CODE_PATTERN = re.compile(r"^[a-z]{2,8}$")
@@ -99,7 +114,38 @@ def _language_from_entry(code: str, entry: object, path: Path) -> Language:
             f"expected one of {', '.join(sorted(_ALLOWED_SCRIPTS))}",
         )
     known = {field.name for field in Language.__dataclass_fields__.values()} - {"code"}
-    return Language(code=code, **{k: v for k, v in entry.items() if k in known})
+    language = Language(code=code, **{k: v for k, v in entry.items() if k in known})
+    return _joined_to_the_directory(language, path)
+
+
+def _joined_to_the_directory(language: Language, path: Path) -> Language:
+    """Take the name and the script from the directory, whatever the file says.
+
+    Every consumer has to read the same two values or they contradict one another:
+    the input validator would demand one alphabet while the answer filter tested
+    the other, and the prompt would name a language by a spelling of its own.
+    """
+    reference = catalog_language(language.code)
+    if reference is None or (language.name, language.script) == (
+        reference.name,
+        reference.script,
+    ):
+        return language
+    logger.warning(
+        "[languages.%s] in %s says name=%r script=%r; the language directory says "
+        "%r and %r, and the directory is what the app uses",
+        language.code,
+        path,
+        language.name,
+        language.script,
+        reference.name,
+        reference.script,
+    )
+    return replace(language, name=reference.name, script=reference.script)
+
+
+def _configured(existing: "Language | None", field: str) -> str | None:
+    return _optional(getattr(existing, field)) if existing is not None else None
 
 
 def _optional(value: object) -> str | None:
@@ -118,43 +164,68 @@ def validated_language(
 ) -> Language:
     """Build a `Language` from an editor submission, or refuse it with a hint.
 
-    The two file-only fields are carried over from `existing` untouched: saving a
-    voice must never drop a prompt hint the editor cannot see.
+    The name and the script come from the directory rather than the submission, and
+    a submission carrying either is refused by the transport. The two file-only fields
+    are carried over from `existing` untouched, so saving a voice cannot drop a prompt
+    hint the editor never showed.
     """
     if not _CODE_PATTERN.match(code):
         raise LanguageValidationError(message("language.bad_code", locale, code=code))
-    required = {field: _optional(submitted.get(field)) for field in _REQUIRED_FIELDS}
+    reference = catalog_language(code)
+    # A language configured by hand under a code the directory does not carry keeps the
+    # name and the script its own file gives it; a new one has to be picked from the
+    # directory, and takes both from there.
+    name = reference.name if reference is not None else _configured(existing, "name")
+    script = reference.script if reference is not None else _configured(existing, "script")
+    if name is None or script is None:
+        raise LanguageValidationError(message("language.not_in_catalog", locale, code=code))
+    required = {field: _optional(submitted.get(field)) for field in _EDITOR_FIELDS}
     missing = [field for field, value in required.items() if value is None]
     if missing:
         raise LanguageValidationError(
             message("language.missing", locale, fields=", ".join(missing)),
-        )
-    script = required["script"]
-    if script not in _ALLOWED_SCRIPTS:
-        raise LanguageValidationError(
-            message(
-                "language.bad_script",
-                locale,
-                script=script,
-                allowed=", ".join(sorted(_ALLOWED_SCRIPTS)),
-            ),
         )
     tts = _optional(submitted.get("tts"))
     if tts is not None and tts not in TTS_ENGINES:
         raise LanguageValidationError(
             message("language.bad_tts", locale, tts=tts, allowed=", ".join(TTS_ENGINES)),
         )
+    voice = _optional(submitted.get("tts_voice"))
+    if tts == "piper":
+        _check_piper_voice(code, voice, _configured(existing, "tts_voice"), locale)
     return Language(
         code=code,
-        name=required["name"] or "",
+        name=name,
         deck=required["deck"] or "",
-        script=script or "",
+        script=script,
         dict_api=_optional(submitted.get("dict_api")),
         tts=tts,
-        tts_voice=_optional(submitted.get("tts_voice")),
+        tts_voice=voice,
         edge_tts_voice=_optional(submitted.get("edge_tts_voice")),
         accent=_optional(submitted.get("accent")),
         **{field: getattr(existing, field, None) for field in FILE_ONLY_FIELDS},
+    )
+
+
+def _check_piper_voice(
+    code: str,
+    voice: str | None,
+    configured: str | None,
+    locale: str,
+) -> None:
+    """Refuse a Piper voice this server has no way to install.
+
+    Saving one would be accepted, install nothing and leave the language silent, so
+    the editor is held to what the app can actually put on disk. A voice already in
+    the file passes untouched: it may have been installed by hand.
+    """
+    installable = installable_piper_voices(code)
+    if voice is not None and (voice in installable or voice == configured):
+        return
+    if not installable:
+        raise LanguageValidationError(message("language.no_piper", locale, code=code))
+    raise LanguageValidationError(
+        message("language.bad_voice", locale, allowed=", ".join(installable)),
     )
 
 
@@ -278,23 +349,126 @@ def reflexive_markers(language: Language) -> frozenset[str]:
     return _REFLEXIVE_MARKERS.get(language.code, frozenset())
 
 
-# Letters that cannot occur in a source language, used to tell its sentences from
-# sentences in the target one. Serbian is the awkward case: it shares Cyrillic with
-# Russian, so only the letters Russian has and Serbian does not can separate them.
-# The Serbian Cyrillic alphabet has none of these; Russian has all of them.
-_RUSSIAN_ONLY = frozenset("ёйщъыьэюя")
-_CYRILLIC = frozenset("абвгдежзийклмнопрстуфхцчшщъыьэюяђјљњћџѐѝ")
+# The target language the app translates into unless it is configured otherwise.
+DEFAULT_TARGET_LANGUAGE = "Russian"
+
+# The letters each language writes that the plain 26 Latin ones do not carry — for a
+# language written in Cyrillic, that is its whole alphabet. This is what says whether a
+# letter of the target language could have been the source language's own. A language
+# absent here is read as using its whole script, so nothing is foreign to it and no
+# sentence of its is refused for a letter nobody recorded. Letters are written as
+# casefolding leaves them, which is the form a sentence is read in: German's ß folds to
+# ss, so it is not a letter this test can ever see.
+_BEYOND_LATIN = {
+    "af": "áâéèêëíîïóôöúûüý",
+    "sq": "ëç",
+    "az": "çəğıöşü",
+    "eu": "ñü",
+    "be": "абвгдеёжзійклмнопрстуўфхцчшыьэюя",
+    "bs": "čćđšž",
+    "bg": "абвгдежзийклмнопрстуфхцчшщъьюяѝ",
+    "ca": "àèéíïòóúüçŀ",
+    "hr": "čćđšž",
+    "cs": "áčďéěíňóřšťúůýž",
+    "da": "æøåé",
+    "nl": "áàéèëïóöú",
+    "en": "",
+    "eo": "ĉĝĥĵŝŭ",
+    "et": "äöõüšž",
+    "fi": "äöåšž",
+    "fr": "àâæçéèêëîïôœùûüÿ",
+    "gl": "áéíóúüñ",
+    "de": "äöü",
+    "hu": "áéíóöőúüű",
+    "is": "áæðéíóöþúý",
+    "id": "",
+    "ga": "áéíóú",
+    "it": "àèéìíîòóùú",
+    "kk": "аәбвгғдеёжзийкқлмнңоөпрстуұүфхһцчшщъыіьэюя",
+    "ky": "абвгдеёжзийклмнопрстуфхцчшщъыьэюяңөү",
+    "la": "āēīōū",
+    "lv": "āčēģīķļņšūž",
+    "lt": "ąčęėįšųūž",
+    "mk": "абвгдѓежзѕијклљмнњопрстќуфхцчџшѐѝ",
+    "ms": "",
+    "mn": "абвгдеёжзийклмнопрстуфхцчшщъыьэюяөү",
+    "no": "æøå",
+    "pl": "ąćęłńóśźż",
+    "pt": "áâãàçéêíóôõú",
+    "ro": "ăâîșțşţ",
+    "ru": "абвгдеёжзийклмнопрстуфхцчшщъыьэюя",
+    "sr": "абвгдђежзијклљмнњопрстћуфхцчџшčćđšž",
+    "sk": "áäčďéíĺľňóôŕšťúýž",
+    "sl": "čšž",
+    "es": "áéíñóúü",
+    "sw": "",
+    "sv": "åäö",
+    "tg": "абвгғдеёжзиӣйкқлмнопрстуӯфхҳчҷшъэюя",
+    "tt": "абвгдеёжзийклмнопрстуфхцчшщъыьэюяәөүҗңһ",
+    "tr": "çğıöşü",
+    "uk": "абвгґдеєжзиіїйклмнопрстуфхцчшщьюя",
+    "uz": "ʻ",
+    "vi": ("ăâđêôơưàáảãạằắẳẵặầấẩẫậèéẻẽẹềếểễệìíỉĩịòóỏõọồốổỗộờớởỡợùúủũụừứửữựỳýỷỹỵ"),
+    "cy": "âêîôûŵŷáéíóúàèìòùäëïöü",
+}
+
+_ASCII_LETTERS = frozenset(string.ascii_lowercase)
+_ALL_BEYOND_LATIN = frozenset("".join(_BEYOND_LATIN.values()))
+_CYRILLIC_LETTERS = frozenset(
+    char for char in _ALL_BEYOND_LATIN if "CYRILLIC" in unicodedata.name(char, "")
+)
+_LATIN_LETTERS = _ASCII_LETTERS | (_ALL_BEYOND_LATIN - _CYRILLIC_LETTERS)
+# What a language may write at all, which is all a language the directory does not
+# know says about itself.
+_SCRIPT_LETTERS = {
+    LATIN: _LATIN_LETTERS,
+    CYRILLIC: _CYRILLIC_LETTERS,
+    "latin+cyrillic": _LATIN_LETTERS | _CYRILLIC_LETTERS,
+}
 
 
-def sentence_is_source_language(text: str, language: Language) -> bool:
+@lru_cache(maxsize=64)
+def _alphabet(entry: CatalogLanguage) -> frozenset[str]:
+    written = _BEYOND_LATIN.get(entry.code)
+    if written is None:
+        return _SCRIPT_LETTERS[entry.script]
+    return frozenset(written) if entry.script == CYRILLIC else frozenset(written) | _ASCII_LETTERS
+
+
+def sentence_is_source_language(
+    text: str,
+    language: Language,
+    target: str = DEFAULT_TARGET_LANGUAGE,
+) -> bool:
     """Whether a card sentence is written in the source language rather than the target.
 
     A card example is the front of a card, so a target-language sentence with the
     source word wedged into it teaches nothing and is rejected outright.
     """
     letters = {char for char in unicodedata.normalize("NFC", text).casefold() if char.isalpha()}
-    foreign = _RUSSIAN_ONLY if language.script == "latin+cyrillic" else _CYRILLIC
-    return not (letters & foreign)
+    return not (letters & (_target_letters(target) - _letters_spelled(language)))
+
+
+@lru_cache(maxsize=8)
+def _target_letters(target: str) -> frozenset[str]:
+    """The letters a target-language sentence would be written in, or none unknown."""
+    entry = catalog_language_named(target)
+    if entry is None:
+        logger.warning(
+            "target language %r is not in the language directory, so a card sentence "
+            "cannot be tested for its letters",
+            target,
+        )
+        return frozenset()
+    return _alphabet(entry)
+
+
+def _letters_spelled(language: Language) -> frozenset[str]:
+    """This language's own alphabet, letter by letter where the directory carries it."""
+    entry = catalog_language(language.code)
+    if entry is None:
+        return _SCRIPT_LETTERS[language.script]
+    return _alphabet(entry)
 
 
 def fold_for_match(text: str, language: Language) -> str:

@@ -194,11 +194,52 @@ Status: **decided 2026-09-03.**
 
 Adding a language was a file edit and a restart, which is the wrong shape for
 something a reader does from a phone. The editor covers everything they
-actually do: add a language, remove one, and fix its name, deck, script, voice
-engine, voice, dictionary code and accent.
+actually do: add a language, remove one, and fix its deck, voice engine, voice,
+dictionary code and accent.
+
+**A language is picked from a directory, not named.** The directory holds the
+languages the app can reach — those written in the Latin or the Cyrillic script,
+which are the scripts the input validator can check — each with its endonym, its
+English and Russian names for the search, its script, and its dictionary code.
+The reader searches it by any of those names and presses a row.
+
+**Reaching a language is not evidence about its answers, and the directory says
+which is which.** Three languages are measured and their answers read — English,
+German and Serbian. Two more were measured and a fresh review refused most of
+what came back, and forty-five nobody has looked at (`decision-llm-backend.md`).
+A fluent invention reads exactly like an answer, so the directory carries what is
+known — vouched for, measured and unreliable, or unmeasured — the search row says
+it where the language is picked, and the editor repeats it in full afterwards.
+Nothing is hidden and no language is withheld: what the app cannot vouch for, it
+declines to imply.
+
+Three fields are the directory's for the same reason: their value is not the
+reader's opinion, and a mistake in them is unfixable from the app. The **code**
+addresses Wikipedia, Wiktionary, the audio cache and the per-language word
+tables, and it cannot be changed after a language exists — a language added as
+`ge` would query an encyclopedia that is not there, for good. The **name** is
+what the prompt calls the source language, so a free-text box for it is a
+free-text box in the prompt. The names the directory holds are the endonyms
+already in the shipped table, so nothing a model is asked changes with it. The
+**script** is the alphabet the input field and the card sentences are tested
+against, which is a fact about the language rather than a preference: the reader
+cannot make Bulgarian Latin by asking, and a script that disagrees with the
+directory only makes the two tests disagree with each other. The editor shows it
+and refuses a submission that carries it, as it refuses one carrying a name, and
+refuses a code the directory does not hold — except when the languages table
+already has one, which keeps a language configured by hand editable, script
+included.
+
+**A voice is offered where the app can install it, and only then.** A Piper voice
+reaches the server as one of the app's own pinned downloads or not at all, so the
+editor lists those and refuses anything else: a typed voice would save, download
+nothing and leave the language silent, with a line in a log the reader never sees
+as the only trace. A voice already in the languages file is left alone — it may
+have been installed by hand. Edge voices are the other way round, hundreds of
+them and none installed by the app, so that field stays a text box.
 
 **It exposes neither `api_model` nor `prompt_hints`, and refuses a request
-carrying either.** Every field it does show is inert data with a visible,
+carrying either.** Every other field it shows is inert data with a visible,
 immediate, reversible effect — a wrong deck name shows up on the next card, a
 wrong voice is heard at once. Those two are not:
 
@@ -215,7 +256,14 @@ wrong voice is heard at once. Those two are not:
 Both are also set once per language by whoever tunes prompts, not by whoever
 adds a language. The editor round-trips them untouched, so saving a voice can
 never silently drop a hint. Tuning either stays a configuration edit and a
-restart: that is the intended split, not a gap to close later.
+restart: that is the intended split, not a gap to close later. A save rewrites
+the whole table, so comments in the file do not survive one.
+
+**A voice engine is offered only where the app has a voice to install for that
+language.** The Piper choice is closed, with the reason, where Piper does not
+voice the language at all and where this build ships no download for it; an
+engine that could only ever be silence is not a setting the editor accepts
+(`decision-tts.md`).
 
 Removing a language never deletes its Anki deck — the cards are the reader's,
 and the confirmation says so — and the last remaining language cannot be

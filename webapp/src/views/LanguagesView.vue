@@ -8,29 +8,58 @@ import { useI18n } from "../i18n/index.js";
 const { t } = useI18n();
 const emit = defineEmits(["back", "open"]);
 
+const MATCHES_SHOWN = 8;
+
 const rows = ref([]);
+const catalog = ref([]);
 const asking = ref("");
 const draft = ref("");
 const hint = ref("");
 const busy = ref(false);
 
-// Two or three letters is a code; anything longer is a name, and the code is taken
-// from it. Both are refused by the backend if they do not hold up.
-const derivedCode = computed(() => {
-  const typed = draft.value.trim();
-  if (typed.length <= 3) return typed.toLowerCase();
-  return typed.slice(0, 2).toLowerCase();
+const configured = computed(() => new Set(rows.value.map((row) => row.code)));
+
+// A fluent answer in a language nobody has measured reads exactly like a measured one,
+// so what is known about it is said where the language is picked (decision-llm-backend).
+const ANSWER_NOTES = {
+  unmeasured: "languages.answersUnmeasuredShort",
+  unreliable: "languages.answersUnreliableShort",
+};
+
+function answersNote(entry) {
+  const key = ANSWER_NOTES[entry.answers ?? "unmeasured"];
+  return key ? t(key) : "";
+}
+
+// The reader searches the directory rather than naming a language: the code
+// addresses the wikis and the audio cache, and the name is what the prompt calls
+// the source language, so neither is theirs to type.
+const matches = computed(() => {
+  const query = draft.value.trim().toLowerCase();
+  if (!query) return [];
+  const opens = [];
+  const contains = [];
+  for (const entry of catalog.value) {
+    if (configured.value.has(entry.code)) continue;
+    const fields = [entry.code, entry.name, entry.english, entry.russian].map((field) =>
+      (field ?? "").toLowerCase(),
+    );
+    // A name the query opens is what the reader is typing towards; one that merely
+    // holds it somewhere is a fallback, so "ru" offers Русский before Belarusian.
+    if (fields.some((field) => field.startsWith(query))) opens.push(entry);
+    else if (fields.some((field) => field.includes(query))) contains.push(entry);
+  }
+  return [...opens, ...contains].slice(0, MATCHES_SHOWN);
 });
 
-const derivedDeck = computed(() => `EchoWords: ${draft.value.trim()}`);
-
-const deckHint = computed(() =>
-  draft.value.trim()
-    ? t("languages.deckHint", { deck: derivedDeck.value })
-    : t("languages.deckHintEmpty"),
-);
-
-onMounted(refresh);
+onMounted(async () => {
+  await refresh();
+  try {
+    catalog.value = await apiRequest("/api/languages/catalog");
+  } catch (e) {
+    hint.value = e.message;
+  }
+});
 
 async function refresh() {
   try {
@@ -40,15 +69,14 @@ async function refresh() {
   }
 }
 
-async function add() {
-  const name = draft.value.trim();
-  if (busy.value || !name) return;
+async function add(entry) {
+  if (busy.value) return;
   busy.value = true;
   hint.value = "";
   try {
-    await apiRequest(`/api/languages/${derivedCode.value}`, {
+    await apiRequest(`/api/languages/${entry.code}`, {
       method: "PUT",
-      body: { name, deck: derivedDeck.value, script: "latin" },
+      body: { deck: entry.deck, dict_api: entry.dict_api ?? "" },
     });
     draft.value = "";
     await refresh();
@@ -140,13 +168,35 @@ async function remove(code) {
       autocomplete="off"
       autocapitalize="none"
       spellcheck="false"
-      :placeholder="t('languages.addPlaceholder')"
-      @keyup.enter="add"
+      :placeholder="t('languages.searchPlaceholder')"
     />
-    <button class="btn btn-primary add" :disabled="busy" @click="add">
-      {{ t("languages.add") }}
-    </button>
-    <p class="form-hint deck-hint">{{ deckHint }}</p>
+
+    <div v-if="matches.length" class="matches">
+      <button
+        v-for="entry in matches"
+        :key="entry.code"
+        type="button"
+        class="match"
+        :disabled="busy"
+        :data-testid="`add-${entry.code}`"
+        @click="add(entry)"
+      >
+        <span class="match-name">
+          {{ entry.name }}<span class="lang-code">{{ entry.code }}</span>
+        </span>
+        <span class="match-deck">{{ entry.english }} · {{ entry.deck }}</span>
+        <span
+          v-if="answersNote(entry)"
+          class="match-answers"
+          :class="{ warn: entry.answers === 'unreliable' }"
+        >
+          {{ answersNote(entry) }}
+        </span>
+      </button>
+    </div>
+    <p v-else-if="draft.trim()" class="form-hint no-matches">{{ t("languages.noMatches") }}</p>
+
+    <p class="form-hint deck-hint">{{ t("languages.deckHintEmpty") }}</p>
     <p v-if="hint" class="hint">{{ hint }}</p>
   </section>
 </template>
@@ -268,6 +318,65 @@ h2 {
 
 #new-lang {
   margin-bottom: 0.75rem;
+}
+
+.matches {
+  display: flex;
+  flex-direction: column;
+}
+
+.match {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
+  width: 100%;
+  padding: 0.55rem 0.5rem;
+  background: none;
+  border: none;
+  border-radius: 8px;
+  font-family: inherit;
+  text-align: left;
+  color: var(--text);
+  cursor: pointer;
+  transition:
+    background 0.12s,
+    transform 0.1s;
+  touch-action: manipulation;
+}
+
+.match:hover {
+  background: var(--field);
+}
+
+.match:active {
+  transform: scale(0.98);
+}
+
+.match-name {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.match-deck {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.match-answers {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.match-answers.warn {
+  color: var(--warning);
+}
+
+.no-matches {
+  margin-top: 0.25rem;
 }
 
 .deck-hint {

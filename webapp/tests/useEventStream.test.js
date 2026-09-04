@@ -55,6 +55,39 @@ it("keeps deeper analysis in its own appended block", () => {
   expect(entries.value[0].detail_html).toBe("deep answer");
 });
 
+it("keeps the paid call marked as running until its last piece has arrived", () => {
+  entries.value = [{ entry_id: "one", text: "short answer", detail_pending: true }];
+  const stream = useEventStream({ EventSourceClass: FakeEventSource, fetchRecent: vi.fn() });
+  stream.start();
+  const source = FakeEventSource.instances[0];
+
+  source.emit("detail", { entry_id: "one", text: "half an", streaming: true });
+  expect(entries.value[0]).toMatchObject({ detail_html: "half an", detail_pending: true });
+
+  source.emit("detail", { entry_id: "one", text: "half an article" });
+  expect(entries.value[0]).toMatchObject({
+    detail_html: "half an article",
+    detail_pending: false,
+  });
+});
+
+it("asks the backend for as many entries as the browser keeps", async () => {
+  const apiRequest = vi.fn().mockResolvedValue([]);
+  vi.doMock("../src/api/_request.js", () => ({ apiRequest }));
+  const { MAX_ENTRIES } = await import("../src/composables/useEntries.js");
+  const { useEventStream: freshStream } = await import(
+    "../src/composables/useEventStream.js?limit"
+  );
+  freshStream({ EventSourceClass: FakeEventSource }).start();
+
+  FakeEventSource.instances.at(-1).emit("open");
+
+  await vi.waitFor(() =>
+    expect(apiRequest).toHaveBeenCalledWith(`/api/words/recent?limit=${MAX_ENTRIES}`),
+  );
+  vi.doUnmock("../src/api/_request.js");
+});
+
 it("clears deeper analysis when a correction switch resets the entry", () => {
   entries.value = [{
     entry_id: "one",

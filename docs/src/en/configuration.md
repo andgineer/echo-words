@@ -41,12 +41,34 @@ carries complete English, German, and Serbian entries.
 ### Editing it from the app
 
 The pencil beside the language row on the words screen opens an editor that
-adds a language, removes one, and changes its name, deck, script, voice
-engine, voice, dictionary code and accent. It rewrites this file and takes
-effect without a restart; a new Piper voice downloads in the background.
-Removing a language never touches its Anki deck, and the last remaining
-language cannot be removed — the app does not start without one. A save
-rewrites the whole file, so comments in it do not survive one.
+adds a language, removes one, and changes its deck, voice engine, voice,
+dictionary code and accent. It rewrites this file and takes effect
+without a restart; a new Piper voice downloads in the background. Removing a
+language never touches its Anki deck, and the last remaining language cannot be
+removed — the app does not start without one. A save rewrites the whole file, so
+comments in it do not survive one.
+
+A language is added by searching a built-in directory of the languages the app
+can reach and pressing the one wanted — by its own name, its English name, its
+Russian name or its code. Reaching one is not vouching for it: each row says
+whether its answers were read and vouched for, read and refused, or never
+looked at, both in the search row and in the editor afterwards. The directory
+gives it its `code`, its `name` and its `script`; the editor cannot set any of
+them, and refuses a request that tries.
+The code addresses Wikipedia, Wiktionary and the audio cache and cannot be
+changed once the language exists, the name is what the prompt calls the source
+language, and the script is the alphabet the input field and the card sentences
+are tested against. A language written into this file by hand under a code the
+directory does not carry keeps the name and the script given here, and stays
+editable. Under a code the directory does carry, the name and the script are
+the directory's whatever this file says: a disagreement is logged at startup
+and the directory's answer is what the input field, the card filter, the editor
+and the prompt all use.
+
+A `tts_voice` is picked from the Piper voices this build can install, and the
+editor refuses any other: a voice it cannot download would save and then stay
+silent. Editing this file by hand is the way to point Piper at a voice installed
+into `models/` some other way; the editor leaves such a value alone.
 
 `api_model` and `prompt_hints` stay a file edit and a restart. They are the
 two fields whose value reaches machinery the editor can neither show nor

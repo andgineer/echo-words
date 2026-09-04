@@ -614,6 +614,31 @@ async def test_remove_note_trashes_its_collection_media(tmp_path):
         await store.close()
 
 
+async def test_a_recording_two_notes_share_outlives_the_first_of_them(tmp_path):
+    """A recording is named after its word, so the same word carded twice is one file
+    in the collection — and the second note keeps it after the first one goes. Nothing
+    in memory can answer this: the other note may predate the process."""
+    store = AnkiStore(local_settings(tmp_path))
+    await store.open()
+    audio = tmp_path / "audio.mp3"
+    audio.write_bytes(b"audio")
+    try:
+        first = await store.add_note(make_note(), "English::Vocabulary", audio)
+        second = await store.add_note(make_note(), "English::Vocabulary", audio)
+        assert isinstance(first, Added)
+        assert isinstance(second, Added)
+        assert first.media_filename == second.media_filename
+        media = Path(store.collection.media.dir()) / first.media_filename
+
+        await store.remove_note(first.note_id, first.media_filename)
+        assert media.exists()
+
+        await store.remove_note(second.note_id, second.media_filename)
+        assert not media.exists()
+    finally:
+        await store.close()
+
+
 async def test_note_counts_are_broken_down_by_deck_and_creation_window(tmp_path, monkeypatch):
     store = AnkiStore(local_settings(tmp_path))
     await store.open()

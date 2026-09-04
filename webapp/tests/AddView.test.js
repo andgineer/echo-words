@@ -35,10 +35,14 @@ afterEach(() => {
   localStorage.clear();
 });
 
-function accepts(entryId) {
-  apiRequest.mockImplementation(async (path) => {
+// The receipt says what the submission became: the `?` shortcut stripped and the
+// wording normalized, so the page never has to work that out for itself.
+function accepts(entryId, { word = null, lookupOnly = false } = {}) {
+  apiRequest.mockImplementation(async (path, init) => {
     if (path === "/api/languages") return OPTIONS;
-    if (path === "/api/words") return { entry_id: entryId };
+    if (path === "/api/words") {
+      return { entry_id: entryId, word: word ?? init.body.word, lookup_only: lookupOnly };
+    }
     throw new Error(`Unexpected request: ${path}`);
   });
 }
@@ -220,6 +224,21 @@ describe("AddView", () => {
     expect(body.lookup_only).toBe(false);
   });
 
+  // Nothing after the receipt carries the word, so a guess here would stay in the rail.
+  it("puts the submission in the rail as the backend read it, not as it was typed", async () => {
+    accepts("entry-1", { word: "kick the bucket", lookupOnly: true });
+    const wrapper = mount(AddView);
+    await flushPromises();
+    await wrapper.get("#word").setValue("? kick the bucket");
+
+    await wrapper.get(".submit").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.get('[data-testid="chip-entry-1"]').text()).toBe("kick the bucket");
+    expect(wrapper.get(".entry-title").text()).toBe("kick the bucket");
+    expect(entries.value[0].lookup_only).toBe(true);
+  });
+
   describe("the rail", () => {
     it("shows only the selected language's entries, newest first", async () => {
       entries.value = [
@@ -366,6 +385,25 @@ describe("AddView", () => {
       ).toEqual([["/api/words/entry-2/delete-card", { method: "POST" }]]);
     });
 
+    it("says on the card itself that its note had already gone", async () => {
+      await labelBehavior(EPIC.ANKI_CARDS, FEATURE.COLLECTION, "Card deletion");
+      entries.value = [unit("entry-2", "window"), unit("entry-1", "house")];
+      apiRequest.mockImplementation(async (path) => {
+        if (path === "/api/languages") return OPTIONS;
+        if (path === "/api/words/entry-2/delete-card") throw new Error("nothing to delete");
+        throw new Error(`Unexpected request: ${path}`);
+      });
+      const wrapper = mount(AddView);
+      await flushPromises();
+
+      await wrapper.get(".delete-card").trigger("click");
+      await wrapper.get(".confirm-yes").trigger("click");
+      await flushPromises();
+
+      expect(wrapper.get(".entry-error").text()).toBe("nothing to delete");
+      expect(wrapper.find(".hint").exists()).toBe(false);
+    });
+
     it("marks the paid call as running on the card and on its chip", async () => {
       let settle;
       apiRequest.mockImplementation(async (path) => {
@@ -394,7 +432,7 @@ describe("AddView", () => {
       expect(wrapper.get('[data-testid="chip-entry-1"]').classes()).toContain("running");
     });
 
-    it("stops saying a paid call is running when it is refused", async () => {
+    it("stops saying a paid call is running when it is refused, on the card that asked", async () => {
       apiRequest.mockImplementation(async (path) => {
         if (path === "/api/languages") return OPTIONS;
         if (path === "/api/words/entry-1/detail") throw new Error("the daily cap is spent");
@@ -407,7 +445,9 @@ describe("AddView", () => {
       await wrapper.get(".detail").trigger("click");
       await flushPromises();
 
-      expect(wrapper.get(".hint").text()).toBe("the daily cap is spent");
+      // The control lives on the card, so its refusal is read there and not over the rail.
+      expect(wrapper.get(".entry-error").text()).toBe("the daily cap is spent");
+      expect(wrapper.find(".hint").exists()).toBe(false);
       expect(wrapper.find(".progress").exists()).toBe(false);
       expect(wrapper.get('[data-testid="chip-entry-1"]').classes()).not.toContain("running");
     });

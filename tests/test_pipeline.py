@@ -909,7 +909,6 @@ async def test_a_refused_wording_keeps_no_card_recording_in_the_entry_state(
         target_lang="ru",
         anki=RecordingAnki(Added(1, None, ("Recognition",))),
         audio=fetch,
-        audio_dir=tmp_path,
     )
     pipeline.start()
     try:
@@ -1025,7 +1024,6 @@ async def test_a_refused_word_is_not_spoken_but_its_file_survives(languages, tmp
         target_lang="ru",
         anki=RecordingAnki(Added(1, None, ())),
         audio=fetch,
-        audio_dir=tmp_path,
     )
     pipeline.start()
     try:
@@ -2281,13 +2279,13 @@ async def test_history_overflow_keeps_queued_entries_and_the_worker_alive(langua
 
         assert cascade.calls == ["en", "en"]
         assert second.status == "done"
-        assert pipeline.recent() == [second.public()]
+        assert pipeline.recent() == [{**second.public(), "detail_pending": False}]
 
         third = await pipeline.enqueue(languages["en"], "third", False)
         await pipeline.join()
         assert cascade.calls == ["en", "en", "en"]
         assert third.status == "done"
-        assert pipeline.recent() == [third.public()]
+        assert pipeline.recent() == [{**third.public(), "detail_pending": False}]
     finally:
         await pipeline.close()
 
@@ -2307,7 +2305,7 @@ async def test_reuse_updates_the_existing_entry_without_creating_another(languag
         )
         await pipeline.join()
         assert reused is entry
-        assert pipeline.recent() == [entry.public()]
+        assert pipeline.recent() == [{**entry.public(), "detail_pending": False}]
         assert entry.word == "new"
         assert entry.text == "new"
     finally:
@@ -2567,6 +2565,65 @@ async def test_detail_appends_is_cached_and_cuts_a_stray_card_block(languages):
         await pipeline.close()
 
 
+async def test_a_streamed_article_says_it_is_running_until_the_last_piece(languages):
+    """The strip and the live dot are what the reader has for ten seconds, so only the
+    end of the call may take them away — not its first piece."""
+    hub = EventHub()
+    cascade = ScriptedCascade(
+        [
+            Completion([valid_card("word")]),
+            Completion(["Half an ", "article"]),
+        ],
+    )
+    pipeline = WordPipeline(cascade, target_lang="Russian", events=hub)
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(languages["en"], "word", False)
+        await pipeline.join()
+
+        async with hub.subscribe() as subscriber:
+            await pipeline.request_detail(entry.entry_id)
+            await pipeline.join()
+            events = [event for event in drain(subscriber) if event.name == "detail"]
+
+        assert [event.data.get("streaming") for event in events] == [True, True, None]
+        assert events[-1].data["text"] == "Half an article"
+    finally:
+        await pipeline.close()
+
+
+async def test_an_article_that_fails_unexpectedly_still_ends_its_progress_strip(languages):
+    """Not every failure is the backend's own, and the strip and the live dot are ended
+    by an event: without one the reader watches a call that stopped running."""
+    hub = EventHub()
+
+    class BrokenStream(ScriptedCascade):
+        def stream_paid(self, *_args, **_kwargs):
+            async def broken():
+                yield "half an "
+                raise RuntimeError("the stream broke")
+
+            self.paid_calls += 1
+            return broken()
+
+    cascade = BrokenStream([Completion([valid_card("word")])])
+    pipeline = WordPipeline(cascade, target_lang="Russian", events=hub)
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(languages["en"], "word", False)
+        await pipeline.join()
+
+        async with hub.subscribe() as subscriber:
+            await pipeline.request_detail(entry.entry_id)
+            await pipeline.join()
+            events = [event for event in drain(subscriber) if event.name == "detail"]
+
+        assert events[-1].data == {"entry_id": entry.entry_id, "error": "detail_failed"}
+        assert pipeline.recent()[0]["detail_pending"] is False
+    finally:
+        await pipeline.close()
+
+
 async def test_detail_is_refused_when_a_completed_entry_has_no_parsed_shape(languages):
     cascade = ScriptedCascade(
         [
@@ -2643,6 +2700,29 @@ async def test_queued_detail_refusal_reports_the_exact_reason_without_changing_e
         await pipeline.close()
 
 
+async def test_a_running_paid_call_is_still_running_after_a_reload(languages):
+    """The strip and the live dot come back with the page: a reload, or a trip to
+    another screen, must not lose a call the pipeline is still making."""
+    cascade = ScriptedCascade([Completion([valid_card("word")])])
+    pipeline = WordPipeline(cascade, target_lang="Russian")
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(languages["en"], "word", False)
+        await pipeline.join()
+        assert pipeline.recent()[0]["detail_pending"] is False
+
+        await pipeline.close()
+        await pipeline.request_detail(entry.entry_id)
+
+        assert pipeline.recent()[0]["detail_pending"] is True
+
+        pipeline.start()
+        await pipeline.join()
+        assert pipeline.recent()[0]["detail_pending"] is False
+    finally:
+        await pipeline.close()
+
+
 async def test_correction_switch_is_reversible_replaces_notes_and_updates_undo(
     languages,
     tmp_path,
@@ -2694,7 +2774,9 @@ async def test_correction_switch_is_reversible_replaces_notes_and_updates_undo(
             (2, "two.mp3"),
         ]
         assert pipeline.history.undo["de"].note_id == 3
-        assert not paths["Strasse"].exists()
+        # The recording of the spelling switched away from stays in the cache, where
+        # the next send of that word finds it.
+        assert paths["Strasse"].exists()
     finally:
         await pipeline.close()
 
@@ -2817,7 +2899,6 @@ async def test_a_switch_that_stores_nothing_keeps_the_note_and_the_audio_it_had(
         target_lang="Russian",
         anki=anki,
         audio=fetch,
-        audio_dir=tmp_path,
     )
     pipeline.start()
     try:
@@ -2880,7 +2961,7 @@ async def test_a_corrected_lookup_still_says_which_word_it_analysed(languages):
         await pipeline.close()
 
 
-async def test_undo_removes_the_note_media_and_cached_audio_per_language(languages, tmp_path):
+async def test_undo_removes_the_note_and_its_media_per_language(languages, tmp_path):
     audio = tmp_path / "pronunciation-aabbccddeeff00112233.mp3"
     audio.write_bytes(b"audio")
 
@@ -2893,7 +2974,6 @@ async def test_undo_removes_the_note_media_and_cached_audio_per_language(languag
         target_lang="Russian",
         anki=anki,
         audio=fetch,
-        audio_dir=tmp_path,
     )
     pipeline.start()
     try:
@@ -2902,7 +2982,7 @@ async def test_undo_removes_the_note_media_and_cached_audio_per_language(languag
         assert await pipeline.undo(languages["de"]) is None
         assert await pipeline.undo(languages["en"]) == "word"
         assert anki.removed == [(7, "media.mp3")]
-        assert not audio.exists()
+        assert audio.exists()
         assert await pipeline.undo(languages["en"]) is None
     finally:
         await pipeline.close()
@@ -2962,7 +3042,13 @@ async def test_pending_latest_send_never_reexposes_the_previous_card_to_undo(lan
         await pipeline.close()
 
 
-async def test_delete_card_removes_the_note_its_media_and_both_recordings(languages, tmp_path):
+async def test_delete_card_removes_the_note_and_its_media_and_keeps_the_recording(
+    languages,
+    tmp_path,
+):
+    """The cards go and the analysis stays, recording included: a cached file is
+    addressed by its text and shared with every other entry for the same word, so it
+    belongs to the cache rather than to the note that happened to use it."""
     submitted = tmp_path / "pronunciation-aabbccddeeff00112233.mp3"
     headword = tmp_path / "pronunciation-1122334455667788990a.mp3"
     for path in (submitted, headword):
@@ -2977,7 +3063,6 @@ async def test_delete_card_removes_the_note_its_media_and_both_recordings(langua
         target_lang="Russian",
         anki=anki,
         audio=fetch,
-        audio_dir=tmp_path,
     )
     pipeline.start()
     try:
@@ -2987,15 +3072,107 @@ async def test_delete_card_removes_the_note_its_media_and_both_recordings(langua
         assert await pipeline.delete_card(entry.entry_id) == "give up"
 
         assert anki.removed == [(7, "media.mp3")]
-        assert not submitted.exists()
-        assert not headword.exists()
+        assert submitted.exists()
+        assert headword.exists()
         assert pipeline.history.entries[entry.entry_id].card_status == DELETED_STATUS
-        # A player over a file the same call unlinked would answer the tap with nothing.
-        assert pipeline.history.entries[entry.entry_id].audio_file is None
-        # The control kept nothing to delete a second time.
-        assert await pipeline.delete_card(entry.entry_id) is None
+        # The word is still on the screen, so it is still readable and still audible.
+        assert pipeline.history.entries[entry.entry_id].audio_file == submitted.name
+        # The control kept nothing to delete a second time, and says so rather than
+        # answering a confirmed deletion with silence.
+        with pytest.raises(BackendError, match="nothing to delete"):
+            await pipeline.delete_card(entry.entry_id)
         assert anki.removed == [(7, "media.mp3")]
     finally:
+        await pipeline.close()
+
+
+async def test_a_switch_keeps_the_recording_a_second_entry_is_still_playing(
+    languages,
+    tmp_path,
+):
+    """A switch moves its own entry onto the corrected spelling's recording and leaves
+    every other entry where it was: the same word submitted twice is one file, and the
+    entry that was not switched goes on playing it."""
+    misspelled = tmp_path / "pronunciation-aabbccddeeff00112233.mp3"
+    corrected = tmp_path / "pronunciation-bbccddeeff0011223344.mp3"
+    for path in (misspelled, corrected):
+        path.write_bytes(b"audio")
+
+    async def fetch(word, _language):
+        return corrected if word == "Strasse" else misspelled
+
+    anki = MutableAnki([Added(7, "one.mp3"), Added(8, "two.mp3"), Added(9, "three.mp3")])
+    cascade = ScriptedCascade(
+        [
+            Completion([card_with("Strase", word_relation="typo", suggestion="Strasse")]),
+            Completion([card_with("Strase", word_relation="typo", suggestion="Strasse")]),
+            Completion([valid_card("Strasse")]),
+        ],
+    )
+    pipeline = WordPipeline(
+        cascade,
+        target_lang="Russian",
+        anki=anki,
+        audio=fetch,
+    )
+    pipeline.start()
+    try:
+        first = await pipeline.enqueue(languages["de"], "Strase", False)
+        second = await pipeline.enqueue(languages["de"], "Strase", False)
+        await pipeline.join()
+
+        await pipeline.request_switch(first.entry_id)
+        await pipeline.join()
+
+        assert first.audio_file == corrected.name
+        assert misspelled.exists()
+        assert pipeline.history.entries[second.entry_id].audio_file == misspelled.name
+    finally:
+        await pipeline.close()
+
+
+async def test_delete_card_leaves_the_recording_a_running_answer_was_handed(
+    languages,
+    tmp_path,
+):
+    """The recording is handed to a job before the model has said a word, and a deletion
+    running while that answer streams must not take it: the resubmission would finish
+    with a player over a file that is no longer there."""
+    shared = tmp_path / "pronunciation-aabbccddeeff00112233.mp3"
+    shared.write_bytes(b"audio")
+    streaming = asyncio.Event()
+    finish = asyncio.Event()
+
+    async def fetch(_word, _language):
+        return shared
+
+    anki = MutableAnki([Added(7, "one.mp3"), Added(8, "two.mp3")])
+    pipeline = WordPipeline(
+        ScriptedCascade(
+            [
+                Completion([valid_card("word")]),
+                Completion([valid_card("word")], started=streaming, gate=finish),
+            ],
+        ),
+        target_lang="Russian",
+        anki=anki,
+        audio=fetch,
+    )
+    pipeline.start()
+    try:
+        first = await pipeline.enqueue(languages["en"], "word", False)
+        await pipeline.join()
+        second = await pipeline.enqueue(languages["en"], "word", False)
+        await streaming.wait()
+
+        assert await pipeline.delete_card(first.entry_id) == "word"
+        assert shared.exists()
+
+        finish.set()
+        await pipeline.join()
+        assert pipeline.history.entries[second.entry_id].audio_file == shared.name
+    finally:
+        finish.set()
         await pipeline.close()
 
 
@@ -3019,7 +3196,7 @@ async def test_delete_card_leaves_undo_nothing_to_delete_twice(languages):
         await pipeline.close()
 
 
-async def test_delete_card_on_an_entry_that_carded_nothing_is_a_noop(languages):
+async def test_delete_card_on_an_entry_that_carded_nothing_says_so(languages):
     anki = MutableAnki([])
     pipeline = WordPipeline(
         ScriptedCascade([Completion([valid_card("word")])]),
@@ -3031,7 +3208,8 @@ async def test_delete_card_on_an_entry_that_carded_nothing_is_a_noop(languages):
         entry = await pipeline.enqueue(languages["en"], "word", True)
         await pipeline.join()
 
-        assert await pipeline.delete_card(entry.entry_id) is None
+        with pytest.raises(BackendError, match="nothing to delete"):
+            await pipeline.delete_card(entry.entry_id)
         assert anki.removed == []
         assert pipeline.history.entries[entry.entry_id].card_status == LOOKUP_ONLY_STATUS
     finally:
@@ -3635,10 +3813,12 @@ async def test_a_running_text_entry_is_refused_as_text_not_as_a_missing_card(lan
         await pipeline.close()
 
 
-async def test_undo_also_removes_the_card_audio_of_a_different_headword(
+async def test_undo_leaves_the_recordings_of_both_spellings_in_the_cache(
     languages,
     tmp_path,
 ):
+    """Undo answers for the note and its media in the collection; the app's own cache
+    is not the note's to empty."""
     submitted = tmp_path / "pronunciation-aabbccddeeff00112233.mp3"
     headword = tmp_path / "pronunciation-1122334455667788990a.mp3"
     for path in (submitted, headword):
@@ -3653,7 +3833,6 @@ async def test_undo_also_removes_the_card_audio_of_a_different_headword(
         target_lang="Russian",
         anki=anki,
         audio=fetch,
-        audio_dir=tmp_path,
     )
     pipeline.start()
     try:
@@ -3663,5 +3842,5 @@ async def test_undo_also_removes_the_card_audio_of_a_different_headword(
     finally:
         await pipeline.close()
 
-    assert not submitted.exists()
-    assert not headword.exists()
+    assert submitted.exists()
+    assert headword.exists()

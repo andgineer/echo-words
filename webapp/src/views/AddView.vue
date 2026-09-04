@@ -111,12 +111,15 @@ async function sendWord(submittedWord, context = "", shape = null, lang = select
       method: "POST",
       body,
     });
+    // What the entry holds is the submission as the server read it — the `?` shortcut
+    // stripped and the wording normalized. Guessing it here would put the reader's
+    // own typing in the rail and leave it there: no later event carries the word.
     const metadata = {
       entry_id: accepted.entry_id,
-      word: submittedWord,
+      word: accepted.word,
       lang,
       language: languages.value.find((item) => item.code === lang)?.name || "",
-      lookup_only: false,
+      lookup_only: accepted.lookup_only,
       context,
       // Kept so a failed entry can be sent again as submitted: `shape` is what the
       // answer turned out to be, which a failed entry never has.
@@ -148,21 +151,26 @@ async function retry(entry) {
   await sendWord(entry.word, entry.context || "", entry.requested_shape ?? null, entry.lang);
 }
 
+// A control lives on a card, so its refusal belongs on that card and not over the
+// rail: which entry a refused deletion or a spent daily cap is about is the answer.
 async function entryAction(entry, action) {
-  hint.value = "";
   upsertEntry({ entry_id: entry.entry_id, control_error: null });
   try {
     await apiRequest(`/api/words/${entry.entry_id}/${action}`, { method: "POST" });
   } catch (e) {
-    hint.value = e.message;
+    upsertEntry({ entry_id: entry.entry_id, control_error: e.message });
   }
 }
 
 // The paid call takes about ten seconds, so the card and the word's chip say it is
 // running from the moment it is asked for rather than when the answer lands.
 async function requestDetail(entry) {
-  hint.value = "";
-  upsertEntry({ entry_id: entry.entry_id, control_error: null, detail_pending: true });
+  upsertEntry({
+    entry_id: entry.entry_id,
+    control_error: null,
+    detail_error: null,
+    detail_pending: true,
+  });
   try {
     const result = await apiRequest(`/api/words/${entry.entry_id}/detail`, { method: "POST" });
     if (result?.cached) {
@@ -173,8 +181,7 @@ async function requestDetail(entry) {
       });
     }
   } catch (e) {
-    upsertEntry({ entry_id: entry.entry_id, detail_pending: false });
-    hint.value = e.message;
+    upsertEntry({ entry_id: entry.entry_id, detail_pending: false, detail_error: e.message });
   }
 }
 </script>

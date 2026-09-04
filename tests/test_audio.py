@@ -12,6 +12,7 @@ import httpx
 import pytest
 
 from echo_words import audio
+from echo_words.languages import Language
 
 pytestmark = pytest.mark.anyio
 
@@ -153,6 +154,7 @@ async def test_piper_import_and_inference_failures_fall_through_to_edge(
 
     async def fake_edge(_word, _lang, output, _settings):
         output.write_bytes(b"edge")
+        return True
 
     monkeypatch.setattr(audio, "_edge_audio", fake_edge)
 
@@ -192,6 +194,7 @@ async def test_edge_language_and_phrase_skip_earlier_chain_steps(
 
     async def fake_edge(_word, _lang, output, _settings):
         output.write_bytes(b"edge")
+        return True
 
     monkeypatch.setattr(audio, "_dictionary_audio", dictionary)
     monkeypatch.setattr(audio, "_piper_audio", piper)
@@ -253,6 +256,43 @@ async def test_edge_tts_uses_language_voice_and_returns_none_on_failure(
         ("успех", "sr-RS-SophieNeural"),
         ("провал", "sr-RS-SophieNeural"),
     ]
+
+
+async def test_a_language_with_no_voice_of_its_own_is_silent_rather_than_english(
+    settings,
+    monkeypatch,
+):
+    """The default voice speaks English. Lending it to a language that has no voice
+    would card the word read as if it were English, which is worse than no recording."""
+    calls = []
+
+    class FakeCommunicate:
+        def __init__(self, word, voice):
+            calls.append((word, voice))
+
+        async def save(self, path):
+            Path(path).write_bytes(b"edge mp3")
+
+    monkeypatch.setattr(audio.edge_tts, "Communicate", FakeCommunicate)
+    bulgarian = Language(code="bg", name="Български", deck="d", script="cyrillic")
+    async with mock_client(lambda _request: httpx.Response(500)) as client:
+        silent = await audio.fetch_pronunciation(
+            "здравей",
+            bulgarian,
+            settings=settings,
+            client=client,
+        )
+        english = await audio.fetch_pronunciation(
+            "hello",
+            Language(code="en", name="English", deck="d", script="latin"),
+            settings=settings,
+            client=client,
+        )
+
+    assert silent is None
+    # The accent's default voice is still the one English itself falls back on.
+    assert english is not None
+    assert calls == [("hello", settings.edge_tts_voice)]
 
 
 async def test_a_cyrillic_locale_voice_is_never_handed_latin(

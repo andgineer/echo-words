@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 
 import pytest
@@ -18,6 +19,7 @@ from echo_words.languages import (
     reflexive_markers,
     sanitize_context,
     save_languages,
+    sentence_is_source_language,
     unit_excluded_words,
     unknown_language_hint,
     validate_text,
@@ -355,9 +357,7 @@ def test_a_submitted_language_is_built_from_the_fields_the_editor_shows():
     language = validated_language(
         "fr",
         {
-            "name": " Français ",
             "deck": "EchoWords: French",
-            "script": "latin",
             "dict_api": "  ",
             "tts": "edge",
             "edge_tts_voice": "fr-FR-DeniseNeural",
@@ -377,30 +377,31 @@ def test_a_submitted_language_is_built_from_the_fields_the_editor_shows():
 def test_the_two_file_only_fields_survive_a_save_of_the_fields_the_editor_shows():
     """The editor cannot show a prompt hint or a paid model, so it must round-trip
     them: saving a voice would otherwise silently drop the hint."""
-    language = validated_language(
-        "sr",
-        {"name": "Српски", "deck": "EchoWords: Serbian", "script": "cyrillic"},
-        COMPLETE,
-    )
+    language = validated_language("sr", {"deck": "EchoWords: Serbian"}, COMPLETE)
 
     assert language.api_model == "gpt-fast"
     assert language.prompt_hints == "for nouns give gender and plural"
-    assert language.script == "cyrillic"
 
 
 @pytest.mark.parametrize(
     ("code", "fields", "expected"),
     [
-        ("Fr", {"name": "n", "deck": "d", "script": "latin"}, "is not a language code"),
-        ("f", {"name": "n", "deck": "d", "script": "latin"}, "is not a language code"),
-        ("fr", {"name": "", "deck": "d", "script": "latin"}, "Fill in: name"),
-        ("fr", {"name": "n", "deck": " ", "script": "latin"}, "Fill in: deck"),
-        ("fr", {"name": "n", "deck": "d", "script": "runic"}, "Unknown script"),
+        ("Fr", {"deck": "d"}, "is not a language code"),
+        ("f", {"deck": "d"}, "is not a language code"),
+        ("xx", {"deck": "d"}, "is not in the language directory"),
+        ("fr", {"deck": " "}, "Fill in: deck"),
+        ("fr", {"deck": "d", "tts": "festival"}, "Unknown voice engine"),
         (
             "fr",
-            {"name": "n", "deck": "d", "script": "latin", "tts": "festival"},
-            "Unknown voice engine",
+            {"deck": "d", "tts": "piper", "tts_voice": "fr_FR-siwis-medium"},
+            "no Piper voice for",
         ),
+        (
+            "en",
+            {"deck": "d", "tts": "piper", "tts_voice": "en_US-amy-low"},
+            "pick one of en_US-lessac-medium",
+        ),
+        ("en", {"deck": "d", "tts": "piper"}, "pick one of en_US-lessac-medium"),
     ],
 )
 def test_an_unusable_submission_is_refused_with_a_hint(code, fields, expected):
@@ -410,4 +411,208 @@ def test_an_unusable_submission_is_refused_with_a_hint(code, fields, expected):
 
 def test_the_refusals_have_a_russian_wording():
     with pytest.raises(LanguageValidationError, match="не код языка"):
-        validated_language("Fr", {"name": "n", "deck": "d", "script": "latin"}, None, "ru")
+        validated_language("Fr", {"deck": "d"}, None, "ru")
+
+
+def test_the_name_comes_from_the_directory_and_not_from_the_submission():
+    """It is what the prompt calls the source language, so it is not a text box."""
+    language = validated_language("de", {"deck": "d", "name": "whatever"})
+
+    assert language.name == "Deutsch"
+
+
+def test_the_script_comes_from_the_directory_and_not_from_the_submission():
+    """It is the alphabet the answers are tested against, and Serbian writes both:
+    a submission cannot narrow it to one."""
+    language = validated_language("sr", {"deck": "d", "script": "cyrillic"})
+
+    assert language.script == "latin+cyrillic"
+
+
+def test_a_piper_voice_already_in_the_file_survives_a_save_of_another_field():
+    """The editor may not introduce a voice the server cannot install; one that is
+    already configured may have been installed by hand, and is left alone."""
+    existing = Language(
+        code="en",
+        name="English",
+        deck="d",
+        script="latin",
+        tts="piper",
+        tts_voice="en_US-by-hand",
+    )
+
+    language = validated_language(
+        "en",
+        {"deck": "d2", "tts": "piper", "tts_voice": "en_US-by-hand"},
+        existing,
+    )
+
+    assert language.tts_voice == "en_US-by-hand"
+
+
+def test_a_hand_configured_language_outside_the_directory_keeps_its_own_name():
+    existing = Language(code="xx", name="Toki Pona", deck="d", script="latin")
+
+    language = validated_language("xx", {"deck": "d2"}, existing)
+
+    assert language.name == "Toki Pona"
+    assert language.deck == "d2"
+    assert language.script == "latin"
+
+
+def _cyrillic(code: str) -> Language:
+    return Language(code=code, name=code, deck="d", script="cyrillic")
+
+
+@pytest.mark.parametrize(
+    ("code", "sentence", "expected"),
+    [
+        ("uk", "Вона читає книгу.", True),
+        ("uk", "Она читает книгу каждый вечер.", False),
+        ("bg", "Той чете книга.", True),
+        ("bg", "Он читает книгу каждый вечер.", False),
+        ("be", "Яна чытае кнігу.", True),
+        ("be", "Она читает книгу.", False),
+        # Kazakh spells every Russian letter, so no letter separates the two and the
+        # test does not run rather than rejecting Kazakh's own sentences.
+        ("kk", "Ол кітап оқып отыр.", True),
+        ("kk", "Он читает книгу каждый вечер.", True),
+    ],
+)
+def test_a_cyrillic_language_is_told_from_the_target_by_the_letters_it_lacks(
+    code: str,
+    sentence: str,
+    expected: bool,
+):
+    assert sentence_is_source_language(sentence, _cyrillic(code)) is expected
+
+
+@pytest.mark.parametrize(
+    ("code", "script", "target", "sentence", "expected"),
+    [
+        # The target's own alphabet, not its script: Ukrainian has four letters Russian
+        # does not write, and a Ukrainian sentence under a Russian source is caught by
+        # them where the whole Cyrillic script would have said nothing.
+        ("ru", "cyrillic", "Українська", "Вона читає книгу.", False),
+        ("ru", "cyrillic", "Українська", "Она читает книгу.", True),
+        # Two Latin languages are told apart by the letters they do not share.
+        ("en", "latin", "Polski", "Ona czyta książkę wieczorem.", False),
+        ("en", "latin", "Polski", "She reads a book in the evening.", True),
+        # And the source language answers with its own alphabet too, or a Swedish
+        # sentence would be refused for the ä that German also writes.
+        ("sv", "latin", "Deutsch", "Hon läser en bok på kvällen.", True),
+        ("sv", "latin", "Deutsch", "Sie liest ein Buch über die Stadt.", False),
+    ],
+)
+def test_the_letters_are_the_two_languages_own_alphabets(
+    code: str,
+    script: str,
+    target: str,
+    sentence: str,
+    expected: bool,
+):
+    language = Language(code=code, name=code, deck="d", script=script)
+
+    assert sentence_is_source_language(sentence, language, target) is expected
+
+
+def test_the_directory_supplies_the_name_and_the_script_a_file_disagrees_about(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+):
+    """A file calling Bulgarian Latin does not leave the app half-Latin: the input
+    field, the filter, the editor and the prompt all read the directory's answer."""
+    path = tmp_path / "languages.toml"
+    path.write_text(
+        '[languages.bg]\nname = "Bulgarian"\ndeck = "d"\nscript = "latin"\n',
+        encoding="utf-8",
+    )
+
+    with caplog.at_level(logging.WARNING):
+        bulgarian = load_languages(path)["bg"]
+
+    assert (bulgarian.name, bulgarian.script) == ("Български", "cyrillic")
+    assert validate_word("дума", bulgarian) is None
+    assert sentence_is_source_language("Той чете книга.", bulgarian) is True
+    assert sentence_is_source_language("Он читает книгу каждый вечер.", bulgarian) is False
+    assert "language directory" in caplog.text
+
+
+def test_a_file_agreeing_with_the_directory_is_left_alone(tmp_path: Path):
+    path = tmp_path / "languages.toml"
+    path.write_text(
+        '[languages.de]\nname = "Deutsch"\ndeck = "d"\nscript = "latin"\n',
+        encoding="utf-8",
+    )
+
+    assert load_languages(path)["de"].name == "Deutsch"
+
+
+def test_a_language_outside_the_directory_keeps_what_its_file_says(tmp_path: Path):
+    path = tmp_path / "languages.toml"
+    path.write_text(
+        '[languages.xx]\nname = "Toki Pona"\ndeck = "d"\nscript = "latin"\n',
+        encoding="utf-8",
+    )
+
+    language = load_languages(path)["xx"]
+
+    assert (language.name, language.script) == ("Toki Pona", "latin")
+
+
+def test_a_language_the_directory_does_not_know_answers_for_its_whole_script():
+    """Nothing records what it spells, so no letter of its script is foreign to it."""
+    invented = Language(code="xx", name="Toki Pona", deck="d", script="latin")
+
+    assert sentence_is_source_language("jan li moku e kili.", invented, "Polski") is True
+    assert sentence_is_source_language("Она читает книгу.", invented, "Русский") is False
+
+
+def test_a_latin_language_has_no_cyrillic_at_all():
+    latin = Language(code="de", name="Deutsch", deck="d", script="latin")
+
+    assert sentence_is_source_language("Er liest ein Buch.", latin) is True
+    assert sentence_is_source_language("Он liest книгу.", latin) is False
+
+
+def test_the_letters_tested_for_are_the_configured_target_language_s():
+    """The target language is configuration, so the test follows it: with an English
+    target it is English that may not be wedged into a Russian card front."""
+    russian = _cyrillic("ru")
+    german = Language(code="de", name="Deutsch", deck="d", script="latin")
+
+    assert sentence_is_source_language("Он читает книгу.", russian, "English") is True
+    assert sentence_is_source_language("Он reads книгу.", russian, "English") is False
+    # Nothing in the letters tells two Latin languages apart, and the test says so by
+    # passing rather than by rejecting German sentences.
+    assert sentence_is_source_language("Er liest ein Buch.", german, "English") is True
+    assert sentence_is_source_language("He reads a book.", german, "English") is True
+
+
+@pytest.mark.parametrize(
+    ("code", "script", "sentence"),
+    [
+        ("bg", "cyrillic", "Кошка сидит на окне."),
+        ("bg", "cyrillic", "В комнате стоит один стол и один стул."),
+        ("uk", "cyrillic", "Мама читает книгу дома."),
+        ("sr", "latin+cyrillic", "Он живет в великом граду на берегу реки."),
+    ],
+)
+def test_a_target_sentence_avoiding_the_few_separating_letters_is_not_caught(
+    code: str,
+    script: str,
+    sentence: str,
+):
+    """The measured limit of the letter test, pinned so it cannot be mistaken for a
+    proof: these are target-language sentences, and a source language sharing the
+    script has too few letters of its own to refuse them. Only the answer writing the
+    sentence in the right language keeps them off a card front."""
+    language = Language(code=code, name=code, deck="d", script=script)
+
+    assert sentence_is_source_language(sentence, language, "Russian") is True
+
+
+def test_a_target_language_outside_the_directory_leaves_the_sentence_untested():
+    german = Language(code="de", name="Deutsch", deck="d", script="latin")
+
+    assert sentence_is_source_language("Он liest книгу.", german, "Klingon") is True

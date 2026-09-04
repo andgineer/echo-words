@@ -10,7 +10,7 @@ import logging
 from dataclasses import dataclass
 
 from echo_words.card import CardParseError, ParsedAnswer, parse_answer_payload
-from echo_words.languages import Language
+from echo_words.languages import DEFAULT_TARGET_LANGUAGE, Language
 
 CARD_DELIMITER = "===CARD==="
 PAYLOAD_LOG_LIMIT = 2000
@@ -302,13 +302,14 @@ def parse_attestation(raw: str) -> Verdict | None:
     return Verdict(used) if isinstance(used, bool) else None
 
 
-def extract_answer(
+def extract_answer(  # noqa: PLR0913 - the whole request the answer is read against.
     raw: str,
     submitted: str,
     language: Language,
     *,
     unit_intent: bool = False,
     context: str = "",
+    target: str = DEFAULT_TARGET_LANGUAGE,
 ) -> ParsedAnswer | None:
     """Extract and validate the hidden answer, returning None when unusable."""
     if len(raw) > MAX_COMPLETE_ANSWER_CHARS:
@@ -336,6 +337,7 @@ def extract_answer(
             language,
             unit_intent=unit_intent,
             context=context,
+            target=target,
         )
     except CardParseError as exc:
         logger.warning(

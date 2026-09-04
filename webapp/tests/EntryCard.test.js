@@ -238,6 +238,17 @@ describe("EntryCard", () => {
     expect(wrapper.text()).toContain("Anki is not reachable");
   });
 
+  it("words an article that failed on its own, from the code the backend sent", () => {
+    const wrapper = card({
+      entry_id: "entry-1",
+      word: "Ampel",
+      lang: "de",
+      detail_error: "detail_failed",
+    });
+
+    expect(wrapper.text()).toContain("Could not finish the full entry.");
+  });
+
   it("says nothing about a running text's card, because it never had one", () => {
     const wrapper = card({ ...textEntry(), card_status: "text" });
 
@@ -760,6 +771,21 @@ describe("EntryCard", () => {
 
       expect(wrapper.emitted("swipe")).toBeUndefined();
       expect(wrapper.get(".deck").attributes("style")).toContain("translateX(0px)");
+    });
+
+    // `touch-action: pan-y` hands a mostly-vertical drag to the page, and the browser
+    // says so by cancelling the gesture: committing it would switch the card under a
+    // reader who was only scrolling.
+    it("switches nothing when the browser cancels the gesture", async () => {
+      const wrapper = card(senseEntry());
+      const deck = wrapper.get(".deck");
+
+      await deck.trigger("pointerdown", { clientX: 200 });
+      await deck.trigger("pointermove", { clientX: 100 });
+      await deck.trigger("pointercancel");
+
+      expect(wrapper.emitted("swipe")).toBeUndefined();
+      expect(deck.attributes("style")).toContain("translateX(0px)");
     });
 
     // A press on a button inside the card must stay a press.
