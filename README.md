@@ -2,29 +2,31 @@
 
 [Full report](https://htmlpreview.github.io/?https://github.com/andgineer/echo-words/blob/python-coverage-comment-action-data/htmlcov/index.html)
 
-| Name                             |    Stmts |     Miss |   Cover |   Missing |
-|--------------------------------- | -------: | -------: | ------: | --------: |
-| src/echo\_words/\_\_about\_\_.py |        1 |        0 |    100% |           |
-| src/echo\_words/anki.py          |      469 |       28 |     94% |125, 136, 221, 228, 235, 251, 367, 408, 559, 595-597, 627, 647, 670, 689, 712, 717, 760, 828, 885-886, 892-893, 897-900 |
-| src/echo\_words/api.py           |      275 |       22 |     92% |74, 119, 136, 146, 188, 280-282, 291-293, 302-303, 309-312, 367, 371-372, 390-391 |
-| src/echo\_words/api\_backend.py  |       17 |        0 |    100% |           |
-| src/echo\_words/audio.py         |      228 |       26 |     89% |111, 113-115, 154, 158, 165-168, 178-179, 226-227, 252, 258, 273, 277-278, 361, 406-410, 416 |
-| src/echo\_words/backend.py       |      216 |        4 |     98% |228, 344-347, 368 |
-| src/echo\_words/broker.py        |       28 |        0 |    100% |           |
-| src/echo\_words/card.py          |      250 |       18 |     93% |120-121, 173-174, 231-240, 245, 261, 267, 295, 307, 320, 330, 385, 476, 500 |
-| src/echo\_words/config.py        |       41 |        0 |    100% |           |
-| src/echo\_words/events.py        |       34 |        0 |    100% |           |
-| src/echo\_words/history.py       |      106 |        1 |     99% |       128 |
-| src/echo\_words/i18n.py          |       23 |        0 |    100% |           |
-| src/echo\_words/languages.py     |      144 |        1 |     99% |        72 |
-| src/echo\_words/lexicon.py       |       81 |        1 |     99% |       169 |
-| src/echo\_words/llm\_backend.py  |       38 |        0 |    100% |           |
-| src/echo\_words/main.py          |       25 |        0 |    100% |           |
-| src/echo\_words/pipeline.py      |      680 |       39 |     94% |107, 214, 342, 371, 392, 415, 447, 457-458, 513, 603, 703, 721, 728-729, 755, 787, 802-805, 1000, 1008, 1017, 1042, 1045, 1063-1066, 1070, 1074, 1166, 1257, 1269, 1310-1313 |
-| src/echo\_words/prompt.py        |       72 |        2 |     97% |   299-300 |
-| src/echo\_words/sanitizer.py     |       25 |        1 |     96% |        37 |
-| src/echo\_words/segments.py      |      103 |        9 |     91% |40, 52, 74, 76, 80, 83, 101, 105, 173 |
-| **TOTAL**                        | **2856** |  **152** | **95%** |           |
+| Name                                 |    Stmts |     Miss |   Cover |   Missing |
+|------------------------------------- | -------: | -------: | ------: | --------: |
+| src/echo\_words/\_\_about\_\_.py     |        1 |        0 |    100% |           |
+| src/echo\_words/anki.py              |      479 |       32 |     93% |125, 136, 221, 228, 235, 251, 367, 408, 559, 595-597, 627, 647, 670, 689, 712, 717, 760, 828, 885-886, 893-894, 898-902, 920-922 |
+| src/echo\_words/api.py               |      337 |       22 |     93% |84, 129, 157, 167, 205, 376-378, 387-389, 398-399, 416-419, 485, 489-490, 508-509 |
+| src/echo\_words/api\_backend.py      |       17 |        0 |    100% |           |
+| src/echo\_words/audio.py             |      231 |       25 |     89% |69, 71-73, 112, 116, 123-126, 136-137, 184-185, 210, 216, 235-236, 336, 381-385, 391 |
+| src/echo\_words/backend.py           |      216 |        4 |     98% |228, 344-347, 368 |
+| src/echo\_words/broker.py            |       28 |        0 |    100% |           |
+| src/echo\_words/card.py              |      254 |       18 |     93% |133-134, 181-182, 240-250, 255, 264, 270, 285, 291, 297, 308, 372, 463, 487 |
+| src/echo\_words/config.py            |       42 |        0 |    100% |           |
+| src/echo\_words/events.py            |       34 |        0 |    100% |           |
+| src/echo\_words/history.py           |      106 |        1 |     99% |       128 |
+| src/echo\_words/i18n.py              |       23 |        0 |    100% |           |
+| src/echo\_words/language\_catalog.py |       22 |        0 |    100% |           |
+| src/echo\_words/languages.py         |      238 |        2 |     99% |  104, 434 |
+| src/echo\_words/lexicon.py           |       82 |        1 |     99% |       169 |
+| src/echo\_words/llm\_backend.py      |       38 |        0 |    100% |           |
+| src/echo\_words/main.py              |       25 |        0 |    100% |           |
+| src/echo\_words/pipeline.py          |      686 |       37 |     95% |109, 214, 348, 377, 436, 488, 498-499, 555, 736, 754, 761-762, 798, 841, 856-859, 1054, 1062, 1071, 1096, 1099, 1117-1120, 1124, 1128, 1210, 1301, 1313, 1354-1357 |
+| src/echo\_words/prompt.py            |       72 |        2 |     97% |   299-300 |
+| src/echo\_words/sanitizer.py         |       25 |        1 |     96% |        37 |
+| src/echo\_words/segments.py          |      103 |        9 |     91% |40, 52, 74, 76, 80, 83, 101, 105, 173 |
+| src/echo\_words/voices.py            |        9 |        0 |    100% |           |
+| **TOTAL**                            | **3068** |  **154** | **95%** |           |
 
 
 ## Setup coverage badge
