@@ -1,1 +1,0 @@
-WARNING  echo_words.anki:anki.py:661 note type EchoWords has fields ('Word', 'Wrong') and templates ('Recognition', 'Recall', 'ContextRecognition', 'ContextProduction'); expected ('Word', 'Audio', 'Label', 'Translations', 'Highlighted', 'Gapped') and ('Recognition', 'Recall', 'ContextRecognition', 'ContextProduction')

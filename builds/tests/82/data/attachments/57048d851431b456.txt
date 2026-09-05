@@ -1,0 +1,36 @@
+ERROR    echo_words.pipeline:pipeline.py:454 word processing failed unexpectedly
+Traceback (most recent call last):
+  File "/home/runner/work/echo-words/echo-words/src/echo_words/pipeline.py", line 452, in _work
+    await self.process_word(job)
+  File "/home/runner/work/echo-words/echo-words/src/echo_words/pipeline.py", line 553, in process_word
+    async for delta in completion:
+    ...<35 lines>...
+        )
+  File "/home/runner/work/echo-words/echo-words/src/echo_words/backend.py", line 115, in _recorded
+    async for delta in answer:
+        yield delta
+  File "/home/runner/work/echo-words/echo-words/src/echo_words/backend.py", line 145, in _answer
+    async for delta in self._bounded_deltas(pool):
+        delivered.append(delta)
+        yield delta
+  File "/home/runner/work/echo-words/echo-words/src/echo_words/backend.py", line 229, in _bounded_deltas
+    async for delta in stream:
+    ...<13 lines>...
+            )
+  File "/home/runner/work/echo-words/echo-words/src/echo_words/backend.py", line 261, in _pool_deltas
+    pool = await ask_pool(
+           ^^^^^^^^^^^^^^^
+    ...<5 lines>...
+    )
+    ^
+  File "/home/runner/work/echo-words/echo-words/src/echo_words/llm_backend.py", line 66, in ask_pool
+    return await broker.ask(
+           ^^^^^^^^^^^^^^^^^
+    ...<5 lines>...
+    )
+    ^
+  File "/home/runner/work/echo-words/echo-words/tests/fakes.py", line 157, in ask
+    raise AssertionError(
+        "the pool was asked for one answer more than the test prepared"
+    )
+AssertionError: the pool was asked for one answer more than the test prepared

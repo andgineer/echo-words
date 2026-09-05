@@ -1,1 +1,0 @@
-Adding fields is an Anki schema change: the next sync will demand a one-way full sync, which has to be resolved by hand.
