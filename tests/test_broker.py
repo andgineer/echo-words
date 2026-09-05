@@ -3,16 +3,16 @@ import sys
 import pytest
 from fakes import FakeBroker
 from fastapi.testclient import TestClient
-from llmbroker import SchemaVersionError, StreamHandle
+from llmbroker import AsyncResult, SchemaVersionError
 
 from echo_words.api import create_app
 from echo_words.broker import BackendError, create_broker, llmbroker, paid_aliases
 from echo_words.config import Settings
 
 
-def test_the_installed_llmbroker_carries_the_stream_handle_seam():
-    assert callable(StreamHandle.record_quality)
-    assert isinstance(StreamHandle.llm_name, property)
+def test_the_installed_llmbroker_carries_the_completed_result_seam():
+    assert callable(AsyncResult.record_quality)
+    assert isinstance(AsyncResult.llm_name, property)
 
 
 def test_a_language_without_its_own_model_steps_up_to_the_configured_one(settings, languages):

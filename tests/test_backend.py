@@ -13,6 +13,7 @@ from llmbroker import (
     UnknownModelError,
 )
 
+import echo_words.backend as backend_module
 from echo_words.backend import Cascade
 from echo_words.broker import BackendError, BudgetMissError
 from echo_words.config import Settings
@@ -43,9 +44,22 @@ async def run(cascade: Cascade, language: Language, on_reset=None) -> list[str]:
 
 async def test_a_completed_pool_answer_never_touches_the_paid_client(settings, languages):
     cascade = fake_cascade(settings, handles=[FakeHandle(["free ", "answer"])])
-    assert await run(cascade, languages["en"]) == ["free ", "answer"]
+    assert await run(cascade, languages["en"]) == ["free answer"]
     assert cascade.broker.direct_calls == []
     assert cascade.calls_today == 0
+
+
+async def test_the_code_flag_switches_the_pool_adapter_to_streaming(
+    monkeypatch,
+    settings,
+    languages,
+):
+    monkeypatch.setattr(backend_module, "STREAM_POOL_ANSWERS", True)
+    cascade = fake_cascade(settings, handles=[FakeHandle(["free ", "answer"])])
+
+    assert await run(cascade, languages["en"]) == ["free ", "answer"]
+    assert cascade.broker.ask_calls == []
+    assert cascade.broker.stream_calls[0]["fastest_of"] == 2
 
 
 async def test_a_pool_that_says_nothing_in_time_steps_up_invisibly(settings, languages):
@@ -60,15 +74,18 @@ async def test_a_pool_that_says_nothing_in_time_steps_up_invisibly(settings, lan
     assert cascade.calls_today == 1
 
 
-async def test_a_pool_that_outlives_the_budget_steps_up_with_a_reset(settings, languages):
+async def test_a_pool_that_outlives_the_budget_steps_up_without_exposing_partial_text(
+    settings,
+    languages,
+):
     cascade = fake_cascade(
         settings,
         handles=[FakeHandle(["half an "], error=POOL_RAN_LONG)],
         client=FakeDirectClient(["paid ", "answer"]),
     )
     reset = ResetHook()
-    assert await run(cascade, languages["en"], reset) == ["half an ", "paid ", "answer"]
-    assert reset.calls == 1
+    assert await run(cascade, languages["en"], reset) == ["paid ", "answer"]
+    assert reset.calls == 0
 
 
 async def test_a_pool_answer_the_caller_cannot_use_steps_up_with_a_reset(settings, languages):
@@ -85,7 +102,7 @@ async def test_a_pool_answer_the_caller_cannot_use_steps_up_with_a_reset(setting
         on_reset=reset,
         usable=lambda answer: "paid" in answer,
     )
-    assert await drain(completion) == ["free ", "answer", "paid ", "answer"]
+    assert await drain(completion) == ["free answer", "paid ", "answer"]
     assert reset.calls == 1
     assert cascade.calls_today == 1
 
@@ -101,7 +118,7 @@ async def test_an_answer_the_caller_cannot_use_is_stepped_up_to_exactly_once(set
         languages["en"],
         usable=lambda _answer: False,
     )
-    assert await drain(completion) == ["free ", "answer", "paid ", "answer"]
+    assert await drain(completion) == ["free answer", "paid ", "answer"]
     assert cascade.broker.direct_calls == ["gpt-fast"]
     assert cascade.calls_today == 1
 
@@ -125,7 +142,7 @@ async def test_a_usable_answer_handed_over_is_stepped_up_without_being_rated_dow
         usable=lambda _answer: True,
         hand_over=lambda _answer: True,
     )
-    assert await drain(completion) == ["free ", "answer", "paid ", "answer"]
+    assert await drain(completion) == ["free answer", "paid ", "answer"]
     assert cascade.broker.direct_calls == ["gpt-fast"]
     assert handle.scores == []
 
@@ -151,7 +168,7 @@ async def test_a_handed_over_answer_stands_unrated_when_nothing_can_take_it(
         usable=lambda _answer: True,
         hand_over=lambda _answer: True,
     )
-    assert await drain(completion) == ["free ", "answer"]
+    assert await drain(completion) == ["free answer"]
     assert cascade.broker.direct_calls == []
     assert handle.scores == []
 
@@ -176,7 +193,7 @@ async def test_an_unusable_answer_is_rated_down_whatever_the_hand_over_says(
         usable=lambda _answer: False,
         hand_over=lambda _answer: False,
     )
-    assert await drain(completion) == ["free ", "answer", "paid ", "answer"]
+    assert await drain(completion) == ["free answer", "paid ", "answer"]
     assert handle.scores == [0.0]
 
 
@@ -202,7 +219,7 @@ async def test_a_failed_paid_step_gives_back_the_pool_answer_it_replaced(
         hand_over=lambda _answer: True,
     )
 
-    assert await drain(completion) == ["free ", "answer", "free ", "answer"]
+    assert await drain(completion) == ["free answer", "free answer"]
     assert completion.paid is False
     # The pool answer stands, so the caller's rating belongs to it again.
     await completion.record_quality(1.0)
@@ -250,7 +267,7 @@ async def test_a_pool_only_call_never_reaches_the_paid_model(settings, languages
         pool_only=True,
         usable=lambda _answer: False,
     )
-    assert await drain(completion) == ["free ", "answer"]
+    assert await drain(completion) == ["free answer"]
     assert cascade.broker.direct_calls == []
     assert cascade.calls_today == 0
 
@@ -277,7 +294,7 @@ async def test_a_pool_answer_the_caller_can_use_never_steps_up(settings, languag
         languages["en"],
         usable=lambda answer: "free" in answer,
     )
-    assert await drain(completion) == ["free ", "answer"]
+    assert await drain(completion) == ["free answer"]
     assert cascade.broker.direct_calls == []
 
 
@@ -352,7 +369,7 @@ async def test_an_unusable_answer_stands_when_there_is_nothing_to_step_up_to(set
         on_reset=reset,
         usable=lambda _answer: False,
     )
-    assert await drain(completion) == ["free ", "answer"]
+    assert await drain(completion) == ["free answer"]
     assert cascade.broker.direct_calls == []
     assert reset.calls == 0
     assert handle.scores == [0.0]

@@ -112,7 +112,7 @@ the work again. **Do not re-open any of it.**
   the laptop profile. Model downloads follow the config.
 - Stats and status ARE in v0.1.
 - v0.1 ships **two LLM backend kinds** behind one seam, both through
-  llmbroker: the free-tier model pool (fast, streaming, un-metered; the
+  llmbroker: the free-tier model pool (fast, un-metered; the
   default) and `api` — a paid, **opt-in, never-required** single frontier
   model called through llmbroker's *direct client*, declared in code by a
   curated catalog alias. Metered spend is bounded by

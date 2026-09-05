@@ -54,6 +54,18 @@ class FakeHandle:
         self.scores.append(score)
 
 
+class FakeResult:
+    """A completed pool answer whose rating belongs to the scripted attempt."""
+
+    def __init__(self, text: str, handle: FakeHandle) -> None:
+        self.text = text
+        self.llm_name = handle.llm_name or "unknown"
+        self._handle = handle
+
+    async def record_quality(self, score: float) -> None:
+        await self._handle.record_quality(score)
+
+
 class FakeDirectClient:
     """Stands in for llmbroker's ``AsyncDirectClient``: one named paid model."""
 
@@ -102,6 +114,7 @@ class FakeBroker:
         self.handles = list(handles)
         self.client = client
         self.direct_error = direct_error
+        self.ask_calls: list[dict] = []
         self.stream_calls: list[dict] = []
         self.attestation_calls: list[str] = []
         self.attestation = attestation
@@ -116,6 +129,41 @@ class FakeBroker:
         )
         self.stats_values = stats or {}
 
+    async def ask(
+        self,
+        prompt: str,
+        *,
+        operation: str | None = None,
+        trace_id: str | None = None,
+        wait: float | None = None,
+        fastest_of: int | None = None,
+    ) -> FakeResult:
+        self.ask_calls.append(
+            {
+                "prompt": prompt,
+                "operation": operation,
+                "trace_id": trace_id,
+                "wait": wait,
+                "fastest_of": fastest_of,
+            },
+        )
+        if ATTESTATION_MARK in prompt:
+            # Answered off the prepared handles and in any order: it runs in parallel
+            # with the article, so a test cannot script it by position.
+            self.attestation_calls.append(prompt)
+            handle = FakeHandle([self.attestation])
+        else:
+            if not self.handles:
+                raise AssertionError(
+                    "the pool was asked for one answer more than the test prepared"
+                )
+            handle = self.handles.pop(0)
+        try:
+            chunks = [delta async for delta in handle]
+        finally:
+            await handle.aclose()
+        return FakeResult("".join(chunks), handle)
+
     def stream(
         self,
         prompt: str,
@@ -123,13 +171,18 @@ class FakeBroker:
         operation: str | None = None,
         trace_id: str | None = None,
         wait: float | None = None,
+        fastest_of: int | None = None,
     ) -> FakeHandle:
         self.stream_calls.append(
-            {"prompt": prompt, "operation": operation, "trace_id": trace_id, "wait": wait},
+            {
+                "prompt": prompt,
+                "operation": operation,
+                "trace_id": trace_id,
+                "wait": wait,
+                "fastest_of": fastest_of,
+            },
         )
         if ATTESTATION_MARK in prompt:
-            # Answered off the prepared handles and in any order: it runs in parallel
-            # with the article, so a test cannot script it by position.
             self.attestation_calls.append(prompt)
             return FakeHandle([self.attestation])
         if not self.handles:

@@ -199,27 +199,29 @@ async def test_submission_receipt_lock_coalesces_concurrent_same_id_retries():
     assert await asyncio.gather(first, retry) == ["one-entry", "one-entry"]
 
 
-def test_recent_words_contains_the_accumulated_text_while_a_word_is_in_progress(
+def test_recent_words_keeps_text_empty_until_the_complete_answer_arrives(
     monkeypatch: pytest.MonkeyPatch,
     settings: Settings,
 ):
     handle = BlockingHandle()
     broker = FakeBroker(handles=[handle])
     monkeypatch.setattr("echo_words.api.create_broker", lambda *_args: broker)
-    with TestClient(create_app(settings)) as live_client:
+    with TestClient(create_app(settings.model_copy(update={"api_model": ""}))) as live_client:
         entry_id = submit(live_client, word="partial").json()["entry_id"]
         assert handle.started.wait(timeout=1)
-        deadline = time.monotonic() + 1
-        recent = []
-        while time.monotonic() < deadline:
-            recent = live_client.get("/api/words/recent").json()
-            if recent and recent[0]["text"]:
-                break
-            time.sleep(0.01)
+        recent = live_client.get("/api/words/recent").json()
         assert recent[0]["entry_id"] == entry_id
         assert recent[0]["status"] == "pending"
-        assert recent[0]["text"] == "<b>part</b>"
+        assert recent[0]["text"] == ""
+
         handle.release.set()
+        deadline = time.monotonic() + 1
+        while time.monotonic() < deadline:
+            recent = live_client.get("/api/words/recent").json()
+            if recent[0]["status"] == "done":
+                break
+            time.sleep(0.01)
+        assert recent[0]["text"] == "<b>partial</b>"
 
 
 def test_question_mark_prefix_means_lookup_only(client: TestClient):

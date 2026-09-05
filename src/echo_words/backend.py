@@ -11,11 +11,16 @@ from echo_words.api_backend import stream_api
 from echo_words.broker import BackendError, BudgetMissError, paid_alias
 from echo_words.config import Settings
 from echo_words.languages import Language
-from echo_words.llm_backend import PoolStream, open_pool_stream
+from echo_words.llm_backend import (
+    STREAM_POOL_ANSWERS,
+    PoolStream,
+    ask_pool,
+    open_pool_stream,
+)
 from echo_words.prompt import MAX_COMPLETE_ANSWER_CHARS
 
 if TYPE_CHECKING:
-    from llmbroker import AsyncBroker
+    from llmbroker import AsyncBroker, AsyncResult
 
 ResetHook = Callable[[], Awaitable[None]]
 AnswerCheck = Callable[[str], bool]
@@ -71,7 +76,7 @@ class Completion:
         self._request = request
         self._paid_only = paid_only
         self._deltas: AsyncGenerator[str] | None = None
-        self._pool: PoolStream | None = None
+        self._pool: AsyncResult | PoolStream | None = None
         self._pool_answered = False
         self._rated = False
         self._oversized = False
@@ -238,7 +243,22 @@ class Completion:
                 )
 
     async def _pool_deltas(self) -> AsyncIterator[str]:
-        pool = open_pool_stream(
+        if STREAM_POOL_ANSWERS:
+            stream = open_pool_stream(
+                self._cascade.broker,
+                self._request.prompt,
+                self._request.language,
+                self._cascade.settings,
+                trace_id=self._request.trace_id,
+            )
+            self._pool = stream
+            async with aclosing(stream):
+                async for delta in stream:
+                    self.llm_name = stream.llm_name
+                    yield delta
+            self._pool_answered = True
+            return
+        pool = await ask_pool(
             self._cascade.broker,
             self._request.prompt,
             self._request.language,
@@ -246,10 +266,8 @@ class Completion:
             trace_id=self._request.trace_id,
         )
         self._pool = pool
-        async with aclosing(pool):
-            async for delta in pool:
-                self.llm_name = pool.llm_name
-                yield delta
+        self.llm_name = pool.llm_name
+        yield pool.text
         self._pool_answered = True
 
     async def _paid_deltas(self) -> AsyncIterator[str]:

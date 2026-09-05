@@ -198,6 +198,153 @@ So the budget goes at the **low end** of the range, and the paced profile
 pays nothing for it: whole answers there are 1.3–2.5 s, an order of
 magnitude inside it.
 
+## Two-lane first-delta racing is not accepted — 2026-09-05
+
+Status: **BLOCKED for production.** `llmbroker` 1.6.0 supports asking two
+distinct pool models for the same completion with `fastest_of=2`, but commits
+the caller to the first model that emits a delta. That event is not evidence
+that the same model will finish quickly or that its answer is fit for the
+learner.
+
+The production-prompt smoke tier fixed before the run made 64 calls with the
+25-second answer budget and two racing lanes: 53 article or text completions,
+eight attestation judgements and three corrected-spelling checks. Every call
+received a provider answer. The winners were 46
+`google-gemini-3.5-flash-lite`, 13 `groq-gpt-oss-120b`, three
+`openrouter-laguna-s-2.1` and two `openrouter-nemotron-3-ultra`. The automated
+screen passed every deterministic contract and aggregate threshold; among the
+53 full answers, 50 carried a usable payload and 46 met the formatting
+diagnostic.
+
+The complete-answer distribution does not support an unconditional speed
+claim. Across the 53 full answers the median was 2.046 s, p90 11.734 s, p95
+21.293 s and the maximum 27.911 s; six took more than ten seconds and three
+took more than twenty. Restricting the same run to the three vouched source
+languages gives 47 answers at a 2.027 s median, 3.774 s p90, 13.034 s p95 and
+24.994 s maximum. Their first-delta median was 0.815 s, but a first delta did
+not predict completion: the two Laguna answers began after 0.673 s and 1.168 s
+and finished after 11.734 s and 21.293 s.
+
+A fresh reviewer read all 47 items in the review packet, their expected and
+actual fields and every raw answer, then checked the remaining 17 recorded
+answers. Most primary-model answers remained usable, all six clicks preserved
+their selected surface and context, and all three typo flows carded the
+corrected spelling. The non-primary winners exposed material failures that the
+aggregate screen cannot see:
+
+- Laguna's answer for `Nadam se da ćeš doći na vreme.` was written in
+  corrupted Serbian instead of the Russian target language and contained
+  invented forms such as `досаћи` and `дослази`.
+- Its answer for `Deca se igraju napolju ceo dan.` mistranslated `napolju` as
+  “во дворе”, contained several corrupted Serbian forms and failed to recover
+  the registered unit `igrati se`.
+- The attestation path vouched for the invented `Löffelangst`, allowing a
+  confident false sense and fabricated usage examples to reach the learner.
+- The parser safely withheld the `reluctant`, `petrichor` and `causal` notes,
+  but their raw answers respectively highlighted whole sentences, wrote
+  source-language examples in Russian, and highlighted whole sentences. Safe
+  rejection is not evidence that a racing winner was a good answer.
+
+The Bulgarian and Ukrainian fixtures repeat the separately recorded
+unreliable-language findings and do not decide routing for the vouched three;
+they do confirm that racing does not repair content quality. In particular,
+the Ukrainian `неділя` result again cards the Russian-interference sense
+“week”, and the Bulgarian forms table describes `прозореца` as a genitive in
+a language without noun cases.
+
+The package version is suitable as the API that makes racing available; the
+production setting is not. Promotion requires a routing rule that cannot let
+an unvouched fast starter displace the ranked primary, or a fresh confirmation
+tier showing that a restricted candidate set preserves both complete-answer
+latency and semantic quality. An operator may instead accept the demonstrated
+quality and tail-latency limitation explicitly.
+
+## Two-lane complete-answer racing is accepted — 2026-09-05
+
+Status: **accepted for production.** Pool calls use `llmbroker` 1.6.0's
+non-streaming complete-response operation with `fastest_of=2` and the same
+25-second whole-answer budget. The race commits only after one candidate has
+finished its entire answer. A model that emits an early delta cannot displace a
+better-ranked candidate merely by starting first, and nothing incomplete is
+shown when every candidate misses the budget. The first-delta streaming form
+above remains blocked.
+
+The production-prompt smoke manifest attempted all 55 initial IDs and received
+53 provider answers. `google-gemini-3.5-flash-lite` supplied 43 and
+`groq-gpt-oss-120b` supplied ten; the workhorse's presence and a difference of
+only two answers from the 55-answer run before it rule out an exhausted pool.
+The run is therefore valid rather than void. `text-en-0` and
+`neighbour-de-wider` each ended with `NoLLMAvailableError` after 25 seconds.
+The missing English combination click follows from the first timeout. Five
+clicks and one corrected-spelling judgement were generated and all six
+answered, for 59 provider answers among 61 recorded attempts.
+
+Of the 47 initial article/text attempts, including the six separately judged
+Cyrillic-language cases, 45 answered. Counting both safe misses as 25-second
+observations gives a 2.188 s median, 9.139 s p90, 24.865 s p95 and 25.007 s
+maximum. The 41 attempts for the three vouched source languages give a 2.172 s
+median, 4.683 s p90, 24.865 s p95 and 25.007 s maximum. Among their 39 provider
+answers, p95 is 4.994 s; the outlier is a valid `reluctant` answer at 24.865 s.
+Complete-response racing improves the ordinary path but does not promise that
+every call is fast. Its tail is the existing bounded miss: no partial article
+precedes the next backend step.
+
+The automated screen passed every deterministic contract and quality
+threshold: all 20 answered text fixtures chose the text branch, all nine bare
+units were cardable, all three typos carded the exact corrected spelling, all
+five available clicks preserved their selected surface and context, all three
+expressions succeeded, both attested rare words were kept, and all three
+invented words were withheld. It recovered 14 cardable registered units from
+the 18 found in text answers.
+
+A fresh reviewer read every expected field, actual field and raw answer in the
+48-item review packet, then read the 14 remaining answer records, covering all
+61 attempts. No non-primary winner drifted out of the Russian target language.
+In particular, Groq translated `Deca se igraju napolju ceo dan.` correctly and
+recovered `igrati se`, rather than producing the corrupted Serbian answer seen
+when a first delta selected the winner.
+
+The reading also preserves the limits of what is accepted:
+
+- Groq's `Sve mi se čini da nešto nije u redu.` answer shifts “something is not
+  right” into “everything is not right,” falsely calls the sentence double
+  negation, and emits `nije u red`; only one of the two registered units is
+  usable.
+- Its English text answer calls Russian `на столе` accusative rather than
+  prepositional, and its `kitchen` table invents a verbal `to kitchen`. The
+  unsafe `causal` payload bolds whole sentences and is correctly withheld.
+- Primary-model card payloads still include concrete learner-facing faults:
+  `Rad fahren` carries ungrammatical `Manchmal kinder lieben ...`, the `град`
+  note carries a malformed Serbian example, `give up` translates “dreams” with
+  non-existent Russian `мечтов`, and the Serbian pronoun `он` is also
+  translated as `это`.
+- The standalone judges falsely vouch for `recieve` as an erroneous usage and
+  for `мозда` as regional Serbian, inventing Šumadija and Vojvodina as
+  provenance. The article path nevertheless identifies and corrects all three
+  registered typos, so only the German correction needs the second judgement
+  in this draw. This is the attestation limitation already accepted for the
+  free tier, not evidence that the spelling is valid.
+- Bulgarian and Ukrainian remain outside the routing acceptance because their
+  rows are already marked unreliable. Their six answers repeat that finding:
+  `неділя` is again carded with the Russian-interference sense “week,”
+  `прозореца` is called a genitive and appears in a faulty example, and
+  two `разказвам` card sentences have person or tense disagreement.
+
+The remaining errors are the measured quality profile of the selected free
+pool and stay behind its deterministic guards and opt-in paid escalation. They
+do not introduce the streaming race's new failure mode: no Laguna or Nemotron
+answer wins by starting quickly, and no winner answers Serbian analysis in the
+source language. Acceptance is for the complete-response operation only, with
+the two 25-second misses and the false cards above retained as explicit
+limitations rather than described as an unconditional speed or quality fix.
+
+Both pool adapters remain in the application behind a source-level feature flag;
+the complete-response adapter is the shipped selection. This is deliberately not
+operator configuration: the rejected streaming behavior must not be enabled by a
+deployment typo. Once llmbroker can protect an in-flight streaming call without
+letting a merely fast starter decide the answer, switching the application back is
+a one-line code choice followed by the normal measured promotion gate.
+
 ## The paid tier: `gpt-5.6-luna` is the one worth reaching for
 
 - `sonnet` writes **markdown** — `**word**`, `*example*` — instead of

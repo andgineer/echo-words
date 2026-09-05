@@ -53,7 +53,7 @@ evaluated. The owner's requirements that frame it:
   with Telegram's edit rate limits, the sanitizer targeting Telegram's
   HTML parser, the 4096-char message limit, the 64-byte `callback_data`
   gymnastics, and the `python-telegram-bot` dependency all disappear.
-  Streaming becomes a plain SSE feed into the page; the correction
+  Answer delivery becomes a plain SSE feed into the page; the correction
   button, undo/redo, stats and status become ordinary UI controls backed
   by small API endpoints.
 - **No external service in the interface layer.** The stack is fully the

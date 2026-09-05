@@ -68,6 +68,7 @@ from echo_words.languages import (  # noqa: E402
     split_words,
     validate_word,
 )
+from echo_words.llm_backend import POOL_FASTEST_OF  # noqa: E402
 from echo_words.prompt import (  # noqa: E402
     CARD_DELIMITER,
     MAX_COMPLETE_ANSWER_CHARS,
@@ -1835,16 +1836,19 @@ async def run_batch(args, out: Path, broker: AsyncBroker, jobs: list[Shot]) -> N
     async def answer(shot: Shot) -> None:
         """One call, through whichever tier this run is measuring."""
         if paid is None:
-            handle = broker.stream(
-                prompt_for(shot),
-                operation=f"one-note-{shot.kind}-{shot.lang}",
-                wait=args.wait,
-            )
+            started = time.monotonic()
             try:
-                await drain(handle, shot)
+                result = await broker.ask(
+                    prompt_for(shot),
+                    operation=f"one-note-{shot.kind}-{shot.lang}",
+                    wait=args.wait,
+                    fastest_of=POOL_FASTEST_OF,
+                )
             finally:
-                shot.answered_by = handle.llm_name
-                await handle.aclose()
+                shot.t_total = round(time.monotonic() - started, 3)
+            shot.t_first = shot.t_total
+            shot.text = result.text
+            shot.answered_by = result.llm_name
             return
         client = AsyncDirectClient(
             base_url=paid["base_url"],

@@ -47,7 +47,7 @@ The four requirements every design decision is weighed against:
   `decision-interface.md` and `decision-chat-interface.md`. A small app
   served by the
   backend itself: a source-language selector (the choice persists
-  between visits), an input box, the streaming answer, playable
+  between visits), an input box, the completed answer, playable
   pronunciation, and a history of recent words. Installed on the phone
   via "Add to Home Screen"; opened as a normal browser tab on the
   computer. The app is reachable **only inside the user's Tailscale
@@ -66,10 +66,10 @@ The four requirements every design decision is weighed against:
   keeps, alongside cached audio and voice models — everything else
   (recent answers, counters, undo state) is in-memory and expendable.
 - **LLM** — one cascade, not a per-language choice. Both steps are plain
-  streaming text→text calls through the author's `llmbroker`: the
-  **free-tier model pool** (many free, rate-limited models with
-  automatic failover) takes every request, and a **paid frontier model**
-  via llmbroker's *direct client* stands behind it. The paid step is
+  text→text calls through the author's `llmbroker`: the **free-tier model
+  pool** uses complete-response calls (many free, rate-limited models with
+  automatic failover) and takes every request, while a **paid frontier model**
+  streams through llmbroker's *direct client* behind it. The paid step is
   reached on latency — the pool did not finish the answer inside its
   attempt budget — and on the two things the user asks the better model
   for by name: a deeper analysis, and rebuilding a card. The free pool is un-metered
@@ -154,11 +154,10 @@ The four requirements every design decision is weighed against:
    placement).
 3. The word immediately appears in the answer area as a pending entry
    ("⏳ *word* …"), so the user sees the request was accepted.
-4. The LLM runs in streaming mode; the entry's text builds up live in
-   place (delivered over a server-sent event stream). A backend that
-   cannot stream shows the pending entry until the complete answer
-   arrives at once.
-   Every answer is asked of the **free pool first**. The request moves to
+4. The entry stays pending while the free-pool LLMs generate, then receives the
+   complete pool answer at once over the server-sent event stream. Partial pool
+   output is neither retained nor exposed. Every answer is asked of two distinct
+   models in the **free pool first**, and the first complete answer wins. The request moves to
    the **paid model** when the pool does not deliver a *complete* answer
    within the latency budget — whether it never started or started at
    once and then kept going — and the user sees a slower answer, not an
@@ -170,11 +169,11 @@ The four requirements every design decision is weighed against:
    model that writes a good analysis and then botches the payload costs
    the user the requested result, which is the point of the request. The pool call is
    rated down before the paid model is asked, so the router learns which
-   model does this. When the move happens mid-answer, or after a whole
-   answer that turned out unusable, the text already shown is discarded
-   and replaced by the paid model's. Which model answered is
+   model does this. When a whole answer already shown turns out unusable,
+   its text is discarded and replaced by the paid model's. Which model answered is
    visible on the entry; nothing else about the two paths differs, and
-   the card is built from whichever answer arrived.
+   the card is built from whichever answer arrived. The paid step retains its
+   streaming display when it is reached.
    The step-up happens at most once per request: when no paid model is
    configured or the daily cap is spent, an unusable answer stands as it
    is — the analysis is worth reading even when the card behind it failed,
@@ -192,9 +191,7 @@ The four requirements every design decision is weighed against:
    measured.** It is the easiest number in the system to look good on and
    the least related to what the user waits for: a model that emits one
    token immediately and the rest over a minute has answered slowly. Only
-   the complete answer is judged, and streaming is a display choice —
-   text appears as it is produced rather than in one jump — not a
-   deadline of its own.
+   the complete pool answer is judged or displayed.
 5. Words are processed one at a time, in the order submitted — never as
    parallel LLM runs.
 6. The LLM produces both outputs in one generation: the full visible
@@ -325,9 +322,9 @@ unguarded is a multi-word submit-box submission the model answers on the unit br
 it is carded with no judgement anywhere in the loop, and the branch decision is the
 only thing standing behind it.
 
-Nothing is shown until the wording has been vouched for: the article is held while it
-streams and released only once the judgement lands, because streaming a fabrication
-and blanking it afterwards is the reader having seen it. The judgement is one line and
+Nothing is shown until the wording has been vouched for: the complete article is held
+and released only once the judgement lands, because briefly showing a fabrication and
+blanking it afterwards is the reader having seen it. The judgement is one line and
 normally arrives first, and the two calls run together, so the reader waits for the
 slower of the two rather than for their sum. A judgement that never arrives is treated
 as no objection: closing on the model's silence would refuse real words, which is the
@@ -438,7 +435,7 @@ Behavior is fixed, not configurable:
 
 - The raw submission remains visible in history and is voiced as submitted —
   except wording the answer would not vouch for, where no recording is offered.
-  Speech is fetched while the answer streams, so the file may already exist and
+  Speech is fetched while the answer is generated, so the file may already exist and
   stay in the cache; what the refusal withholds is the player, not the bytes.
 - A valid suggestion is held to the same language and input rules as typed unit
   text, and lookup-only stays lookup-only.
