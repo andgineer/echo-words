@@ -1,0 +1,8 @@
+ERROR    echo_words.pipeline:pipeline.py:1315 pronunciation failed for en/'give up'
+Traceback (most recent call last):
+  File "/home/runner/work/echo-words/echo-words/src/echo_words/pipeline.py", line 1308, in _audio_result
+    return task.result()
+           ~~~~~~~~~~~^^
+  File "/home/runner/work/echo-words/echo-words/tests/test_pipeline.py", line 2079, in fetch_audio
+    raise RuntimeError("tts failed")
+RuntimeError: tts failed

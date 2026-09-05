@@ -1,0 +1,795 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+        <meta name="author" content="Andrey Sorokin">
+      
+      
+        <link rel="canonical" href="https://andgineer.github.io/echo-words/configuration/">
+      
+      
+        <link rel="prev" href="../installation/">
+      
+      
+        <link rel="next" href="../pwa-install/">
+      
+      
+        
+          <link rel="alternate" href="/echo-words/" hreflang="en">
+        
+          <link rel="alternate" href="/echo-words/ru/" hreflang="ru">
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="zensical-0.0.51">
+    
+    
+      
+        <title>Настройка - echo_words</title>
+      
+    
+    
+      
+        
+      
+      <link rel="stylesheet" href="../assets/stylesheets/modern/main.62c9b9cc.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,500,500i,700,700i%7CJetBrains+Mono:400,400i,700,700i&amp;display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_scope.pathname.endsWith("/")||(__md_scope=new URL(__md_scope.pathname+"/",location)),__md_hash=e=>[...e].reduce(((e,t)=>(e<<5)-e+t.charCodeAt(0)),0),__md_get=(e,t=localStorage,_=__md_scope)=>JSON.parse(t.getItem(_.pathname+"."+e)),__md_set=(e,t,_=localStorage,a=__md_scope)=>{try{_.setItem(a.pathname+"."+e,JSON.stringify(t))}catch(e){}},document.documentElement.setAttribute("data-platform",navigator.platform)</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer" aria-label="Navigation"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#_1" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="./.." title="echo_words" class="md-header__button md-logo" aria-label="echo_words" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-book-open" viewBox="0 0 24 24"><path d="M12 7v14M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer" aria-label="Navigation">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-menu" viewBox="0 0 24 24"><path d="M4 5h16M4 12h16M4 19h16"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            echo_words
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Настройка
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+      <div class="md-header__option">
+  <div class="md-select">
+    
+    <button class="md-header__button md-icon" aria-label="Select language">
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-languages" viewBox="0 0 24 24"><path d="m5 8 6 6M4 14l6-6 2-3M2 5h12M7 2h1M22 22l-5-10-5 10M14 18h6"/></svg>
+    </button>
+    <div class="md-select__inner">
+      <ul class="md-select__list">
+        
+          <li class="md-select__item">
+            <a href="/echo-words/" hreflang="en" class="md-select__link">
+              English
+            </a>
+          </li>
+        
+          <li class="md-select__item">
+            <a href="/echo-words/ru/" hreflang="ru" class="md-select__link">
+              Русский
+            </a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+</div>
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search" aria-label="Search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-search" viewBox="0 0 24 24"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog" aria-label="Search">
+  <button type="button" class="md-search__button">
+    Search
+  </button>
+</div>
+      
+    
+    <div class="md-header__source">
+      
+        <a href="https://github.com/andgineer/echo-words" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc.--><path fill="currentColor" d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    echo_words
+  </div>
+</a>
+      
+    </div>
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="./.." title="echo_words" class="md-nav__button md-logo" aria-label="echo_words" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-book-open" viewBox="0 0 24 24"><path d="M12 7v14M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></svg>
+
+    </a>
+    echo_words
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/andgineer/echo-words" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc.--><path fill="currentColor" d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    echo_words
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="./.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  echo-words
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Установка
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Настройка
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="././" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Настройка
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Исходные языки
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Переменные окружения
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#llm-" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Ключи LLM-провайдеров
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ankiweb" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        AnkiWeb
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pwa-install/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Установка на телефон
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../deploy-oracle/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Развёртывание на Oracle Cloud
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../operations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Состояние и обслуживание
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Разработка
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  
+                    
+                    
+                    
+                      
+                    
+                    
+                      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+                      <div class="md-sidebar-button__wrapper">
+                        <label class="md-sidebar-button" for="__toc"></label>
+                      </div>
+                    
+                  
+                  <div class="md-sidebar__inner">
+                    
+
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Исходные языки
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Переменные окружения
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#llm-" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Ключи LLM-провайдеров
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ankiweb" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        AnkiWeb
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+  
+  
+
+
+<h1 id="_1">Настройка</h1>
+<p>echo-words настраивается в двух местах: TOML-таблица исходных языков и
+переменные окружения для всего остального.</p>
+<h2 id="_2">Исходные языки</h2>
+<p><code>languages.toml</code> — источник истины для языков, слова которых вы разбираете. Файл
+лежит в <code>ECHOWORDS_DATA_DIR</code> и переезжает вместе с ним; путь можно переопределить
+через <code>ECHOWORDS_LANGUAGES_CONFIG</code>. Добавление языка — это изменение настроек, а
+не кода.</p>
+<div class="highlight"><pre><span></span><code><span class="k">[languages.en]</span>
+<span class="n">name</span><span class="w">       </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;English&quot;</span>
+<span class="n">deck</span><span class="w">       </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;EchoWords: English&quot;</span>
+<span class="n">dict_api</span><span class="w">   </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;en&quot;</span><span class="w">              </span><span class="c1"># код dictionaryapi.dev; опустите, если языка там нет</span>
+<span class="n">tts</span><span class="w">        </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;piper&quot;</span><span class="w">           </span><span class="c1"># piper | edge</span>
+<span class="n">tts_voice</span><span class="w">  </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;en_US-lessac-medium&quot;</span>
+<span class="n">accent</span><span class="w">     </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;us&quot;</span><span class="w">              </span><span class="c1"># имеет смысл для английского</span>
+<span class="n">script</span><span class="w">     </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;latin&quot;</span><span class="w">           </span><span class="c1"># latin | cyrillic | latin+cyrillic</span>
+
+<span class="k">[languages.sr]</span>
+<span class="n">name</span><span class="w">           </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;Српски&quot;</span>
+<span class="n">deck</span><span class="w">           </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;EchoWords: Serbian&quot;</span>
+<span class="n">tts</span><span class="w">            </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;edge&quot;</span>
+<span class="n">edge_tts_voice</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;sr-RS-SophieNeural&quot;</span>
+<span class="n">script</span><span class="w">         </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;latin+cyrillic&quot;</span>
+<span class="n">prompt_hints</span><span class="w">   </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;for nouns give gender and plural, for verbs give aspect&quot;</span>
+</code></pre></div>
+<p>Каждая запись задаёт отображаемое имя, собственную колоду Anki (<code>deck</code>),
+допустимую письменность ввода (<code>script</code>), код словаря, если он есть, а также
+движок и голос произношения. В репозитории лежит <code>languages.example.toml</code> с
+готовыми записями для английского, немецкого и сербского.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Сербский намеренно озвучивается кириллицей: голоса <code>sr-RS</code> неправильно
+произносят латинское написание.</p>
+</div>
+<h2 id="_3">Переменные окружения</h2>
+<p>Все переменные начинаются с <code>ECHOWORDS_</code>. Закоммиченный <code>.deploy.example/.env</code>
+документирует каждую; ниже те, что меняют чаще всего.</p>
+<table>
+<thead>
+<tr>
+<th>Переменная</th>
+<th>Значение</th>
+<th>По умолчанию</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ECHOWORDS_DATA_DIR</code></td>
+<td>коллекция Anki, модели голосов, состояние брокера, кэш аудио — своей базы данных нет</td>
+<td><code>~/.echo-words</code></td>
+</tr>
+<tr>
+<td><code>ECHOWORDS_TARGET_LANG</code></td>
+<td>язык, на котором пишутся все объяснения и переводы</td>
+<td><code>ru</code></td>
+</tr>
+<tr>
+<td><code>ECHOWORDS_LANGUAGES_CONFIG</code></td>
+<td>путь к таблице языков</td>
+<td><code>&lt;data dir&gt;/languages.toml</code></td>
+</tr>
+<tr>
+<td><code>ECHOWORDS_LLMBROKER_HOME</code></td>
+<td>где llmbroker хранит свой список моделей и журнал вызовов</td>
+<td><code>&lt;data dir&gt;/llmbroker</code></td>
+</tr>
+<tr>
+<td><code>ECHOWORDS_API_MODEL</code></td>
+<td>алиас платной модели, на которую переключается каскад; пустое значение полностью отключает платные вызовы</td>
+<td><code>gpt-fast</code></td>
+</tr>
+<tr>
+<td><code>ECHOWORDS_API_DAILY_CAP</code></td>
+<td>платных вызовов в сутки, <code>0</code> — без ограничения</td>
+<td><code>100</code></td>
+</tr>
+<tr>
+<td><code>ECHOWORDS_ANKI_SYNC</code></td>
+<td>синхронизировать коллекцию с AnkiWeb после добавления</td>
+<td><code>true</code></td>
+</tr>
+<tr>
+<td><code>ECHOWORDS_ANKIWEB_USER</code> / <code>_PASSWORD</code></td>
+<td>учётные данные AnkiWeb</td>
+<td>обязательны при включённой синхронизации</td>
+</tr>
+<tr>
+<td><code>ECHOWORDS_SYNC_ENDPOINT</code></td>
+<td>свой сервер синхронизации Anki вместо AnkiWeb</td>
+<td>пусто</td>
+</tr>
+<tr>
+<td><code>ECHOWORDS_ACCENT</code></td>
+<td><code>us</code> или <code>uk</code> для английского аудио</td>
+<td><code>us</code></td>
+</tr>
+<tr>
+<td><code>ECHOWORDS_AUDIO_TIMEOUT</code></td>
+<td>общий лимит ожидания произношения после генерации, прежде чем отправить без него</td>
+<td><code>10</code></td>
+</tr>
+<tr>
+<td><code>ECHOWORDS_HOST</code> / <code>ECHOWORDS_PORT</code></td>
+<td>адрес привязки; оставьте на loopback, входной дверью служит Tailscale</td>
+<td><code>127.0.0.1:8080</code></td>
+</tr>
+</tbody>
+</table>
+<p>Все варианты произношения делят это одно окно ожидания после генерации. Значение
+меньше десяти секунд сокращает его, а значение больше десяти не расширяет жёсткий
+лимит. Ожидание заканчивается, как только аудио готово, поэтому целиком оно
+тратится только тогда, когда озвучки не будет вовсе.</p>
+<p><strong>Язык интерфейса</strong> переменной окружения не является. Это выбор для конкретного
+устройства, который делается в шапке (EN/RU) и запоминается в браузере. Он не
+меняет <code>ECHOWORDS_TARGET_LANG</code> — язык, на котором написаны ваши карточки.</p>
+<h2 id="llm-">Ключи LLM-провайдеров</h2>
+<p>Бесплатному пулу нужен хотя бы один из <code>GROQ_API_KEY</code>, <code>OPENROUTER_API_KEY</code>,
+<code>GEMINI_API_KEY</code>, <code>ZAI_API_KEY</code>; все четыре дают пулу полный набор для
+переключения при отказе. Команда <code>python -m llmbroker env freetier</code> печатает
+актуальный список для установленной версии llmbroker вместе со ссылками на
+регистрацию.</p>
+<p>Платному запасному варианту по умолчанию (<code>ECHOWORDS_API_MODEL=gpt-fast</code>)
+дополнительно нужен <code>OPENAI_API_KEY</code>. Укажите <code>ECHOWORDS_API_MODEL=</code>, чтобы
+работать только на бесплатном пуле.</p>
+<p>Экран <strong>Состояние</strong> показывает, каких ключей не хватает, сколько провайдеров
+пригодны и во сколько платных вызовов обошёлся день.</p>
+<h2 id="ankiweb">AnkiWeb</h2>
+<p>Задайте <code>ECHOWORDS_ANKIWEB_USER</code> и <code>ECHOWORDS_ANKIWEB_PASSWORD</code> и оставьте
+<code>ECHOWORDS_ANKI_SYNC=true</code>. При первом запуске headless-коллекция полностью
+скачивает существующую коллекцию аккаунта, прежде чем добавить хоть одну
+локальную карточку. Пароль используется один раз — для получения ключа
+синхронизации, который затем хранится в <code>ECHOWORDS_DATA_DIR</code> и переиспользуется.</p>
+<p>Оставьте исходящий HTTPS открытым для <code>*.ankiweb.net</code>: AnkiWeb перенаправляет
+синхронизацию на пронумерованные шарды, поэтому разрешение только
+<code>sync.ankiweb.net</code> будет периодически ломаться.</p>
+<p>Свой сервер синхронизации Anki выбирается через <code>ECHOWORDS_SYNC_ENDPOINT</code>.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://zensical.org/" target="_blank" rel="noopener">
+      Zensical
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate":null,"base":"..","features":[],"search":"../assets/javascripts/workers/search.b6b7e04f.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7f30b55.min.js"></script>
+      
+    
+  </body>
+</html>

@@ -1,0 +1,1 @@
+WARNING  echo_words.audio:audio.py:158 could not prepare Piper voice configured: checksum mismatch for configured.onnx

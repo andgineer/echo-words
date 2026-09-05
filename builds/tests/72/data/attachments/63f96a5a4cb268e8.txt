@@ -1,0 +1,2 @@
+WARNING  echo_words.lexicon:lexicon.py:145 wiktionary lookup failed for en/'вратити се': Client error '429 Too Many Requests' for url 'https://en.wiktionary.org/w/api.php?action=query&titles=%D0%B2%D1%80%D0%B0%D1%82%D0%B8%D1%82%D0%B8+%D1%81%D0%B5&format=json&redirects=1'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/429

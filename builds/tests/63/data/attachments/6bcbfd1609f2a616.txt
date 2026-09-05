@@ -1,0 +1,1 @@
+WARNING  echo_words.audio:audio.py:135 edge-tts audio failed for sr/'провал': offline

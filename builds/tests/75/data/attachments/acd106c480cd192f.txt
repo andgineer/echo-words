@@ -1,0 +1,38 @@
+ERROR    echo_words.pipeline:pipeline.py:404 word processing failed unexpectedly
+Traceback (most recent call last):
+  File "/home/runner/work/echo-words/echo-words/src/echo_words/pipeline.py", line 402, in _work
+    await self.process_word(job)
+  File "/home/runner/work/echo-words/echo-words/src/echo_words/pipeline.py", line 502, in process_word
+    async for delta in completion:
+    ...<35 lines>...
+        )
+  File "/home/runner/work/echo-words/echo-words/src/echo_words/backend.py", line 110, in _recorded
+    async for delta in answer:
+        yield delta
+  File "/home/runner/work/echo-words/echo-words/src/echo_words/backend.py", line 140, in _answer
+    async for delta in self._bounded_deltas(pool):
+        delivered.append(delta)
+        yield delta
+  File "/home/runner/work/echo-words/echo-words/src/echo_words/backend.py", line 224, in _bounded_deltas
+    async for delta in stream:
+    ...<13 lines>...
+            )
+  File "/home/runner/work/echo-words/echo-words/src/echo_words/backend.py", line 241, in _pool_deltas
+    pool = open_pool_stream(
+        self._cascade.broker,
+    ...<3 lines>...
+        trace_id=self._request.trace_id,
+    )
+  File "/home/runner/work/echo-words/echo-words/src/echo_words/llm_backend.py", line 61, in open_pool_stream
+    broker.stream(
+    ~~~~~~~~~~~~~^
+        prompt,
+        ^^^^^^^
+    ...<2 lines>...
+        wait=POOL_WAIT_SECONDS,
+        ^^^^^^^^^^^^^^^^^^^^^^^
+    ),
+    ^
+  File "/home/runner/work/echo-words/echo-words/tests/fakes.py", line 136, in stream
+    raise AssertionError("the pool was asked for one stream more than the test prepared")
+AssertionError: the pool was asked for one stream more than the test prepared

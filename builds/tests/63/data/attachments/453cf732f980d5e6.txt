@@ -1,0 +1,8 @@
+ERROR    echo_words.pipeline:pipeline.py:722 could not add 'word' to Anki
+Traceback (most recent call last):
+  File "/home/runner/work/echo-words/echo-words/src/echo_words/pipeline.py", line 720, in _store_card
+    result = await self.anki.add_note(note, job.language.deck, audio_path)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/work/echo-words/echo-words/tests/test_pipeline.py", line 1395, in add_note
+    raise MisconfiguredNoteTypeError
+echo_words.anki.MisconfiguredNoteTypeError: note type EchoWords is misconfigured — fix or delete it in Anki

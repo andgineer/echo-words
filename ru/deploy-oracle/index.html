@@ -1,0 +1,774 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+        <meta name="author" content="Andrey Sorokin">
+      
+      
+        <link rel="canonical" href="https://andgineer.github.io/echo-words/deploy-oracle/">
+      
+      
+        <link rel="prev" href="../pwa-install/">
+      
+      
+        <link rel="next" href="../operations/">
+      
+      
+        
+          <link rel="alternate" href="/echo-words/" hreflang="en">
+        
+          <link rel="alternate" href="/echo-words/ru/" hreflang="ru">
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="zensical-0.0.51">
+    
+    
+      
+        <title>Развёртывание на Oracle Cloud - echo_words</title>
+      
+    
+    
+      
+        
+      
+      <link rel="stylesheet" href="../assets/stylesheets/modern/main.62c9b9cc.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,500,500i,700,700i%7CJetBrains+Mono:400,400i,700,700i&amp;display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_scope.pathname.endsWith("/")||(__md_scope=new URL(__md_scope.pathname+"/",location)),__md_hash=e=>[...e].reduce(((e,t)=>(e<<5)-e+t.charCodeAt(0)),0),__md_get=(e,t=localStorage,_=__md_scope)=>JSON.parse(t.getItem(_.pathname+"."+e)),__md_set=(e,t,_=localStorage,a=__md_scope)=>{try{_.setItem(a.pathname+"."+e,JSON.stringify(t))}catch(e){}},document.documentElement.setAttribute("data-platform",navigator.platform)</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer" aria-label="Navigation"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#oracle-cloud" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="./.." title="echo_words" class="md-header__button md-logo" aria-label="echo_words" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-book-open" viewBox="0 0 24 24"><path d="M12 7v14M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer" aria-label="Navigation">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-menu" viewBox="0 0 24 24"><path d="M4 5h16M4 12h16M4 19h16"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            echo_words
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Развёртывание на Oracle Cloud
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+      <div class="md-header__option">
+  <div class="md-select">
+    
+    <button class="md-header__button md-icon" aria-label="Select language">
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-languages" viewBox="0 0 24 24"><path d="m5 8 6 6M4 14l6-6 2-3M2 5h12M7 2h1M22 22l-5-10-5 10M14 18h6"/></svg>
+    </button>
+    <div class="md-select__inner">
+      <ul class="md-select__list">
+        
+          <li class="md-select__item">
+            <a href="/echo-words/" hreflang="en" class="md-select__link">
+              English
+            </a>
+          </li>
+        
+          <li class="md-select__item">
+            <a href="/echo-words/ru/" hreflang="ru" class="md-select__link">
+              Русский
+            </a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+</div>
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search" aria-label="Search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-search" viewBox="0 0 24 24"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog" aria-label="Search">
+  <button type="button" class="md-search__button">
+    Search
+  </button>
+</div>
+      
+    
+    <div class="md-header__source">
+      
+        <a href="https://github.com/andgineer/echo-words" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc.--><path fill="currentColor" d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    echo_words
+  </div>
+</a>
+      
+    </div>
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="./.." title="echo_words" class="md-nav__button md-logo" aria-label="echo_words" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-book-open" viewBox="0 0 24 24"><path d="M12 7v14M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></svg>
+
+    </a>
+    echo_words
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/andgineer/echo-words" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc.--><path fill="currentColor" d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    echo_words
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="./.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  echo-words
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Установка
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Настройка
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pwa-install/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Установка на телефон
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Развёртывание на Oracle Cloud
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="././" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Развёртывание на Oracle Cloud
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#tailscale" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Сначала подключите узел к сети Tailscale
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Секреты
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Установка и развёртывание
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Проверка результата
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Релизы
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../operations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Состояние и обслуживание
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Разработка
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  
+                    
+                    
+                    
+                      
+                    
+                    
+                      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+                      <div class="md-sidebar-button__wrapper">
+                        <label class="md-sidebar-button" for="__toc"></label>
+                      </div>
+                    
+                  
+                  <div class="md-sidebar__inner">
+                    
+
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#tailscale" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Сначала подключите узел к сети Tailscale
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Секреты
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Установка и развёртывание
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Проверка результата
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Релизы
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+  
+  
+
+
+<h1 id="oracle-cloud">Развёртывание на Oracle Cloud</h1>
+<p>Поддерживаемая цель — Oracle Always Free <code>VM.Standard.E2.1.Micro</code>: x86_64, 1 ГБ
+оперативной памяти, $0 в месяц. Файл подкачки на 2 ГБ — жёсткое требование.
+Юнит systemd дополнительно задаёт <code>MemoryHigh=600M</code> и <code>MemoryMax=700M</code>, так что
+разросшийся бэкенд не уронит виртуалку. Форма Arm <code>A1.Flex</code>, когда в регионе есть
+свободные мощности, снимает эти ограничения, но на неё никто не рассчитывает.</p>
+<p>Развёртывание — это задачи <code>invoke</code>, запускаемые по ssh с вашей машины.</p>
+<h2 id="tailscale">Сначала подключите узел к сети Tailscale</h2>
+<p>Tailscale — единственная входная дверь приложения. Подключите виртуалку к сети
+до запуска установки:</p>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-fsSL<span class="w"> </span>https://tailscale.com/install.sh<span class="w"> </span><span class="p">|</span><span class="w"> </span>sh
+sudo<span class="w"> </span>tailscale<span class="w"> </span>up
+</code></pre></div>
+<p>Установка затем настраивает <code>tailscale serve --bg 8080</code>, публикуя приложение в
+корне HTTPS-адреса узла, тогда как uvicorn остаётся привязанным к
+<code>127.0.0.1:8080</code>. Ни страницы входа, ни выхода в интернет нет. Имя узла в сети
+остаётся прежним.</p>
+<h2 id="_1">Секреты</h2>
+<div class="highlight"><pre><span></span><code>mkdir<span class="w"> </span>-p<span class="w"> </span>.deploy
+cp<span class="w"> </span>.deploy.example/.env<span class="w"> </span>.deploy/.env
+chmod<span class="w"> </span><span class="m">600</span><span class="w"> </span>.deploy/.env
+</code></pre></div>
+<p><code>.deploy/</code> в gitignore. Задайте <code>ECHOWORDS_DEPLOY_HOST</code> — ssh-адрес виртуалки,
+её публичный адрес вида <code>ubuntu@203.0.113.10</code>: администрирование идёт по
+публичному ssh, и только само приложение доступно исключительно внутри сети
+Tailscale. Переменная окружения с тем же именем перекрывает значение для разовой
+цели. Развёртывание определяет хост до того, как что-либо собирать, поэтому
+пропущенное или неотредактированное значение падает сразу, а не после сборки
+фронтенда.</p>
+<p>Ключи провайдеров и учётные данные AnkiWeb заполняются так, как описано в
+<a href="../configuration/">Настройке</a>. Они никогда не попадают в репозиторий, в фикстуру
+теста или в строку лога.</p>
+<h2 id="_2">Установка и развёртывание</h2>
+<div class="highlight"><pre><span></span><code>inv<span class="w"> </span>setup-app<span class="w"> </span>--with-host-prep<span class="w">   </span><span class="c1"># один раз, идемпотентно</span>
+inv<span class="w"> </span>deploy<span class="w"> </span>--ref<span class="o">=</span>main
+inv<span class="w"> </span>status
+inv<span class="w"> </span>logs
+</code></pre></div>
+<p><code>setup-app</code> устанавливает Node 22, uv и Tailscale, клонирует репозиторий,
+устанавливает и включает сервис, создаёт и активирует <code>/swapfile</code> на 2 ГБ и
+проверяет его формат, активный объём и единственную каноническую запись в
+<code>/etc/fstab</code>. Он создаёт отсутствующий файл подкачки и умеет увеличивать слишком
+маленький файл, у которого уже есть сигнатура swap, но останавливается, не
+перезаписывая существующий файл другого типа, символьную ссылку, специальный путь
+или неоднозначную конфигурацию fstab. Ошибки создания, активации и проверки
+подкачки прерывают установку.</p>
+<p>Тот же проход усиливает sshd и включает явную тюрьму fail2ban для sshd (3 неудачи
+за 10 минут, нарастающие баны по суткам с потолком в 30 дней). Тюрьма работает
+через бэкенд systemd и исключает диапазон Tailscale <code>100.64.0.0/10</code>, поэтому
+администрирование через сеть Tailscale не забанит само себя; публичный ssh — путь
+развёртывания и всё прочее, что приходит на порт 22 из интернета, — тюрьме
+подчиняется. Установка также отключает rpcbind и ограничивает системный журнал —
+по размеру (200 МБ) и по возрасту (три месяца).
+Межсетевой экран хоста остаётся как был: правила для loopback и финальный REJECT
+переустанавливаются только при их отсутствии, а отклонённое изменение
+пропускается, не роняя проход. Существующий checkout и работающий сервис
+установка намеренно не трогает, а на чистом хосте сервис не запускает.</p>
+<p><code>deploy</code> — единственный путь активации кода и PWA. Он привязывает ref к
+конкретному коммиту, так что ни локальная ветка, ни незакоммиченные правки в
+поставку не попадают: ref достаточно иметь локально, и он должен быть отправлен
+в origin, из которого клонируется виртуалка. Задача требует чистого локального
+checkout запрошенного ref, переключает виртуалку на тот же коммит, выполняет
+<code>uv sync --no-dev</code>, собирает <code>_static/</code> <strong>на виртуалке</strong> командой
+<code>uv run --no-dev inv build-static</code>, синхронизирует секреты, запускает или
+перезапускает юнит и завершается ошибкой, если <code>/api/health</code> не ответит за 30
+секунд.</p>
+<p>Удалённый checkout проверяется на изменённые отслеживаемые и неожиданные
+неотслеживаемые файлы — и до переключения, и до синхронизации; развёртывание
+останавливается и печатает их, ничего не удаляя. Пути времени выполнения из
+gitignore — <code>.deploy/</code>, <code>data/</code>, <code>.venv/</code>, <code>_static/</code> — остаются на месте.</p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>Никогда не редактируйте файлы на сервере. Удалённый checkout — это цель
+развёртывания, а не рабочая копия: исправляйте в репозитории и разворачивайте
+снова. Изменения хоста место в задачах <code>setup-app</code> / host-prep, чтобы
+виртуалка оставалась воспроизводимой из репозитория.</p>
+</div>
+<h2 id="_3">Проверка результата</h2>
+<p>Развёртывание считается завершённым, только когда пройдёт опрос
+работоспособности. После этого проверьте <code>inv status</code> и <code>inv logs</code>.</p>
+<p><code>inv status</code> показывает текущий <code>VmRSS</code> основного процесса вместе с пиковым за
+время жизни <code>VmHWM</code>, а также <code>MemoryCurrent</code>, <code>MemoryHigh</code> и <code>MemoryMax</code> cgroup
+сервиса. Отдельно он показывает <code>memory.peak</code> cgroup только на ядрах, которые
+экспортируют этот файл; ядро 5.15 из Ubuntu 22.04 может сообщить, что он не
+поддерживается. Команда падает, если сервиса или юнита нет, вместо того чтобы
+случайно прочитать корневую cgroup. Цикл ожидания готовности Tailscale в сервисе
+делает запуск после перезагрузки предсказуемым.</p>
+<p>Чтобы собрать PWA локально без развёртывания, используйте <code>inv build-static</code>.</p>
+<h2 id="_4">Релизы</h2>
+<p><code>inv ver-bug</code>, <code>inv ver-feature</code> и <code>inv ver-release</code> поднимают версию в
+<code>src/echo_words/__about__.py</code>, коммитят её и отправляют коммит вместе с тегом
+<code>vX.Y.Z</code>. CI запускается на этот push и при успехе публикует пакет на PyPI и
+создаёт релиз на GitHub.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://zensical.org/" target="_blank" rel="noopener">
+      Zensical
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate":null,"base":"..","features":[],"search":"../assets/javascripts/workers/search.b6b7e04f.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7f30b55.min.js"></script>
+      
+    
+  </body>
+</html>

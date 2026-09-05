@@ -1,0 +1,1 @@
+ERROR    echo_words.api:api.py:167 no LLM backend: SchemaVersionError: bad schema

@@ -1,0 +1,1 @@
+WARNING  echo_words.prompt:prompt.py:382 unusable answer block for de/'aufstehen': a unit-intent request returned text; payload '{"kind":"text","combinations":[{"label":"aufstehen","surface":"steht … auf","why":"Trennbares Verb."}]}'

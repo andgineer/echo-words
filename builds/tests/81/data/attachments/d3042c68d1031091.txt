@@ -1,0 +1,1 @@
+WARNING  echo_words.audio:audio.py:287 no edge-tts voice speaks bg; 'здравей' stays silent

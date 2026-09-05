@@ -1,0 +1,27 @@
+WARNING  echo_words.pipeline:pipeline.py:778 pronunciation timed out for en/'She gave up yesterday.'
+WARNING  echo_words.pipeline:pipeline.py:778 pronunciation timed out for en/'give up'
+WARNING  echo_words.pipeline:pipeline.py:778 pronunciation timed out for en/'gave up'
+ERROR    echo_words.pipeline:pipeline.py:1301 abandoned pronunciation task failed
+Traceback (most recent call last):
+  File "/home/runner/work/echo-words/echo-words/src/echo_words/pipeline.py", line 1299, in _consume_audio_task
+    task.result()
+    ~~~~~~~~~~~^^
+  File "/home/runner/work/echo-words/echo-words/tests/test_pipeline.py", line 1762, in fetch_audio
+    raise RuntimeError(f"late audio failure: {text}") from None
+RuntimeError: late audio failure: She gave up yesterday.
+ERROR    echo_words.pipeline:pipeline.py:1301 abandoned pronunciation task failed
+Traceback (most recent call last):
+  File "/home/runner/work/echo-words/echo-words/src/echo_words/pipeline.py", line 1299, in _consume_audio_task
+    task.result()
+    ~~~~~~~~~~~^^
+  File "/home/runner/work/echo-words/echo-words/tests/test_pipeline.py", line 1762, in fetch_audio
+    raise RuntimeError(f"late audio failure: {text}") from None
+RuntimeError: late audio failure: give up
+ERROR    echo_words.pipeline:pipeline.py:1301 abandoned pronunciation task failed
+Traceback (most recent call last):
+  File "/home/runner/work/echo-words/echo-words/src/echo_words/pipeline.py", line 1299, in _consume_audio_task
+    task.result()
+    ~~~~~~~~~~~^^
+  File "/home/runner/work/echo-words/echo-words/tests/test_pipeline.py", line 1762, in fetch_audio
+    raise RuntimeError(f"late audio failure: {text}") from None
+RuntimeError: late audio failure: gave up
