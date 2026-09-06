@@ -338,12 +338,90 @@ source language. Acceptance is for the complete-response operation only, with
 the two 25-second misses and the false cards above retained as explicit
 limitations rather than described as an unconditional speed or quality fix.
 
-Both pool adapters remain in the application behind a source-level feature flag;
-the complete-response adapter is the shipped selection. This is deliberately not
-operator configuration: the rejected streaming behavior must not be enabled by a
-deployment typo. Once llmbroker can protect an in-flight streaming call without
-letting a merely fast starter decide the answer, switching the application back is
-a one-line code choice followed by the normal measured promotion gate.
+Both pool adapters remain in the application behind a source-level feature flag,
+never operator configuration: a rejected pool behavior must not be reachable by a
+deployment typo. Which one ships is the section below.
+
+## Streamed racing with whole-answer replacement is the shipped adapter — 2026-09-06
+
+Status: **accepted for production**, on the evidence that it does not regress the
+ordinary path. Pool calls use `llmbroker` 1.8.0's streaming operation with
+`fastest_of=2`, the same 25-second whole-answer budget, and the library's default
+one-second selection window. The reader sees text as it is written; what is on the
+page until the race settles is provisional.
+
+The objection that blocked first-delta racing is answered in the library rather than
+worked around here. A streamed race no longer commits at the first delta: every lane
+runs to a whole answer, the first complete one is authoritative, and a lane that
+merely started talking first is replaced when another finishes first. The selection
+window decides only which lane is *visible* while the race is open — it gives the
+pool's highest-ranked lane one second to begin, and teaches the pool nothing when it
+does not. So a fast starter can no longer decide the answer, which is exactly what
+the 2026-09-05 blocking finding said it must not do.
+
+The application handles the replacement rather than ignoring it: the provisional
+deltas are dropped from the page, the answer that won is repainted in their place,
+and it is that answer which is judged, carded, rated and reported. This is the reset
+the paid step-up already used, so nothing new reaches the reader's screen. Text from
+two models is never spliced. A replacement is not a failure and never buys a paid
+answer over a complete pool answer already in hand.
+
+The smoke tier was rerun at the shipped budget, paced, one call at a time: 62 recorded
+attempts, 60 provider answers. `google-gemini-3.5-flash-lite` supplied 48 and
+`groq-gpt-oss-120b` 12; the workhorse's presence and the answer count rule out an
+exhausted pool, so the run is valid. Laguna, Nemotron and glm answered nothing.
+
+Latency improves where the previous adapter was worst — its tail. Over the 47 initial
+article/text attempts, counting both misses as 25-second observations, the median is
+2.010 s, p90 3.637 s, p95 15.986 s and the maximum 25.005 s, against 2.188 / 9.139 /
+24.865 / 25.007 for complete responses. Restricted to the three vouched source
+languages the median is 1.991 s, p90 3.637 s and p95 11.253 s, against 2.172 / 4.683 /
+24.865. Their provider answers alone reach p95 3.941 s. The first visible text arrives
+at a 0.795 s median, and 49 of 60 answers began inside one second.
+
+A fresh reviewer read all 48 review-packet items and the 15 further answer records,
+covering all 62 attempts. No answer repeated the failure that blocked first-delta
+racing: no corrupted Serbian, no analysis written in the source language, no card
+headed by a word from the wrong language, and every typo fixture carded the exact
+corrected spelling with every available click preserving its surface and context.
+
+What the run does not show is as important as what it does. **The replacement path was
+never exercised**: no stream was replaced in 62 calls, and eight further local calls —
+five of them with the ranked preference removed entirely — did not produce one either,
+because the highest-ranked model both starts and finishes first on this pool. The
+behavior is covered by tests against the library's contract and by that contract's own
+suite; this measurement says only that streaming does not regress the ordinary path,
+and no claim that a reader's replaced answer has been observed can rest on it.
+
+The reading also carries findings that are recorded here and not signed off. Only the
+operator accepts a limitation of the product:
+
+- A non-primary winner drifted out of the target language. `neighbour-en-kitchen`
+  came back with its usage and origin sections written as English prose. Nothing in
+  the automated screen gates on the language an answer is written in.
+- The coinage guard fails open on an availability miss. The judgement for
+  `Löffelangst` missed its budget with the whole pool cooling, and an unreadable
+  judgement is an absent one rather than a refusal, so an invented compound was
+  carded with a confident sense, an asserted gender and fabricated examples. The
+  same word is refused normally when its judgement lands.
+- A neighbour's meaning was carded onto the word it is confused with:
+  `neighbour-de-wider` carries a second sense "заново / снова", which belongs to
+  `wieder`, in a German example sentence that is not German.
+- One answer chose the wrong branch: `text-en-3` answered a submitted sentence as a
+  unit article. It is the only branch defect behind the screen's 18-of-21 text-branch
+  reading — the other two are an availability miss and a payload whose JSON carried a
+  literal control character, neither of them a branch decision.
+- Streaming does not shorten the wait a cooling pool imposes: two answers took 14.5 s
+  and 20.3 s to their first token, both from the primary model after a cooldown.
+- The primary model's own card-bound faults continue, in new draws: a corrupted
+  `шурхание оступающих листьев` on the `susurrus` card, a non-existent `мечт` on the
+  `give up` card, a `reluctant` example whose translation reverses the sense, and
+  three Serbian card fronts written in two alphabets at once.
+- Bulgarian and Ukrainian remain outside routing acceptance and did not improve.
+
+Acceptance is therefore for the routing change and its measured latency profile, with
+the replacement path explicitly unmeasured. A run in which a replacement actually
+fires is what would close that gap.
 
 ## The paid tier: `gpt-5.6-luna` is the one worth reaching for
 

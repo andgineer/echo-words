@@ -1,7 +1,7 @@
 from contextlib import aclosing
 
 import pytest
-from fakes import FakeBroker, FakeHandle
+from fakes import FakeBroker, FakeHandle, lost_the_race
 from llmbroker import (
     LLMTimeoutError,
     NoLLMAvailableError,
@@ -11,7 +11,13 @@ from llmbroker import (
 from echo_words.broker import BackendError, BudgetMissError
 from echo_words.config import Settings
 from echo_words.languages import Language
-from echo_words.llm_backend import POOL_FASTEST_OF, POOL_WAIT_SECONDS, ask_pool, open_pool_stream
+from echo_words.llm_backend import (
+    POOL_FASTEST_OF,
+    POOL_WAIT_SECONDS,
+    PoolReplacementError,
+    ask_pool,
+    open_pool_stream,
+)
 
 pytestmark = pytest.mark.anyio
 
@@ -30,7 +36,7 @@ async def test_the_complete_answer_arrives_at_once(settings: Settings, languages
     assert answer.text == "Hello world"
 
 
-async def test_the_dormant_stream_adapter_preserves_deltas_and_racing(
+async def test_the_shipped_adapter_preserves_deltas_and_racing(
     settings: Settings,
     languages,
 ):
@@ -141,3 +147,34 @@ async def test_an_empty_success_is_a_failure(settings: Settings, languages):
     broker = FakeBroker(handles=[FakeHandle()])
     with pytest.raises(BackendError, match="InvalidProviderResponseError"):
         await ask_pool(broker, "prompt", languages["en"], settings)
+
+
+async def test_a_lost_race_is_handed_over_as_the_complete_answer_that_won(
+    settings: Settings,
+    languages,
+):
+    lost = lost_the_race("whole answer", winner="free-flash", streamed="free-slow")
+    broker = FakeBroker(handles=[FakeHandle(["half "], error=lost)])
+    stream = open_pool_stream(broker, "prompt", languages["en"], settings)
+
+    with pytest.raises(PoolReplacementError) as caught:
+        async with aclosing(stream):
+            await drain(stream)
+
+    assert caught.value.result.text == "whole answer"
+    assert caught.value.result.llm_name == "free-flash"
+    assert caught.value.streamed_llm_name == "free-slow"
+
+
+async def test_a_lost_race_is_not_a_pool_failure(settings: Settings, languages):
+    """It subclasses llmbroker's request error, so a caught replacement read as a failure
+    would send a complete answer to the paid model and buy what is already in hand."""
+    lost = lost_the_race("whole answer", winner="free-flash", streamed="free-slow")
+    broker = FakeBroker(handles=[FakeHandle(["half "], error=lost)])
+    stream = open_pool_stream(broker, "prompt", languages["en"], settings)
+
+    with pytest.raises(PoolReplacementError) as caught:
+        async with aclosing(stream):
+            await drain(stream)
+
+    assert not isinstance(caught.value, BackendError)

@@ -13,6 +13,7 @@ from echo_words.config import Settings
 from echo_words.languages import Language
 from echo_words.llm_backend import (
     STREAM_POOL_ANSWERS,
+    PoolReplacementError,
     PoolStream,
     ask_pool,
     open_pool_stream,
@@ -147,6 +148,13 @@ class Completion:
                     yield delta
         except BudgetMissError as exc:
             miss = exc
+        except PoolReplacementError as replaced:
+            shown = bool(delivered)
+            delivered = []
+            async with aclosing(self._replacement_deltas(replaced, shown=shown)) as replacement:
+                async for delta in self._bounded_deltas(replacement):
+                    delivered.append(delta)
+                    yield delta
         if not await self._steps_up(miss, "".join(delivered)):
             return
         # Text already on the page cannot be spliced with the paid answer: the
@@ -159,6 +167,29 @@ class Completion:
             restorable=self._pool_answer_usable and bool(delivered),
         ):
             yield delta
+
+    async def _replacement_deltas(
+        self,
+        replaced: PoolReplacementError,
+        *,
+        shown: bool,
+    ) -> AsyncIterator[str]:
+        """The complete answer that won a raced stream, in place of the deltas it voids."""
+        logger.info(
+            "the pool stream from %s was replaced by a complete answer from %s",
+            replaced.streamed_llm_name,
+            replaced.result.llm_name,
+        )
+        # Provisional text is dropped from the page rather than spliced with the answer
+        # that beat it, exactly as the paid step drops the pool answer it replaces.
+        if shown and self._request.on_reset is not None:
+            await self._request.on_reset()
+        # The bound belongs to the answer the reader ends up with, not to the discarded one.
+        self._oversized = False
+        self._pool = replaced.result
+        self.llm_name = replaced.result.llm_name
+        yield replaced.result.text
+        self._pool_answered = True
 
     async def _paid_or_the_answer_it_replaces(
         self,

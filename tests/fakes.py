@@ -3,7 +3,7 @@
 from collections.abc import AsyncIterator, Iterable
 from types import SimpleNamespace
 
-from llmbroker import InvalidProviderResponseError
+from llmbroker import InvalidProviderResponseError, StreamReplacementError
 
 from echo_words.backend import Cascade
 from echo_words.config import Settings
@@ -62,8 +62,24 @@ class FakeResult:
         self.llm_name = handle.llm_name or "unknown"
         self._handle = handle
 
+    @property
+    def scores(self) -> list[float]:
+        return self._handle.scores
+
     async def record_quality(self, score: float) -> None:
         await self._handle.record_quality(score)
+
+
+def lost_the_race(text: str, *, winner: str, streamed: str) -> StreamReplacementError:
+    """What a raced stream raises when another lane finished the whole answer first."""
+    handle = FakeHandle([text], llm_name=winner)
+    # The lane that won has answered, which is what makes the replacement rateable.
+    handle.settled = True
+    return StreamReplacementError(
+        f"{streamed} lost to {winner}",
+        replacement=FakeResult(text, handle),
+        streamed_llm_name=streamed,
+    )
 
 
 class FakeDirectClient:

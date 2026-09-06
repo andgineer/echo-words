@@ -199,7 +199,7 @@ async def test_submission_receipt_lock_coalesces_concurrent_same_id_retries():
     assert await asyncio.gather(first, retry) == ["one-entry", "one-entry"]
 
 
-def test_recent_words_keeps_text_empty_until_the_complete_answer_arrives(
+def test_recent_words_carries_the_text_so_far_while_a_word_is_in_progress(
     monkeypatch: pytest.MonkeyPatch,
     settings: Settings,
 ):
@@ -209,10 +209,16 @@ def test_recent_words_keeps_text_empty_until_the_complete_answer_arrives(
     with TestClient(create_app(settings.model_copy(update={"api_model": ""}))) as live_client:
         entry_id = submit(live_client, word="partial").json()["entry_id"]
         assert handle.started.wait(timeout=1)
-        recent = live_client.get("/api/words/recent").json()
+        deadline = time.monotonic() + 1
+        recent = []
+        while time.monotonic() < deadline:
+            recent = live_client.get("/api/words/recent").json()
+            if recent and recent[0]["text"]:
+                break
+            time.sleep(0.01)
         assert recent[0]["entry_id"] == entry_id
         assert recent[0]["status"] == "pending"
-        assert recent[0]["text"] == ""
+        assert recent[0]["text"] == "<b>part</b>"
 
         handle.release.set()
         deadline = time.monotonic() + 1

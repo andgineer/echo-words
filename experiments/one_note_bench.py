@@ -34,7 +34,6 @@ import json
 import logging
 import os
 import re
-import statistics
 import sys
 import time
 import unicodedata
@@ -79,7 +78,7 @@ from echo_words.prompt import (  # noqa: E402
 )
 from echo_words.sanitizer import sanitize_html  # noqa: E402
 from echo_words.segments import fill_text_segments  # noqa: E402
-from llmbroker import AsyncBroker  # noqa: E402
+from llmbroker import AsyncBroker, StreamReplacementError  # noqa: E402
 from llmbroker.direct import AsyncDirectClient  # noqa: E402
 from unit_verdict_bench import FIXTURES as VERDICT_FIXTURES  # noqa: E402
 
@@ -593,6 +592,8 @@ class Shot:
     expected_suggestion: str = ""
     prompt_hash: str = ""
     answered_by: str | None = None
+    # The lane whose provisional deltas lost the race, when another finished first.
+    replaced_from: str | None = None
     t_first: float | None = None
     t_total: float | None = None
     error: str | None = None
@@ -1836,19 +1837,22 @@ async def run_batch(args, out: Path, broker: AsyncBroker, jobs: list[Shot]) -> N
     async def answer(shot: Shot) -> None:
         """One call, through whichever tier this run is measuring."""
         if paid is None:
-            started = time.monotonic()
+            handle = broker.stream(
+                prompt_for(shot),
+                operation=f"one-note-{shot.kind}-{shot.lang}",
+                wait=args.wait,
+                fastest_of=POOL_FASTEST_OF,
+            )
             try:
-                result = await broker.ask(
-                    prompt_for(shot),
-                    operation=f"one-note-{shot.kind}-{shot.lang}",
-                    wait=args.wait,
-                    fastest_of=POOL_FASTEST_OF,
-                )
+                await drain(handle, shot)
+            except StreamReplacementError as exc:
+                # What the app does: the deltas already drained are provisional and the
+                # complete answer that won the race is the one the reader is scored on.
+                shot.replaced_from = exc.streamed_llm_name
+                shot.text = exc.replacement.text
             finally:
-                shot.t_total = round(time.monotonic() - started, 3)
-            shot.t_first = shot.t_total
-            shot.text = result.text
-            shot.answered_by = result.llm_name
+                shot.answered_by = handle.llm_name
+                await handle.aclose()
             return
         client = AsyncDirectClient(
             base_url=paid["base_url"],
@@ -2296,6 +2300,12 @@ def deterministic_gates(  # noqa: PLR0913 - the screen's inputs, and every arm o
             row.metrics.get("typo_word_exact") for row in accepted_typos
         ),
     }
+
+
+def percentile(values: list[float], rank: float) -> float:
+    ordered = sorted(values)
+    index = min(len(ordered) - 1, int(round((rank / 100) * (len(ordered) - 1))))
+    return ordered[index]
 
 
 def report_verdict(rows: list[Shot]) -> None:
@@ -2879,9 +2889,20 @@ def report(out: Path, tier: str) -> None:
     print(f"  hard verdict errors           {ratio(serbian_verdicts, 'hard_verdict_error')}")
     print(f"  article format clean          {ratio(serbian, 'format_ok')}")
 
-    times = [row.t_total for row in rows if row.t_total is not None and not row.error]
+    answered = [row for row in rows if not row.error and row.t_total is not None]
+    times = [row.t_total for row in answered if row.t_total is not None]
     if times:
-        print(f"\nlatency p50 {statistics.median(times):.1f}s")
+        print(f"\nWHOLE-ANSWER LATENCY over {len(times)} answers")
+        print(f"  p50 {percentile(times, 50):.1f}s  p90 {percentile(times, 90):.1f}s  "
+              f"p95 {percentile(times, 95):.1f}s  max {max(times):.1f}s")
+    starts = [row.t_first for row in answered if row.t_first is not None]
+    if starts:
+        print(f"  first delta p50 {percentile(starts, 50):.2f}s  "
+              f"p90 {percentile(starts, 90):.2f}s  max {max(starts):.2f}s")
+    replaced = [row for row in rows if row.replaced_from]
+    print(f"  races replaced {len(replaced)}/{len(rows)}")
+    for row in replaced:
+        print(f"    {row.shot_id}: {row.replaced_from} -> {row.answered_by}")
 
     packet_path = write_review_packet(
         out,

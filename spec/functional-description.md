@@ -67,8 +67,8 @@ The four requirements every design decision is weighed against:
   (recent answers, counters, undo state) is in-memory and expendable.
 - **LLM** — one cascade, not a per-language choice. Both steps are plain
   text→text calls through the author's `llmbroker`: the **free-tier model
-  pool** uses complete-response calls (many free, rate-limited models with
-  automatic failover) and takes every request, while a **paid frontier model**
+  pool** streams (many free, rate-limited models with automatic
+  failover) and takes every request, while a **paid frontier model**
   streams through llmbroker's *direct client* behind it. The paid step is
   reached on latency — the pool did not finish the answer inside its
   attempt budget — and on the two things the user asks the better model
@@ -154,10 +154,14 @@ The four requirements every design decision is weighed against:
    placement).
 3. The word immediately appears in the answer area as a pending entry
    ("⏳ *word* …"), so the user sees the request was accepted.
-4. The entry stays pending while the free-pool LLMs generate, then receives the
-   complete pool answer at once over the server-sent event stream. Partial pool
-   output is neither retained nor exposed. Every answer is asked of two distinct
-   models in the **free pool first**, and the first complete answer wins. The request moves to
+4. The entry fills in as the free-pool answer arrives over the server-sent
+   event stream. Every answer is asked of two distinct models in the **free
+   pool first**, and the first *complete* answer wins. What is on the page
+   until then is provisional: it comes from whichever of the two started
+   talking, and when the other one finishes the whole answer first the page is
+   cleared and shows that answer instead. Text from two models is never
+   spliced, and pool text that never becomes a complete answer is cleared the
+   same way rather than left standing. The request moves to
    the **paid model** when the pool does not deliver a *complete* answer
    within the latency budget — whether it never started or started at
    once and then kept going — and the user sees a slower answer, not an
@@ -172,8 +176,8 @@ The four requirements every design decision is weighed against:
    model does this. When a whole answer already shown turns out unusable,
    its text is discarded and replaced by the paid model's. Which model answered is
    visible on the entry; nothing else about the two paths differs, and
-   the card is built from whichever answer arrived. The paid step retains its
-   streaming display when it is reached.
+   the card is built from whichever answer arrived. Both steps display as
+   they write.
    The step-up happens at most once per request: when no paid model is
    configured or the daily cap is spent, an unusable answer stands as it
    is — the analysis is worth reading even when the card behind it failed,
@@ -187,11 +191,12 @@ The four requirements every design decision is weighed against:
    may therefore take two complete-answer windows end to end. This is the
    explicit emergency exception to the normal latency target, not a shared
    deadline split between the two models.
-   **How fast the first token arrives is not a criterion and is never
-   measured.** It is the easiest number in the system to look good on and
-   the least related to what the user waits for: a model that emits one
-   token immediately and the rest over a minute has answered slowly. Only
-   the complete pool answer is judged or displayed.
+   **How fast the first token arrives decides nothing.** It is the easiest
+   number in the system to look good on and the least related to what the user
+   waits for: a model that emits one token immediately and the rest over a
+   minute has answered slowly. It buys a lane the right to be the visible one
+   and nothing more — the race is settled on the first *complete* answer, and
+   only a complete answer is judged, carded or rated.
 5. Words are processed one at a time, in the order submitted — never as
    parallel LLM runs.
 6. The LLM produces both outputs in one generation: the full visible

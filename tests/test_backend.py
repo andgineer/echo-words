@@ -2,7 +2,7 @@ from datetime import date
 from types import SimpleNamespace
 
 import pytest
-from fakes import FakeDirectClient, FakeHandle, fake_cascade
+from fakes import FakeDirectClient, FakeHandle, fake_cascade, lost_the_race
 from llmbroker import (
     InvalidProviderResponseError,
     LLMTimeoutError,
@@ -44,22 +44,117 @@ async def run(cascade: Cascade, language: Language, on_reset=None) -> list[str]:
 
 async def test_a_completed_pool_answer_never_touches_the_paid_client(settings, languages):
     cascade = fake_cascade(settings, handles=[FakeHandle(["free ", "answer"])])
-    assert await run(cascade, languages["en"]) == ["free answer"]
+    assert await run(cascade, languages["en"]) == ["free ", "answer"]
     assert cascade.broker.direct_calls == []
     assert cascade.calls_today == 0
 
 
-async def test_the_code_flag_switches_the_pool_adapter_to_streaming(
-    monkeypatch,
-    settings,
-    languages,
-):
-    monkeypatch.setattr(backend_module, "STREAM_POOL_ANSWERS", True)
+async def test_the_shipped_adapter_streams_the_pool_answer_as_it_arrives(settings, languages):
     cascade = fake_cascade(settings, handles=[FakeHandle(["free ", "answer"])])
 
     assert await run(cascade, languages["en"]) == ["free ", "answer"]
     assert cascade.broker.ask_calls == []
     assert cascade.broker.stream_calls[0]["fastest_of"] == 2
+
+
+async def test_the_code_flag_switches_the_pool_adapter_back_to_one_complete_response(
+    monkeypatch,
+    settings,
+    languages,
+):
+    monkeypatch.setattr(backend_module, "STREAM_POOL_ANSWERS", False)
+    cascade = fake_cascade(settings, handles=[FakeHandle(["free ", "answer"])])
+
+    assert await run(cascade, languages["en"]) == ["free answer"]
+    assert cascade.broker.stream_calls == []
+    assert cascade.broker.ask_calls[0]["fastest_of"] == 2
+
+
+async def test_a_lost_race_drops_the_provisional_deltas_for_the_answer_that_won(
+    settings,
+    languages,
+):
+    """Two lanes race the whole answer, so the deltas on the page are provisional. When
+    another lane finishes first the page is cleared and shows that answer instead —
+    the reader never reads one model continued by another."""
+    lost = lost_the_race("whole answer", winner="free-flash", streamed="free-slow")
+    cascade = fake_cascade(
+        settings,
+        handles=[FakeHandle(["half ", "an answer"], error=lost)],
+        client=FakeDirectClient(),
+    )
+    reset = ResetHook()
+
+    assert await run(cascade, languages["en"], reset) == ["half ", "an answer", "whole answer"]
+    assert reset.calls == 1
+    assert cascade.broker.direct_calls == []
+    assert cascade.calls_today == 0
+
+
+async def test_a_race_settled_before_any_delta_has_nothing_to_drop(settings, languages):
+    lost = lost_the_race("whole answer", winner="free-flash", streamed="free-slow")
+    cascade = fake_cascade(settings, handles=[FakeHandle(error=lost)])
+    reset = ResetHook()
+
+    assert await run(cascade, languages["en"], reset) == ["whole answer"]
+    assert reset.calls == 0
+
+
+async def test_the_lane_that_won_is_the_one_named_and_the_one_rated(settings, languages):
+    lost = lost_the_race("whole answer", winner="free-flash", streamed="free-slow")
+    handle = FakeHandle(["half "], error=lost, llm_name="free-slow")
+    cascade = fake_cascade(settings, handles=[handle])
+    completion = cascade.stream_completion("prompt", languages["en"])
+
+    await drain(completion)
+    await completion.record_quality(1.0)
+
+    assert completion.llm_name == "free-flash"
+    assert cascade.last_calls["en"].llm_name == "free-flash"
+    assert lost.replacement.scores == [1.0]
+    assert handle.scores == []
+
+
+async def test_a_replacement_the_caller_cannot_use_steps_up_like_any_other_answer(
+    settings,
+    languages,
+):
+    lost = lost_the_race("whole answer", winner="free-flash", streamed="free-slow")
+    cascade = fake_cascade(
+        settings,
+        handles=[FakeHandle(["half "], error=lost)],
+        client=FakeDirectClient(["paid ", "answer"]),
+    )
+    reset = ResetHook()
+    completion = cascade.stream_completion(
+        "prompt",
+        languages["en"],
+        on_reset=reset,
+        usable=lambda answer: "paid" in answer,
+    )
+
+    assert await drain(completion) == ["half ", "whole answer", "paid ", "answer"]
+    # Once for the deltas the race voided, once for the answer the paid model replaces.
+    assert reset.calls == 2
+    assert lost.replacement.scores == [0.0]
+
+
+async def test_the_answer_bound_belongs_to_the_replacement_and_not_to_what_it_voided(
+    settings,
+    languages,
+):
+    """An oversized provisional answer is not the answer: bounding the one that won by
+    what the loser already spent would truncate a perfectly sized replacement."""
+    lost = lost_the_race("whole answer", winner="free-flash", streamed="free-slow")
+    oversized = "x" * (MAX_COMPLETE_ANSWER_CHARS + 500)
+    cascade = fake_cascade(settings, handles=[FakeHandle([oversized], error=lost)])
+    completion = cascade.stream_completion("prompt", languages["en"])
+
+    deltas = await drain(completion)
+
+    assert len(deltas[0]) == MAX_COMPLETE_ANSWER_CHARS
+    assert deltas[1] == "whole answer"
+    assert completion.oversized is False
 
 
 async def test_a_pool_that_says_nothing_in_time_steps_up_invisibly(settings, languages):
@@ -74,18 +169,20 @@ async def test_a_pool_that_says_nothing_in_time_steps_up_invisibly(settings, lan
     assert cascade.calls_today == 1
 
 
-async def test_a_pool_that_outlives_the_budget_steps_up_without_exposing_partial_text(
+async def test_a_pool_that_outlives_the_budget_steps_up_over_the_half_answer_it_showed(
     settings,
     languages,
 ):
+    """A streamed answer that dies past its budget has already reached the page, so the
+    step-up drops it there: what the reader keeps is one answer, never two halves."""
     cascade = fake_cascade(
         settings,
         handles=[FakeHandle(["half an "], error=POOL_RAN_LONG)],
         client=FakeDirectClient(["paid ", "answer"]),
     )
     reset = ResetHook()
-    assert await run(cascade, languages["en"], reset) == ["paid ", "answer"]
-    assert reset.calls == 0
+    assert await run(cascade, languages["en"], reset) == ["half an ", "paid ", "answer"]
+    assert reset.calls == 1
 
 
 async def test_a_pool_answer_the_caller_cannot_use_steps_up_with_a_reset(settings, languages):
@@ -102,7 +199,7 @@ async def test_a_pool_answer_the_caller_cannot_use_steps_up_with_a_reset(setting
         on_reset=reset,
         usable=lambda answer: "paid" in answer,
     )
-    assert await drain(completion) == ["free answer", "paid ", "answer"]
+    assert await drain(completion) == ["free ", "answer", "paid ", "answer"]
     assert reset.calls == 1
     assert cascade.calls_today == 1
 
@@ -118,7 +215,7 @@ async def test_an_answer_the_caller_cannot_use_is_stepped_up_to_exactly_once(set
         languages["en"],
         usable=lambda _answer: False,
     )
-    assert await drain(completion) == ["free answer", "paid ", "answer"]
+    assert await drain(completion) == ["free ", "answer", "paid ", "answer"]
     assert cascade.broker.direct_calls == ["gpt-fast"]
     assert cascade.calls_today == 1
 
@@ -142,7 +239,7 @@ async def test_a_usable_answer_handed_over_is_stepped_up_without_being_rated_dow
         usable=lambda _answer: True,
         hand_over=lambda _answer: True,
     )
-    assert await drain(completion) == ["free answer", "paid ", "answer"]
+    assert await drain(completion) == ["free ", "answer", "paid ", "answer"]
     assert cascade.broker.direct_calls == ["gpt-fast"]
     assert handle.scores == []
 
@@ -168,7 +265,7 @@ async def test_a_handed_over_answer_stands_unrated_when_nothing_can_take_it(
         usable=lambda _answer: True,
         hand_over=lambda _answer: True,
     )
-    assert await drain(completion) == ["free answer"]
+    assert await drain(completion) == ["free ", "answer"]
     assert cascade.broker.direct_calls == []
     assert handle.scores == []
 
@@ -193,7 +290,7 @@ async def test_an_unusable_answer_is_rated_down_whatever_the_hand_over_says(
         usable=lambda _answer: False,
         hand_over=lambda _answer: False,
     )
-    assert await drain(completion) == ["free answer", "paid ", "answer"]
+    assert await drain(completion) == ["free ", "answer", "paid ", "answer"]
     assert handle.scores == [0.0]
 
 
@@ -219,7 +316,7 @@ async def test_a_failed_paid_step_gives_back_the_pool_answer_it_replaced(
         hand_over=lambda _answer: True,
     )
 
-    assert await drain(completion) == ["free answer", "free answer"]
+    assert await drain(completion) == ["free ", "answer", "free ", "answer"]
     assert completion.paid is False
     # The pool answer stands, so the caller's rating belongs to it again.
     await completion.record_quality(1.0)
@@ -267,7 +364,7 @@ async def test_a_pool_only_call_never_reaches_the_paid_model(settings, languages
         pool_only=True,
         usable=lambda _answer: False,
     )
-    assert await drain(completion) == ["free answer"]
+    assert await drain(completion) == ["free ", "answer"]
     assert cascade.broker.direct_calls == []
     assert cascade.calls_today == 0
 
@@ -294,7 +391,7 @@ async def test_a_pool_answer_the_caller_can_use_never_steps_up(settings, languag
         languages["en"],
         usable=lambda answer: "free" in answer,
     )
-    assert await drain(completion) == ["free answer"]
+    assert await drain(completion) == ["free ", "answer"]
     assert cascade.broker.direct_calls == []
 
 
@@ -369,7 +466,7 @@ async def test_an_unusable_answer_stands_when_there_is_nothing_to_step_up_to(set
         on_reset=reset,
         usable=lambda _answer: False,
     )
-    assert await drain(completion) == ["free answer"]
+    assert await drain(completion) == ["free ", "answer"]
     assert cascade.broker.direct_calls == []
     assert reset.calls == 0
     assert handle.scores == [0.0]
