@@ -6,11 +6,13 @@ and gated, so the provisional state is held until the assertion about it has run
 """
 
 import pytest
+from anki.collection import Collection
 from e2e_app import WORD, Gate, answer, live_app, submit
 from fakes import FakeDirectClient, FakeHandle, lost_the_race
 from llmbroker import LLMTimeoutError
 from playwright.sync_api import Page, expect
 
+from echo_words.anki import NOTE_TYPE_NAME, collection_path
 from echo_words.config import Settings
 
 pytestmark = pytest.mark.e2e
@@ -18,6 +20,10 @@ pytestmark = pytest.mark.e2e
 PROVISIONAL = "<b>the lane that lost</b>"
 WINNER = "<b>the whole answer that won</b>"
 PAID = "<b>the answer that was paid for</b>"
+FIRST = "<b>the first analysis</b>"
+SECOND = "<b>the second analysis</b>"
+OTHER = "Wanderung"
+RAIL = '[role="tablist"][aria-label="Analysed words"] [role="tab"]'
 
 
 def test_a_lost_race_repaints_the_entry_instead_of_splicing_the_answer_that_won(
@@ -120,3 +126,110 @@ def test_a_wording_the_judgement_refuses_is_never_shown_however_much_streamed(
         expect(page.locator(".entry-card-status")).to_have_text("🚫 no card")
         expect(page.locator(".entry-notice")).to_contain_text("does not vouch")
         expect(page.locator(".entry-text")).to_have_count(0)
+
+
+def test_a_second_word_being_analysed_does_not_write_into_the_card_still_open(
+    page: Page,
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """One event stream carries every entry, and the reader may be looking at any of
+    them. A second word's deltas belong to a second card, and reaching the open one
+    would rewrite a finished analysis into somebody else's."""
+    gate = Gate()
+    with live_app(
+        settings,
+        monkeypatch,
+        handles=[
+            FakeHandle([answer(FIRST)]),
+            FakeHandle([answer(SECOND, word=OTHER)], hold=gate.wait),
+        ],
+    ) as app:
+        submit(page, app.url)
+        expect(page.locator(".entry-text")).to_contain_text("the first analysis")
+
+        page.get_by_placeholder("a word or a phrase").fill(OTHER)
+        page.get_by_role("button", name="Analyse").click()
+        expect(page.locator(".entry-text")).to_contain_text("the second analysis")
+
+        page.get_by_role("tab", name=WORD).click()
+        expect(page.locator(".entry-text")).to_contain_text("the first analysis")
+        expect(page.locator(".entry-text")).not_to_contain_text("the second analysis")
+
+        gate.open()
+
+        expect(page.locator(".entry-text")).to_contain_text("the first analysis")
+        expect(page.locator(".entry-text")).not_to_contain_text("the second analysis")
+        page.get_by_role("tab", name=OTHER).click()
+        expect(page.locator(".entry-text")).to_contain_text("the second analysis")
+
+
+def test_a_retry_sends_the_word_again_and_leaves_the_failed_entry_reachable(
+    page: Page,
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The retry beside a failed entry sends the word again rather than reopening the
+    entry that failed, so the reader ends on a working card with the failed one still
+    in the rail behind it — a failure that vanished would be one nobody could report."""
+    offline = Settings(**{**settings.model_dump(), "api_model": ""})
+    with live_app(
+        offline,
+        monkeypatch,
+        handles=[
+            FakeHandle([answer(PROVISIONAL)], error=LLMTimeoutError("the pool missed it")),
+            FakeHandle([answer(FIRST)]),
+        ],
+    ) as app:
+        submit(page, app.url)
+        expect(page.locator(".entry-error")).to_be_visible()
+
+        page.get_by_role("button", name=f"Send “{WORD}” again").click()
+
+        expect(page.locator(".entry-text")).to_contain_text("the first analysis")
+        expect(page.locator(".entry-error")).to_have_count(0)
+        expect(page.locator(RAIL)).to_have_count(2)
+
+
+def test_a_card_made_for_another_headword_says_so_above_the_analysis(
+    page: Page,
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An answer may card a headword other than the wording submitted — an article for
+    a bare noun, a corrected spelling. The page has to say so, or the reader drills a
+    card they never asked for and never sees that they did."""
+    carded = "der Schlüssel"
+    with live_app(
+        settings,
+        monkeypatch,
+        handles=[FakeHandle([answer(FIRST, word=carded)])],
+    ) as app:
+        submit(page, app.url)
+        expect(page.locator(".entry-notice")).to_contain_text(f"The card is for “{carded}”")
+        expect(page.locator(".entry-notice")).to_contain_text(f"not the “{WORD}” you typed")
+
+
+def test_the_submitted_word_reaches_the_configured_deck_as_one_note(
+    page: Page,
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The whole point of the app is the note at the end of it. Every other test stops
+    at the page; this one opens the collection the server wrote and looks."""
+    with live_app(settings, monkeypatch, handles=[FakeHandle([answer(FIRST)])]) as app:
+        submit(page, app.url)
+        expect(page.locator(".entry-card-status")).to_contain_text("✅")
+        written = collection_path(app.settings)
+
+    # Opened once the server has closed the collection: pylib allows one holder.
+    collection = Collection(str(written))
+    try:
+        notes = collection.find_notes(f"note:{NOTE_TYPE_NAME}")
+        assert len(notes) == 1
+        fields = collection.get_note(notes[0]).items()
+        assert any(WORD in value for _name, value in fields)
+        decks = {collection.decks.name(card.did) for card in collection.get_note(notes[0]).cards()}
+        assert decks == {"English::Vocabulary"}
+    finally:
+        collection.close()

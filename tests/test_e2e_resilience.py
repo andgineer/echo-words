@@ -70,3 +70,57 @@ def test_a_word_submitted_with_no_connection_is_sent_once_when_it_returns(
         )
         articles = len(app.broker.stream_calls) - len(app.broker.attestation_calls)
         assert articles == 1
+
+
+def test_a_page_reloaded_mid_answer_picks_the_entry_back_up(
+    page: Page,
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A reload throws away everything the page knew and opens a new event stream onto
+    an answer already half delivered. What was written so far has to come back with the
+    entry, and the rest has to arrive on the new stream."""
+    gate = Gate()
+    with live_app(
+        settings,
+        monkeypatch,
+        handles=[FakeHandle([answer(ARTICLE)], hold=gate.wait)],
+    ) as app:
+        submit(page, app.url)
+        expect(page.locator(".entry-text")).to_contain_text("the finished analysis")
+
+        page.reload()
+
+        expect(page.locator(".entry-text")).to_contain_text("the finished analysis")
+        expect(page.locator(".working.pending")).to_be_visible()
+
+        gate.open()
+
+        expect(page.locator(".entry-card-status")).to_contain_text("✅")
+        expect(page.locator(".working.pending")).to_have_count(0)
+
+
+def test_a_second_page_open_on_the_same_server_is_told_the_same_answer(
+    page: Page,
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The event stream fans out to whoever is listening — a phone left open beside the
+    laptop is the ordinary case. A page that did not submit the word still has to be
+    shown it, or it sits on a rail that never moves again."""
+    gate = Gate()
+    with live_app(
+        settings,
+        monkeypatch,
+        handles=[FakeHandle([answer(ARTICLE)], hold=gate.wait)],
+    ) as app:
+        onlooker = page.context.new_page()
+        onlooker.goto(app.url)
+        submit(page, app.url)
+        expect(page.locator(".entry-text")).to_contain_text("the finished analysis")
+
+        gate.open()
+
+        expect(onlooker.locator(".entry-text")).to_contain_text("the finished analysis")
+        expect(onlooker.locator(".entry-card-status")).to_contain_text("✅")
+        onlooker.close()
