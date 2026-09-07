@@ -1,10 +1,17 @@
-# Implementation plan — defects seen in local use, none of them fixed yet
+# Implementation plan — defects seen in use and in the bench, none of them fixed yet
 
-Found while running the app locally against the real provider keys and reading
-what it did. Each item below was reproduced and has its evidence written down; two
-sibling defects found in the same session — the player speaking a corrected
-misspelling, and sense chips that all carried the same word — are already fixed and
-are not repeated here.
+Items 1 to 5 were found while running the app locally against the real provider
+keys and reading what it did. Each was reproduced and has its evidence written
+down; two sibling defects found in the same session — the player speaking a
+corrected misspelling, and sense chips that all carried the same word — are
+already fixed and are not repeated here.
+
+Items 6 to 13 come from a different reading: the review packet of the
+source-language sense cue's smoke-tier bench run, read item by item by a fresh
+agent. Every deterministic contract and every quality threshold in that run was
+green, so these are the faults an automated screen cannot see. Each quotes the
+answer it was found in, because the run directory is not checked in and the
+evidence has to outlive it.
 
 The items are independent. None blocks another, and each is finished on its own.
 
@@ -73,6 +80,125 @@ carries the routing fix that decides how much it still costs, and the measuremen
 that would justify changing our call shape is described in
 [`two-prompts.md`](two-prompts.md), which is itself waiting. Revisit once the
 routing fix has shipped and the pool's behaviour has been re-measured.
+
+## 6. A wrong grammatical form reaches a card, and nothing can see it
+
+Bulgarian `разказвам` was carded with three examples that wedge the first-person
+citation form into sentences needing another person:
+
+    Той често <b>разказвам</b> за своето детство.   (needs разказва)
+    Какво ми <b>разказвам</b> сега?                 (needs разказваш)
+    <<b>разказвам</b>> ти интересна история.        (stray literal angle brackets)
+
+The third is example one, so it is the ContextRecognition front. This fixture
+exists because Bulgarian cites a verb in the first person singular, and the model
+failed the trap in every sentence.
+
+The backend tests a sentence's alphabet, never its grammar, so nothing between the
+model and the deck can see this. Whatever is done here is a judgement about how
+much grammar the backend may claim to know, which is why it is written down before
+anything is built: a repair that guesses an inflected form is the failure mode the
+answer-shape decisions have refused elsewhere. The stray `<` `>` around the bold
+span is separable and is a plain sanitizer question.
+
+## 7. A coinage was carded because the judge vouched for it
+
+`Löffelangst`, a word that does not exist, was carded with a confident sense —
+"боязнь заболеть бешенством" — an invented folk etymology about rabies and
+cutlery, and two invented citations. The standalone judgement is what should have
+stopped it, and `openrouter-laguna-s-2.1` answered `{"used": true, "where":
+"informal speech, southern Germany/Austria"}`.
+
+The aggregate threshold tolerates this: the smoke tier asks that two of three
+unused wordings be refused, two were, and the screen stayed green. So the guard
+that exists for exactly this reader-facing harm can fail on a concrete item
+without the run saying so. What is open is whether the judgement is asked
+differently, asked of more than one model, or whether a single vouching answer
+should stop being enough.
+
+## 8. A word of two scripts reaches a card front
+
+`bare-sr-grad` carded this example:
+
+    Naš <b>grad</b> ima mnogo lepiх parkova.
+
+`lepiх` is Latin `lepi` followed by CYRILLIC SMALL LETTER HA. It is the only
+occurrence in the run, and it lands on the ContextRecognition front and the
+ContextProduction gapped front. The note also has the Cyrillic headword `град`
+beside a Latin sentence, so one note shows two scripts across its four cards.
+
+Serbian is configured `latin+cyrillic`, so both alphabets are legal letters and
+the sentence passes the source-language test. This is the one item on this page
+the backend can settle deterministically: a word-shaped token of a
+`latin+cyrillic` language may not mix the two scripts inside itself. Whether the
+example is dropped or the note refused is the open choice; mixing scripts within
+one word is not a spelling any of these languages has.
+
+## 9. Invented origins reach the reader
+
+Three confident and wrong, in one smoke tier: `олівець` said to be borrowed from
+Turkic (it is from `олово`); `разказвам` traced to "казнить" (the root is
+`казать`); `Löffelangst` given the rabies story above. Two more say nothing while
+sounding like an origin: `прозорец` "восходящее к общему индоевропейскому фонду с
+кодом *or-*", `causal` "происходит от латинского слова через английские суффиксы".
+
+The prompt already says to leave the origin out where it is not known, because an
+origin reasoned out from the parts of a word reads exactly like one that is known.
+The instruction is not obeyed, and no screen tests it — an etymology is prose, and
+prose is only checked for its markup. What is open is whether this is worth a
+measurement of its own or is the price of the section.
+
+## 10. A near-neighbour warning that does not fire, and a collocation invented in its place
+
+`wider` was answered with no mention of `wieder`, which is the whole reason that
+fixture exists. The same article invents the collocation `wider Erwachten` — the
+wording is `wider Erwarten` — and glosses `wider besseres Wissen` as "против
+собственной совести" when it is against better knowledge, not conscience. Its
+prose translations ("против, навстречу, о") also disagree with the ones it carded
+("против, вопреки, наперекор").
+
+`causal` did warn about `casual`, so the arm is not dead; one of two fired.
+
+## 11. The article's markup and prose are not held to what the format rules ask
+
+From one run: `text-sr-8` returns Markdown, not HTML — `**Sve mi se čini da …**`,
+whose asterisks print literally. Several answers nest bold inside bold
+(`<b>…<b>…</b>…</b>`). `cyrillic-bg-prozorec` glues words to tags:
+`Затворих<b>прозорец</b>а`. `neighbour-en-causal` prints a half-Russian example,
+"Мы ищем <b>causal</b> links between the two events." `text-de-4` prints the
+corrupted token `сыat по горло` — Latin letters spliced into a Cyrillic word — and
+opens with the ungrammatical "Мне надоело этот шум."
+
+The sanitizer decides what tags survive; it does not decide whether the text
+around them is one language, one script, or grammatical. Some of this is
+sanitizer work and some is not, which is the first thing to separate.
+
+## 12. Card content in the wrong language, and reader-visible translations that invert the sense
+
+`typo-en-recieve` carried "приймать" into the `Translations` field — the Ukrainian
+word, not a Russian one, and it is the answer the card gives. Separately, and
+short of a card, `bare-en-reluctant` translated both of its examples as though the
+action happened: "He was <b>reluctant</b> to sign the contract." → "Он неохотно
+подписал контракт." `reluctant to X` asserts unwillingness, not reluctant
+performance. Example translations are shown to the reader and are not one of the
+six fields, so this one stops at the article.
+
+The translations that do reach a card are the ones worth a guard, if any is
+possible: the target language's alphabet is testable, a wrong word inside it is
+not.
+
+## 13. The forms-table screen counts a face as a grammatical person
+
+`bare-sr-umoran` returned a legitimate forms table whose cell reads `уставшее
+лицо` — a tired face. `_GRAMMAR_TERMS` in the bench matches `лицо\b`, the
+grammatical person, so the run reported `tables_naming_terms: 1` against an answer
+that named no category.
+
+This is the bench's own defect, not the product's, and it costs a real signal: the
+diagnostic exists to catch a table that labels a paradigm, and a false positive in
+it makes the number unreadable. The term needs the context that separates the
+grammatical sense from the everyday one, or that diagnostic needs to stop being a
+word list.
 
 ## What is deliberately not here
 

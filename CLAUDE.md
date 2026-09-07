@@ -34,10 +34,11 @@ tool looks for.
   constraint. Its first arm — the incumbent paid model at a low
   reasoning effort — waits on llmbroker, which cannot yet send a
   request parameter to a model reached by name.
-  `observed-defects.md` — five faults reproduced in local use and left
-  unfixed, each with its
-  evidence, from an unignored `.env` to a search that denies a language
-  it merely already carries. `two-prompts.md` — a cheap model call to
+  `observed-defects.md` — thirteen faults left unfixed, each with its
+  evidence: five reproduced in local use, from an unignored `.env` to a
+  search that denies a language it merely already carries, and eight read
+  out of a bench review packet whose every automated screen was green.
+  `two-prompts.md` — a cheap model call to
   choose the branch for the submit box; **held** until `model-tier.md`
   reports, because no observed defect stands behind it and it adds a
   round trip to an app whose complaint is waiting.
