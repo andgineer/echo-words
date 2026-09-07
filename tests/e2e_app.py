@@ -17,7 +17,6 @@ from pathlib import Path
 import pytest
 import uvicorn
 from fakes import FakeBroker
-
 from playwright.sync_api import Page
 
 from echo_words.api import create_app
@@ -75,7 +74,7 @@ def _no_lookups(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def _wired_broker(script: dict, box: list[FakeBroker]) -> type[FakeBroker]:
     class ScriptedBroker(FakeBroker):
-        def __init__(self, home=None, direct=()) -> None:  # noqa: ANN001
+        def __init__(self, home=None, direct=()) -> None:
             super().__init__(home=home, direct=direct, **script)
             box.append(self)
 
