@@ -49,17 +49,18 @@ the work again. **Do not re-open any of it.**
   withhold fewer coinages than the pool does. Ordinary wording reaches neither.
 - **Every accepted note generates exactly four cards.** The bare word and its
   translations are asked both ways; the selected sense's sentence is asked
-  once with all unit parts highlighted and once with them gapped. A short sense
-  label appears on the two bare fronts only when the answer retains several
-  senses. The model returns both finished sentence forms. For an exact submitted
+  once with all unit parts highlighted and once with them gapped. A short
+  source-language sense cue appears on the recognition front only when the
+  answer retains several senses. The model returns both finished sentence forms. For an exact submitted
   click the backend constructs them from the carried context; generated forms
   are sanitized and accepted only as matching transformations which retain
   context outside the unit. The backend does not infer generated morphology.
-- Card 2 is intentionally bare translations plus the optional label. A bare
-  translation may fit several source words, and the label disambiguates it.
-  The gapped example is card 4, which asks the separate production-in-context
-  question. The catalogue and measurements are in
-  `decision-card-shapes.md`.
+- Card 2 is intentionally bare translations, with no cue: every sense of a note
+  shares one headword, so its answer does not depend on which sense was carded.
+  The cue is on card 1, where the answer is the translation, so it is written in
+  the source language and is emptied when it is not. The gapped example is card
+  4, which asks the separate production-in-context question. The catalogue and
+  measurements are in `decision-card-shapes.md`.
 
 - **Anki without a GUI — final.** The backend maintains its own
   collection via the headless `anki` pylib and syncs it to AnkiWeb;

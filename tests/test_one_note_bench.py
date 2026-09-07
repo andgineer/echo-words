@@ -852,6 +852,39 @@ def test_markup_leaking_into_the_plain_example_is_not_reported_as_a_defect():
     assert scored.metrics["payload_valid"] is True
 
 
+def test_sense_labels_are_scored_by_what_a_bare_front_can_show():
+    shot = bench.Shot("bare-en-bank", "bare", "en", "bank", expected_kind="unit")
+    shot.text = (
+        "<b>bank</b> article===CARD==="
+        '{"kind":"unit","word":"bank","word_relation":"same","suggestion":"",'
+        '"meanings":['
+        '{"label":"money","translations":["банк"],'
+        '"examples":[{"text":"The bank opens.","translation":"Банк открывается.",'
+        '"highlighted":"The <b>bank</b> opens."}]},'
+        '{"label":"финансовое учреждение","translations":["банк"],'
+        '"examples":[{"text":"The bank closes.","translation":"Банк закрывается.",'
+        '"highlighted":"The <b>bank</b> closes."}]},'
+        '{"label":"river bank","translations":["берег","bank of a river"],'
+        '"examples":[{"text":"We sat on the bank.","translation":"Мы сидели на берегу.",'
+        '"highlighted":"We sat on the <b>bank</b>."}]},'
+        '{"label":"","translations":["насыпь"],'
+        '"examples":[{"text":"The bank was steep.","translation":"Насыпь была крутой.",'
+        '"highlighted":"The <b>bank</b> was steep."}]}'
+        '],"segments":[]}'
+    )
+
+    scored = bench.score(shot)
+
+    assert [row["verdict"] for row in scored.metrics["sense_labels"]] == [
+        "kept",
+        "target_language",
+        "repeats_translation",
+        "absent",
+    ]
+    assert scored.metrics["sense_labels_offered"] == 3
+    assert scored.metrics["sense_labels_kept"] == 1
+
+
 def test_a_german_lookup_label_may_close_up_its_separated_spelling():
     shot = next(row for row in bench.text_shots() if row.shot_id == "text-de-6")
     shot.text = (

@@ -260,9 +260,8 @@ def _headword(value: Any, language: Language) -> str:
 
 
 def _parse_meaning(value: Any, request: "_Request") -> Meaning | None:
-    if not isinstance(value, dict) or not isinstance(value.get("label"), str):
+    if not isinstance(value, dict):
         return None
-    label = value["label"]
     translations_value = value.get("translations", value.get("translation"))
     if isinstance(translations_value, str):
         translations_value = [translations_value]
@@ -276,7 +275,31 @@ def _parse_meaning(value: Any, request: "_Request") -> Meaning | None:
     examples = _usable_examples(value.get("examples"), request)
     if not examples:
         return None
-    return Meaning(label.strip(), translations, examples)
+    return Meaning(_sense_label(value.get("label"), translations, request), translations, examples)
+
+
+def _sense_label(value: Any, translations: list[str], request: "_Request") -> str:
+    """The cue printed beside the headword on the bare front, or nothing.
+
+    That front's answer is the target-language translation, so a cue written in the
+    target language, or one repeating a word of this sense's own translations, hands
+    over the answer the card asks for. Dropping it only makes the front less
+    informative, which is why an unusable cue empties rather than sinking the sense.
+    """
+    if not isinstance(value, str):
+        return ""
+    label = value.strip()
+    if not label or not sentence_is_source_language(label, request.language, request.target):
+        return ""
+    answered = {
+        fold_for_match(match.group(), request.language)
+        for translation in translations
+        for match in _SOURCE_TOKEN.finditer(translation)
+    }
+    cued = {
+        fold_for_match(match.group(), request.language) for match in _SOURCE_TOKEN.finditer(label)
+    }
+    return "" if cued & answered else label
 
 
 def _usable_examples(value: Any, request: "_Request") -> list[Example]:

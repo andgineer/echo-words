@@ -8,14 +8,28 @@ asks each in both directions. The card set is unconditional.
 
 | kind | front | back |
 |---|---|---|
-| Recognition | word, optional short sense label, audio | translations |
-| Recall | translations, optional short sense label | word, audio |
+| Recognition | word, optional short source-language sense cue, audio | translations |
+| Recall | translations | word, audio |
 | ContextRecognition | sentence with every surface part highlighted | translations, word, audio |
 | ContextProduction | translations and the sentence with every surface part gapped | word, audio |
 
-The label appears on the two bare fronts only when the answer retains several
-senses. A bare translation can fit several source words, so the label tells the
-reviewer which sense is expected. The sentence itself disambiguates the two
+The sense cue appears on the recognition front alone, and only when the answer
+retains several senses: it is what tells the reviewer which sense of a word
+carded more than once is being asked. It is written in the **source** language —
+a near-synonym, a typical collocation, or the field the sense belongs to —
+because that front is answered by the target-language translations, and a cue in
+the answer's own language prints the answer above the question. Replaying 502
+polysemous answers recorded by earlier bench runs, a target-language sense label
+shared a word with its own translations in 43% of them and carried a whole
+translation in 33%: `град` labelled "город" beside the translation "город",
+`aufstehen` labelled "вставать" beside "вставать, подниматься". A cue that is not
+in the source language, or that repeats a word of its own translations, is
+emptied instead of printed. The front is then less informative, which is the
+lesser harm.
+
+The recall front carries no cue at all. Every sense of a note shares one
+headword, so that front's answer is the same whichever sense the note is about
+and a cue there disambiguates nothing. The sentence itself disambiguates the two
 context cards. This leaves card 2 genuinely bare while card 4 asks production
 under context rather than presenting the same question twice.
 
@@ -134,7 +148,11 @@ four.
 
 The six fields are the word, audio, label, translations, highlighted sentence
 and gapped sentence. The field and template names are checked on every add; a
-mismatch raises rather than silently rewriting a collection.
+mismatch raises rather than silently rewriting a collection. A template body is
+not a name: it belongs to the version rather than to the reader, so a change of
+card wording is written into a collection that already holds notes. Field
+contents are the reader's, and a note keeps what it was made with — a sense cue
+written under an older rule stays on that note's own card until it is remade.
 
 `inv rebuild-note-type` is the explicit destructive operation used before the
 next deploy of this schema. It names the note type and counts what would be

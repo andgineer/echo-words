@@ -18,6 +18,7 @@ from typing import Protocol
 
 from anki.collection import Collection
 from anki.errors import SyncError, SyncErrorKind
+from anki.models import ModelManager
 from anki.notes import Note as AnkiNote
 from anki.notes import NoteId
 from anki.sync import SyncAuth
@@ -43,7 +44,7 @@ _TEMPLATES: tuple[tuple[str, str, str], ...] = (
     ),
     (
         "Recall",
-        "{{Translations}}{{#Label}} ({{Label}}){{/Label}}",
+        "{{Translations}}",
         "{{Word}} {{Audio}}",
     ),
     (
@@ -811,6 +812,7 @@ def _ensure_note_type(collection: Collection) -> dict:
                 TEMPLATE_NAMES,
             )
             raise MisconfiguredNoteTypeError
+        _refresh_templates(models, existing)
         return existing
 
     model = models.new(NOTE_TYPE_NAME)
@@ -827,6 +829,23 @@ def _ensure_note_type(collection: Collection) -> dict:
     if created is None:
         raise RuntimeError("Anki did not create the EchoWords note type")
     return created
+
+
+def _refresh_templates(models: ModelManager, model: dict) -> None:
+    """Carry a change of card wording into a collection which already holds notes.
+
+    A template body is ours rather than the reader's data, so it is rewritten in
+    place; the field names are what a mismatch still refuses to touch.
+    """
+    changed = False
+    for template, (_name, front, back) in zip(model["tmpls"], _TEMPLATES, strict=True):
+        if template["qfmt"] != front or template["afmt"] != back:
+            template["qfmt"] = front
+            template["afmt"] = back
+            changed = True
+    if changed:
+        models.update_dict(model)
+        logger.info("rewrote the %s card templates to this version's wording", NOTE_TYPE_NAME)
 
 
 def card_fields(note: Note, media_filename: str | None = None) -> dict[str, str]:

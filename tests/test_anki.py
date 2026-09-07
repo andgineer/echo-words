@@ -70,7 +70,7 @@ def make_note(
 def two_meanings() -> list[Meaning]:
     return [
         Meaning(
-            label="учреждение",
+            label="money",
             translations=["банк"],
             examples=[
                 Example(
@@ -82,7 +82,7 @@ def two_meanings() -> list[Meaning]:
             ],
         ),
         Meaning(
-            label="берег",
+            label="river",
             translations=["берег"],
             examples=[
                 Example(
@@ -100,7 +100,7 @@ def three_meanings() -> list[Meaning]:
     return [
         *two_meanings(),
         Meaning(
-            label="насыпь",
+            label="road",
             translations=["насыпь"],
             examples=[
                 Example(
@@ -131,7 +131,7 @@ async def test_note_type_bootstrap_creates_every_field_and_template(tmp_path):
         backs = {template["name"]: template["afmt"] for template in model["tmpls"]}
         assert fronts == {
             "Recognition": "{{Word}}{{#Label}} ({{Label}}){{/Label}} {{Audio}}",
-            "Recall": "{{Translations}}{{#Label}} ({{Label}}){{/Label}}",
+            "Recall": "{{Translations}}",
             "ContextRecognition": "{{Highlighted}}",
             "ContextProduction": "{{Translations}}<br>{{Gapped}}",
         }
@@ -206,7 +206,7 @@ async def test_separable_verb_uses_the_model_finished_sentence_forms(tmp_path):
 
 def test_label_is_filled_only_when_the_answer_has_several_senses():
     assert card_fields(make_note("bank"))["Label"] == ""
-    assert card_fields(make_note("bank", meanings=two_meanings()))["Label"] == "учреждение"
+    assert card_fields(make_note("bank", meanings=two_meanings()))["Label"] == "money"
 
 
 def test_the_selected_sense_alone_populates_every_card_field():
@@ -215,7 +215,7 @@ def test_the_selected_sense_alone_populates_every_card_field():
     assert fields == {
         "Word": "bank",
         "Audio": "",
-        "Label": "берег",
+        "Label": "river",
         "Translations": "берег",
         "Highlighted": "We sat on the <b>bank</b>.",
         "Gapped": "We sat on the ___.",
@@ -277,6 +277,28 @@ async def test_a_preexisting_incompatible_note_type_fails_without_adding(
             await store.add_note(make_note(), "English::Vocabulary")
         assert store.collection.note_count() == 0
         assert "Wrong" in caplog.text and "expected" in caplog.text
+    finally:
+        await store.close()
+
+
+async def test_an_older_collection_gets_this_version_card_wording(tmp_path, caplog):
+    settings = local_settings(tmp_path)
+    store = AnkiStore(settings)
+    await store.open()
+    try:
+        await store.add_note(make_note(), "English::Vocabulary")
+        models = store.collection.models
+        model = models.by_name(NOTE_TYPE_NAME)
+        model["tmpls"][1]["qfmt"] = "{{Translations}}{{#Label}} ({{Label}}){{/Label}}"
+        models.update_dict(model)
+
+        with caplog.at_level(logging.INFO, logger="echo_words.anki"):
+            await store.add_note(make_note("receive"), "English::Vocabulary")
+
+        refreshed = models.by_name(NOTE_TYPE_NAME)
+        assert refreshed["tmpls"][1]["qfmt"] == "{{Translations}}"
+        assert store.collection.note_count() == 2
+        assert "card templates" in caplog.text
     finally:
         await store.close()
 

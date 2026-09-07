@@ -1439,6 +1439,55 @@ def _examples_with_foreign_letters(shot: Shot) -> list[dict[str, object]]:
     return dropped
 
 
+def _sense_labels(shot: Shot) -> list[dict[str, object]]:
+    """Every raw sense label of a polysemous answer, with what production does to it.
+
+    The label is printed beside the headword on the bare front whose answer is the
+    translations, so one written in the target language, or one repeating a word of
+    its own translations, is the answer printed above the question; production empties
+    those. How many survive is what says whether the front keeps its disambiguation,
+    and whether a surviving cue is any use is the reviewer's to judge.
+    """
+    language = LANGUAGES[shot.lang]
+    meanings = shot.payload.get("meanings")
+    if not isinstance(meanings, list) or len(meanings) < 2:
+        return []
+    rows: list[dict[str, object]] = []
+    for index, meaning in enumerate(meanings):
+        if not isinstance(meaning, dict):
+            continue
+        raw = meaning.get("label")
+        label = raw.strip() if isinstance(raw, str) else ""
+        offered = meaning.get("translations")
+        translations = [item for item in offered if isinstance(item, str)] if isinstance(
+            offered,
+            list,
+        ) else []
+        answered = {
+            fold_for_match(word, language)
+            for translation in translations
+            for word in split_words(translation)
+        }
+        cued = {fold_for_match(word, language) for word in split_words(label)}
+        if not label:
+            verdict = "absent"
+        elif not sentence_is_source_language(label, language, TARGET_NAME):
+            verdict = "target_language"
+        elif cued & answered:
+            verdict = "repeats_translation"
+        else:
+            verdict = "kept"
+        rows.append(
+            {
+                "meaning": index,
+                "label": label,
+                "translations": translations,
+                "verdict": verdict,
+            },
+        )
+    return rows
+
+
 def vocab_metrics(shot: Shot, parsed: ParsedUnit, analysis: str) -> dict:
     note = parsed.note
     example = note.meaning.examples[0]
@@ -1477,6 +1526,7 @@ def vocab_metrics(shot: Shot, parsed: ParsedUnit, analysis: str) -> dict:
         and normalize(neighbour_case.neighbour, shot.lang)
         in set(tokens(analysis, shot.lang))
     )
+    sense_labels = _sense_labels(shot) if shot.payload.get("kind") == "unit" else []
     return {
         "word_valid": bool(note.word),
         "meanings": len(note.meanings),
@@ -1528,6 +1578,9 @@ def vocab_metrics(shot: Shot, parsed: ParsedUnit, analysis: str) -> dict:
         "examples_with_foreign_letters": (
             _examples_with_foreign_letters(shot) if shot.payload.get("kind") == "unit" else []
         ),
+        "sense_labels": sense_labels,
+        "sense_labels_offered": sum(row["verdict"] != "absent" for row in sense_labels),
+        "sense_labels_kept": sum(row["verdict"] == "kept" for row in sense_labels),
         "word_relation": parsed.word_relation,
         "typo_word_exact": typo_word_exact,
         "typo_heads_submission": typo_heads_submission,
@@ -2467,6 +2520,14 @@ def review_packet(
         if shot.metrics.get("forms_table_terms"):
             categories.add("forms_table_terms")
             actual["forms_table_terms"] = shot.metrics["forms_table_terms"]
+        if shot.metrics.get("sense_labels"):
+            categories.add("sense_label")
+            actual["sense_labels"] = shot.metrics["sense_labels"]
+            expected["sense_label"] = (
+                "a short source-language cue telling the senses apart, which the reader "
+                "meets beside the headword on a card answered by the translations: "
+                "judge whether a kept one is any use to them"
+            )
         if shot.kind == "context":
             categories.add("click")
             expected["surface"] = CLICK_BY_ID[shot.shot_id].label
@@ -2779,6 +2840,19 @@ def report(out: Path, tier: str) -> None:
     print()
 
     print("DIAGNOSTICS — NOT QUALITY GATES")
+    labelled = [
+        row
+        for row in (*current_initial, *context_rows)
+        if row.metrics.get("sense_labels") and usable_result(row)
+    ]
+    if labelled:
+        offered = sum(int(row.metrics.get("sense_labels_offered", 0)) for row in labelled)
+        kept = sum(int(row.metrics.get("sense_labels_kept", 0)) for row in labelled)
+        print(
+            f"  sense labels usable on a bare front {kept}/{offered}"
+            f" over {len(labelled)} polysemous answers"
+            "  (diagnostic; production empties the rest)",
+        )
     words_total = sum(int(row.metrics.get("words_total", 0)) for row in actual_text_rows)
     words_covered = sum(
         int(row.metrics.get("words_covered", 0)) for row in actual_text_rows

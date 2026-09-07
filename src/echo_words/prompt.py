@@ -22,9 +22,9 @@ _INTRO = """You are a language tutor. The request below concerns {source_lang}.
 
 {request}
 
-WRITE YOUR ENTIRE ANSWER IN {target_lang}. Explanations, translations, sense
-labels, usage notes, origin and reasons are in {target_lang}. Only a headword,
-quoted source text and source-language examples stay in {source_lang}.
+WRITE YOUR ENTIRE ANSWER IN {target_lang}. Explanations, translations, usage
+notes, origin and reasons are in {target_lang}. Only a headword, quoted source
+text, source-language examples and the card sense label stay in {source_lang}.
 {source_hints}"""
 
 _BRANCH = """First decide whether the submission is ONE LEXICAL UNIT WORTH LEARNING WHOLE or
@@ -90,7 +90,7 @@ Angle-bracketed values are placeholders, not strings to copy:"""
 _UNIT_JSON = """{{"kind": "unit", "word": "<dictionary lemma of the unit>",
  "word_relation": "<same, morphology or typo>",
  "suggestion": "<corrected spelling, or empty>",
- "meanings": [{{"label": "<short target-language sense label or empty>",
+ "meanings": [{{"label": "<short {source_lang} sense cue or empty>",
  "translations": ["<target-language translation>"],
  "examples": [{{"highlighted": "<short source-language sentence, unit in b tags>",
  "translation": "<target-language translation>"}}]}}],
@@ -113,8 +113,13 @@ suggestion is empty otherwise: it is only ever a correction."""
 
 _MEANING_RULES = """meanings are the senses that need different words in {target_lang}, most common
 first; do not impose a numerical limit. Every meaning has 2-4 main translations
-and 1-2 examples. When several meanings remain, every label is a short
-{target_lang} tag distinguishing them; for one meaning its label is empty.
+and 1-2 examples. When several meanings remain, every label is a short cue in
+{source_lang} telling them apart — a near-synonym, a typical collocation or the
+field the sense belongs to. Write it in {source_lang} and never in {target_lang},
+and never repeat a word of this meaning's own translations: the label is printed
+beside the headword on the front of the card whose answer is those translations,
+so a {target_lang} label gives that answer away. For one meaning its label is
+empty.
 Each highlighted example is a whole sentence carrying <b> tags around all and
 only the unit, since it becomes the front of a card. Write that sentence entirely
 in {source_lang}, in one script from end to end — a {target_lang} sentence with

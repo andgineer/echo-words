@@ -111,9 +111,9 @@ def test_bad_meanings_are_dropped_and_context_sense_is_remapped(languages):
     parsed = parse_answer_payload(
         payload(
             meanings=[
-                meaning("учреждение"),
+                meaning("money"),
                 meaning("сломано", translations=[]),
-                meaning("берег", translations=["берег"]),
+                meaning("river", translations=["берег"]),
             ],
             context_sense=2,
         ),
@@ -122,7 +122,7 @@ def test_bad_meanings_are_dropped_and_context_sense_is_remapped(languages):
     )
 
     assert isinstance(parsed, ParsedUnit)
-    assert [item.label for item in parsed.note.meanings] == ["учреждение", "берег"]
+    assert [item.label for item in parsed.note.meanings] == ["money", "river"]
     assert parsed.note.sense == 1
 
 
@@ -695,13 +695,60 @@ def test_an_unlabelled_sense_is_kept_beside_a_labelled_one_and_still_cards(langu
     # Measured cost of dropping it: Serbian `клупа` returned "скамейка" unlabelled and
     # "тиски" under `техника`, and the note went out teaching the vise.
     parsed = parse_answer_payload(
-        payload(meanings=[meaning(), meaning("о реке", translations=["берег"])]),
+        payload(meanings=[meaning(), meaning("river", translations=["берег"])]),
         "bank",
         languages["en"],
     )
 
     assert isinstance(parsed, ParsedUnit)
-    assert [item.label for item in parsed.note.meanings] == ["", "о реке"]
+    assert [item.label for item in parsed.note.meanings] == ["", "river"]
+    assert parsed.note.meaning.translations == ["банк"]
+
+
+def test_a_target_language_label_is_dropped_from_the_bare_front(languages):
+    parsed = parse_answer_payload(
+        payload(
+            meanings=[
+                meaning("финансовое учреждение"),
+                meaning("river", translations=["берег"]),
+            ],
+        ),
+        "bank",
+        languages["en"],
+    )
+
+    assert isinstance(parsed, ParsedUnit)
+    assert [item.label for item in parsed.note.meanings] == ["", "river"]
+
+
+def test_a_label_repeating_its_own_translation_is_dropped(languages):
+    parsed = parse_answer_payload(
+        payload(
+            meanings=[
+                meaning("bank building", translations=["банк", "bank"]),
+                meaning("river", translations=["берег"]),
+            ],
+        ),
+        "bank",
+        languages["en"],
+    )
+
+    assert isinstance(parsed, ParsedUnit)
+    assert [item.label for item in parsed.note.meanings] == ["", "river"]
+
+
+def test_a_sense_without_a_label_key_is_still_carded(languages):
+    bare = meaning()
+    del bare["label"]
+
+    parsed = parse_answer_payload(
+        payload(meanings=[bare, meaning("river", translations=["берег"])]),
+        "bank",
+        languages["en"],
+    )
+
+    assert isinstance(parsed, ParsedUnit)
+    assert [item.label for item in parsed.note.meanings] == ["", "river"]
     assert parsed.note.meaning.translations == ["банк"]
 
 
