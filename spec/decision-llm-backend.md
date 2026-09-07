@@ -385,13 +385,21 @@ racing: no corrupted Serbian, no analysis written in the source language, no car
 headed by a word from the wrong language, and every typo fixture carded the exact
 corrected spelling with every available click preserving its surface and context.
 
-What the run does not show is as important as what it does. **The replacement path was
-never exercised**: no stream was replaced in 62 calls, and eight further local calls —
-five of them with the ranked preference removed entirely — did not produce one either,
-because the highest-ranked model both starts and finishes first on this pool. The
-behavior is covered by tests against the library's contract and by that contract's own
-suite; this measurement says only that streaming does not regress the ordinary path,
-and no claim that a reader's replaced answer has been observed can rest on it.
+The replacement path is measured on its own, because this pool does not produce one:
+no stream was replaced in the run's 62 calls, nor in eight further local calls, since
+whichever model is ranked first here tends to both start and finish first. It was
+exercised instead against the real providers, with a proxy between the app and them
+holding whichever lane the reader is being shown after its opening deltas and releasing
+it only once a sibling lane had delivered a whole answer.
+
+Under that injected fault the app does what this section specifies, whichever lane is
+the visible one — the pool's first choice or the one that beat it to a delta. A reader
+with a part-written article in front of them sees it vanish and be written again from
+the beginning: the provisional text is dropped from the page rather than spliced with
+the answer that beat it, and the page then carries that whole answer and nothing of
+what it voided. The card, the model name shown beside it and the quality score all
+belong to the lane that won, and the lane the reader was watching is journalled as
+superseded. What remains unobserved is a replacement the free pool produces by itself.
 
 The reading also carries findings that are recorded here and not signed off. Only the
 operator accepts a limitation of the product:
@@ -419,9 +427,9 @@ operator accepts a limitation of the product:
   three Serbian card fronts written in two alphabets at once.
 - Bulgarian and Ukrainian remain outside routing acceptance and did not improve.
 
-Acceptance is therefore for the routing change and its measured latency profile, with
-the replacement path explicitly unmeasured. A run in which a replacement actually
-fires is what would close that gap.
+Acceptance is therefore for the routing change and its measured latency profile, and
+for a replacement path measured under an injected fault rather than one the pool
+raised of its own accord.
 
 ## The paid tier: `gpt-5.6-luna` is the one worth reaching for
 
