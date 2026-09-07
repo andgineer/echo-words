@@ -90,7 +90,7 @@ Angle-bracketed values are placeholders, not strings to copy:"""
 _UNIT_JSON = """{{"kind": "unit", "word": "<dictionary lemma of the unit>",
  "word_relation": "<same, morphology or typo>",
  "suggestion": "<corrected spelling, or empty>",
- "meanings": [{{"label": "<short {source_lang} sense cue or empty>",
+ "meanings": [{{"label": "<short {source_lang} word this sense occurs with, or empty>",
  "translations": ["<target-language translation>"],
  "examples": [{{"highlighted": "<short source-language sentence, unit in b tags>",
  "translation": "<target-language translation>"}}]}}],
@@ -114,12 +114,15 @@ suggestion is empty otherwise: it is only ever a correction."""
 _MEANING_RULES = """meanings are the senses that need different words in {target_lang}, most common
 first; do not impose a numerical limit. Every meaning has 2-4 main translations
 and 1-2 examples. When several meanings remain, every label is a short cue in
-{source_lang} telling them apart — a near-synonym, a typical collocation or the
-field the sense belongs to. Write it in {source_lang} and never in {target_lang},
-and never repeat a word of this meaning's own translations: the label is printed
-beside the headword on the front of the card whose answer is those translations,
-so a {target_lang} label gives that answer away. For one meaning its label is
-empty.
+{source_lang} telling them apart, and it is a word the headword habitually keeps
+company with in that sense: what it takes as its object or subject, its governed
+preposition, the thing it is typically done to or with. It is not a synonym of
+the headword and not a synonym of the translation. Only where the sense keeps no
+such company, name the field it belongs to instead. Write it in {source_lang} and
+never in {target_lang}, and never repeat a word of this meaning's own
+translations: the label is printed beside the headword on the front of the card
+whose answer is those translations, so a {target_lang} label gives that answer
+away. For one meaning its label is empty.
 Each highlighted example is a whole sentence carrying <b> tags around all and
 only the unit, since it becomes the front of a card. Write that sentence entirely
 in {source_lang}, in one script from end to end — a {target_lang} sentence with
