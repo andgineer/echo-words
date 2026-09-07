@@ -163,8 +163,16 @@ is `echo-words clear-sense-labels`, which writes nothing without `--yes`.
 A label is only judged where the note's deck belongs to a configured language —
 that deck is the only record of the source language a note carries. Notes in any
 other deck are left alone and counted in the report, so a partial sweep says so.
-Emptying a field is not a schema change, so no full sync follows: the ordinary
-sync carries the edit.
+
+The command then syncs with AnkiWeb itself, and says whether that succeeded.
+Nothing else would deliver it: the service syncs off its own adds, so an edit
+made while it is stopped would sit in the server's collection until you happened
+to add a word, and your Anki would go on showing the old labels. Emptying a field
+is no schema change, so the ordinary merging sync carries it; where AnkiWeb asks
+for a one-way full sync anyway, the command refuses to choose that direction and
+says so — the labels are emptied on the server, and resolving the sync in Anki
+delivers them. A run whose sync failed is simply repeated: it has nothing left to
+empty and syncs again.
 
 ## Releases
 

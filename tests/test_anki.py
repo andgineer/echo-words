@@ -326,7 +326,9 @@ async def test_an_older_collection_gets_this_version_card_wording(tmp_path, capl
 
 
 async def stored(settings: Settings, *notes: tuple[Note, str]) -> None:
-    store = AnkiStore(settings)
+    # A fresh synced collection bootstraps by download, which is a boundary, not a test.
+    backend = FakeSyncBackend([SyncCollectionResponse.NO_CHANGES]) if settings.anki_sync else None
+    store = AnkiStore(settings, sync_backend=backend)
     await store.open()
     try:
         for note, deck in notes:
@@ -389,6 +391,62 @@ async def test_a_note_in_a_deck_no_language_claims_is_left_alone_and_counted(tmp
     assert "no stored sense label of 0 contradicts the rule" in reported
     assert "1 labelled note(s) sit in a deck no configured language claims" in reported
     assert stored_labels(settings) == ["учреждение"]
+
+
+async def test_the_sweep_delivers_what_it_emptied_to_ankiweb(tmp_path):
+    """Nothing else would: the service syncs off its own adds, so an edit made with it
+    stopped would sit on the server until the reader happened to add a word."""
+    settings = with_language_table(synced_settings(tmp_path))
+    backend = FakeSyncBackend([SyncCollectionResponse.NORMAL_SYNC])
+    await stored(settings, (labelled("учреждение"), ENGLISH_DECK))
+
+    reported = clear_sense_labels(settings, confirmed=True, sync_backend=backend)
+
+    assert "emptied 1 of 1" in reported
+    assert "synced to AnkiWeb" in reported
+    assert backend.calls == ["sync"]
+    assert stored_labels(settings) == [""]
+
+
+async def test_a_sweep_that_could_not_reach_ankiweb_says_so_and_can_be_repeated(tmp_path):
+    settings = with_language_table(synced_settings(tmp_path))
+    await stored(settings, (labelled("учреждение"), ENGLISH_DECK))
+
+    with pytest.raises(AnkiError, match="Run this again"):
+        clear_sense_labels(
+            settings,
+            confirmed=True,
+            sync_backend=FakeSyncBackend([RuntimeError("no route to AnkiWeb")]),
+        )
+
+    assert stored_labels(settings) == [""]
+    backend = FakeSyncBackend([SyncCollectionResponse.NORMAL_SYNC])
+    # The retry has nothing left to empty, and must still deliver the first pass.
+    assert "synced to AnkiWeb" in clear_sense_labels(
+        settings,
+        confirmed=True,
+        sync_backend=backend,
+    )
+    assert backend.calls == ["sync"]
+
+
+async def test_a_sweep_never_chooses_a_one_way_sync_direction(tmp_path):
+    settings = with_language_table(synced_settings(tmp_path))
+    backend = FakeSyncBackend([SyncCollectionResponse.FULL_SYNC])
+    await stored(settings, (labelled("учреждение"), ENGLISH_DECK))
+
+    reported = clear_sense_labels(settings, confirmed=True, sync_backend=backend)
+
+    assert "one-way full sync" in reported
+    assert backend.calls == ["sync"]
+    assert not backend.full_uploads and not backend.full_downloads
+
+
+async def test_a_local_only_sweep_says_ankiweb_still_holds_the_labels(tmp_path):
+    settings = with_language_table(local_settings(tmp_path))
+    await stored(settings, (labelled("учреждение"), ENGLISH_DECK))
+
+    assert "sync is off" in clear_sense_labels(settings, confirmed=True)
 
 
 async def test_the_sweep_of_a_collection_that_is_not_there_fails_rather_than_reporting_success(

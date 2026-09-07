@@ -327,17 +327,23 @@ class _Sweep:
     unclaimed: int
 
 
-def clear_sense_labels(settings: Settings, *, confirmed: bool) -> str:
+def clear_sense_labels(
+    settings: Settings,
+    *,
+    confirmed: bool,
+    sync_backend: SyncBackend | None = None,
+) -> str:
     """Empty every stored sense label the current rule would not print on a bare front.
 
     A note keeps the field content it was made with, so a cue written under an older
     rule stays on that note's own card until something clears it. This is the one-off
-    that does: it changes nothing else about a note, no startup path reaches it, and
-    what it writes is an ordinary field edit the next sync carries.
+    that does: it changes nothing else about a note, and no startup path reaches it.
     """
     path = collection_path(settings)
     if not path.exists():
         raise CollectionAbsentError(path)
+    if settings.anki_sync:
+        _check_sync_credentials(settings)
     by_deck = {
         language.deck: language for language in load_languages(settings.languages_config).values()
     }
@@ -352,9 +358,42 @@ def clear_sense_labels(settings: Settings, *, confirmed: bool) -> str:
             note = collection.get_note(item.note_id)
             note["Label"] = ""
             collection.update_note(note)
+        delivered = _deliver(collection, settings, sync_backend)
     finally:
         collection.close()
-    return _cleared(sweep)
+    return f"{_cleared(sweep)}; {delivered}"
+
+
+def _deliver(collection: Collection, settings: Settings, backend: SyncBackend | None) -> str:
+    """Put the change where the reader's own Anki will find it.
+
+    Nothing else would: the service syncs off its own adds, so an edit made while it
+    is stopped sits in the server's collection until the reader happens to add a
+    word. A field edit is no schema change, so an ordinary merging sync carries it,
+    and a run whose sync failed is repeated to deliver it — which is why this syncs
+    whether or not the pass emptied anything.
+    """
+    if not settings.anki_sync:
+        return "sync is off, so AnkiWeb still holds what this emptied"
+    try:
+        _auth, output = _sync(collection, settings, backend or PylibSyncBackend())
+    except Exception as exc:
+        raise AnkiError(
+            f"the labels were emptied, but AnkiWeb was not reached: {exc}. "
+            "Run this again to deliver them.",
+        ) from exc
+    if output.required in (
+        SyncCollectionResponse.FULL_SYNC,
+        SyncCollectionResponse.FULL_DOWNLOAD,
+        SyncCollectionResponse.FULL_UPLOAD,
+    ):
+        # Choosing a one-way direction is how a device's unsynced reviews are lost,
+        # and emptying a field never needs one.
+        return (
+            "but AnkiWeb asks for a one-way full sync, which this does not choose: "
+            "resolving that in Anki is what delivers them"
+        )
+    return "synced to AnkiWeb"
 
 
 def _stale_labels(

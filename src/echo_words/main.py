@@ -64,7 +64,8 @@ def clear_sense_labels_command(yes: bool, env_file: Path | None) -> None:
 
     A note keeps the label it was made with, so one written under an older rule
     still shows beside its headword on the card whose answer is the translations.
-    Nothing else about a note changes, and the next sync carries the edit.
+    Nothing else about a note changes. It syncs with AnkiWeb itself and says
+    whether that worked, because the service only syncs off its own adds.
     Stop the service first: the collection must not be open elsewhere.
     """
     active = Settings(_env_file=env_file) if env_file is not None else settings

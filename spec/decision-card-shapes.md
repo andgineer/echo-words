@@ -195,7 +195,10 @@ written under an older rule would stay on that note's own card. `inv
 clear-sense-labels` is the one-off that empties exactly those: it names them,
 writes nothing unconfirmed, and touches no other field, so the note keeps its
 scheduling. It judges a note by its deck, which is the only record of a source
-language a note carries, and reports how many notes it could not place.
+language a note carries, and reports how many notes it could not place. It then
+syncs, because nothing else would: the running app syncs off its own adds, so an
+edit made while it is stopped reaches no reader until one happens to add a word.
+It never chooses a one-way direction to do it.
 
 `inv rebuild-note-type` is the explicit destructive operation used before the
 next deploy of this schema. It names the note type and counts what would be
