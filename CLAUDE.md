@@ -57,6 +57,7 @@ tool looks for.
 | Full test suite (Python + frontend) | `uv run inv test` |
 | Python tests only | `uv run pytest` |
 | Frontend tests only | `npm --prefix webapp test` |
+| Browser e2e only | `uv run pytest -m e2e` |
 | Dev server (auto-reload) | `uv run inv dev` |
 | Build the PWA into `_static/` | `uv run inv build-static` |
 | List every task | `uv run inv --list` |
@@ -82,6 +83,10 @@ A bare `uv sync` is not enough to reach a green suite:
 2. `npm --prefix webapp ci` — `inv test` **skips** the frontend suite
    when `webapp/node_modules` is missing, and CI does not. A run without
    it is not a full run.
+3. `uv run playwright install chromium` — the browser the e2e suite
+   (`tests/test_e2e_*.py`) drives. Without it those tests error rather
+   than skip. They load the built PWA from a real server, so `inv test`
+   builds `_static/` when it is missing.
 
 `espeak-ng` is needed only to *run* Piper voices, never by a test.
 `languages.toml` is needed only to run the app, and `inv dev` creates it
@@ -184,6 +189,13 @@ like the finite shared resource it is.
 
 - Every new module or function ships its tests in the same commit. Never
   skip them, never defer them to a later milestone.
+- **Behaviour that only exists in the browser gets a browser test.** The
+  `e2e`-marked suite runs the real server, the real pipeline and the built
+  PWA in Chromium, with only the LLM faked, and it is where what the reader
+  is left looking at after a failure is pinned. The fake answers stop at a
+  gate the test opens by hand, so a provisional state is asserted rather
+  than raced. A regression that a component test and an API test both pass
+  belongs there.
 - Iterate with `pytest -k …` if it helps, but verify with the full suite.
 - No real network, Anki sync, LLM, or TTS calls in tests — fake or mock
   every boundary. The deploy tests must stay blind to the operator's own

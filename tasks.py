@@ -576,6 +576,10 @@ def dev(c: Context, port=8080, rebuild=False):
 @task
 def test(c: Context):
     """Run the Python suite and, when webapp/ is installed, the frontend one."""
+    # The browser tests load the built PWA from the real server, so the bundle is part
+    # of the suite's environment rather than something to remember to rebuild.
+    if (WEBAPP_PATH / "node_modules").is_dir() and not (STATIC_PATH / "index.html").is_file():
+        _run_build(c)
     c.run("uv run pytest", pty=True)
     if (WEBAPP_PATH / "node_modules").is_dir():
         c.run(f"npm --prefix {WEBAPP_PATH} run test")

@@ -25,6 +25,8 @@ _DEFAULT_BEHAVIOR_BY_FILE: dict[str, tuple[str, str, str | None]] = {
     "test_broker.py": (_VOCABULARY, "LLM cascade", "Broker lifecycle"),
     "test_card.py": (_VOCABULARY, "Card extraction", "Card payload validation"),
     "test_config.py": (_PLATFORM, "Configuration and lifecycle", "Settings"),
+    "test_e2e_answers.py": (_VOCABULARY, "Answer delivery", "Browser end to end"),
+    "test_e2e_resilience.py": (_PLATFORM, "PWA resilience", "Browser end to end"),
     "test_echo_words.py": (_PLATFORM, "Configuration and lifecycle", "CLI startup"),
     "test_i18n.py": (_PLATFORM, "Interface language", None),
     "test_language_catalog.py": (_VOCABULARY, "Input and languages", "Language directory"),
@@ -193,6 +195,17 @@ edge_tts_voice = "sr-RS-SophieNeural"
 script    = "latin+cyrillic"
 prompt_hints = "for nouns give gender and plural"
 """
+
+
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    """Run the browser suite last, keeping every file's own order.
+
+    Playwright's sync API drives its own event loop on the main thread and keeps it
+    running until the session ends. While it runs, anyio cannot start a loop beside it,
+    so every ``anyio`` test collected after the first browser test would fail on the
+    loop rather than on anything it asserts.
+    """
+    items.sort(key=lambda item: item.get_closest_marker("e2e") is not None)
 
 
 @pytest.fixture

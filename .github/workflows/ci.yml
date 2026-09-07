@@ -67,8 +67,10 @@ jobs:
     - name: Run JS tests
       run: npm --prefix webapp test
 
+    # The browser suite is one job's work, not one per Python version: it exercises
+    # the page, and the page does not vary with the interpreter.
     - name: Test with pytest
-      run: ${{ env.PYTEST_CMD }}
+      run: ${{ env.PYTEST_CMD }} -m "not e2e"
 
 # Build with publishing Allure report, coverage report
   primary-build:
@@ -103,6 +105,13 @@ jobs:
 
     - name: Run JS tests with Allure
       run: npm --prefix webapp test
+
+    # The browser tests load the built PWA from the real server.
+    - name: Build the PWA
+      run: npm --prefix webapp run build
+
+    - name: Install the browser the e2e tests drive
+      run: uv run playwright install --with-deps chromium
 
     - name: Test with pytest and Allure report
       run: ${{ env.PYTEST_CMD }} --alluredir=./allure-results

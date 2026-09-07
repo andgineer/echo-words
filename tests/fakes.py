@@ -1,6 +1,6 @@
 """Fakes for the LLM boundary: no pool, no provider, no network."""
 
-from collections.abc import AsyncIterator, Iterable
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterable
 from types import SimpleNamespace
 
 from llmbroker import InvalidProviderResponseError, StreamReplacementError
@@ -18,9 +18,11 @@ class FakeHandle:
         *,
         error: Exception | None = None,
         llm_name: str | None = "pool-model",
+        hold: "Callable[[], Awaitable[None]] | None" = None,
     ) -> None:
         self.deltas = list(deltas)
         self.error = error
+        self.hold = hold
         self.llm_name = llm_name
         self.closed = False
         self.scores: list[float] = []
@@ -35,6 +37,10 @@ class FakeHandle:
         for delta in self.deltas:
             self.delivered.append(delta)
             yield delta
+        if self.hold is not None:
+            # Answers the test drives from outside the app stop here, so an assertion
+            # about what the page is showing is not a race against the provider.
+            await self.hold()
         if self.error is not None:
             raise self.error
         if not self.delivered:

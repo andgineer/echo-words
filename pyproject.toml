@@ -55,12 +55,12 @@ dev = [
     "ruff>=0.16.0",
     "mkdocs-awesome-pages-plugin>=2.10.1",
     "zensical>=0.0.41",
-
     "pre-commit>=4.2.0",
     "pymdown-extensions>=10.15",
     "pyrefly>=0.50.0",
     "pytest-cov>=6.1.1",
     "pytest>=8.3.5",
+    "pytest-playwright>=0.7.0",
 ]
 
 [project.scripts]
