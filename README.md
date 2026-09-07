@@ -2,12 +2,12 @@
 [![Coverage](https://raw.githubusercontent.com/andgineer/echo-words/python-coverage-comment-action-data/badge.svg)](https://htmlpreview.github.io/?https://github.com/andgineer/echo-words/blob/python-coverage-comment-action-data/htmlcov/index.html)
 # echo-words
 
-A private vocabulary tutor for every word you meet. Send a word, a phrase or a
-whole sentence, and echo-words explains what a dictionary will not: every sense
-with its register, how the word is really used, where it comes from, examples
-worth copying. Then it writes the flashcard for you — in both directions, with
-a real voice reading the word aloud — into the Anki deck you already review. It
-explains; Anki makes you remember.
+A private AI vocabulary tutor for every word you meet. Send a word, phrase, or
+whole sentence, and echo-words explains what a dictionary will not: distinct
+senses and registers, real usage, origins, and examples worth remembering. It
+also creates the Anki material for you — four cards that test one selected sense
+in both directions, with natural pronunciation — in the deck you already review.
+echo-words explains; Anki makes you remember.
 
 <table>
 <tr>
@@ -19,23 +19,18 @@ explains; Anki makes you remember.
 
 What one word gets you:
 
-* **an explanation, not a translation** — every target-language-distinct sense
-  with its register, the collocations and prepositions the word takes, what it is
-  confused with, its origin, and examples with their translations; an idiom or
-  phrase is explained as a whole and also offers its component words as chips
-* **one selected sense, reviewed four ways** — the unit and its translations are
-  asked in both directions, then its example is asked once highlighted and once
-  gapped; every sense remains available as a chip for a separate note
-* **a real voice, not a robot** — natural-sounding audio, in the app and on the
-  card
-* **a whole sentence gets a lesson instead** — translated, with what is hard in
-  it explained, and every word plus the expressions worth learning offered as
-  chips; tapping one creates its own four-card note
-* **a deeper entry when you want one** — one tap re-asks the strongest model for
-  a lexicographer's article: every sense including the rare ones, etymology in
-  depth, near-synonyms, the mistakes learners make
-* **nothing to pay** — a pool of free LLM providers answers; a paid model is
-  optional and capped
+* **an explanation, not just a translation** — distinct senses and registers,
+  collocations, prepositions, common confusions, origins, and translated examples;
+  a phrase is taught as a whole while its words remain available as chips
+* **one selected sense, reviewed four ways** — word and context test recognition
+  and production; every other sense stays one tap away from its own note
+* **a real voice, not a robot** — natural-sounding audio in the app and on the cards
+* **a whole sentence becomes a lesson** — echo-words translates it, explains the
+  hard parts, and turns every useful word or expression into a one-tap lesson
+* **a deeper entry on demand** — one tap asks the strongest model for rare senses,
+  deeper etymology, near-synonyms, and the mistakes learners make
+* **private and free by default** — tailnet-only, no application database, and a
+  pool of free LLM providers; the optional paid model is capped
 
 # Documentation
 

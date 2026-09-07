@@ -197,6 +197,12 @@ def build_static(c: Context):
     _run_build(c)
 
 
+@task(name="readme-screenshots")
+def readme_screenshots(c: Context):
+    """Rebuild the PWA and capture README screenshots from stable demo data."""
+    c.run("uv run python scripts/capture_readme_screenshots.py")
+
+
 def _deploy_host() -> str:
     """Read the ssh destination from `.deploy/.env`, as dinary does; env overrides it."""
     override = os.environ.get("ECHOWORDS_DEPLOY_HOST", "").strip()

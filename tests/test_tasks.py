@@ -214,6 +214,14 @@ def test_deploy_builds_the_checked_out_commit_on_the_server(monkeypatch, tmp_pat
     assert context.commands == ["git rev-parse --verify --end-of-options 'main^{commit}'"]
 
 
+def test_readme_screenshots_are_captured_by_one_task():
+    context = _Context([""])
+
+    tasks.readme_screenshots.body(context)
+
+    assert context.commands == ["uv run python scripts/capture_readme_screenshots.py"]
+
+
 def test_remote_deploy_fails_closed_without_deleting_data_or_secrets():
     script = tasks._remote_deploy_script("a" * 40)
 
