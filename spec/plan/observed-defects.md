@@ -6,12 +6,12 @@ down; two sibling defects found in the same session — the player speaking a
 corrected misspelling, and sense chips that all carried the same word — are
 already fixed and are not repeated here.
 
-Items 6 to 13 come from a different reading: the review packet of the
-source-language sense cue's smoke-tier bench run, read item by item by a fresh
-agent. Every deterministic contract and every quality threshold in that run was
-green, so these are the faults an automated screen cannot see. Each quotes the
-answer it was found in, because the run directory is not checked in and the
-evidence has to outlive it.
+Items 6 to 15 come from a different reading: the review packets of the two
+smoke-tier bench runs behind the source-language sense cue, read item by item by
+a fresh agent each time. Every deterministic contract and every quality threshold
+in both runs was green, so these are the faults an automated screen cannot see.
+Each quotes the answer it was found in, because the run directories are not
+checked in and the evidence has to outlive them.
 
 The items are independent. None blocks another, and each is finished on its own.
 
@@ -94,6 +94,14 @@ The third is example one, so it is the ContextRecognition front. This fixture
 exists because Bulgarian cites a verb in the first person singular, and the model
 failed the trap in every sentence.
 
+The next run carded four more of the same kind, in four languages: `Мораните да
+<b>водите рачуна</b> о свом здрављу.` (`Мораните` is no Serbian word — `Морате`),
+`В<b>неділю</b> ми плануємо поїхати за місто.` (the space is gone, so the gapped
+card reads `В___ ми плануємо…`), `Отвори <b>прозорец</b>, ...` (Bulgarian wants
+the definite `прозореца`), and, on a tappable sense chip, the English
+`The company went <b>bank</b>.` — a sentence of no language at all, carrying the
+translation "банкрот".
+
 The backend tests a sentence's alphabet, never its grammar, so nothing between the
 model and the deck can see this. Whatever is done here is a judgement about how
 much grammar the backend may claim to know, which is why it is written down before
@@ -142,6 +150,10 @@ Turkic (it is from `олово`); `разказвам` traced to "казнить
 sounding like an origin: `прозорец` "восходящее к общему индоевропейскому фонду с
 кодом *or-*", `causal` "происходит от латинского слова через английские суффиксы".
 
+The next run added three more: `reluctant` from a Latin verb `*reductare` (it is
+`reluctari`), `олівець` given the Turkic story that belongs to Russian `карандаш`,
+and `прозорец` from a reconstructed `*prъzъrcъ`.
+
 The prompt already says to leave the origin out where it is not known, because an
 origin reasoned out from the parts of a word reads exactly like one that is known.
 The instruction is not obeyed, and no screen tests it — an etymology is prose, and
@@ -183,6 +195,12 @@ action happened: "He was <b>reluctant</b> to sign the contract." → "Он не�
 performance. Example translations are shown to the reader and are not one of the
 six fields, so this one stops at the article.
 
+The next run put three more wrong translations on card backs: `вина` for
+`Verantwortung`, which is responsibility and not guilt; `это` beside `он` for
+Serbian `Он`; and `неделя` as a co-equal translation of Ukrainian `неділя`, which
+is Sunday — the very false friend that fixture exists to catch, carded as the
+mistake.
+
 The translations that do reach a card are the ones worth a guard, if any is
 possible: the target language's alphabet is testable, a wrong word inside it is
 not.
@@ -199,6 +217,39 @@ diagnostic exists to catch a table that labels a paradigm, and a false positive 
 it makes the number unreadable. The term needs the context that separates the
 grammatical sense from the everyday one, or that diagnostic needs to stop being a
 word list.
+
+## 14. A target-language word inside a source-language sentence, where the letter test cannot see it
+
+`bare-sr-grad` carded `Живим у красивом старом граду.` — `красивом` is Russian;
+Serbian is `лепом`. `cyrillic-uk-rozmovlyaty` printed the Russian ending in its
+forms table, `ти розмовляешь` for `розмовляєш`.
+
+The guard that exists is `sentence_is_source_language`, and it works by letters:
+it holds a sentence to the alphabet the source language spells with. Against
+Russian, that leaves it four letters or fewer for Ukrainian and Bulgarian, and
+almost nothing for Serbian Cyrillic — so a whole Russian word inside a Serbian
+sentence passes, and reaches a card front. The same blindness is written into
+`decision-card-shapes.md` as a limitation of the sense cue; this is the same hole
+seen from the sentence side, where what it lets through is what the reader
+reviews. Any fix is a judgement about how the backend can know a word belongs to
+a language at all, which is why nothing is proposed here.
+
+## 15. A note carded on the wrong language's word
+
+`neighbour-de-wider` was answered as though `wider` were the English word: the
+note carries the translations "шире, более широкий", the carded sentence
+`Dieser Fluss ist hier viel wider als dort oben.`, a forms table of `wider gehen`
+and `wider werden`, and an etymology from `weit` + `-er`. German `wider` means
+*against*. Every card of that note teaches a word that does not exist, and it
+reached the reader.
+
+The request names the source language plainly, and nothing downstream can catch
+this: the spelling is a real German string, the sentences are in German letters,
+and the payload is well formed. What the same fixture returned in the run before
+it was correct, from another provider, so this is one model reading a homograph
+as English rather than a standing behaviour — which is why the open question is
+whether a note this wrong is reachable by any check the app can run, or whether
+it belongs with the qualitative model errors the backend does not adjudicate.
 
 ## What is deliberately not here
 

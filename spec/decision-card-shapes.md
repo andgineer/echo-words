@@ -15,42 +15,56 @@ asks each in both directions. The card set is unconditional.
 
 The sense cue appears on the recognition front alone, and only when the answer
 retains several senses: it is what tells the reviewer which sense of a word
-carded more than once is being asked. It is written in the **source** language —
-a near-synonym, a typical collocation, or the field the sense belongs to —
-because that front is answered by the target-language translations, and a cue in
+carded more than once is being asked. It is written in the **source** language,
+because that front is answered by the target-language translations and a cue in
 the answer's own language prints the answer above the question. Replaying 502
 polysemous answers recorded by earlier bench runs, a target-language sense label
 shared a word with its own translations in 43% of them and carried a whole
 translation in 33%: `град` labelled "город" beside the translation "город",
-`aufstehen` labelled "вставать" beside "вставать, подниматься". A cue that is not
-in the source language, or that repeats a word of its own translations, is
-emptied instead of printed. That costs the front its disambiguation, and the
-cost is real rather than cosmetic: the back renders the selected sense's
-translations alone, so a reviewer who meets a bare polysemous headword and
-answers with a sibling sense's translation is marked wrong. Emptying is the
-lesser harm, not a free one.
+`aufstehen` labelled "вставать" beside "вставать, подниматься".
+
+The cue is a word the headword keeps company with in that sense — what it takes
+as its object or subject, its governed preposition, what it is typically done to
+or with. A synonym is excluded, of the headword and of the translation both. A
+synonym of the translation hands the answer to a reader of a cognate language
+while sharing no string with it, which no guard can see: `водити рачуна` labelled
+`обраћати пажњу` beside "обращать внимание" is read on sight by the Russian
+speaker the card is for. A companion word cannot be a calque of its own
+translation, and it is what a learner already knows: `bank (river)`,
+`receive (letter)`, `Bank (Geld)`, `give up (habit)`. Naming the field the sense
+belongs to is the fallback, for a sense that keeps no such company.
+
+A cue that is not in the source language, or that repeats a word of its own
+translations, is emptied instead of printed. That costs the front its
+disambiguation, and the cost is real rather than cosmetic: the back renders the
+selected sense's translations alone, so a reviewer who meets a bare polysemous
+headword and answers with a sibling sense's translation is marked wrong.
+Emptying is the lesser harm, not a free one.
 
 Measured on the smoke tier against the free pool, with a fresh agent reading
-every item of the review packet: 17 of 17 labels came back in the source
-language and none repeated a word of its own translations, so the guard emptied
-none of them. `Bank` was labelled `Finanzen` and `Möbel`. Three limitations
-stand beside that result.
+every item of the review packet: 18 printable labels over nine polysemous
+answers, every one in the source language, none repeating a word of its own
+translations, so the guard emptied none, and none reached a card in the target
+language. Twelve were genuine companion words, three named a field, two were
+metalinguistic and empty of content, and one was wrong. Five limitations stand
+beside that result.
 
-- A source language cognate with the target hands over the answer without
-  sharing a string with it. `водити рачуна` came back labelled `обраћати пажњу`
-  beside the translation "обращать внимание", which a Russian reader parses on
-  sight. Neither guard can see it: the cue is not in the target language, and it
-  shares no token with the translation.
-- The letter test separates Bulgarian and Ukrainian from Russian by four letters
-  or fewer, so for those languages that half of the guard is close to inert. No
-  polysemous answer in either has been measured.
-- The pool answers the polysemous fixtures through a single model, so obedience
-  to the instruction is measured for that model alone. Nothing requires the cue
-  to be commoner than the headword, and `give up` came back labelled
-  `surrender`. In none of the 17 labels did the pool take the collocation the
-  rule offers it; every one was a near-synonym, a paraphrase or a field tag,
-  and a collocation is the one shape that cannot be a calque of its own
-  translation.
+- A cue can satisfy every rule and still say nothing. `bank` was labelled
+  `phrase` for "рассчитывать на" and `state` for "банкрот": source language,
+  short, no shared token, and no information. The field-tag fallback is the legal
+  exit into a vacuous cue, and no guard can close it.
+- A cue can be plainly wrong. `aufstehen` was labelled `müssen` for a sense
+  neither of its examples contains.
+- One sense may come back with no cue, and that costs the commonest sense its
+  front where the sibling answer is most tempting: `град` was carded bare against
+  the answer "город" while its sibling answers "град".
+- The letter test separates Serbian, Bulgarian and Ukrainian from Russian by four
+  letters or fewer, so for those languages that half of the guard is close to
+  inert. `история` and `информация` are at once Bulgarian and Russian words;
+  neither leaked, and nothing in the system would have noticed if one had.
+- The pool routes a fixture to whichever model wins the race, so what a run
+  measures is partly which model answered. Four fixtures were polysemous under
+  both wordings with the same model answering: three improved and one is mixed.
 
 The recall front carries no cue at all. Every sense of a note shares one
 headword, so that front's answer is the same whichever sense the note is about
