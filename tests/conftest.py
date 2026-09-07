@@ -1,4 +1,5 @@
 import os
+import socket
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -240,6 +241,44 @@ def _allure_behavior(request: pytest.FixtureRequest) -> None:
     allure.dynamic.feature(feature)
     if story is not None:
         allure.dynamic.story(story)
+
+
+_LOOPBACK = frozenset({"127.0.0.1", "::1", "localhost", "0.0.0.0", "::", None})
+
+
+@pytest.fixture(autouse=True)
+def _no_outbound_network(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Refuse any connection that leaves the machine, so the rule that no test talks to
+    a provider, to AnkiWeb, to a wiki or to a voice service is enforced rather than
+    remembered. Loopback stays open: the browser suite runs a real server on it."""
+    connect = socket.socket.connect
+    connect_ex = socket.socket.connect_ex
+    getaddrinfo = socket.getaddrinfo
+
+    def host_of(address: object) -> object:
+        return address[0] if isinstance(address, tuple) else address
+
+    def local(sock: socket.socket, address: object) -> bool:
+        return sock.family == socket.AF_UNIX or host_of(address) in _LOOPBACK
+
+    def guarded_connect(sock: socket.socket, address: object):
+        if not local(sock, address):
+            raise AssertionError(f"a test tried to connect to {address!r}")
+        return connect(sock, address)
+
+    def guarded_connect_ex(sock: socket.socket, address: object):
+        if not local(sock, address):
+            raise AssertionError(f"a test tried to connect to {address!r}")
+        return connect_ex(sock, address)
+
+    def guarded_getaddrinfo(host: object, *args: object, **kwargs: object):
+        if host not in _LOOPBACK:
+            raise AssertionError(f"a test tried to resolve {host!r}")
+        return getaddrinfo(host, *args, **kwargs)
+
+    monkeypatch.setattr(socket.socket, "connect", guarded_connect)
+    monkeypatch.setattr(socket.socket, "connect_ex", guarded_connect_ex)
+    monkeypatch.setattr(socket, "getaddrinfo", guarded_getaddrinfo)
 
 
 @pytest.fixture(autouse=True)
