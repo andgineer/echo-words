@@ -24,8 +24,33 @@ shared a word with its own translations in 43% of them and carried a whole
 translation in 33%: `град` labelled "город" beside the translation "город",
 `aufstehen` labelled "вставать" beside "вставать, подниматься". A cue that is not
 in the source language, or that repeats a word of its own translations, is
-emptied instead of printed. The front is then less informative, which is the
-lesser harm.
+emptied instead of printed. That costs the front its disambiguation, and the
+cost is real rather than cosmetic: the back renders the selected sense's
+translations alone, so a reviewer who meets a bare polysemous headword and
+answers with a sibling sense's translation is marked wrong. Emptying is the
+lesser harm, not a free one.
+
+Measured on the smoke tier against the free pool, with a fresh agent reading
+every item of the review packet: 17 of 17 labels came back in the source
+language and none repeated a word of its own translations, so the guard emptied
+none of them. `Bank` was labelled `Finanzen` and `Möbel`. Three limitations
+stand beside that result.
+
+- A source language cognate with the target hands over the answer without
+  sharing a string with it. `водити рачуна` came back labelled `обраћати пажњу`
+  beside the translation "обращать внимание", which a Russian reader parses on
+  sight. Neither guard can see it: the cue is not in the target language, and it
+  shares no token with the translation.
+- The letter test separates Bulgarian and Ukrainian from Russian by four letters
+  or fewer, so for those languages that half of the guard is close to inert. No
+  polysemous answer in either has been measured.
+- The pool answers the polysemous fixtures through a single model, so obedience
+  to the instruction is measured for that model alone. Nothing requires the cue
+  to be commoner than the headword, and `give up` came back labelled
+  `surrender`. In none of the 17 labels did the pool take the collocation the
+  rule offers it; every one was a near-synonym, a paraphrase or a field tag,
+  and a collocation is the one shape that cannot be a calque of its own
+  translation.
 
 The recall front carries no cue at all. Every sense of a note shares one
 headword, so that front's answer is the same whichever sense the note is about
