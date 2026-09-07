@@ -145,6 +145,27 @@ anyway.
     the upload, it does not delete twice. A rebuild that cannot reach AnkiWeb
     at all changes nothing.
 
+## Clearing stored sense labels
+
+A note keeps the field content it was made with. When a release changes what a
+sense label may say, notes already in the deck keep the label they were made
+with, and it goes on showing beside the headword on the card the translations
+answer — which is where a label written under the old rule can be the answer
+itself.
+
+`inv clear-sense-labels` empties those, and only those. It stops the service,
+names every note whose stored label the current rule would not print, and writes
+nothing until you type `yes`. Nothing else about a note changes: the word, the
+translations, the sentences, the audio and the review history all stay, so this
+is not a rebuild and costs no card its scheduling. The console command behind it
+is `echo-words clear-sense-labels`, which writes nothing without `--yes`.
+
+A label is only judged where the note's deck belongs to a configured language —
+that deck is the only record of the source language a note carries. Notes in any
+other deck are left alone and counted in the report, so a partial sweep says so.
+Emptying a field is not a schema change, so no full sync follows: the ordinary
+sync carries the edit.
+
 ## Releases
 
 `inv ver-bug`, `inv ver-feature`, and `inv ver-release` bump the version in

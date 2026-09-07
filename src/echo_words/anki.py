@@ -9,8 +9,8 @@ import re
 import shutil
 import tempfile
 import time
-from collections.abc import Callable
-from contextlib import suppress
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -24,8 +24,9 @@ from anki.notes import NoteId
 from anki.sync import SyncAuth
 from anki.sync_pb2 import SyncCollectionResponse, SyncStatusResponse
 
-from echo_words.card import Note
+from echo_words.card import Note, usable_sense_label
 from echo_words.config import Settings
+from echo_words.languages import Language, load_languages
 
 NOTE_TYPE_NAME = "EchoWords"
 FIELD_NAMES = (
@@ -115,9 +116,10 @@ class UploadFailedError(AnkiError):
         )
 
 
-def _would_delete(path: Path, settings: Settings) -> str:
-    """Counted on a copy: closing a collection saves it, and the pass that reports
-    that nothing was changed must not be the one that changes it."""
+@contextmanager
+def _read_only_copy(path: Path) -> Iterator[Collection]:
+    """A throwaway copy to read: closing a collection saves it, so the pass that
+    reports what would change must not be the one that changes it."""
     with tempfile.TemporaryDirectory() as workspace:
         copy = Path(workspace) / path.name
         shutil.copy2(path, copy)
@@ -126,10 +128,15 @@ def _would_delete(path: Path, settings: Settings) -> str:
             shutil.copy2(sidecar, copy.parent / sidecar.name)
         collection = Collection(str(copy))
         try:
-            absent = collection.models.by_name(NOTE_TYPE_NAME) is None
-            summary = "" if absent else _note_type_summary(collection, path)
+            yield collection
         finally:
             collection.close()
+
+
+def _would_delete(path: Path, settings: Settings) -> str:
+    with _read_only_copy(path) as collection:
+        absent = collection.models.by_name(NOTE_TYPE_NAME) is None
+        summary = "" if absent else _note_type_summary(collection, path)
     # A confirmed run always syncs, so a pass that deletes nothing still changes what
     # AnkiWeb holds, and the operator has to be able to confirm knowing that.
     if absent:
@@ -302,6 +309,123 @@ def rebuild_note_type(
         return f"{deleted}; {_upload(collection, settings, backend)}"
     finally:
         collection.close()
+
+
+@dataclass(frozen=True)
+class StaleLabel:
+    """A stored cue the current rule would not print, and the note carrying it."""
+
+    note_id: NoteId
+    word: str
+    label: str
+
+
+@dataclass(frozen=True)
+class _Sweep:
+    stale: list[StaleLabel]
+    read: int
+    unclaimed: int
+
+
+def clear_sense_labels(settings: Settings, *, confirmed: bool) -> str:
+    """Empty every stored sense label the current rule would not print on a bare front.
+
+    A note keeps the field content it was made with, so a cue written under an older
+    rule stays on that note's own card until something clears it. This is the one-off
+    that does: it changes nothing else about a note, no startup path reaches it, and
+    what it writes is an ordinary field edit the next sync carries.
+    """
+    path = collection_path(settings)
+    if not path.exists():
+        raise CollectionAbsentError(path)
+    by_deck = {
+        language.deck: language for language in load_languages(settings.languages_config).values()
+    }
+    target = settings.target_lang
+    if not confirmed:
+        with _read_only_copy(path) as collection:
+            return _would_clear(_stale_labels(collection, by_deck, target))
+    collection = Collection(str(path))
+    try:
+        sweep = _stale_labels(collection, by_deck, target)
+        for item in sweep.stale:
+            note = collection.get_note(item.note_id)
+            note["Label"] = ""
+            collection.update_note(note)
+    finally:
+        collection.close()
+    return _cleared(sweep)
+
+
+def _stale_labels(
+    collection: Collection,
+    by_deck: dict[str, Language],
+    target: str,
+) -> _Sweep:
+    if collection.models.by_name(NOTE_TYPE_NAME) is None:
+        return _Sweep([], 0, 0)
+    stale: list[StaleLabel] = []
+    read = 0
+    unclaimed = 0
+    for note_id in collection.find_notes(f'note:"{NOTE_TYPE_NAME}"'):
+        note = collection.get_note(note_id)
+        label = html.unescape(note["Label"]).strip()
+        if not label:
+            continue
+        language = by_deck.get(_note_deck(collection, note))
+        if language is None:
+            # Its source language is what the rule is applied in, and the deck is the
+            # only record of it a note carries.
+            unclaimed += 1
+            continue
+        read += 1
+        translations = html.unescape(note["Translations"])
+        if not usable_sense_label(label, [translations], language, target):
+            stale.append(StaleLabel(note_id, html.unescape(note["Word"]), label))
+    return _Sweep(stale, read, unclaimed)
+
+
+def _note_deck(collection: Collection, note: AnkiNote) -> str:
+    cards = note.cards()
+    if not cards:
+        return ""
+    card = cards[0]
+    # A card sitting in a filtered deck reports that deck, and its home is `odid`.
+    return collection.decks.name(card.odid or card.did)
+
+
+def _named(stale: list[StaleLabel], limit: int = 10) -> str:
+    shown = ", ".join(f"{item.word} ({item.label})" for item in stale[:limit])
+    rest = len(stale) - limit
+    return shown if rest <= 0 else f"{shown} and {rest} more"
+
+
+def _unclaimed_note(sweep: _Sweep) -> str:
+    if not sweep.unclaimed:
+        return ""
+    return (
+        f"; {sweep.unclaimed} labelled note(s) sit in a deck no configured language "
+        "claims and were left alone"
+    )
+
+
+def _would_clear(sweep: _Sweep) -> str:
+    if not sweep.stale:
+        return f"no stored sense label of {sweep.read} contradicts the rule{_unclaimed_note(sweep)}"
+    return (
+        f"would empty {len(sweep.stale)} of {sweep.read} stored sense labels: "
+        f"{_named(sweep.stale)}{_unclaimed_note(sweep)}; nothing was changed — "
+        "pass --yes to empty them"
+    )
+
+
+def _cleared(sweep: _Sweep) -> str:
+    if not sweep.stale:
+        return f"no stored sense label of {sweep.read} contradicts the rule{_unclaimed_note(sweep)}"
+    return (
+        f"emptied {len(sweep.stale)} of {sweep.read} stored sense labels: "
+        f"{_named(sweep.stale)}{_unclaimed_note(sweep)}"
+    )
 
 
 def _delete_note_type(collection: Collection, path: Path) -> str:

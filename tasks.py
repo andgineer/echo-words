@@ -533,6 +533,43 @@ def rebuild_note_type(c: Context):
         )
 
 
+def _clear_sense_labels_script(*, confirmed: bool) -> str:
+    """Sweep with the service down, under the very settings systemd hands it."""
+    flag = " --yes" if confirmed else ""
+    return (
+        "set -euo pipefail; "
+        f"cd {REMOTE_ROOT}; "
+        f"sudo systemctl stop {SERVICE_NAME}; "
+        "source /home/ubuntu/.local/bin/env; "
+        "uv run --no-dev echo-words clear-sense-labels "
+        f"--env-file {REMOTE_DEPLOY_ENV}{flag}"
+    )
+
+
+@task(name="clear-sense-labels")
+def clear_sense_labels(c: Context):
+    """Empty stored sense labels the current rule would not print on a card front.
+
+    A one-off: a note keeps the label it was made with, so one written under an
+    older rule still shows beside its headword on the card the translations
+    answer. It names what it would empty and empties nothing until that is
+    confirmed by typing "yes". Nothing else about a note changes, and the next
+    sync carries the edit.
+    """
+    _deploy_host()
+    try:
+        _ssh(c, _clear_sense_labels_script(confirmed=False))
+        if input('Empty them? Type "yes" to confirm: ').strip() != "yes":
+            print("Nothing emptied.")
+            return
+        _ssh(c, _clear_sense_labels_script(confirmed=True))
+    finally:
+        # The confirmation sits between the stop and the start, so an answer of no,
+        # a failed remote command and a Ctrl-C all have to leave the service up.
+        _ssh(c, f"sudo systemctl start {SERVICE_NAME}")
+        _health_check(c)
+
+
 @task(help={"follow": "Follow new log lines.", "lines": "Number of existing lines."})
 def logs(c: Context, follow=False, lines=100):
     """Show production service logs."""

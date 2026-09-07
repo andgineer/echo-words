@@ -176,8 +176,12 @@ and gapped sentence. The field and template names are checked on every add; a
 mismatch raises rather than silently rewriting a collection. A template body is
 not a name: it belongs to the version rather than to the reader, so a change of
 card wording is written into a collection that already holds notes. Field
-contents are the reader's, and a note keeps what it was made with — a sense cue
-written under an older rule stays on that note's own card until it is remade.
+contents are the reader's, and a note keeps what it was made with, so a sense cue
+written under an older rule would stay on that note's own card. `inv
+clear-sense-labels` is the one-off that empties exactly those: it names them,
+writes nothing unconfirmed, and touches no other field, so the note keeps its
+scheduling. It judges a note by its deck, which is the only record of a source
+language a note carries, and reports how many notes it could not place.
 
 `inv rebuild-note-type` is the explicit destructive operation used before the
 next deploy of this schema. It names the note type and counts what would be

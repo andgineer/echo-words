@@ -30,6 +30,7 @@ from echo_words.anki import (
     UploadFailedError,
     _wait_past_millisecond,
     card_fields,
+    clear_sense_labels,
     collection_path,
     rebuild_note_type,
     render_translations,
@@ -116,6 +117,27 @@ def three_meanings() -> list[Meaning]:
 
 def local_settings(tmp_path: Path, **values: object) -> Settings:
     return Settings(_env_file=None, data_dir=tmp_path, anki_sync=False, **values)
+
+
+ENGLISH_DECK = "EchoWords: English"
+
+
+def with_language_table(settings: Settings) -> Settings:
+    settings.languages_config.write_text(
+        '[languages.en]\nname = "English"\ndeck = "EchoWords: English"\nscript = "latin"\n',
+        encoding="utf-8",
+    )
+    return settings
+
+
+def labelled(label: str) -> Note:
+    return make_note(
+        "bank",
+        meanings=[
+            Meaning(label, ["банк"], two_meanings()[0].examples),
+            two_meanings()[1],
+        ],
+    )
 
 
 async def test_note_type_bootstrap_creates_every_field_and_template(tmp_path):
@@ -301,6 +323,81 @@ async def test_an_older_collection_gets_this_version_card_wording(tmp_path, capl
         assert "card templates" in caplog.text
     finally:
         await store.close()
+
+
+async def stored(settings: Settings, *notes: tuple[Note, str]) -> None:
+    store = AnkiStore(settings)
+    await store.open()
+    try:
+        for note, deck in notes:
+            assert isinstance(await store.add_note(note, deck), Added)
+    finally:
+        await store.close()
+
+
+def stored_labels(settings: Settings) -> list[str]:
+    collection = Collection(str(collection_path(settings)))
+    try:
+        return sorted(
+            collection.get_note(note_id)["Label"]
+            for note_id in collection.find_notes(f'note:"{NOTE_TYPE_NAME}"')
+        )
+    finally:
+        collection.close()
+
+
+async def test_a_stored_label_the_rule_would_not_print_is_named_then_emptied(tmp_path):
+    settings = with_language_table(local_settings(tmp_path))
+    await stored(
+        settings, (labelled("учреждение"), ENGLISH_DECK), (labelled("money"), ENGLISH_DECK)
+    )
+
+    named = clear_sense_labels(settings, confirmed=False)
+
+    assert "would empty 1 of 2" in named
+    assert "bank (учреждение)" in named
+    # Reading must not be writing: closing a collection saves it.
+    assert clear_sense_labels(settings, confirmed=False) == named
+    assert stored_labels(settings) == ["money", "учреждение"]
+
+    assert "emptied 1 of 2" in clear_sense_labels(settings, confirmed=True)
+    assert stored_labels(settings) == ["", "money"]
+
+
+async def test_emptying_a_label_leaves_every_other_field_of_the_note_alone(tmp_path):
+    settings = with_language_table(local_settings(tmp_path))
+    await stored(settings, (labelled("учреждение"), ENGLISH_DECK))
+
+    clear_sense_labels(settings, confirmed=True)
+
+    collection = Collection(str(collection_path(settings)))
+    try:
+        note = collection.get_note(collection.find_notes(f'note:"{NOTE_TYPE_NAME}"')[0])
+        assert (note["Word"], note["Translations"]) == ("bank", "банк")
+        assert note["Highlighted"] == "The <b>bank</b> opens at nine."
+        assert len(note.cards()) == 4
+    finally:
+        collection.close()
+
+
+async def test_a_note_in_a_deck_no_language_claims_is_left_alone_and_counted(tmp_path):
+    settings = with_language_table(local_settings(tmp_path))
+    await stored(settings, (labelled("учреждение"), "Someone else::Vocabulary"))
+
+    reported = clear_sense_labels(settings, confirmed=True)
+
+    assert "no stored sense label of 0 contradicts the rule" in reported
+    assert "1 labelled note(s) sit in a deck no configured language claims" in reported
+    assert stored_labels(settings) == ["учреждение"]
+
+
+async def test_the_sweep_of_a_collection_that_is_not_there_fails_rather_than_reporting_success(
+    tmp_path,
+):
+    settings = with_language_table(local_settings(tmp_path))
+
+    with pytest.raises(CollectionAbsentError):
+        clear_sense_labels(settings, confirmed=False)
 
 
 # The collection syncs from AnkiWeb, so anything destructive runs beside decks and

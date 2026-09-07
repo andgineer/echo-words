@@ -371,6 +371,44 @@ def test_rebuild_note_type_runs_the_cli_under_the_settings_the_service_uses():
         assert script.endswith("--yes") is confirmed
 
 
+@pytest.mark.parametrize("answer", ["", "no", "y", "YES", " yes please "])
+def test_the_label_sweep_writes_nothing_without_a_typed_confirmation(
+    monkeypatch,
+    tmp_path,
+    answer,
+):
+    remote_scripts = _rebuild_context(monkeypatch, tmp_path, answer)
+
+    tasks.clear_sense_labels.body(_Context([]))
+
+    assert not any("--yes" in script for script in remote_scripts)
+    assert remote_scripts[-1] == "sudo systemctl start echo-words"
+
+
+def test_the_label_sweep_names_what_it_would_empty_before_it_empties_it(monkeypatch, tmp_path):
+    remote_scripts = _rebuild_context(monkeypatch, tmp_path, "yes")
+
+    tasks.clear_sense_labels.body(_Context([]))
+
+    named, emptied = remote_scripts[0], remote_scripts[1]
+    assert "--yes" not in named
+    assert emptied.endswith("--yes")
+    assert remote_scripts[-1] == "sudo systemctl start echo-words"
+
+
+def test_the_label_sweep_runs_the_cli_under_the_settings_the_service_uses():
+    """Another data dir would find another collection, report nothing to empty, and
+    leave the labels the operator asked about untouched. The env file is named rather
+    than sourced: it holds a password, and a shell would run what that password says."""
+    for confirmed in (False, True):
+        script = tasks._clear_sense_labels_script(confirmed=confirmed)
+        assert f"--env-file {tasks.REMOTE_DEPLOY_ENV}" in script
+        assert f"source {tasks.REMOTE_DEPLOY_ENV}" not in script
+        assert "ECHOWORDS_ANKIWEB" not in script
+        assert script.index("systemctl stop echo-words") < script.index("clear-sense-labels")
+        assert script.endswith("--yes") is confirmed
+
+
 def test_rebuild_note_type_counts_before_it_deletes(monkeypatch, tmp_path):
     remote_scripts = _rebuild_context(monkeypatch, tmp_path, "yes")
 
