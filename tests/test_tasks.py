@@ -257,6 +257,23 @@ def test_deploy_host_rejects_a_missing_file_and_an_unedited_placeholder(monkeypa
         tasks._deploy_host()
 
 
+def test_ssh_leaves_this_terminal_stdin_to_the_task_that_asks_for_it(monkeypatch, tmp_path):
+    """A task that asks the operator to confirm between two remote calls loses the
+    typed line to the first ssh, which reads stdin it has no remote use for."""
+    _write_deploy_env(monkeypatch, tmp_path, "ECHOWORDS_DEPLOY_HOST=ubuntu@203.0.113.10\n")
+    commands = []
+
+    class _Runner:
+        def run(self, command, **kwargs):
+            commands.append((command, kwargs))
+
+    tasks._ssh(_Runner(), "echo hello")
+
+    command, kwargs = commands[0]
+    assert command.startswith("ssh ubuntu@203.0.113.10 ")
+    assert kwargs["in_stream"] is False
+
+
 def test_deploy_checks_the_local_secrets_before_touching_the_server(monkeypatch):
     """A missing .deploy/.env must fail before any remote command runs."""
     remote_scripts = []

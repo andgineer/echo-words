@@ -218,9 +218,15 @@ def _deploy_host() -> str:
 
 
 def _ssh(c: Context, command: str) -> None:
-    """Run a quote-heavy remote script without interpolating it into the remote shell."""
+    """Run a quote-heavy remote script without interpolating it into the remote shell.
+
+    No remote script here reads stdin — bash is fed the script down its own pipe — so
+    the run is detached from it. Attached, the runner drains this terminal's stdin
+    into the remote command and eats the line a task asks the operator to type
+    between two remote calls.
+    """
     encoded = base64.b64encode(command.encode()).decode()
-    c.run(f"ssh {_deploy_host()} 'echo {encoded} | base64 -d | bash'")
+    c.run(f"ssh {_deploy_host()} 'echo {encoded} | base64 -d | bash'", in_stream=False)
 
 
 def _upload_service(c: Context) -> None:
