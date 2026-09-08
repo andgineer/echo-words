@@ -31,6 +31,7 @@ class Entry:
     shape: AnswerKind | None = None
     segments: list[dict] = field(default_factory=list)
     segment_kind: SegmentKind | None = None
+    carded_sense: int | None = None
     card_status: str | None = None
     card_kinds: list[str] = field(default_factory=list)
     card_error: str | None = None

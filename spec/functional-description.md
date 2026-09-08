@@ -129,8 +129,10 @@ The four requirements every design decision is weighed against:
    carded sense. The model must then return a unit answer. A context unit
    answer leads with the sense used there, keeps the remaining senses below
    it, and cards the named sense (the first retained sense if the index is
-   unusable). Every sense, including the one just carded, remains available as
-   a chip.
+   unusable). After a note is successfully saved, its selected sense is omitted
+   from the visible chips; a sole carded sense leaves no chip row. A lookup or
+   failed save keeps every sense available. Selection follows the sense used
+   for that answer's note, never a comparison of chip wording.
    The raw submission remains the history entry and the PWA audio target. The
    validated dictionary headword returned by a unit answer is the identity
    used by the note and its Anki audio. This is what lets an inflected or
@@ -587,7 +589,8 @@ Kept minimal — everything beyond typing a word:
 - **Chips** — under a text answer, every source word plus one chip for each
   accepted combination, each combination standing before its first word; under a set
   expression, its component words; under a single word or any explicit card
-  request, every retained sense. Each chip submits its own stored context and
+  request, every retained sense except the one successfully carded from that
+  answer. Each chip submits its own stored context and
   explicit unit intent rather than making the frontend reconstruct either.
 - **History** — the rail holds recent words with their finished analyses,
   pronunciation, and status; an entry still being answered shows its text

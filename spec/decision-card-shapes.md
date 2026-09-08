@@ -101,11 +101,15 @@ explicit unit request with context selects the retained meaning the answer
 names as the one used in that context; a missing, malformed or dropped
 selection falls back to the first retained meaning. The context is never discarded.
 
-The visible article and sense chips still carry every usable meaning. Senses
+The visible article carries every usable meaning. After a successful save, sense
+chips offer only the meanings other than the one used for that answer's note;
+an answer with one carded meaning has no sense chips. A lookup or failed save
+keeps them all. The choice follows the selected meaning's identity, never text
+similarity; distinct returned meanings are not merged by their translations. Senses
 are split for the configured language pair: they are distinctions which need
 different words in the target language, not every subdivision a monolingual
 dictionary records. A sense chip carries one of its examples unchanged when it
-fits the 500-character input/context bound, including for the sense just carded;
+fits the 500-character input/context bound;
 a longer example produces a bare lookup instead of a permanently truncated
 sentence. A later tap creates another one-sense note. Equal words are
 deliberately not deduplicated.

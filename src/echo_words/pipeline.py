@@ -679,6 +679,13 @@ class WordPipeline:
             chips, segment_kind = _segments_for(parsed, job)
             entry.segments = [asdict(segment) for segment in chips]
             entry.segment_kind = segment_kind
+            entry.carded_sense = (
+                parsed.note.sense
+                if isinstance(parsed, ParsedUnit)
+                and segment_kind == "senses"
+                and stored.status == ADDED_STATUS
+                else None
+            )
             entry.shape = parsed.kind if parsed is not None else None
             entry.model = getattr(completion, "llm_name", None)
             entry.detail_available = (
@@ -977,6 +984,7 @@ class WordPipeline:
                 "showing_other_spelling": entry.showing_other_spelling,
                 "segments": entry.segments,
                 "segment_kind": entry.segment_kind,
+                "carded_sense": entry.carded_sense,
                 "shape": entry.shape,
                 "audio_url": entry.audio_url,
                 "context_audio_url": entry.context_audio_url,
@@ -1162,6 +1170,7 @@ class WordPipeline:
         entry.shape = None
         entry.segments = []
         entry.segment_kind = None
+        entry.carded_sense = None
         entry.detail_available = False
         entry.no_audio = False
         entry.no_card_audio = False

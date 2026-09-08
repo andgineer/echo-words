@@ -58,6 +58,7 @@ export function useEventStream({
         shape: null,
         segments: [],
         segment_kind: null,
+        carded_sense: null,
         card_status: null,
         card_kinds: [],
         no_audio: false,

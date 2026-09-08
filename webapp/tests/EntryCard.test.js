@@ -615,6 +615,47 @@ describe("EntryCard", () => {
     ]);
   });
 
+  it("hides the carded sense by index even when both captions match", async () => {
+    const entry = senseEntry();
+    entry.carded_sense = 1;
+    entry.segments[1].reason = entry.segments[0].reason;
+    const wrapper = card(entry);
+
+    expect(wrapper.findAll(".segment-label")).toHaveLength(1);
+    await wrapper.get(".segment-label").trigger("click");
+    expect(wrapper.emitted("segment")[0][0]).toEqual(entry.segments[0]);
+  });
+
+  it("leaves no chip row for the only sense after it is carded", () => {
+    const entry = senseEntry();
+    entry.segments = entry.segments.slice(0, 1);
+    entry.carded_sense = 0;
+
+    expect(card(entry).find(".segments").exists()).toBe(false);
+  });
+
+  it.each(["failed", "lookup_only", "deleted"])(
+    "keeps the selected sense available when the card status is %s",
+    (status) => {
+      const entry = { ...senseEntry(), carded_sense: 1, card_status: status };
+      expect(card(entry).findAll(".segment-label")).toHaveLength(2);
+    },
+  );
+
+  it("replaces the hidden sense with the answer and keeps all chips on a failed replacement", async () => {
+    const entry = { ...senseEntry(), carded_sense: 0 };
+    const wrapper = card(entry);
+    expect(wrapper.get(".segment-label").text()).toBe("склон");
+
+    await wrapper.setProps({ entry: { ...entry, carded_sense: 1 } });
+    expect(wrapper.get(".segment-label").text()).toBe("банк");
+
+    await wrapper.setProps({
+      entry: { ...entry, carded_sense: null, card_status: "failed", card_kept: true },
+    });
+    expect(wrapper.findAll(".segment-label")).toHaveLength(2);
+  });
+
   it("emits the chip that was tapped, with its own stored context", async () => {
     const wrapper = card(senseEntry());
 

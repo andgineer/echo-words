@@ -215,6 +215,7 @@ async def test_deltas_are_throttled_cut_sanitized_and_finished(languages):
                 "showing_other_spelling": False,
                 "segments": [],
                 "segment_kind": None,
+                "carded_sense": None,
                 "shape": None,
                 "audio_url": None,
                 "context_audio_url": None,
@@ -291,6 +292,7 @@ async def test_card_parse_quality_and_suggestion_are_published_after_completion(
                     },
                 ],
                 "segment_kind": "senses",
+                "carded_sense": None,
                 "shape": "unit",
                 "audio_url": None,
                 "context_audio_url": None,
@@ -340,6 +342,7 @@ async def test_card_without_examples_is_rated_as_a_failure_without_losing_analys
                 "showing_other_spelling": False,
                 "segments": [],
                 "segment_kind": None,
+                "carded_sense": None,
                 "shape": None,
                 "audio_url": None,
                 "context_audio_url": None,
@@ -1393,7 +1396,7 @@ async def stored_note(languages, answer, anki, **submission):
     return entry
 
 
-async def test_context_sense_selects_one_note_and_every_sense_stays_a_chip(languages):
+async def test_context_sense_identifies_the_carded_chip_for_display(languages):
     kinds = ("Recognition", "Recall", "ContextRecognition", "ContextProduction")
     anki = RecordingAnki(Added(1, None, kinds))
     answer = card_with("bank", meanings=TWO_MEANINGS, context_sense=1)
@@ -1411,6 +1414,8 @@ async def test_context_sense_selects_one_note_and_every_sense_stays_a_chip(langu
     assert note.sense == 1
     assert note.meaning.translations == ["берег"]
     assert entry.segment_kind == "senses"
+    assert entry.carded_sense == 1
+    assert entry.public()["carded_sense"] == 1
     assert entry.segments == [
         {
             "label": "bank",
@@ -1451,6 +1456,7 @@ async def test_one_meaning_keeps_the_context_example_and_all_four_cards(language
     assert anki.calls[0][0].meaning.examples[0].text == "The bank opens at nine."
     assert entry.card_status == ADDED_STATUS
     assert entry.card_kinds == list(kinds)
+    assert entry.carded_sense == 0
 
 
 async def test_an_unusable_context_sense_falls_back_to_the_first(languages):
@@ -2169,8 +2175,11 @@ async def test_a_misconfigured_note_type_is_a_clear_done_status_not_a_lost_answe
         assert entry.text == "analysis"
         assert entry.card_status == CARD_FAILED_STATUS
         assert entry.card_error == expected
+        assert entry.carded_sense is None
+        assert len(entry.segments) == 1
         assert events[-1].data["card_status"] == CARD_FAILED_STATUS
         assert events[-1].data["card_error"] == expected
+        assert events[-1].data["carded_sense"] is None
     finally:
         await pipeline.close()
 
@@ -2754,6 +2763,7 @@ async def test_correction_switch_is_reversible_replaces_notes_and_updates_undo(
         # The answer carded the spelling it analysed and named another one beside it,
         # so the switch is an offer rather than a question to answer first.
         assert (entry.card_status, entry.suggestion) == (ADDED_STATUS, "Strasse")
+        assert entry.carded_sense == 0
         entry.detail_html = "details for the carded spelling"
         await pipeline.request_switch(entry.entry_id)
         await pipeline.join()
@@ -2911,6 +2921,7 @@ async def test_a_switch_that_stores_nothing_keeps_the_note_and_the_audio_it_had(
 
         assert entry.card_status == CARD_FAILED_STATUS
         assert entry.card_kept is True
+        assert entry.carded_sense is None
         assert anki.removed == []
         assert entry.audio_file == audio.name
         assert audio.exists()

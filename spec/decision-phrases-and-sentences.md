@@ -95,8 +95,9 @@ judge than the model.
 A unit answer keeps the full article: translations first, useful forms shown as
 live phrases, usage, origin and examples. It creates one note about its selected
 sense and four cards. A bare input selects the most common retained sense; a
-chip with context selects the contextual sense. Every sense remains available
-as a chip for a separate note.
+chip with context selects the contextual sense. After a successful save, chips
+offer the other senses for separate notes; otherwise every sense remains
+available.
 
 A set expression is analysed whole and additionally offers every word-shaped
 component in expression order, preserving its submitted surface form. Those

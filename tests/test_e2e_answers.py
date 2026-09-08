@@ -5,6 +5,8 @@ one thing a unit test cannot: what is left on the screen afterwards. The LLM is 
 and gated, so the provisional state is held until the assertion about it has run.
 """
 
+import json
+
 import pytest
 from anki.collection import Collection
 from e2e_app import WORD, Gate, answer, live_app, submit
@@ -12,7 +14,7 @@ from fakes import FakeDirectClient, FakeHandle, lost_the_race
 from llmbroker import LLMTimeoutError
 from playwright.sync_api import Page, expect
 
-from echo_words.anki import NOTE_TYPE_NAME, collection_path
+from echo_words.anki import NOTE_TYPE_NAME, AnkiStore, MisconfiguredNoteTypeError, collection_path
 from echo_words.config import Settings
 
 pytestmark = pytest.mark.e2e
@@ -220,6 +222,10 @@ def test_the_submitted_word_reaches_the_configured_deck_as_one_note(
     with live_app(settings, monkeypatch, handles=[FakeHandle([answer(FIRST)])]) as app:
         submit(page, app.url)
         expect(page.locator(".entry-card-status")).to_contain_text("✅")
+        expect(page.locator(".segments")).to_have_count(0)
+        page.reload()
+        expect(page.locator(".entry-card-status")).to_contain_text("✅")
+        expect(page.locator(".segments")).to_have_count(0)
         written = collection_path(app.settings)
 
     # Opened once the server has closed the collection: pylib allows one holder.
@@ -233,3 +239,46 @@ def test_the_submitted_word_reaches_the_configured_deck_as_one_note(
         assert decks == {"English::Vocabulary"}
     finally:
         collection.close()
+
+
+@pytest.mark.parametrize("save_fails", [False, True])
+def test_sense_chips_follow_the_save_result_and_survive_reload(
+    page: Page,
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+    save_fails: bool,
+) -> None:
+    article, payload = answer(FIRST).split("===CARD===")
+    card = json.loads(payload)
+    card["meanings"].append(
+        {
+            "label": "music",
+            "translations": ["скрипичный ключ"],
+            "examples": [
+                {
+                    "text": f"Read the {WORD} here.",
+                    "translation": "Прочитай ключ здесь.",
+                    "highlighted": f"Read the <b>{WORD}</b> here.",
+                    "gapped": "Read the ___ here.",
+                },
+            ],
+        },
+    )
+
+    async def fail_save(*_args, **_kwargs):
+        raise MisconfiguredNoteTypeError
+
+    if save_fails:
+        monkeypatch.setattr(AnkiStore, "add_note", fail_save)
+    gate = Gate()
+    handle = FakeHandle([f"{article}===CARD==={json.dumps(card)}"], hold=gate.wait)
+    with live_app(settings, monkeypatch, handles=[handle]) as app:
+        submit(page, app.url)
+        expect(page.locator(".entry-text")).to_contain_text("the first analysis")
+        expect(page.locator(".segments")).to_have_count(0)
+        gate.open()
+
+        expected_chips = ["ключ", "скрипичный ключ"] if save_fails else ["скрипичный ключ"]
+        expect(page.locator(".segment-label")).to_have_text(expected_chips)
+        page.reload()
+        expect(page.locator(".segment-label")).to_have_text(expected_chips)

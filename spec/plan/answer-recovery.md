@@ -210,6 +210,12 @@ has arrived complete and parsed; if it fails, what was there stays. Nothing is
 spliced — the rule the current clearing protects — because the replacement is
 atomic.
 
+Keep the answer, its chips and its carded-sense identity together during that
+swap. A sense chip is hidden only after a note is successfully saved from that
+same answer. A failed replacement which preserves an older note does not make
+any sense of the new answer carded. Neither text comparison nor the mere
+existence of an older note can choose which chip to hide.
+
 ### D. `another()`: the pool's next answer
 
 In llmbroker, on the streamed handle:

@@ -173,9 +173,12 @@ the language is already named by the active button; the bottom meta line is
 gone. A sentence card shows no card status — the presence of word chips and
 the absence of a delete button say it. The chips carry no caption either:
 "tap one to analyse it" is read once in a lifetime and occupies space forever,
-and filled pills that look pressable say it instead. What the chips keep is
-the reason under each of them: two sense chips of the same word are told apart
-by nothing else.
+and filled pills that look pressable say it instead. Sense chips are named by
+their translations. After a successful save, they offer only the other senses:
+the selected sense is already in the deck, and a sole carded sense needs no chip
+row. Failed saves and lookups keep every sense available. Older browser history
+without a recorded selection keeps its chips, because their wording cannot
+identify which sense was carded.
 
 **Deletion is per card, not "undo the last one".** Undo asks the reader to
 remember which word was last; the card in front of them is what they mean. It

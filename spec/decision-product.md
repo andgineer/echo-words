@@ -11,8 +11,9 @@ the work again. **Do not re-open any of it.**
 - One successfully parsed unit submission creates one note about one selected
   sense; a text answer creates none. A bare word selects its most common sense,
   while explicit unit intent with context selects the retained contextual
-  sense. The visible article and chips keep every target-language-distinct
-  sense. There is no arbitrary sense-count ceiling.
+  sense. The visible article keeps every target-language-distinct sense; chips
+  offer the other senses after a successful save and all senses otherwise.
+  There is no arbitrary sense-count ceiling.
 - **The same word may be sent twice, and gets a second note.** There is no
   duplicate check. A sense chip is a new submission, so deduplication would
   refuse exactly the route by which another sense enters the deck. Equal bare

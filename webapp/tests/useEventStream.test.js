@@ -102,6 +102,7 @@ it("clears deeper analysis when a correction switch resets the entry", () => {
     detail_html: "old detail",
     shape: "unit",
     segment_kind: "senses",
+    carded_sense: 0,
     segments: [{ label: "word", context: "sentence" }],
     card_status: "added",
     card_kinds: ["Recognition"],
@@ -115,6 +116,7 @@ it("clears deeper analysis when a correction switch resets the entry", () => {
   expect(entries.value[0]).toMatchObject({
     shape: null,
     segment_kind: null,
+    carded_sense: null,
     segments: [],
     card_status: null,
     card_kinds: [],

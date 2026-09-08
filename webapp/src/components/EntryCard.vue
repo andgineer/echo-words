@@ -226,6 +226,12 @@ const detailErrorText = computed(() =>
 // the row and the meaning underneath is the only thing telling them apart. On a rail
 // of senses the meaning is the chip; the parts of a phrase keep their own wording.
 const chipsAreSenses = computed(() => props.entry.segment_kind === "senses");
+const visibleSegments = computed(() => {
+  const entry = props.entry;
+  const segments = entry.segments ?? [];
+  if (!chipsAreSenses.value || entry.card_status !== "added") return segments;
+  return segments.filter((_, index) => index !== entry.carded_sense);
+});
 
 function chipLabel(segment) {
   return chipsAreSenses.value && segment.reason ? segment.reason : segment.label;
@@ -312,9 +318,9 @@ function confirmDelete() {
       ></audio>
     </div>
 
-    <div v-if="entry.segments?.length" class="segments">
+    <div v-if="visibleSegments.length" class="segments">
       <div
-        v-for="(segment, index) in entry.segments"
+        v-for="(segment, index) in visibleSegments"
         :key="`${index}|${segment.label}`"
         class="segment"
       >
