@@ -1,3 +1,4 @@
+import logging
 from datetime import date
 from types import SimpleNamespace
 
@@ -736,3 +737,94 @@ async def test_calls_today_rolls_over_in_utc_when_read(settings, languages, monk
     assert cascade.calls_today == 1
     current_day[0] = date(2026, 8, 20)
     assert cascade.calls_today == 0
+
+
+async def test_a_failed_answer_says_in_the_log_which_step_failed_and_after_how_long(
+    settings,
+    languages,
+    caplog,
+):
+    """The reader is told one word — the entry failed — and `/api/status` keeps the
+    reason only until the language's next call overwrites it. Without this line a
+    production failure leaves nothing to diagnose it from."""
+    cascade = fake_cascade(
+        settings,
+        handles=[FakeHandle(error=POOL_MISSED)],
+        client=FakeDirectClient([], error=LLMTimeoutError("direct stream timed out")),
+    )
+    with (
+        caplog.at_level(logging.WARNING, logger="echo_words.backend"),
+        pytest.raises(BackendError),
+    ):
+        await drain(cascade.stream_completion("prompt", languages["en"], trace_id="entry-7"))
+
+    assert "no answer for en" in caplog.text
+    assert "paid model gpt-fast" in caplog.text
+    assert "entry-7" in caplog.text
+    assert "direct stream timed out" in caplog.text
+
+
+async def test_the_paid_step_reports_whether_it_ever_wrote_a_token(
+    settings,
+    languages,
+    caplog,
+):
+    """The direct client journals nothing, so how long the paid model took and whether
+    it spoke at all is measured here or nowhere."""
+    cascade = fake_cascade(
+        settings,
+        handles=[FakeHandle(error=POOL_MISSED)],
+        client=FakeDirectClient([], error=LLMTimeoutError("direct stream timed out")),
+    )
+    with (
+        caplog.at_level(logging.INFO, logger="echo_words.backend"),
+        pytest.raises(BackendError),
+    ):
+        await run(cascade, languages["en"])
+    assert "the paid model gpt-fast: first token after never" in caplog.text
+
+    caplog.clear()
+    answering = fake_cascade(
+        settings,
+        handles=[FakeHandle(error=POOL_MISSED)],
+        client=FakeDirectClient(),
+    )
+    with caplog.at_level(logging.INFO, logger="echo_words.backend"):
+        await run(answering, languages["en"])
+    assert "first token after 0.0 s" in caplog.text
+
+
+async def test_the_step_up_says_which_answer_it_replaces_and_why(settings, languages, caplog):
+    cascade = fake_cascade(
+        settings,
+        handles=[FakeHandle(["free ", "answer"])],
+        client=FakeDirectClient(),
+    )
+    completion = cascade.stream_completion(
+        "prompt",
+        languages["en"],
+        usable=lambda _answer: False,
+        hand_over=lambda _answer: False,
+    )
+    with caplog.at_level(logging.INFO, logger="echo_words.backend"):
+        assert await drain(completion) == ["free ", "answer", "paid ", "answer"]
+    assert "the paid model takes over for en: the pool answer from pool-model is unusable" in (
+        caplog.text
+    )
+
+
+async def test_an_unusable_answer_nothing_can_replace_says_so_once(settings, languages, caplog):
+    """The entry keeps an analysis whose payload failed, and the log says the card was
+    lost to a spent step-up rather than to the answer alone."""
+    paidless = settings.model_copy(update={"api_model": ""})
+    cascade = fake_cascade(paidless, handles=[FakeHandle(["free ", "answer"])])
+    completion = cascade.stream_completion(
+        "prompt",
+        languages["en"],
+        usable=lambda _answer: False,
+        hand_over=lambda _answer: False,
+    )
+    with caplog.at_level(logging.WARNING, logger="echo_words.backend"):
+        assert await drain(completion) == ["free ", "answer"]
+    assert "the pool answer from pool-model stands for en" in caplog.text
+    assert "no paid model is configured" in caplog.text

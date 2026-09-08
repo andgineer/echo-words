@@ -1,6 +1,7 @@
 """The dispatcher: every answer starts on the pool and steps up to the paid model."""
 
 import logging
+import time
 from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable
 from contextlib import aclosing
 from dataclasses import dataclass
@@ -111,11 +112,25 @@ class Completion:
         # Every nested generator is closed through ``aclosing``: an ``async for``
         # alone leaves the one it drives to the garbage collector, and the pool's
         # slot would then come back whenever that happened to run.
+        started = time.monotonic()
         try:
             async with aclosing(self._answer()) as answer:
                 async for delta in answer:
                     yield delta
         except BackendError as exc:
+            # The only record of why an entry failed: the reason reaches the reader as
+            # one status code, and ``record_call`` keeps it until the language's next
+            # call overwrites it. The trace id is the row this call has in the broker's
+            # own journal.
+            logger.warning(
+                "no answer for %s after %.1f s from the %s model %s (trace %s): %s",
+                self._request.language.code,
+                time.monotonic() - started,
+                "paid" if self.paid else "pool",
+                self.llm_name or "unnamed",
+                self._request.trace_id or "none",
+                exc,
+            )
             if self._request.reported:
                 self._cascade.record_call(
                     self._request.language,
@@ -239,10 +254,12 @@ class Completion:
         )
         if usable and not handed_over:
             return False
+        code = self._request.language.code
         refusal = self._cascade.paid_refusal(self._request.language)
         if miss is not None:
             if refusal is not None:
                 raise BackendError(f"{miss}; paid step unavailable: {refusal}") from miss
+            logger.info("the paid model takes over for %s: %s", code, miss)
             return True
         if not usable:
             # An answer the caller cannot use is no more complete than one that never
@@ -253,7 +270,24 @@ class Completion:
             # call is settled unrated. The caller rates once, at the end of the stream,
             # and that rating belongs to the answer it ends up with — not to this one.
             self._rated = True
-        return refusal is None
+        why = "a declared misspelling" if handed_over else "unusable"
+        if refusal is not None:
+            logger.warning(
+                "the pool answer from %s stands for %s — it is %s and the paid step is"
+                " unavailable: %s",
+                self.llm_name or "unnamed",
+                code,
+                why,
+                refusal,
+            )
+            return False
+        logger.info(
+            "the paid model takes over for %s: the pool answer from %s is %s",
+            code,
+            self.llm_name or "unnamed",
+            why,
+        )
+        return True
 
     async def _bounded_deltas(self, stream: AsyncIterator[str]) -> AsyncIterator[str]:
         remaining = MAX_COMPLETE_ANSWER_CHARS
@@ -311,9 +345,25 @@ class Completion:
             self._request.prompt,
             on_resolved=lambda: self._cascade.spend_paid_call(self._request.language),
         )
-        async with aclosing(paid_stream) as paid:
-            async for delta in paid:
-                yield delta
+        started = time.monotonic()
+        first_token_at: float | None = None
+        try:
+            async with aclosing(paid_stream) as paid:
+                async for delta in paid:
+                    if first_token_at is None:
+                        first_token_at = time.monotonic() - started
+                    yield delta
+        finally:
+            # The paid step is journalled nowhere — the direct client keeps no row — so
+            # this line is the only measurement of it. Both halves are reported: a step
+            # that never spoke and one cut off mid-answer fail the same way to a reader
+            # and take different fixes, and the budget bounds silence, not the answer.
+            logger.info(
+                "the paid model %s: first token after %s, ended after %.1f s",
+                alias,
+                f"{first_token_at:.1f} s" if first_token_at is not None else "never",
+                time.monotonic() - started,
+            )
 
 
 class Cascade:
