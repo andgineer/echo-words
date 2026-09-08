@@ -6,8 +6,12 @@ at all. Neither the Python suite nor the component suite can reach them, because
 neither has a browser whose connection can be taken away.
 """
 
+import re
+import shutil
+from pathlib import Path
+
 import pytest
-from e2e_app import WORD, Gate, answer, live_app, submit
+from e2e_app import BUILT_PWA, WORD, Gate, answer, live_app, submit
 from fakes import FakeHandle
 from playwright.sync_api import Page, expect
 
@@ -17,6 +21,145 @@ pytestmark = pytest.mark.e2e
 
 ARTICLE = "<b>the finished analysis</b>"
 RECONNECT_TIMEOUT_MS = 15_000
+
+
+def test_cached_startup_shows_languages_and_history_without_downloading_them(
+    page: Page,
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with live_app(settings, monkeypatch, handles=[FakeHandle([answer(ARTICLE)])]) as app:
+        submit(page, app.url)
+        expect(page.locator(".entry-card-status")).to_contain_text("✅")
+        requests = []
+
+        def refuse_download(route):
+            requests.append(route.request.url)
+            route.abort()
+
+        for endpoint in ("languages", "languages/config", "languages/catalog", "words/recent"):
+            page.route(f"**/api/{endpoint}", refuse_download)
+        for _ in range(2):
+            page.reload()
+            expect(page.locator(".entry-text")).to_contain_text("the finished analysis")
+            expect(page.get_by_role("tab", name="English", exact=True)).to_be_visible()
+            page.get_by_placeholder("a word or a phrase").fill("another word")
+            expect(page.get_by_role("button", name="Analyse")).to_be_enabled()
+        assert requests == []
+
+
+def test_an_expired_language_cache_stays_visible_when_refresh_fails(
+    page: Page,
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with live_app(settings, monkeypatch) as app:
+        page.goto(app.url)
+        expect(page.get_by_role("tab", name="English", exact=True)).to_be_visible()
+        page.evaluate("() => navigator.serviceWorker.ready")
+        page.wait_for_function("navigator.serviceWorker.controller !== null")
+        page.evaluate("""() => new Promise((resolve, reject) => {
+            const request = indexedDB.open('echo-words', 1);
+            request.onsuccess = () => {
+                const db = request.result;
+                const tx = db.transaction('cache', 'readwrite');
+                const store = tx.objectStore('cache');
+                const get = store.get('/api/languages');
+                get.onsuccess = () => store.put({ ...get.result, fetchedAt: 1, attemptedAt: 1 });
+                tx.oncomplete = () => { db.close(); resolve(); };
+                tx.onerror = () => reject(tx.error);
+            };
+        })""")
+        page.context.set_offline(True)
+        page.reload()
+        expect(page.get_by_role("tab", name="English", exact=True)).to_be_visible()
+        page.get_by_placeholder("a word or a phrase").fill("word")
+        expect(page.get_by_role("button", name="Analyse")).to_be_enabled()
+        requests = []
+        page.on(
+            "request",
+            lambda request: (
+                requests.append(request.url) if request.url.endswith("/api/languages") else None
+            ),
+        )
+        page.reload()
+        expect(page.get_by_role("tab", name="English", exact=True)).to_be_visible()
+        assert requests == []
+
+
+def test_the_installed_pwa_starts_offline_with_its_history_and_all_directories(
+    page: Page,
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with live_app(settings, monkeypatch, handles=[FakeHandle([answer(ARTICLE)])]) as app:
+        submit(page, app.url)
+        expect(page.locator(".entry-card-status")).to_contain_text("✅")
+        page.evaluate("() => navigator.serviceWorker.ready")
+        page.wait_for_function("navigator.serviceWorker.controller !== null")
+        # A read transaction after the writes is a commit barrier, not a sleep.
+        page.evaluate("""() => new Promise((resolve) => {
+            const request = indexedDB.open('echo-words', 1);
+            request.onsuccess = () => {
+                const db = request.result;
+                const tx = db.transaction('cache', 'readonly');
+                const get = tx.objectStore('cache').getAllKeys();
+                tx.oncomplete = () => { db.close(); resolve(get.result); };
+            };
+        })""")
+        page.context.set_offline(True)
+        page.reload()
+        expect(page.locator(".entry-text")).to_contain_text("the finished analysis")
+        expect(page.get_by_role("tab", name="English", exact=True)).to_be_visible()
+        page.locator('[data-testid="edit-languages"]').click()
+        expect(page.locator('[data-testid="row-en"]')).to_be_visible()
+        page.locator("#new-lang").fill("Spanish")
+        expect(page.locator('[data-testid="add-es"]')).to_be_visible()
+        page.locator('[data-testid="open-en"]').click()
+        expect(page.locator("#lang-deck")).not_to_have_value("")
+
+
+def test_a_new_service_worker_and_bundle_keep_the_browser_database(
+    page: Page,
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    build = tmp_path / "pwa"
+    shutil.copytree(BUILT_PWA, build)
+    with live_app(
+        settings, monkeypatch, static_build=build, handles=[FakeHandle([answer(ARTICLE)])]
+    ) as app:
+        submit(page, app.url)
+        expect(page.locator(".entry-card-status")).to_contain_text("✅")
+        page.evaluate("() => navigator.serviceWorker.ready")
+        page.wait_for_function("navigator.serviceWorker.controller !== null")
+
+        index = (build / "index.html").read_text()
+        old_asset = re.search(r'src="/(assets/index-[^"]+\.js)"', index).group(1)
+        new_asset = old_asset.replace(".js", "-update.js")
+        (build / new_asset).write_text(
+            (build / old_asset).read_text() + "\nglobalThis.updatedPwaBuild = true;\n",
+        )
+        (build / "index.html").write_text(index.replace(old_asset, new_asset))
+        worker = (build / "sw.js").read_text().replace(old_asset, new_asset)
+        worker, replaced = re.subn(
+            r'url:"index.html",revision:"[^"]+"',
+            'url:"index.html",revision:"test-update"',
+            worker,
+        )
+        assert replaced == 1
+        (build / "sw.js").write_text(worker)
+        page.evaluate("""() => new Promise(async (resolve) => {
+            navigator.serviceWorker.addEventListener('controllerchange', resolve, { once: true });
+            const registration = await navigator.serviceWorker.getRegistration();
+            await registration.update();
+        })""")
+        page.context.set_offline(True)
+        page.reload()
+        page.wait_for_function("globalThis.updatedPwaBuild === true")
+        expect(page.locator(".entry-text")).to_contain_text("the finished analysis")
+        expect(page.get_by_role("tab", name="English", exact=True)).to_be_visible()
 
 
 def test_an_answer_finished_while_the_page_was_deaf_is_recovered_on_reconnect(
@@ -57,6 +200,7 @@ def test_a_word_submitted_with_no_connection_is_sent_once_when_it_returns(
     twice would ask for a second and fail here rather than quietly double the card."""
     with live_app(settings, monkeypatch, handles=[FakeHandle([answer(ARTICLE)])]) as app:
         page.goto(app.url)
+        expect(page.get_by_role("tab", name="English", exact=True)).to_be_visible()
         page.context.set_offline(True)
         page.get_by_placeholder("a word or a phrase").fill(WORD)
         page.get_by_role("button", name="Analyse").click()

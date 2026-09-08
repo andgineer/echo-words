@@ -59,9 +59,8 @@ evaluated. The owner's requirements that frame it:
 - **No external service in the interface layer.** The stack is fully the
   owner's own (matching the llmbroker choice on the LLM side).
 - **A history view.** Recent words with their finished analyses are
-  served from the backend's word log, so a reload, an SSE reconnect, or
-  a second device never loses an answer — something chat scrollback gave
-  implicitly and the PWA now gives explicitly.
+  saved in the device's IndexedDB and restored on reload. A new browser
+  database starts empty; the PWA never downloads the server's whole history.
 
 The core of the system is untouched: the LLM contract, card building,
 headless Anki integration, and the audio chain are interface-agnostic.
@@ -80,12 +79,35 @@ headless Anki integration, and the audio chain are interface-agnostic.
   anywhere; the documented share-sheet path is a one-time iOS Shortcut
   that POSTs the shared text to the API over the tailnet.
 - **SSE drops when Safari backgrounds the tab.** Mitigated by the
-  server-side history: on reconnect the client re-fetches recent
-  entries, including the accumulated text of an in-progress generation —
-  nothing is lost.
-- **Backend down ⇒ interface down.** Accepted per the buffering analysis
-  above; the local resend queue still turns words submitted during an
-  outage into cards.
+  server's in-memory job state: on reconnect the client retrieves only its
+  known unfinished entries, including accumulated text and deeper analysis.
+  Events arriving during recovery are replayed over the response. There is
+  no catch-up with history accumulated by other devices while closed.
+- **Backend down ⇒ new answers unavailable.** Saved history and directories
+  still render. The local resend queue turns words submitted during an
+  outage into cards after connectivity returns.
+
+## Durable browser cache and offline startup
+
+History and the three language directories use IndexedDB under a stable database
+identity, independent of the release and Workbox's asset caches. Service-worker
+updates do not delete application data. The app requests persistent storage where
+the browser supports it, and uses localStorage as a fallback if IndexedDB fails.
+The browser can still clear data on explicit user action, and changing the origin
+creates a separate storage space.
+
+Startup waits only for local storage, never for a server response. The first
+online visit fills every directory, including the editor's catalog; later starts
+render cached values immediately. Automatic refresh attempts have a 24-hour TTL,
+following dinary's timestamp policy, and an unsuccessful attempt keeps the old
+snapshot and also consumes that day's attempt. A missing snapshot can retry on
+connectivity recovery. Editing a language on this device invalidates the affected
+lists immediately. Stats and operational status remain live on their own screens.
+
+The history has no network refresh schedule. It is populated by submissions and
+the live event stream and bounded to 50 entries, retaining unfinished work.
+Server restart still expires job controls and undo; it does not erase the
+device's history. No history file or application database is added to the server.
 
 ## The interface language is the client's, and so is every wording
 

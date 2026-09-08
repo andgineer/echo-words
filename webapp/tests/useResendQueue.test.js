@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../src/api/_request.js", () => ({ apiRequest: vi.fn() }));
 
 import { apiRequest } from "../src/api/_request.js";
+import { entries } from "../src/composables/useEntries.js";
 import {
   _resetForTest,
   enqueueWord,
@@ -17,11 +18,26 @@ const second = { word: "two", lang: "en", lookup_only: true };
 beforeEach(async () => {
   await labelBehavior(EPIC.APPLICATION_PLATFORM, FEATURE.PWA_RESILIENCE, "Offline resend queue");
   localStorage.clear();
+  entries.value = [];
   apiRequest.mockReset();
   _resetForTest();
 });
 
 describe("resend queue", () => {
+  it("keeps a returned acceptance even if the stream has not connected", async () => {
+    enqueueWord(first);
+    apiRequest.mockResolvedValue({ entry_id: "accepted", word: "one", lookup_only: false });
+    await flushQueue();
+    expect(entries.value[0]).toMatchObject({ entry_id: "accepted", word: "one", lang: "en", status: "pending" });
+  });
+
+  it("does not turn an already streamed answer back into a pending job", async () => {
+    entries.value = [{ entry_id: "accepted", text: "answer", status: "done" }];
+    enqueueWord(first);
+    apiRequest.mockResolvedValue({ entry_id: "accepted" });
+    await flushQueue();
+    expect(entries.value[0]).toMatchObject({ text: "answer", status: "done" });
+  });
   it("re-sends saved words in order and removes successful items", async () => {
     enqueueWord(first);
     enqueueWord(second);

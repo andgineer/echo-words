@@ -77,6 +77,18 @@ def test_languages_feed_the_selector(client: TestClient):
     ]
 
 
+def test_a_single_unfinished_entry_can_be_recovered_without_downloading_history(client: TestClient):
+    accepted = submit(client, word="word").json()
+    pipeline = client.app.state.pipeline
+    client.portal.call(pipeline.join)
+    entry_id = accepted["entry_id"]
+    expected = recent_entry(client, entry_id)
+    assert client.get(f"/api/words/{entry_id}").json() == expected
+    pipeline._details_pending.add(entry_id)
+    assert client.get(f"/api/words/{entry_id}").json()["detail_pending"] is True
+    assert client.get("/api/words/expired").status_code == 410
+
+
 def test_accepted_submission_names_the_resolved_language(client: TestClient):
     response = submit(client, word="receive")
     assert response.status_code == 200

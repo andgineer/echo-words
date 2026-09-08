@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useI18n } from "./i18n/index.js";
 import { flushQueue } from "./composables/useResendQueue.js";
+import { refreshReferences } from "./composables/useLanguage.js";
 import HeaderNav from "./components/HeaderNav.vue";
 import AddView from "./views/AddView.vue";
 import LanguageDetailView from "./views/LanguageDetailView.vue";
@@ -28,14 +29,23 @@ function openLanguage(code) {
 
 function retryQueuedWords() {
   void flushQueue();
+  void refreshReferences();
+}
+
+function refreshVisibleReferences() {
+  if (document.visibilityState === "visible") void refreshReferences();
 }
 
 onMounted(() => {
   retryQueuedWords();
   window.addEventListener("online", retryQueuedWords);
+  document.addEventListener("visibilitychange", refreshVisibleReferences);
 });
 
-onUnmounted(() => window.removeEventListener("online", retryQueuedWords));
+onUnmounted(() => {
+  window.removeEventListener("online", retryQueuedWords);
+  document.removeEventListener("visibilitychange", refreshVisibleReferences);
+});
 </script>
 
 <template>

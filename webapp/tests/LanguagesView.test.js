@@ -272,7 +272,7 @@ describe("LanguagesView", () => {
     await wrapper.get(".confirm-yes").trigger("click");
     await flushPromises();
 
-    expect(apiRequest).toHaveBeenCalledWith("/api/languages");
+    expect(apiRequest).toHaveBeenCalledWith("/api/languages", { timeoutMs: 8000 });
     expect(languages.value).toEqual([{ code: "sr", name: "Српски" }]);
     expect(selected.value).toBe("sr");
     expect(wrapper.findAll(".lang-name")).toHaveLength(1);

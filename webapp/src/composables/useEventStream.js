@@ -1,5 +1,5 @@
 import { apiRequest } from "../api/_request.js";
-import { MAX_ENTRIES, entries, replaceEntries, upsertEntry } from "./useEntries.js";
+import { entries, upsertEntry } from "./useEntries.js";
 
 function eventData(event) {
   try {
@@ -11,19 +11,31 @@ function eventData(event) {
 
 export function useEventStream({
   EventSourceClass = globalThis.EventSource,
-  // The browser keeps this many, so it asks the backend for exactly that many back.
-  fetchRecent = () => apiRequest(`/api/words/recent?limit=${MAX_ENTRIES}`),
+  fetchEntry = (id) => apiRequest(`/api/words/${encodeURIComponent(id)}`),
 } = {}) {
   let source = null;
   let activeRefresh = null;
 
   async function refresh() {
+    if (activeRefresh) return;
     const refreshState = { events: [] };
     activeRefresh = refreshState;
     try {
-      const snapshot = await fetchRecent();
+      // Recover only work this device already knows is unfinished. Other devices'
+      // accumulated history is not a reason to download the whole rail again.
+      const unfinished = entries.value.filter(
+        (entry) => entry.status === "pending" || entry.detail_pending,
+      );
+      const snapshot = await Promise.all(unfinished.map(async (entry) => {
+        try {
+          return await fetchEntry(entry.entry_id);
+        } catch (error) {
+          if (error.status !== 410) throw error;
+          return { ...entry, status: "error", error: "analysis_failed", detail_pending: false };
+        }
+      }));
       if (activeRefresh !== refreshState) return;
-      replaceEntries(snapshot);
+      for (const entry of snapshot) upsertEntry(entry);
       activeRefresh = null;
       for (const { name, data } of refreshState.events) applyData(name, data);
     } finally {
@@ -73,6 +85,7 @@ export function useEventStream({
   function apply(name, event) {
     const data = eventData(event);
     if (!data?.entry_id) return;
+    if (name !== "accepted" && !entries.value.some((entry) => entry.entry_id === data.entry_id)) return;
     applyData(name, data);
     activeRefresh?.events.push({ name, data });
   }

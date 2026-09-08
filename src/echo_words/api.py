@@ -367,6 +367,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:  # noqa: C901, PLR0
     ) -> list[dict[str, object]]:
         return request.app.state.pipeline.recent(limit)
 
+    @app.get("/api/words/{entry_id}")
+    async def get_word(request: Request, entry_id: str) -> dict[str, object]:
+        pipeline = request.app.state.pipeline
+        entry = pipeline.history.get(entry_id)
+        if entry is None:
+            raise HTTPException(status_code=410, detail="request expired")
+        return pipeline.public_entry(entry)
+
     @app.post("/api/words/{entry_id}/switch")
     async def switch_word(request: Request, entry_id: str) -> dict[str, object]:
         try:

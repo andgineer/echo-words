@@ -85,6 +85,8 @@ def _wired_broker(script: dict, box: list[FakeBroker]) -> type[FakeBroker]:
 def live_app(
     settings: Settings,
     monkeypatch: pytest.MonkeyPatch,
+    *,
+    static_build: Path = BUILT_PWA,
     **script: object,
 ) -> Iterator[LiveApp]:
     """Serve the real app on a loopback port until the block ends."""
@@ -93,7 +95,7 @@ def live_app(
     box: list[FakeBroker] = []
     monkeypatch.setattr("llmbroker.AsyncBroker", _wired_broker(script, box))
     _no_lookups(monkeypatch)
-    served = Settings(**{**settings.model_dump(), "static_dir": BUILT_PWA})
+    served = Settings(**{**settings.model_dump(), "static_dir": static_build})
     server = uvicorn.Server(
         uvicorn.Config(
             create_app(served),

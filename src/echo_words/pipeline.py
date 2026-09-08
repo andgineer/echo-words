@@ -309,9 +309,11 @@ class WordPipeline:
         # reload, or a trip to another screen, would drop the strip and the live dot
         # from a call that is still going.
         return [
-            {**item, "detail_pending": item["entry_id"] in self._details_pending}
-            for item in self.history.recent(limit)
+            self.public_entry(self._entries[key]) for key in list(reversed(self._order))[:limit]
         ]
+
+    def public_entry(self, entry: Entry) -> dict[str, object]:
+        return {**entry.public(), "detail_pending": entry.entry_id in self._details_pending}
 
     def counters(self, lang: str) -> dict[str, int]:
         return self.history.counts(lang)

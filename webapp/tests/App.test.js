@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { mount } from "@vue/test-utils";
 
 vi.mock("../src/composables/useResendQueue.js", () => ({ flushQueue: vi.fn() }));
+vi.mock("../src/composables/useLanguage.js", () => ({ refreshReferences: vi.fn() }));
 vi.mock("../src/views/AddView.vue", () => ({
   default: {
     emits: ["navigate"],

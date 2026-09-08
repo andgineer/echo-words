@@ -2,7 +2,8 @@
 import { computed, onMounted, ref } from "vue";
 import { ChevronDown, ChevronLeft } from "lucide-vue-next";
 import { apiRequest } from "../api/_request.js";
-import { loadLanguages } from "../composables/useLanguage.js";
+import { cachedRequest } from "../api/cache.js";
+import { invalidateLanguages, loadLanguages } from "../composables/useLanguage.js";
 import { useI18n } from "../i18n/index.js";
 
 const { t } = useI18n();
@@ -75,7 +76,7 @@ const voiceHint = computed(() => {
 
 onMounted(async () => {
   try {
-    const table = await apiRequest("/api/languages/config");
+    const table = await cachedRequest("/api/languages/config", { background: true });
     const found = table.find((language) => language.code === props.code);
     if (!found) {
       emit("done");
@@ -91,7 +92,7 @@ onMounted(async () => {
       dict_api: found.dict_api ?? "",
       accent: found.accent ?? "",
     };
-    const catalog = await apiRequest("/api/languages/catalog");
+    const catalog = await cachedRequest("/api/languages/catalog", { background: true });
     const listed = catalog.find((entry) => entry.code === props.code);
     piperUnusable.value = Boolean(listed?.piper_unusable);
     piperVoices.value = listed?.piper_voices ?? [];
@@ -117,6 +118,7 @@ async function save() {
   saved.value = false;
   try {
     await apiRequest(`/api/languages/${props.code}`, { method: "PUT", body: { ...form.value } });
+    invalidateLanguages();
     await loadLanguages();
     saved.value = true;
   } catch (e) {
@@ -133,6 +135,7 @@ async function remove() {
   asking.value = false;
   try {
     await apiRequest(`/api/languages/${props.code}`, { method: "DELETE" });
+    invalidateLanguages();
     // The removed language may have been the selected one; this replaces it.
     await loadLanguages();
     emit("done");

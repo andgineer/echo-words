@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { entries, upsertEntry } from "../src/composables/useEntries.js";
 import { EPIC, FEATURE, labelBehavior } from "./allure-taxonomy.js";
@@ -6,6 +6,7 @@ import { EPIC, FEATURE, labelBehavior } from "./allure-taxonomy.js";
 beforeEach(async () => {
   await labelBehavior(EPIC.APPLICATION_PLATFORM, FEATURE.PWA_RESILIENCE, "Bounded history");
   entries.value = [];
+  localStorage.clear();
 });
 
 function fill(count, status = "done") {
@@ -25,8 +26,6 @@ describe("useEntries", () => {
     ]);
   });
 
-  // The server bounds its own history the same way, but the browser only re-syncs to
-  // it on a stream reconnect: a tab left open for weeks would keep everything.
   it("keeps at most fifty entries, dropping the oldest", () => {
     fill(52);
 
@@ -49,5 +48,26 @@ describe("useEntries", () => {
     upsertEntry({ entry_id: "entry-0", text: "still here" });
 
     expect(entries.value).toHaveLength(50);
+  });
+
+  it("restores the full answer and paid detail after a module reload", async () => {
+    upsertEntry({ entry_id: "saved", word: "кућа", text: "дом", detail_html: "detail", status: "done" });
+    vi.resetModules();
+    const restored = await import("../src/composables/useEntries.js");
+    expect(restored.entries.value).toEqual(entries.value);
+    restored.restoreEntries();
+    expect(restored.entries.value).toEqual(entries.value);
+  });
+
+  it("trims a pending overflow when an answer finishes", async () => {
+    vi.resetModules();
+    const restored = await import("../src/composables/useEntries.js");
+    for (let id = 0; id < 51; id += 1) {
+      restored.upsertEntry({ entry_id: String(id), status: "pending" }, { newest: true });
+    }
+    expect(restored.entries.value).toHaveLength(51);
+    restored.upsertEntry({ entry_id: "0", status: "done" });
+    expect(restored.entries.value).toHaveLength(50);
+    expect(restored.entries.value.some((entry) => entry.entry_id === "0")).toBe(false);
   });
 });

@@ -2,7 +2,11 @@
 
 Open the node's Tailscale HTTPS URL in Safari, tap **Share**, then **Add to Home
 Screen**. The installed app opens standalone and its shell stays available
-offline; API requests are network-only and never served from cache.
+offline. History and language directories are stored in the browser's IndexedDB,
+so later starts work without contacting the server. Directories refresh at most
+once a day and keep their cached values when the server cannot be reached. A
+first visit needs a connection to download the app and directories, and starts
+with empty history. PWA updates retain the same database.
 
 ## Words submitted with no connection
 
@@ -12,7 +16,7 @@ is retried on the next app open or on the browser's `online` event.
 Each submission carries a UUID that is stored with the queue item. If the server
 accepted a POST but its response was lost, retrying that UUID returns the
 original entry instead of repeating the LLM and audio work. This receipt map is
-in-memory like the history: it holds at most 4096 accepted IDs for seven days and
+in-memory: it holds at most 4096 accepted IDs for seven days and
 resets when the backend restarts. A retry outside that window is a new request,
 and since there is no duplicate check it makes a second note — undo, or Anki's
 own browser, removes it.

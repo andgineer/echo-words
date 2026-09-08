@@ -388,7 +388,7 @@ describe("LanguageDetailView", () => {
 
     expect(apiRequest).toHaveBeenCalledWith("/api/languages/sr", { method: "DELETE" });
     // And the words screen is told, since the removed language may have been selected.
-    expect(apiRequest).toHaveBeenCalledWith("/api/languages");
+    expect(apiRequest).toHaveBeenCalledWith("/api/languages", { timeoutMs: 8000 });
     expect(wrapper.emitted("done")).toHaveLength(1);
   });
 

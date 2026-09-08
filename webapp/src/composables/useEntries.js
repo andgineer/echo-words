@@ -1,14 +1,22 @@
 import { ref } from "vue";
+import { readCache, writeCache } from "../api/cache.js";
 
-// The server keeps the same number and evicts the same way, but the browser only
-// re-syncs to it on a stream reconnect, so a tab left open for weeks would keep
-// everything the stream ever sent.
 export const MAX_ENTRIES = 50;
+const HISTORY_KEY = "history";
+const cached = readCache(HISTORY_KEY)?.data;
 
-export const entries = ref([]);
+export const entries = ref(Array.isArray(cached) ? cached : []);
+
+export function restoreEntries() {
+  const saved = readCache(HISTORY_KEY)?.data;
+  entries.value = Array.isArray(saved) ? saved : [];
+  trim();
+}
 
 export function replaceEntries(snapshot) {
   entries.value = snapshot;
+  trim();
+  writeCache(HISTORY_KEY, entries.value);
 }
 
 export function upsertEntry(entry, { newest = false } = {}) {
@@ -17,9 +25,12 @@ export function upsertEntry(entry, { newest = false } = {}) {
     if (newest) entries.value.unshift(entry);
     else entries.value.push(entry);
     trim();
+    writeCache(HISTORY_KEY, entries.value);
     return;
   }
   entries.value[index] = { ...entries.value[index], ...entry };
+  trim();
+  writeCache(HISTORY_KEY, entries.value);
 }
 
 // Oldest first, and never an entry still waiting on the pipeline: dropping one

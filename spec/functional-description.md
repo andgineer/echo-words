@@ -591,12 +591,30 @@ Kept minimal — everything beyond typing a word:
   explicit unit intent rather than making the frontend reconstruct either.
 - **History** — the rail holds recent words with their finished analyses,
   pronunciation, and status; an entry still being answered shows its text
-  accumulated so far. History is served by the backend, so it survives
-  reloads, a dropped connection mid-generation, and switching devices — but
-  it is held **in memory only** and starts empty after a restart. Both sides
-  bound it to the same number of entries and neither evicts one still being
-  answered. The cards it produced are unaffected; a word whose analysis fell
-  off the end can always be looked up again.
+  accumulated so far. The PWA keeps history in the browser's IndexedDB and
+  restores it on startup without contacting the backend. A fresh browser
+  database starts with empty history; there is no initial or periodic download
+  of the server's recent entries. Both sides bound their entries to 50 and
+  neither evicts one still being answered. The backend retains only the
+  in-memory state needed by current jobs and their controls, with no JSON
+  persistence. On reconnect the PWA retrieves only locally known unfinished
+  entries; an expired job becomes retryable. The existing live event broadcast
+  continues, but catching up with entries accumulated by other devices while
+  closed is out of scope. The cards it produced are unaffected; a word whose
+  analysis fell off the end can always be looked up again.
+- **Offline startup and reference cache** — configured languages, language
+  settings and the full language directory are loaded into IndexedDB on first
+  use. Later starts render the local data without waiting for the server.
+  Automatic refresh attempts happen at most once per 24 hours, including
+  failed attempts; a failure retains the previous data. A first load without
+  cached data may retry when connectivity returns. Successful edits on this
+  device invalidate the affected lists immediately. Operational status and
+  statistics remain live requests on their own screens.
+  The browser database has a stable identity independent of app releases and
+  service-worker caches. Updates never delete it. The app requests persistent
+  browser storage where supported and falls back to localStorage if IndexedDB
+  cannot be used. Browser storage clearance or origin changes are not an app
+  update and can still remove the local history.
 - **Delete this card** — on the entry in front of the reader, remove the Anki
   note that entry created and the media it put in the collection. The analysis
   stays on the screen, the entry stays in the rail and the word stays audible;
@@ -739,9 +757,9 @@ same prompt is not how a weak answer gets fixed.
   they still become cards. The collection is a local file: cards added
   while AnkiWeb sync was failing survive restarts and reach the devices
   on the next successful sync. Nothing else on the backend is durable
-  by design — a restart empties the history and the in-memory
-  counters, which is acceptable precisely because every word that
-  mattered is already a card.
+  by design — a restart clears server-side job state, controls and counters.
+  The PWA's saved history and reference data remain on the device and can be
+  read while the backend is unreachable.
 - **Single instance, single user.** Tailnet membership is the only
   access control; the design assumes the owner is the only user. No
   horizontal scaling concerns.

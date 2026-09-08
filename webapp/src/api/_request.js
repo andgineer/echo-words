@@ -1,7 +1,8 @@
 import { locale } from "../i18n/index.js";
 
-export async function apiRequest(path, { method = "GET", body } = {}) {
+export async function apiRequest(path, { method = "GET", body, timeoutMs } = {}) {
   const init = { method, headers: { "Accept-Language": locale.value } };
+  if (timeoutMs) init.signal = AbortSignal.timeout(timeoutMs);
   if (body !== undefined) {
     init.headers["Content-Type"] = "application/json";
     init.body = JSON.stringify(body);

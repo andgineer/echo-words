@@ -2,7 +2,8 @@
 import { computed, onMounted, ref } from "vue";
 import { ChevronLeft, Pencil, Trash2 } from "lucide-vue-next";
 import { apiRequest } from "../api/_request.js";
-import { loadLanguages } from "../composables/useLanguage.js";
+import { cachedRequest, readCache } from "../api/cache.js";
+import { invalidateLanguages, loadLanguages } from "../composables/useLanguage.js";
 import { useI18n } from "../i18n/index.js";
 
 const { t } = useI18n();
@@ -10,8 +11,8 @@ const emit = defineEmits(["back", "open"]);
 
 const MATCHES_SHOWN = 8;
 
-const rows = ref([]);
-const catalog = ref([]);
+const rows = ref(readCache("/api/languages/config")?.data ?? []);
+const catalog = ref(readCache("/api/languages/catalog")?.data ?? []);
 const asking = ref("");
 const draft = ref("");
 const hint = ref("");
@@ -55,7 +56,7 @@ const matches = computed(() => {
 onMounted(async () => {
   await refresh();
   try {
-    catalog.value = await apiRequest("/api/languages/catalog");
+    catalog.value = await cachedRequest("/api/languages/catalog");
   } catch (e) {
     hint.value = e.message;
   }
@@ -63,7 +64,7 @@ onMounted(async () => {
 
 async function refresh() {
   try {
-    rows.value = await apiRequest("/api/languages/config");
+    rows.value = await cachedRequest("/api/languages/config");
   } catch (e) {
     hint.value = e.message;
   }
@@ -79,6 +80,7 @@ async function add(entry) {
       body: { deck: entry.deck, dict_api: entry.dict_api ?? "" },
     });
     draft.value = "";
+    invalidateLanguages();
     await refresh();
     await loadLanguages();
   } catch (e) {
@@ -95,6 +97,7 @@ async function remove(code) {
   asking.value = "";
   try {
     await apiRequest(`/api/languages/${code}`, { method: "DELETE" });
+    invalidateLanguages();
     await refresh();
     // The selection may have been the language just removed; this replaces it.
     await loadLanguages();

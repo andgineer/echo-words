@@ -47,16 +47,24 @@ watch([word, selected], () => {
   hint.value = "";
 });
 
-onMounted(async () => {
-  startEventStream();
+async function refreshLanguages() {
   try {
     await loadLanguages();
   } catch (e) {
     hint.value = e.message;
   }
+}
+
+onMounted(() => {
+  startEventStream();
+  void refreshLanguages();
+  window.addEventListener("online", refreshLanguages);
 });
 
-onUnmounted(stopEventStream);
+onUnmounted(() => {
+  stopEventStream();
+  window.removeEventListener("online", refreshLanguages);
+});
 
 function pickLanguage(code) {
   if (code === selected.value) return;
@@ -206,7 +214,7 @@ async function requestDetail(entry) {
       @keyup.enter="submit"
     />
 
-    <button class="btn btn-primary submit" :disabled="busy" @click="submit">
+    <button class="btn btn-primary submit" :disabled="busy || !selected" @click="submit">
       {{ t("add.submit") }}
     </button>
 

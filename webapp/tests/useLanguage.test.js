@@ -46,7 +46,7 @@ describe("useLanguage", () => {
 
     await loadLanguages();
 
-    expect(apiRequest).toHaveBeenCalledWith("/api/languages");
+    expect(apiRequest).toHaveBeenCalledWith("/api/languages", { timeoutMs: 8000 });
     expect(languages.value).toEqual(OPTIONS);
     expect(selected.value).toBe("de");
   });
