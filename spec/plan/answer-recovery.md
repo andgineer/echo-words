@@ -177,11 +177,13 @@ and the backend's own sentence is used; a changed, added or dropped word is stil
 a rewrite and still rejected, because a rewrite means the translation and the
 `context_sense` belong to a sentence the reader never wrote.
 
-**This part is blocked on evidence, and the evidence is now being collected.**
+**This part is blocked on evidence, and collecting it starts with a deploy.**
 `034bfd31` logs the reader's sentence beside the rejected payload, so a fortnight
 of ordinary use will say how many of these rejections are meaning-preserving
-near-misses and how many are genuine rewrites. Classify that before writing the
-comparison, and before re-opening `decision-answer-shape.md`.
+near-misses and how many are genuine rewrites — but only from the moment that
+commit is running on the host, which as of writing it is not. Deploy it, wait,
+then classify, and only then write the comparison or re-open
+`decision-answer-shape.md`.
 
 The end state worth considering if the residue is still large: stop asking for
 the copy at all. `context_sense` plus a translation of the context sentence is
@@ -264,6 +266,31 @@ same commit as the code that contradicts them.
 - `decision-answer-shape.md`: the strict-equality rule and its 152-answer
   measurement. B re-opens it, and only a measurement closes it again — never an
   edit.
+
+---
+
+## Found on the way, and not part of this work
+
+The paid step's budget does not mean what its name says. `stream_api` passes
+`ANSWER_BUDGET_SECONDS` to `client.stream(prompt, timeout=…)`, llmbroker hands
+that number to httpx as a bare float, and httpx spreads a bare float across
+connect, read, write and pool separately. For a streaming response the one that
+governs is `read` — the gap between two chunks. So the constant bounds *silence*,
+not the answer: a model that trickles for two minutes is never cut off, and one
+that thinks quietly for twenty-six seconds is, before it has written anything.
+
+That is the opposite of what the functional description asks for. It calls the
+number the "complete-answer budget of one model attempt" and says plainly that
+time to the first token "is deliberately not a requirement", because bounding it
+"would prefer a model that trickles for a minute over one that thinks briefly and
+then answers at once". The implementation bounds exactly that.
+
+It is written down rather than fixed because there is no evidence yet that the
+number is wrong. The one occasion it may have fired — the paid step of the
+05:07:58 call — left no record of whether it timed out or failed some other way;
+`b79a2380` is what will say. Fixing the semantics means an overall deadline
+around the stream plus a short connect timeout, and changing the semantics
+without knowing which failure it caused would be tuning blind.
 
 ---
 
