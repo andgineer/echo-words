@@ -26,7 +26,7 @@ tool looks for.
 - `spec/plan/` — work that is started and not finished, one file each.
   **Read these first when picking work up**: each says where its work
   stands, what is already built, what its experiments established and
-  what is left. Three are open, and one of them is held.
+  what is left. Four are open, and one of them is held.
   `model-tier.md` — whether any model is both fast enough for an
   interactive tool and obedient enough to retire some of the
   deterministic repairs in the answer path; the paid catalog's fast
@@ -38,6 +38,12 @@ tool looks for.
   evidence: five reproduced in local use, from an unignored `.env` to a
   search that denies a language it merely already carries, and ten read
   out of bench review packets whose every automated screen was green.
+  `answer-recovery.md` — what happens between a pool answer and a card
+  when the parser cannot read the payload: production says fourteen of
+  fifteen rejected payloads carried an answer the reader would have
+  accepted, so the parse verdict is a poor reason to clear the page and
+  buy a paid answer. Local repair, a second pool answer through a new
+  llmbroker call, and two triggers instead of one.
   `two-prompts.md` — a cheap model call to
   choose the branch for the submit box; **held** until `model-tier.md`
   reports, because no observed defect stands behind it and it adds a
