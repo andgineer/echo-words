@@ -14,19 +14,19 @@
 | src/echo\_words/card.py              |      264 |       17 |     94% |133-134, 181-182, 240-250, 255, 264, 269, 315, 321, 327, 338, 402, 517 |
 | src/echo\_words/config.py            |       42 |        0 |    100% |           |
 | src/echo\_words/events.py            |       34 |        0 |    100% |           |
-| src/echo\_words/history.py           |      106 |        0 |    100% |           |
+| src/echo\_words/history.py           |      107 |        0 |    100% |           |
 | src/echo\_words/i18n.py              |       23 |        0 |    100% |           |
 | src/echo\_words/language\_catalog.py |       22 |        0 |    100% |           |
 | src/echo\_words/languages.py         |      238 |        2 |     99% |  104, 434 |
 | src/echo\_words/lexicon.py           |       82 |        1 |     99% |       169 |
 | src/echo\_words/llm\_backend.py      |       53 |        0 |    100% |           |
 | src/echo\_words/main.py              |       34 |        0 |    100% |           |
-| src/echo\_words/pipeline.py          |      690 |       37 |     95% |109, 214, 350, 379, 438, 490, 500-501, 557, 748, 766, 773-774, 810, 853, 868-871, 1066, 1074, 1083, 1108, 1111, 1129-1132, 1136, 1140, 1222, 1313, 1325, 1366-1369 |
+| src/echo\_words/pipeline.py          |      692 |       37 |     95% |109, 214, 350, 379, 438, 490, 500-501, 557, 755, 773, 780-781, 817, 860, 875-878, 1074, 1082, 1091, 1116, 1119, 1137-1140, 1144, 1148, 1231, 1322, 1334, 1375-1378 |
 | src/echo\_words/prompt.py            |       72 |        2 |     97% |   307-308 |
 | src/echo\_words/sanitizer.py         |       25 |        1 |     96% |        37 |
 | src/echo\_words/segments.py          |      103 |        9 |     91% |40, 52, 74, 76, 80, 83, 101, 105, 173 |
 | src/echo\_words/voices.py            |        9 |        0 |    100% |           |
-| **TOTAL**                            | **3246** |  **153** | **95%** |           |
+| **TOTAL**                            | **3249** |  **153** | **95%** |           |
 
 
 ## Setup coverage badge
