@@ -348,10 +348,14 @@ def extract_answer(  # noqa: PLR0913 - the whole request the answer is read agai
             target=target,
         )
     except CardParseError as exc:
+        # The context is logged beside the payload because most rejections are about
+        # the two of them disagreeing: without the sentence that was asked about, a
+        # copy that missed it by one word reads exactly like an invented one.
         logger.warning(
-            "unusable answer block for %s/%r: %s; payload %s",
+            "unusable answer block for %s/%r in context %r: %s; payload %s",
             language.code,
             submitted,
+            context,
             exc,
             _logged(payload),
         )

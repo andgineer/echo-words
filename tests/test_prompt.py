@@ -189,6 +189,27 @@ def test_rejected_payload_is_logged_bounded(languages, caplog):
     assert f"({len(payload)} chars)" in caplog.text
 
 
+def test_a_rejected_payload_is_logged_beside_the_context_it_was_asked_about(
+    languages,
+    caplog,
+):
+    """Most rejections are the answer and the context disagreeing, and a copy that
+    missed the sentence by one word is indistinguishable from an invented one unless
+    the sentence is there to compare it against."""
+    payload = '{"kind":"unit","word":"Treppe","meanings":[]}'
+    with caplog.at_level(logging.WARNING, logger="echo_words.prompt"):
+        assert (
+            extract_answer(
+                f"article===CARD==={payload}",
+                "Treppe",
+                languages["de"],
+                context="Wir nehmen die Treppe.",
+            )
+            is None
+        )
+    assert "in context 'Wir nehmen die Treppe.'" in caplog.text
+
+
 def test_oversized_complete_answer_is_rejected_before_payload_parsing(
     languages,
     monkeypatch,
