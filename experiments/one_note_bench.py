@@ -1084,9 +1084,12 @@ def coverage(shot: Shot, parsed: ParsedText) -> dict:
     # words which already have their own chip, so it is only located, never consumed.
     cursor = 0
     for segment in parsed.segments:
-        parts = split_words(segment.label)
+        # A chip is named by the answer — a dictionary form — and carries the words it
+        # spans separately. What has to be found in the sentence is those words.
+        spans = segment.surface or segment.label
+        parts = split_words(spans)
         if len(parts) > 1:
-            if not _match_label(segment.label, source[cursor:], set(), shot.lang):
+            if not _match_label(spans, source[cursor:], set(), shot.lang):
                 unmatched.append(segment.label)
             continue
         if cursor < len(source) and normalize(source[cursor], shot.lang) == normalize(
@@ -1162,7 +1165,9 @@ def _filled_combination_labels(shot: Shot) -> list[tuple[int, str]]:
     for segment in filled:
         match = re.fullmatch(r"__bench_combination_(\d+)__", segment.reason)
         if match is not None:
-            result.append((int(match.group(1)), segment.label))
+            # These are compared against the sentence's own words, so a chip named by
+            # its dictionary form is represented here by the words it spans.
+            result.append((int(match.group(1)), segment.surface or segment.label))
     return result
 
 
@@ -1815,11 +1820,17 @@ def find_segment(shot: Shot, case: ClickCase):
         (
             (segment, segment_kind)
             for segment in parsed.segments
-            if normalize(segment.label, shot.lang) == wanted
+            # The fixture names the chip by the words it spans; the chip itself is
+            # named by the answer, and it is that name a tap submits.
+            if wanted in {
+                normalize(segment.label, shot.lang),
+                normalize(segment.surface, shot.lang),
+            }
             and (
                 segment_kind := (
                     "combination"
-                    if normalize(segment.label, shot.lang) in combination_labels
+                    if normalize(segment.surface or segment.label, shot.lang)
+                    in combination_labels
                     else "standalone"
                 )
             )

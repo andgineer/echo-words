@@ -46,7 +46,12 @@ or `text`. The contract is one; which of its branches the prompt states is not.
 - A text article translates and explains the submission as a whole, focusing
   on what is difficult in that text rather than walking through every word.
   Its JSON names only conservative multi-word combinations; the backend adds a
-  chip for every source word alongside them.
+  chip for every source word alongside them. A combination chip carries the name
+  the answer gave it — the dictionary form — and the words it spans separately.
+  The backend once rebuilt the name out of the sentence instead, which put
+  `steht auf` on a chip whose lemma is `aufstehen` and left the lemma unreachable;
+  it was rebuilding from a split on whitespace, which is not a theory of words
+  worth holding against an answer that has already named the unit.
 - Unit JSON carries the validated dictionary headword, its claimed `same`,
   `morphology` or `typo` relation to the submitted spelling, advisory spelling
   suggestion, all retained meanings, finished highlighted examples, optional

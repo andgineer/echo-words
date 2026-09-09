@@ -5,7 +5,10 @@ from echo_words.segments import (
 )
 
 
-def test_reordered_separated_and_capitalized_parts_map_to_source_order(languages):
+def test_a_combination_is_named_by_the_answer_and_placed_by_its_surface(languages):
+    """The chip carries the name the answer gave the unit — its dictionary form, which
+    is what the reader wants to look up. Where it sits among the single-word chips is
+    still decided by the words it spans, so a separated verb stays in source order."""
     segments = fill_text_segments(
         [{"label": "aufstehen", "surface": "AUF … steht", "why": "Verb."}],
         "Er steht jeden Morgen auf.",
@@ -14,7 +17,7 @@ def test_reordered_separated_and_capitalized_parts_map_to_source_order(languages
 
     assert segments == [
         Segment("Er", "", "Er steht jeden Morgen auf."),
-        Segment("steht auf", "Verb.", "Er steht jeden Morgen auf."),
+        Segment("aufstehen", "Verb.", "Er steht jeden Morgen auf.", "steht auf"),
         Segment("steht", "", "Er steht jeden Morgen auf."),
         Segment("jeden", "", "Er steht jeden Morgen auf."),
         Segment("Morgen", "", "Er steht jeden Morgen auf."),
@@ -32,7 +35,7 @@ def test_one_unmatchable_proposal_does_not_erase_other_combinations_or_words(lan
         languages["sr"],
     )
 
-    assert [segment.label for segment in segments] == ["Он", "ми", "се јавио", "се", "јавио"]
+    assert [segment.label for segment in segments] == ["Он", "ми", "javiti se", "се", "јавио"]
 
 
 def test_no_arbitrary_combination_count_limit_remains(languages):
@@ -178,7 +181,7 @@ def test_leading_negation_is_dropped_from_the_unit_the_label_names(languages):
         languages["sr"],
     )
 
-    assert [item.label for item in segments if len(item.label.split()) > 1] == ["bojim se"]
+    assert [item.label for item in segments if len(item.label.split()) > 1] == ["bojati se"]
 
 
 def test_a_copied_auxiliary_the_dictionary_form_does_not_carry_is_dropped(languages):
@@ -189,7 +192,7 @@ def test_a_copied_auxiliary_the_dictionary_form_does_not_carry_is_dropped(langua
     )
 
     assert [item.label for item in segments if len(item.label.split()) > 1] == [
-        "looking forward to",
+        "look forward to",
     ]
 
 
@@ -200,7 +203,7 @@ def test_a_trailing_subordinator_is_dropped_even_when_the_label_repeats_it(langu
         languages["sr"],
     )
 
-    assert [item.label for item in segments if len(item.label.split()) > 1] == ["Nadam se"]
+    assert [item.label for item in segments if len(item.label.split()) > 1] == ["nadati se da"]
 
 
 def test_the_reflexive_the_label_names_is_taken_in_when_the_copy_left_it_out(languages):
@@ -211,7 +214,7 @@ def test_the_reflexive_the_label_names_is_taken_in_when_the_copy_left_it_out(lan
     )
 
     assert [item.label for item in segments if len(item.label.split()) > 1] == [
-        "freue mich auf",
+        "sich freuen auf",
     ]
 
 
@@ -223,7 +226,7 @@ def test_a_label_reflexive_maps_onto_the_form_the_sentence_actually_uses(languag
     )
 
     assert [item.label for item in segments if len(item.label.split()) > 1] == [
-        "uns auf beschränken",
+        "sich beschränken auf",
     ]
 
 
@@ -235,7 +238,7 @@ def test_negation_stays_when_free_material_would_survive_the_trim(languages):
     )
 
     assert [item.label for item in segments if len(item.label.split()) > 1] == [
-        "nešto nije u redu",
+        "u redu",
     ]
 
 
@@ -256,4 +259,7 @@ def test_an_untouched_boundary_keeps_the_reason_and_the_source_order(languages):
         languages["sr"],
     )
 
-    assert Segment("se izvinio", "Возвратный глагол.", "On se juče izvinio svima.") in segments
+    assert (
+        Segment("izvinuti se", "Возвратный глагол.", "On se juče izvinio svima.", "se izvinio")
+        in segments
+    )

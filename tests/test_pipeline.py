@@ -293,6 +293,7 @@ async def test_card_parse_quality_and_suggestion_are_published_after_completion(
                         "label": "recieve",
                         "reason": "получать",
                         "context": "I recieve it.",
+                        "surface": "",
                     },
                 ],
                 "segment_kind": "senses",
@@ -1451,11 +1452,13 @@ async def test_context_sense_identifies_the_carded_chip_for_display(languages):
             "label": "bank",
             "reason": "банк",
             "context": "The bank opens at nine.",
+            "surface": "",
         },
         {
             "label": "bank",
             "reason": "берег",
             "context": "We sat on the bank.",
+            "surface": "",
         },
     ]
 
@@ -3540,18 +3543,21 @@ async def test_segments_reach_the_done_event_and_the_history(languages):
             await pipeline.join()
             events = drain(subscriber)
         suggested = [
-            {"label": "Er", "reason": "", "context": SENTENCE},
+            {"label": "Er", "reason": "", "context": SENTENCE, "surface": ""},
             {
-                "label": "steht auf",
+                # Named by the answer, and carrying the words it spans for whoever
+                # needs to find it back in the sentence.
+                "label": "aufstehen",
                 "reason": "Trennbares Verb.",
                 "context": SENTENCE,
+                "surface": "steht auf",
             },
-            {"label": "steht", "reason": "", "context": SENTENCE},
-            {"label": "jeden", "reason": "", "context": SENTENCE},
-            {"label": "Morgen", "reason": "", "context": SENTENCE},
-            {"label": "um", "reason": "", "context": SENTENCE},
-            {"label": "sechs", "reason": "", "context": SENTENCE},
-            {"label": "auf", "reason": "", "context": SENTENCE},
+            {"label": "steht", "reason": "", "context": SENTENCE, "surface": ""},
+            {"label": "jeden", "reason": "", "context": SENTENCE, "surface": ""},
+            {"label": "Morgen", "reason": "", "context": SENTENCE, "surface": ""},
+            {"label": "um", "reason": "", "context": SENTENCE, "surface": ""},
+            {"label": "sechs", "reason": "", "context": SENTENCE, "surface": ""},
+            {"label": "auf", "reason": "", "context": SENTENCE, "surface": ""},
         ]
         assert entry.segments == suggested
         assert events[-1].data["segments"] == suggested
@@ -3630,7 +3636,7 @@ async def test_an_unusable_internal_label_does_not_erase_a_surface_combination(l
 
         assert [segment["label"] for segment in entry.segments] == [
             "Он",
-            "ми се јавио",
+            "јавити се",
             "ми",
             "се",
             "јуче",

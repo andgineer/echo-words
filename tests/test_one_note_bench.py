@@ -978,7 +978,9 @@ def test_combination_click_selects_the_exact_grouped_chip_and_kind():
 
     assert selected is not None
     segment, segment_kind = selected
-    assert segment.label == "gave up"
+    # Found by the words it spans, and named by the answer — which is what a tap
+    # submits, so the click fixture now measures the lemma road.
+    assert (segment.label, segment.surface) == ("give up", "gave up")
     assert segment_kind == "combination"
 
 

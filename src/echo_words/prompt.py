@@ -15,6 +15,10 @@ from echo_words.languages import DEFAULT_TARGET_LANGUAGE, Language
 CARD_DELIMITER = "===CARD==="
 PAYLOAD_LOG_LIMIT = 2000
 MAX_COMPLETE_ANSWER_CHARS = 16_000
+# The deeper article is read on a phone, right after the short one. Asked for "every
+# sense, in depth" and given no bound, it came back as a dissertation; this is the
+# length a reader spends a couple of minutes on, and the prompt names it.
+MAX_DETAIL_CHARS = 4_000
 
 logger = logging.getLogger(__name__)
 
@@ -226,11 +230,14 @@ WRITE YOUR ENTIRE ANSWER IN {target_lang}, and in no other language. Only the
 headword and example sentences stay in {source_lang}, and every example is
 followed by its {target_lang} translation.
 
-{context_note}The reader has already seen the short entry. Cover every sense,
-including domain-specific, archaic, regional and slang senses; origin and its
-route in depth; usage and common mistakes; shades and near-synonyms; and one or
-two examples per sense. Use only <b> and <i>, no Markdown. Give no phonetic
-transcription, JSON or delimiters.
+{context_note}The reader has already seen the short entry and wants more of it,
+not a monograph. Add what the short entry left out: senses it did not cover,
+where the word came from, how it is actually used and the mistakes learners make
+with it, and how it differs from its near-synonyms. One example per sense. Leave
+out archaic, regional and narrowly technical senses unless the word is mainly
+known for one. Aim for something read in a couple of minutes — around 2000
+characters, and never more than {bound}. Use only <b> and <i>, no Markdown. Give
+no phonetic transcription, JSON or delimiters.
 """
 
 
@@ -281,6 +288,7 @@ def build_extended_prompt(
         target_lang=target_lang,
         word=word,
         context_note=context_note,
+        bound=f"{MAX_DETAIL_CHARS} characters",
     )
 
 

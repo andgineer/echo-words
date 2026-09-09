@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from echo_words.languages import (
+    MAX_WORD_LENGTH,
     Language,
     fold_for_match,
     reflexive_forms,
@@ -32,6 +33,9 @@ class Segment:
     label: str
     reason: str
     context: str
+    # The words of the sentence this chip spans, where they differ from its name: the
+    # name is the answer's (a dictionary form), and this is what it is a form of here.
+    surface: str = ""
 
 
 def fill_text_segments(value: Any, text: str, language: Language) -> list[Segment]:
@@ -47,11 +51,30 @@ def fill_text_segments(value: Any, text: str, language: Language) -> list[Segmen
             continue
         claimed.update(matched)
         source_order = sorted(matched)
-        label = " ".join(words[index] for index in source_order)
+        # The name the answer gave the unit, not the run of words it spans. Rebuilding
+        # it from the sentence produced `steht auf` for a verb whose dictionary form is
+        # `aufstehen`, so the reader could not reach the lemma at all; and what it was
+        # rebuilt from was a split on spaces, which is not a theory of words worth
+        # holding against an answer that already named the unit.
+        label = (
+            display_text(proposal.get("label"), MAX_WORD_LENGTH)
+            if isinstance(
+                proposal,
+                dict,
+            )
+            else ""
+        )
+        # The words it spans are the fallback, and only that: a name the submission
+        # endpoint would refuse is not a lookup the reader can make.
+        if not label or validate_word(label, language) is not None:
+            label = " ".join(words[index] for index in source_order)
         if validate_word(label, language) is not None:
             continue
         reason = display_text(proposal.get("why"), MAX_REASON_LENGTH)
-        placed.append((source_order[0], 0, Segment(label, reason, text)))
+        spanned = " ".join(words[index] for index in source_order)
+        placed.append(
+            (source_order[0], 0, Segment(label, reason, text, "" if spanned == label else spanned)),
+        )
     # A word stays clickable in its own right even when a combination also claims it,
     # so an imprecise phrase boundary can never cost the learner a lookup.
     placed.extend(

@@ -4,6 +4,7 @@ import logging
 from echo_words.card import ParsedText, ParsedUnit
 from echo_words.prompt import (
     MAX_COMPLETE_ANSWER_CHARS,
+    MAX_DETAIL_CHARS,
     PAYLOAD_LOG_LIMIT,
     build_extended_prompt,
     build_prompt,
@@ -150,6 +151,18 @@ def test_unit_examples_target_only_the_lexical_surface(languages):
     assert '"context_sense"' in prompt
     assert '"context_translation"' in prompt
     assert "Do not copy the context sentence into the examples" in prompt
+
+
+def test_the_deeper_article_is_asked_to_stay_readable(languages):
+    """Asked for "every sense, in depth" and given no bound, it came back as a
+    dissertation on a phone screen. The reader opened it for one word."""
+    prompt = build_extended_prompt(languages["de"], "Tafel", "Russian")
+
+    assert "not a monograph" in prompt
+    assert str(MAX_DETAIL_CHARS) in prompt
+    assert "One example per sense" in prompt
+    assert "Cover every sense" not in prompt
+    assert "origin and its\nroute in depth" not in prompt
 
 
 def test_the_prompt_asks_for_the_spelling_relation_in_one_rule(languages):
