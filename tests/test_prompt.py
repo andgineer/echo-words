@@ -144,8 +144,12 @@ def test_unit_examples_target_only_the_lexical_surface(languages):
     assert "<b> tags around all and\nonly the unit" in prompt
     assert "Never mark a subject, object,\nauxiliary or argument" in prompt
     assert "at least one unmarked source-language word" in prompt
-    assert "mark those selected tokens and no others" in prompt
-    assert "do not expand the selection to neighbouring context" in prompt
+    # The context sentence is not among the examples any more, so nothing is said about
+    # marking it: the backend marks its own sentence and asks the answer for the two
+    # things only it can give.
+    assert '"context_sense"' in prompt
+    assert '"context_translation"' in prompt
+    assert "Do not copy the context sentence into the examples" in prompt
 
 
 def test_the_prompt_asks_for_the_spelling_relation_in_one_rule(languages):

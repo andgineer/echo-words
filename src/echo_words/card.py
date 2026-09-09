@@ -90,6 +90,8 @@ _UNIT_FIELDS = frozenset(
         "suggestion",
         "meanings",
         "context_sense",
+        "context_translation",
+        "context_surface",
         "segments",
     },
 )
@@ -102,9 +104,6 @@ _BARE_VALUE = re.compile(r'(?<=")(:\s*)(?![\s"\[{\d-]|true|false|null)([^,}\]\n"
 _FULL_STOP_SEPARATOR = re.compile(r'([}\]])\s*\.\s*(")')
 _NON_ESCAPE = re.compile(r'\\(?=[^\\"/bfnrtu])')
 _SOURCE_TOKEN = re.compile(r"[^\W\d_]+(?:[-'’][^\W\d_]+)*", re.UNICODE)
-# A copy of the context may lose its final stop and nothing else. Anything further
-# in is a rewrite, which is the case the equality below exists to reject.
-_TRAILING_SENTENCE_MARKS = " .!?…"
 
 
 def parse_answer_payload(  # noqa: C901, PLR0912, PLR0913 - the answer discriminator.
@@ -174,9 +173,14 @@ def parse_answer_payload(  # noqa: C901, PLR0912, PLR0913 - the answer discrimin
         # that went missing. Two different faults must not share one message.
         raise CardParseError("the sense the answer chose for the context was dropped")
     sense = remap.get(raw_sense, 0)
+    if context:
+        retained[sense] = _with_context_example(
+            retained[sense],
+            card.get("context_translation"),
+            card.get("context_surface"),
+            request,
+        )
     note = Note(headword, retained, sense)
-    if context and note.meaning.examples[0].text != context:
-        raise CardParseError("selected context example must equal the supplied context")
     try:
         segments = parse_component_segments(
             card.get("segments"),
@@ -330,7 +334,6 @@ def _usable_examples(value: Any, request: "_Request") -> list[Example]:
 def _parse_example(value: Any, request: "_Request") -> Example | None:
     if not isinstance(value, dict):
         return None
-    context = request.context
     translation = _plain(value.get("translation"))
     highlighted_raw = value.get("highlighted")
     marked = _plain(highlighted_raw) if isinstance(highlighted_raw, str) else ""
@@ -341,12 +344,6 @@ def _parse_example(value: Any, request: "_Request") -> Example | None:
     text = _BOLD_SPAN.sub(lambda match: match.group(1), marked)
     if not text:
         return None
-    if context and _copies_context(text, context):
-        contextual = _context_sentence_forms(context, request.selected_surface)
-        if contextual is not None:
-            highlighted, gapped = contextual
-            # The backend owns the context, so the card carries ours, never the copy.
-            return Example(context, translation, highlighted, gapped)
     forms = _example_forms(text, marked, request)
     if forms is None:
         return None
@@ -385,8 +382,41 @@ def _example_forms(text: str, marked: str, request: "_Request") -> tuple[str, st
     )
 
 
-def _copies_context(text: str, context: str) -> bool:
-    return text.rstrip(_TRAILING_SENTENCE_MARKS) == context.rstrip(_TRAILING_SENTENCE_MARKS)
+def _with_context_example(
+    meaning: Meaning,
+    translation: Any,
+    surface: Any,
+    request: "_Request",
+) -> Meaning:
+    """The sense the answer chose, with the reader's own sentence as its first example.
+
+    The sentence is the backend's and so is its marking. What only the answer can give
+    is asked for instead: which sense the unit carries here, what the sentence means,
+    and which of its words the unit actually is — a separable verb submitted as
+    `aufstehen` stands in the sentence as `steht … auf`, and no rule the backend can
+    write will find that. So nothing is copied and nothing is compared.
+    """
+    forms = _context_sentence_forms(
+        request.context,
+        _plain(surface) or request.selected_surface,
+        request.language,
+        request.target,
+    ) or _context_sentence_forms(
+        request.context,
+        request.selected_surface,
+        request.language,
+        request.target,
+    )
+    if forms is None:
+        # The submitted unit is not in the sentence it was said to come from, so the
+        # request itself does not hold together and no card can be built for it.
+        raise CardParseError("the submitted unit does not occur in the supplied context")
+    rendered = _plain(translation)
+    if not rendered:
+        raise CardParseError("the answer did not translate the supplied context")
+    example = Example(request.context, rendered, *forms)
+    kept = [item for item in meaning.examples if item.text != request.context]
+    return Meaning(meaning.label, meaning.translations, [example, *kept][:MAX_EXAMPLES_PER_MEANING])
 
 
 def _normalized_sentence_forms(

@@ -399,12 +399,30 @@ def valid_card(word, *, segments=None, context=None, word_relation="same"):
                 ],
             },
         ]
+    extra = (
+        {
+            "context_sense": 0,
+            "context_translation": "Перевод.",
+            # How the unit stands in this sentence: neither a separable verb nor a
+            # past tense is its lemma, and only the answer knows which words it is.
+            "context_surface": _context_surface(word, context),
+        }
+        if context is not None
+        else {}
+    )
     return card_with(
         word,
         meanings=meanings,
         segments=segments or [],
         word_relation=word_relation,
+        **extra,
     )
+
+
+def _context_surface(word, context):
+    if word == "aufstehen":
+        return "steht auf"
+    return "gave up" if word == "give up" and "gave up" in context else word
 
 
 def _highlighted_context(word, context):
@@ -466,6 +484,10 @@ def card_with(word, meanings=None, **fields):
         "segments": [],
         **fields,
     }
+    # An answer that names a contextual sense also translates that sentence: the backend
+    # builds the context example out of the two, and carries neither on its own.
+    if "context_sense" in answer:
+        answer.setdefault("context_translation", "Перевод контекста.")
     return f"analysis===CARD==={json.dumps(answer, ensure_ascii=False)}"
 
 

@@ -210,10 +210,12 @@ derivation or coinage nobody actually says — is not used, however natural it l
 Do not write an article, an explanation or anything else."""
 
 _CONTEXT_RULE = (
-    "Use the supplied context as the first example of its sense and include "
-    '"context_sense": <zero-based index> in the unit object. In that example, '
-    "copy the submitted selected-unit surface exactly, mark those selected "
-    "tokens and no others, and do not expand the selection to neighbouring context."
+    'Include "context_sense": <zero-based index> naming the sense the unit carries in '
+    'the supplied context, "context_translation": the target-language translation of '
+    'that context sentence, and "context_surface": the unit\'s own words exactly as '
+    "they appear in that sentence, in order and separated by single spaces, with "
+    "nothing else. Do not copy the context sentence into the examples — write ordinary "
+    "examples for every sense."
 )
 _NO_CONTEXT_RULE = "Do not add a field selecting a contextual sense."
 
@@ -254,7 +256,13 @@ def build_prompt(
         target_lang=target_lang,
         source_hints=language.prompt_hints or "",
         request=request,
-        context_field=', "context_sense": <zero-based index>' if context else "",
+        context_field=(
+            ', "context_sense": <zero-based index>,'
+            ' "context_translation": "<target-language translation of the context>",'
+            ' "context_surface": "<the unit\'s words as they stand in the context>"'
+            if context
+            else ""
+        ),
         context_rule=_CONTEXT_RULE if context else _NO_CONTEXT_RULE,
     )
 

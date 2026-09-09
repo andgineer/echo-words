@@ -293,8 +293,11 @@ def test_the_plain_sentence_comes_from_the_highlight_not_from_a_returned_field(l
     assert parsed.note.meaning.examples[0].gapped == "Yesterday, the ___ opened!"
 
 
-def test_selected_context_example_must_equal_the_supplied_context(languages):
-    with pytest.raises(CardParseError, match="must equal the supplied context"):
+def test_a_context_answer_that_translates_nothing_cannot_be_carded(languages):
+    """The sentence and its marking are ours; what only the answer can supply is which
+    sense the unit carries here and what the sentence means. Without the translation
+    there is no back for the context card, so there is no card."""
+    with pytest.raises(CardParseError, match="did not translate the supplied context"):
         parse_answer_payload(
             payload(context_sense=0),
             "bank",
@@ -304,13 +307,56 @@ def test_selected_context_example_must_equal_the_supplied_context(languages):
         )
 
 
+def test_the_context_example_is_built_from_our_sentence_whatever_the_answer_wrote(
+    languages,
+):
+    """Nothing is compared, because nothing is copied. The answer writes ordinary
+    examples; the reader's own sentence is put in front of them by the backend."""
+    context = "We sat on the bank."
+    parsed = parse_answer_payload(
+        payload(
+            context_sense=0,
+            context_translation="Мы сидели на берегу.",
+        ),
+        "bank",
+        languages["en"],
+        unit_intent=True,
+        context=context,
+    )
+
+    assert isinstance(parsed, ParsedUnit)
+    assert parsed.note.meaning.examples[0] == Example(
+        context,
+        "Мы сидели на берегу.",
+        "We sat on the <b>bank</b>.",
+        "We sat on the ___.",
+    )
+    # The answer's own example is kept behind it rather than replaced.
+    assert parsed.note.meaning.examples[1].text == "The bank opens."
+
+
+def test_a_unit_that_is_not_in_the_context_it_came_from_cannot_be_carded(languages):
+    with pytest.raises(CardParseError, match="does not occur in the supplied context"):
+        parse_answer_payload(
+            payload(context_sense=0, context_translation="Перевод."),
+            "bank",
+            languages["en"],
+            unit_intent=True,
+            context="There is no such word here.",
+        )
+
+
 def test_context_forms_are_built_from_the_exact_selected_surface(languages):
     context = "We sat on the bank."
     contextual = example()
     contextual.update(highlighted="<b>We sat</b> on the <b>bank</b>.")
 
     parsed = parse_answer_payload(
-        payload(meanings=[meaning(examples=[contextual])], context_sense=0),
+        payload(
+            meanings=[meaning(examples=[contextual])],
+            context_sense=0,
+            context_translation="Перевод.",
+        ),
         "bank",
         languages["en"],
         unit_intent=True,
@@ -341,6 +387,7 @@ def test_separated_context_surface_is_marked_in_source_order(languages):
             word_relation="morphology",
             meanings=[meaning(examples=[contextual])],
             context_sense=0,
+            context_translation="Он встаёт каждое утро в шесть.",
         ),
         "steht auf",
         languages["de"],
@@ -791,53 +838,37 @@ def test_a_sense_without_a_label_key_is_still_carded(languages):
     assert parsed.note.meaning.translations == ["банк"]
 
 
-def test_a_context_copy_missing_its_final_stop_still_cards_our_context(languages):
+def test_an_example_that_wanders_from_the_context_costs_the_answer_nothing(languages):
+    """The answer is no longer asked to reproduce the sentence, so an example that is
+    near it, or nothing like it, is just another example. The card's context sentence
+    is the reader's own either way, and there is no comparison left to fail."""
     context = "We sat on the bank."
-    contextual = example()
-    contextual.update(highlighted="We sat on the <b>bank</b>")
+    for wandered in (
+        "We sat on the <b>bank</b>",
+        "We sat on the <b>bank</b> today.",
+        "We sat near the <b>bank</b>.",
+    ):
+        contextual = example()
+        contextual.update(highlighted=wandered)
 
-    parsed = parse_answer_payload(
-        payload(meanings=[meaning(examples=[contextual])], context_sense=0),
-        "bank",
-        languages["en"],
-        unit_intent=True,
-        context=context,
-    )
-
-    assert isinstance(parsed, ParsedUnit)
-    assert parsed.note.meaning.examples[0] == Example(
-        context,
-        "Перевод.",
-        "We sat on the <b>bank</b>.",
-        "We sat on the ___.",
-    )
-
-
-def test_a_context_copy_carrying_an_extra_word_is_still_rejected(languages):
-    contextual = example()
-    contextual.update(highlighted="We sat on the <b>bank</b> today.")
-
-    with pytest.raises(CardParseError, match="must equal the supplied context"):
-        parse_answer_payload(
-            payload(meanings=[meaning(examples=[contextual])], context_sense=0),
+        parsed = parse_answer_payload(
+            payload(
+                meanings=[meaning(examples=[contextual])],
+                context_sense=0,
+                context_translation="Мы сидели на берегу.",
+            ),
             "bank",
             languages["en"],
             unit_intent=True,
-            context="We sat on the bank.",
+            context=context,
         )
 
-
-def test_a_word_changed_inside_the_context_is_still_rejected(languages):
-    contextual = example()
-    contextual.update(highlighted="We sat near the <b>bank</b>.")
-
-    with pytest.raises(CardParseError, match="must equal the supplied context"):
-        parse_answer_payload(
-            payload(meanings=[meaning(examples=[contextual])], context_sense=0),
-            "bank",
-            languages["en"],
-            unit_intent=True,
-            context="We sat on the bank.",
+        assert isinstance(parsed, ParsedUnit)
+        assert parsed.note.meaning.examples[0] == Example(
+            context,
+            "Мы сидели на берегу.",
+            "We sat on the <b>bank</b>.",
+            "We sat on the ___.",
         )
 
 
