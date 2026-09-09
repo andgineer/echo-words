@@ -306,7 +306,12 @@ function confirmDelete() {
     </div>
 
     <div v-if="entry.text" class="entry-text" v-html="entry.text"></div>
-    <div v-if="entry.detail_html" class="entry-detail" v-html="entry.detail_html"></div>
+    <div v-if="entry.detail_html" class="entry-detail-block">
+      <span v-if="entry.detail_model" class="entry-model detail-model">
+        {{ entry.detail_model }}
+      </span>
+      <div class="entry-detail" v-html="entry.detail_html"></div>
+    </div>
 
     <audio
       v-if="entry.audio_url"
@@ -570,6 +575,11 @@ function confirmDelete() {
 .entry-text :deep(tr:first-child td),
 .entry-detail :deep(tr:first-child td) {
   border-top: 0;
+}
+
+.detail-model {
+  display: block;
+  margin-bottom: 0.25rem;
 }
 
 .entry-detail {

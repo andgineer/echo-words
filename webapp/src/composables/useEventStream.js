@@ -72,6 +72,7 @@ export function useEventStream({
       upsertEntry({
         entry_id: data.entry_id,
         detail_html: data.text,
+        detail_model: data.model ?? null,
         detail_error: data.error,
         // The text streams in, so the work is over on the event that carries no more.
         detail_pending: data.streaming === true,

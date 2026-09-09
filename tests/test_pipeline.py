@@ -2553,6 +2553,34 @@ async def test_rebuild_refused_by_the_cap_changes_nothing(languages):
         await pipeline.close()
 
 
+async def test_the_deeper_article_is_signed_by_the_model_that_wrote_it(settings, languages):
+    """The analysis and the deeper article come from two different models, and the name
+    over the entry belongs to the first. Signing the second with it tells the reader the
+    free model wrote what the paid one did."""
+    cascade = fake_cascade(
+        settings,
+        handles=[FakeHandle([valid_card("word")])],
+        client=FakeDirectClient(["<b>Deep</b>"]),
+    )
+    pipeline = WordPipeline(cascade, target_lang="Russian", anki=RecordingAnki(Added(7, None)))
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(languages["en"], "word", False)
+        await pipeline.join()
+        assert entry.model == "pool-model"
+        assert entry.detail_model is None
+
+        await pipeline.request_detail(entry.entry_id)
+        await pipeline.join()
+    finally:
+        await pipeline.close()
+
+    assert entry.detail_html == "<b>Deep</b>"
+    assert entry.detail_model == "gpt-fast"
+    # The analysis above it was not written by the paid model and does not claim to be.
+    assert entry.model == "pool-model"
+
+
 async def test_detail_appends_is_cached_and_cuts_a_stray_card_block(languages):
     cascade = ScriptedCascade(
         [

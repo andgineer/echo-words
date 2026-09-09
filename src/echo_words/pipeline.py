@@ -805,11 +805,13 @@ class WordPipeline:
                         return
                     raw += delta
                     entry.detail_html = sanitize_html(visible_analysis(raw))
+                    entry.detail_model = getattr(completion, "llm_name", None)
                     await self.events.publish(
                         "detail",
                         {
                             "entry_id": entry.entry_id,
                             "text": entry.detail_html,
+                            "model": entry.detail_model,
                             "streaming": True,
                         },
                     )
@@ -817,12 +819,17 @@ class WordPipeline:
             # the reader would lose the progress strip at the first piece of ten seconds.
             await self.events.publish(
                 "detail",
-                {"entry_id": entry.entry_id, "text": entry.detail_html},
+                {
+                    "entry_id": entry.entry_id,
+                    "text": entry.detail_html,
+                    "model": entry.detail_model,
+                },
             )
         except BackendError as exc:
             if not self._is_detail_current(job):
                 return
             entry.detail_html = ""
+            entry.detail_model = None
             await self.events.publish(
                 "detail",
                 {"entry_id": entry.entry_id, "error": str(exc)},
@@ -833,6 +840,7 @@ class WordPipeline:
             # of a call that stopped running until the page is reloaded.
             if self._is_detail_current(job):
                 entry.detail_html = ""
+                entry.detail_model = None
                 await self.events.publish(
                     "detail",
                     {"entry_id": entry.entry_id, "error": DETAIL_FAILED_CODE},
@@ -1180,6 +1188,7 @@ class WordPipeline:
         entry.segment_kind = None
         entry.carded_sense = None
         entry.detail_available = False
+        entry.detail_model = None
         entry.paid_answer_available = False
         entry.no_audio = False
         entry.no_card_audio = False
@@ -1194,6 +1203,7 @@ class WordPipeline:
             entry.context_audio_file = None
         if kind == "switch":
             entry.detail_html = ""
+            entry.detail_model = None
 
     def _drop_evicted_state(self) -> None:
         live = set(self._entries)

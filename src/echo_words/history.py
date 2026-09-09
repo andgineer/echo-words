@@ -25,6 +25,9 @@ class Entry:
     shown_spelling: str = ""
     context: str = ""
     detail_html: str = ""
+    # The deeper article is a second answer from a second model, and it is signed by
+    # the model that wrote it rather than by the one that wrote the analysis above it.
+    detail_model: str | None = None
     created_at: datetime | None = None
     language: str = ""
     lookup_only: bool = False
