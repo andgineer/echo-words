@@ -54,6 +54,7 @@ export function useEventStream({
         entry_id: data.entry_id,
         text: "",
         status: "pending",
+        just_finished: false,
         error: null,
         shape: null,
         segments: [],
@@ -67,7 +68,9 @@ export function useEventStream({
         ...(Object.hasOwn(data, "detail_html") ? { detail_html: data.detail_html } : {}),
       });
     } else if (name === "done") {
-      upsertEntry({ ...data, status: "done" });
+      // The card was just made, in front of the reader. Only that plays its recording
+      // by itself; a card reopened later, or restored from history, does not.
+      upsertEntry({ ...data, status: "done", just_finished: true });
     } else if (name === "detail") {
       upsertEntry({
         entry_id: data.entry_id,

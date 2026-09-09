@@ -511,8 +511,12 @@ both in the answer entry and on the flashcard.
 - **Delivery**:
   - In the app: the pronunciation is attached to the answer entry —
     one tap to hear, replayable from the history. Where the whole text
-    is voiced beside a unit, it is a second player of its own, and only
-    the unit's pronunciation starts by itself.
+    is voiced beside a unit, it is a second player of its own. A recording
+    starts by itself exactly once: on the card just made, in front of the
+    user. Reopening that card, switching back to it from another word or
+    reloading the page finds it silent, because a card being looked at
+    again is not a card being made, and a recording that plays every time
+    the entry is shown is noise the user did not ask for.
   - Anki: the audio of the carded unit is attached to the card front, so
     it plays during review. The audio of a surrounding text never is.
 - **Resilience**: submitted-text audio starts in parallel with the LLM call

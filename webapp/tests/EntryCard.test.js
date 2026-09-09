@@ -572,7 +572,29 @@ describe("EntryCard", () => {
     const player = wrapper.get("audio.entry-audio");
     expect(player.attributes("src")).toBe("/api/audio/pronunciation-aabbccddeeff00112233.mp3");
     expect(player.attributes()).toHaveProperty("controls");
-    expect(player.attributes()).toHaveProperty("autoplay");
+    // Reopened, not just made: it waits to be pressed.
+    expect(player.attributes()).not.toHaveProperty("autoplay");
+  });
+
+  it("plays a recording by itself only on the card just made, and only once", async () => {
+    await labelBehavior(EPIC.PRONUNCIATION, FEATURE.AUDIO_DELIVERY, "Playback");
+    const entry = {
+      entry_id: "entry-fresh",
+      word: "Word",
+      lang: "en",
+      status: "done",
+      shape: "unit",
+      text: "<b>Word</b> — meaning",
+      audio_url: "/api/audio/pronunciation-aabbccddeeff00112233.mp3",
+      just_finished: true,
+    };
+    const wrapper = card(entry);
+    expect(wrapper.get("audio.entry-audio").attributes()).toHaveProperty("autoplay");
+
+    // Switching away and back is not the card being made again.
+    await wrapper.setProps({ entry: { ...entry, entry_id: "entry-other" } });
+    await wrapper.setProps({ entry });
+    expect(wrapper.get("audio.entry-audio").attributes()).not.toHaveProperty("autoplay");
   });
 
   it("plays the whole text beside the pronunciation of the unit taken from it", async () => {
@@ -608,7 +630,7 @@ describe("EntryCard", () => {
 
     const players = wrapper.findAll("audio.entry-audio");
     expect(players).toHaveLength(1);
-    expect(players[0].attributes()).toHaveProperty("autoplay");
+    expect(players[0].attributes("src")).toBeTruthy();
     expect(wrapper.find(".context-audio-title").exists()).toBe(false);
   });
 
