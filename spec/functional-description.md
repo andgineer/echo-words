@@ -169,23 +169,30 @@ The four requirements every design decision is weighed against:
    once and then kept going — and the user sees a slower answer, not an
    error; the pool being busy is the one thing the paid path exists to
    absorb. An answer that arrives in time but carries no usable hidden
-   payload — an unusable unit or text branch, including a text verdict for an
-   explicit unit-intent request —
-   is not complete either, and moves the request the same way: a free
-   model that writes a good analysis and then botches the payload costs
-   the user the requested result, which is the point of the request. The pool call is
-   rated down before the paid model is asked, so the router learns which
-   model does this. When a whole answer already shown turns out unusable,
-   its text is discarded and replaced by the paid model's. Which model answered is
-   visible on the entry; nothing else about the two paths differs, and
-   the card is built from whichever answer arrived. Both steps display as
-   they write.
-   The step-up happens at most once per request: when no paid model is
-   configured or the daily cap is spent, an unusable answer stands as it
-   is — the analysis is worth reading even when the card behind it failed,
-   and the entry says the card failed. Every rejected payload is logged
-   with the reason it was rejected and the payload itself, since nothing
-   else keeps it.
+   payload — an unusable unit or text branch, including a text verdict for
+   an explicit unit-intent request — is not complete either: a free model
+   that writes a good analysis and then botches the payload costs the user
+   the requested result, which is the point of the request. That answer is
+   rated down, so the router learns which model does this, and then **the
+   same pool request is asked for another whole answer before any paid one
+   is bought**. It has more than one to give: the models it raced are still
+   holding what they wrote, and the ones it never reached are still open to
+   it. An unreadable payload is a poor reason to clear the page and wait a
+   second budget for an answer that has to be paid for, because a payload
+   the app cannot read is far more often a sound answer with one botched
+   field than a bad answer. Each further answer is judged the same way and
+   rated on its own account, all of them inside the one latency budget the
+   request was given, and the paid model is reached only once this request
+   has no other answer left. Whichever answer ends up standing, the text it
+   replaces is discarded rather than spliced. Which model answered is
+   visible on the entry; nothing else about the paths differs, and the card
+   is built from whichever answer arrived. Every step displays as it writes.
+   The step-up to the paid model happens at most once per request: when no
+   paid model is configured or the daily cap is spent, an unusable answer
+   stands as it is — the analysis is worth reading even when the card behind
+   it failed, and the entry says the card failed. Every rejected payload is
+   logged with the reason it was rejected and the payload itself, since
+   nothing else keeps it.
    The step-up is failure recovery, not part of the normal latency path.
    The paid model starts a new attempt with the same full complete-answer
    budget as the pool; time already lost waiting for the failed pool does

@@ -345,7 +345,7 @@ deployment typo. Which one ships is the section below.
 ## Streamed racing with whole-answer replacement is the shipped adapter — 2026-09-06
 
 Status: **accepted for production**, on the evidence that it does not regress the
-ordinary path. Pool calls use `llmbroker` 1.8.0's streaming operation with
+ordinary path. Pool calls use `llmbroker`'s streaming operation with
 `fastest_of=2`, the same 25-second whole-answer budget, and the library's default
 one-second selection window. The reader sees text as it is written; what is on the
 page until the race settles is provisional.
@@ -399,7 +399,10 @@ the beginning: the provisional text is dropped from the page rather than spliced
 the answer that beat it, and the page then carries that whole answer and nothing of
 what it voided. The card, the model name shown beside it and the quality score all
 belong to the lane that won, and the lane the reader was watching is journalled as
-superseded. What remains unobserved is a replacement the free pool produces by itself.
+superseded where it had not finished by the time the request let go of the call — a
+lane that did finish keeps a row of its own, and is one of the answers the request can
+still be handed when the payload it settled on turns out unreadable. What remains
+unobserved is a replacement the free pool produces by itself.
 
 The reading also carries findings that are recorded here and not signed off. Only the
 operator accepts a limitation of the product:

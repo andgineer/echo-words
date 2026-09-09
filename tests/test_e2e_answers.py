@@ -9,8 +9,8 @@ import json
 
 import pytest
 from anki.collection import Collection
-from e2e_app import WORD, Gate, answer, live_app, submit
-from fakes import FakeDirectClient, FakeHandle, lost_the_race
+from e2e_app import WORD, Gate, answer, live_app, submit, unreadable
+from fakes import FakeDirectClient, FakeHandle, another_answer, lost_the_race
 from llmbroker import LLMTimeoutError
 from playwright.sync_api import Page, expect
 
@@ -49,6 +49,39 @@ def test_a_lost_race_repaints_the_entry_instead_of_splicing_the_answer_that_won(
         expect(entry).to_contain_text("the whole answer that won")
         expect(entry).not_to_contain_text("the lane that lost")
         expect(page.locator(".entry-model")).to_have_text("the-winner")
+
+
+def test_a_payload_no_one_can_read_is_swapped_for_the_pools_next_answer(
+    page: Page,
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The article on the page is worth reading and its card is not buildable. Before
+    that costs a paid call and a second budget of waiting, the same pool call is asked
+    for the answer its other lane is holding, and the page is repainted with it."""
+    gate = Gate()
+    handle = FakeHandle(
+        [unreadable(FIRST)],
+        hold=gate.wait,
+        others=[another_answer(answer(SECOND), llm_name="the-other-lane")],
+    )
+    with live_app(
+        settings,
+        monkeypatch,
+        handles=[handle],
+        client=FakeDirectClient([answer(PAID)]),
+    ) as app:
+        submit(page, app.url)
+        entry = page.locator(".entry-text")
+        expect(entry).to_contain_text("the first analysis")
+
+        gate.open()
+
+        expect(entry).to_contain_text("the second analysis")
+        expect(entry).not_to_contain_text("the first analysis")
+        expect(entry).not_to_contain_text("the answer that was paid for")
+        expect(page.locator(".entry-model")).to_have_text("the-other-lane")
+        assert app.broker.direct_calls == []
 
 
 def test_a_budget_miss_drops_the_half_answer_it_showed_for_the_paid_one(

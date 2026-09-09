@@ -1,7 +1,7 @@
 from contextlib import aclosing
 
 import pytest
-from fakes import FakeBroker, FakeHandle, lost_the_race
+from fakes import FakeBroker, FakeHandle, another_answer, lost_the_race
 from llmbroker import (
     LLMTimeoutError,
     NoLLMAvailableError,
@@ -178,3 +178,56 @@ async def test_a_lost_race_is_not_a_pool_failure(settings: Settings, languages):
             await drain(stream)
 
     assert not isinstance(caught.value, BackendError)
+
+
+async def test_the_streams_context_gives_the_call_back(settings: Settings, languages):
+    """The broker outlives every request and closes its streams only when it shuts down,
+    so a request that is finished with its call says so by leaving this context."""
+    handle = FakeHandle(["Hel", "lo"])
+    broker = FakeBroker(handles=[handle])
+    async with open_pool_stream(broker, "prompt", languages["en"], settings) as stream:
+        assert await drain(stream) == ["Hel", "lo"]
+        assert handle.closed is False
+    assert handle.closed is True
+
+
+async def test_the_call_hands_back_a_further_complete_answer(settings: Settings, languages):
+    handle = FakeHandle(["first"], others=[another_answer("second", llm_name="free-other")])
+    broker = FakeBroker(handles=[handle])
+    async with open_pool_stream(broker, "prompt", languages["en"], settings) as stream:
+        assert await drain(stream) == ["first"]
+        other = await stream.another()
+    assert other is not None
+    assert (other.text, other.llm_name) == ("second", "free-other")
+
+
+async def test_a_call_with_nothing_left_says_so_rather_than_failing(
+    settings: Settings,
+    languages,
+):
+    handle = FakeHandle(["first"])
+    broker = FakeBroker(handles=[handle])
+    async with open_pool_stream(broker, "prompt", languages["en"], settings) as stream:
+        assert await drain(stream) == ["first"]
+        assert await stream.another() is None
+
+
+@pytest.mark.parametrize(
+    ("failure", "expected"),
+    [
+        (ProviderError("bad gateway", status=502), BackendError),
+        (NoLLMAvailableError("nothing answered in time", reason="timeout"), BudgetMissError),
+    ],
+)
+async def test_a_failure_reaching_for_another_answer_reads_as_a_pool_failure(
+    settings: Settings,
+    languages,
+    failure: Exception,
+    expected: type[BackendError],
+):
+    handle = FakeHandle(["first"], others=[failure])
+    broker = FakeBroker(handles=[handle])
+    async with open_pool_stream(broker, "prompt", languages["en"], settings) as stream:
+        assert await drain(stream) == ["first"]
+        with pytest.raises(expected):
+            await stream.another()

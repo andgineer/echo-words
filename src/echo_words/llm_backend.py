@@ -36,7 +36,13 @@ class PoolReplacementError(Exception):
 
 
 class PoolStream:
-    """One streamed pool answer with the same error and rating seam as a result."""
+    """One streamed pool answer with the same error and rating seam as a result.
+
+    Its context is the resource boundary. llmbroker keeps the lanes this call opened
+    alive for as long as the handle is, which is what lets ``another()`` hand back an
+    answer a losing lane had already written; leaving the context is what gives their
+    pool slots back. The broker outlives every request, so nothing else would.
+    """
 
     def __init__(self, handle: "StreamHandle") -> None:
         self._handle = handle
@@ -45,6 +51,12 @@ class PoolStream:
     @property
     def llm_name(self) -> str | None:
         return self._handle.llm_name
+
+    async def __aenter__(self) -> "PoolStream":
+        return self
+
+    async def __aexit__(self, *exc: object) -> None:
+        await self.aclose()
 
     def __aiter__(self) -> AsyncIterator[str]:
         if self._deltas is None:
@@ -55,6 +67,18 @@ class PoolStream:
         if self._deltas is not None:
             await self._deltas.aclose()
         await self._handle.aclose()
+
+    async def another(self) -> "AsyncResult | None":
+        """The next complete answer this same call can still produce, or ``None``.
+
+        Not a second call: it walks the lanes this one already raced, then the models
+        it has not tried, inside the wait budget the first answer was asked under.
+        """
+        errors = llmbroker()
+        try:
+            return await self._handle.another()
+        except errors.LLMRequestError as exc:
+            raise pool_error(exc) from exc
 
     async def _stream(self) -> AsyncGenerator[str]:
         errors = llmbroker()

@@ -3,7 +3,7 @@
 import logging
 import time
 from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable
-from contextlib import aclosing
+from contextlib import aclosing, asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING
@@ -157,19 +157,11 @@ class Completion:
         delivered: list[str] = []
         miss: BudgetMissError | None = None
         try:
-            async with aclosing(self._pool_deltas()) as pool:
-                async for delta in self._bounded_deltas(pool):
-                    delivered.append(delta)
+            async with aclosing(self._pool_answers(delivered)) as pool:
+                async for delta in pool:
                     yield delta
         except BudgetMissError as exc:
             miss = exc
-        except PoolReplacementError as replaced:
-            shown = bool(delivered)
-            delivered = []
-            async with aclosing(self._replacement_deltas(replaced, shown=shown)) as replacement:
-                async for delta in self._bounded_deltas(replacement):
-                    delivered.append(delta)
-                    yield delta
         if not await self._steps_up(miss, "".join(delivered)):
             return
         # Text already on the page cannot be spliced with the paid answer: the
@@ -182,6 +174,90 @@ class Completion:
             restorable=self._pool_answer_usable and bool(delivered),
         ):
             yield delta
+
+    async def _pool_answers(self, delivered: list[str]) -> AsyncIterator[str]:
+        """Every answer the pool gives this request: the streamed one, the whole answer
+        that voids it where another lane wins the race, and each further answer the same
+        call can supply while the caller cannot read the one it has. ``delivered`` ends
+        holding the text the reader is left with."""
+        # The stream is held open across the verdict, because the answers this call can
+        # still supply exist only while it does, and the caller judges the whole answer
+        # — which is after the last delta. Leaving its context is what gives the lanes
+        # back to the pool.
+        async with self._open_pool() as stream:
+            try:
+                async with aclosing(self._pool_deltas(stream)) as pool:
+                    async for delta in self._bounded_deltas(pool):
+                        delivered.append(delta)
+                        yield delta
+            except PoolReplacementError as replaced:
+                whole = self._replacement_deltas(replaced, shown=bool(delivered))
+                async with aclosing(self._instead(whole, delivered)) as won:
+                    async for delta in won:
+                        yield delta
+            while stream is not None and self._unusable("".join(delivered)):
+                answer = await self._next_pool_answer(stream)
+                if answer is None:
+                    return
+                whole = self._recovered_deltas(answer, shown=bool(delivered))
+                async with aclosing(self._instead(whole, delivered)) as other:
+                    async for delta in other:
+                        yield delta
+
+    async def _instead(
+        self,
+        answer: AsyncIterator[str],
+        delivered: list[str],
+    ) -> AsyncIterator[str]:
+        """One whole answer in place of the text delivered so far, which it voids."""
+        delivered.clear()
+        async with aclosing(answer) as whole:
+            async for delta in self._bounded_deltas(whole):
+                delivered.append(delta)
+                yield delta
+
+    async def _next_pool_answer(self, stream: PoolStream) -> "AsyncResult | None":
+        """The pool's next complete answer for this same call, or ``None`` when it has
+        none left. A payload the caller cannot read is a poor reason to buy a paid
+        answer while the models this call already raced are holding one."""
+        # Rated where it is abandoned, so the router learns which model wrote what the
+        # caller could not read; the rating at the end of the stream belongs to whatever
+        # answer the caller is left with.
+        await self.record_quality(0.0)
+        try:
+            return await stream.another()
+        except BackendError as exc:
+            # Nothing has failed for the reader: the answer in hand is still there and
+            # the paid step is still ahead of it.
+            logger.info(
+                "the pool has no other answer for %s: %s",
+                self._request.language.code,
+                exc,
+            )
+            return None
+
+    async def _recovered_deltas(
+        self,
+        answer: "AsyncResult",
+        *,
+        shown: bool,
+    ) -> AsyncIterator[str]:
+        """The pool's next complete answer, in place of the one the caller rejected."""
+        logger.info(
+            "the pool answer from %s is unusable for %s; %s answers the same call instead",
+            self.llm_name or "unnamed",
+            self._request.language.code,
+            answer.llm_name,
+        )
+        if shown and self._request.on_reset is not None:
+            await self._request.on_reset()
+        # Both belong to the answer the reader ends up with, never to the rejected one:
+        # the bound, and the rating the caller gives when the stream ends.
+        self._oversized = False
+        self._rated = False
+        self._pool = answer
+        self.llm_name = answer.llm_name
+        yield answer.text
 
     async def _replacement_deltas(
         self,
@@ -243,11 +319,7 @@ class Completion:
             if miss is not None:
                 raise BackendError(str(miss)) from miss
             return False
-        usable = (
-            miss is None
-            and not self._oversized
-            and (self._request.usable is None or self._request.usable(answer))
-        )
+        usable = miss is None and not self._unusable(answer)
         self._pool_answer_usable = usable
         handed_over = (
             usable and self._request.hand_over is not None and self._request.hand_over(answer)
@@ -289,6 +361,13 @@ class Completion:
         )
         return True
 
+    def _unusable(self, answer: str) -> bool:
+        """Whether the caller cannot read this answer: the one trigger for asking the
+        pool again, and half of the step-up decision."""
+        return self._oversized or (
+            self._request.usable is not None and not self._request.usable(answer)
+        )
+
     async def _bounded_deltas(self, stream: AsyncIterator[str]) -> AsyncIterator[str]:
         remaining = MAX_COMPLETE_ANSWER_CHARS
         async for delta in stream:
@@ -307,20 +386,29 @@ class Completion:
                     MAX_COMPLETE_ANSWER_CHARS,
                 )
 
-    async def _pool_deltas(self) -> AsyncIterator[str]:
-        if STREAM_POOL_ANSWERS:
-            stream = open_pool_stream(
-                self._cascade.broker,
-                self._request.prompt,
-                self._request.language,
-                self._cascade.settings,
-                trace_id=self._request.trace_id,
-            )
-            self._pool = stream
-            async with aclosing(stream):
-                async for delta in stream:
-                    self.llm_name = stream.llm_name
-                    yield delta
+    @asynccontextmanager
+    async def _open_pool(self) -> AsyncIterator[PoolStream | None]:
+        """The streamed pool call for this answer, or nothing on the whole-answer
+        adapter, which has no call to come back to."""
+        if not STREAM_POOL_ANSWERS:
+            yield None
+            return
+        stream = open_pool_stream(
+            self._cascade.broker,
+            self._request.prompt,
+            self._request.language,
+            self._cascade.settings,
+            trace_id=self._request.trace_id,
+        )
+        self._pool = stream
+        async with stream:
+            yield stream
+
+    async def _pool_deltas(self, stream: PoolStream | None) -> AsyncIterator[str]:
+        if stream is not None:
+            async for delta in stream:
+                self.llm_name = stream.llm_name
+                yield delta
             self._pool_answered = True
             return
         pool = await ask_pool(

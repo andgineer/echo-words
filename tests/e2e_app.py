@@ -153,6 +153,15 @@ def answer(article: str, word: str = WORD) -> str:
     return f"{article}===CARD==={json.dumps(card, ensure_ascii=False)}"
 
 
+def unreadable(article: str, word: str = WORD) -> str:
+    """An answer whose article reads well and whose payload the parser refuses. The
+    shape is production's commonest: a meaning left with no usable example, which
+    empties the meaning, which empties the answer."""
+    payload = json.loads(answer("", word).split("===CARD===", 1)[1])
+    payload["meanings"][0]["examples"] = []
+    return f"{article}===CARD==={json.dumps(payload, ensure_ascii=False)}"
+
+
 def submit(page: Page, url: str, word: str = WORD) -> None:
     page.goto(url)
     page.get_by_placeholder("a word or a phrase").fill(word)

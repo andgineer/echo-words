@@ -3,7 +3,7 @@ from datetime import date
 from types import SimpleNamespace
 
 import pytest
-from fakes import FakeDirectClient, FakeHandle, fake_cascade, lost_the_race
+from fakes import FakeDirectClient, FakeHandle, another_answer, fake_cascade, lost_the_race
 from llmbroker import (
     InvalidProviderResponseError,
     LLMTimeoutError,
@@ -293,6 +293,195 @@ async def test_an_unusable_answer_is_rated_down_whatever_the_hand_over_says(
     )
     assert await drain(completion) == ["free ", "answer", "paid ", "answer"]
     assert handle.scores == [0.0]
+
+
+async def test_an_unreadable_payload_takes_the_pools_next_answer_before_any_paid_one(
+    settings,
+    languages,
+):
+    """The models this call already raced hold answers of their own, and production says
+    an answer the parser refuses is almost always one the reader would have accepted.
+    Buying a paid answer while the pool is still holding one spends the cap on a coin
+    flip and makes the reader wait a second budget for it."""
+    handle = FakeHandle(["free ", "answer"], others=[another_answer("second answer")])
+    cascade = fake_cascade(
+        settings,
+        handles=[handle],
+        client=FakeDirectClient(["paid ", "answer"]),
+    )
+    reset = ResetHook()
+    completion = cascade.stream_completion(
+        "prompt",
+        languages["en"],
+        on_reset=reset,
+        usable=lambda answer: "second" in answer,
+    )
+    assert await drain(completion) == ["free ", "answer", "second answer"]
+    assert handle.another_calls == 1
+    assert cascade.broker.direct_calls == []
+    assert cascade.calls_today == 0
+    # The refused text is dropped from the page rather than spliced with what replaces
+    # it, exactly as the paid step drops the answer it takes over from.
+    assert reset.calls == 1
+
+
+async def test_the_pool_is_asked_again_until_one_answer_can_be_read(settings, languages):
+    handle = FakeHandle(
+        ["free ", "answer"],
+        others=[another_answer("also unreadable"), another_answer("second answer")],
+    )
+    cascade = fake_cascade(settings, handles=[handle], client=FakeDirectClient())
+    completion = cascade.stream_completion(
+        "prompt",
+        languages["en"],
+        usable=lambda answer: "second" in answer,
+    )
+    assert await drain(completion) == ["free ", "answer", "also unreadable", "second answer"]
+    assert handle.another_calls == 2
+    assert cascade.broker.direct_calls == []
+
+
+async def test_every_refused_answer_is_rated_down_and_the_one_that_stands_is_not(
+    settings,
+    languages,
+):
+    """A rating names the model that earned it. The router learns which model wrote a
+    payload nobody could read only if each refusal lands on its own call, and the
+    caller's rating at the end belongs to the answer the reader was left with."""
+    replacement = another_answer("second answer", llm_name="free-other")
+    handle = FakeHandle(["free ", "answer"], others=[replacement])
+    cascade = fake_cascade(settings, handles=[handle], client=FakeDirectClient())
+    completion = cascade.stream_completion(
+        "prompt",
+        languages["en"],
+        usable=lambda answer: "second" in answer,
+    )
+    await drain(completion)
+    assert handle.scores == [0.0]
+    assert completion.llm_name == "free-other"
+
+    await completion.record_quality(1.0)
+    assert replacement.scores == [1.0]
+    assert handle.scores == [0.0]
+
+
+async def test_the_paid_step_takes_over_when_the_pool_has_no_other_answer(settings, languages):
+    handle = FakeHandle(["free ", "answer"])
+    cascade = fake_cascade(
+        settings,
+        handles=[handle],
+        client=FakeDirectClient(["paid ", "answer"]),
+    )
+    completion = cascade.stream_completion(
+        "prompt",
+        languages["en"],
+        usable=lambda answer: "paid" in answer,
+    )
+    assert await drain(completion) == ["free ", "answer", "paid ", "answer"]
+    assert handle.another_calls == 1
+    assert cascade.broker.direct_calls == ["gpt-fast"]
+
+
+async def test_a_pool_that_fails_on_the_way_to_another_answer_still_reaches_the_paid_step(
+    settings,
+    languages,
+):
+    """Nothing has failed for the reader when the pool cannot produce a second answer:
+    the first one is still in hand and the paid step is still ahead of it."""
+    handle = FakeHandle(
+        ["free ", "answer"],
+        others=[InvalidProviderResponseError("the provider returned no text", model="free-other")],
+    )
+    cascade = fake_cascade(
+        settings,
+        handles=[handle],
+        client=FakeDirectClient(["paid ", "answer"]),
+    )
+    completion = cascade.stream_completion(
+        "prompt",
+        languages["en"],
+        usable=lambda answer: "paid" in answer,
+    )
+    assert await drain(completion) == ["free ", "answer", "paid ", "answer"]
+    assert cascade.broker.direct_calls == ["gpt-fast"]
+
+
+async def test_an_answer_the_caller_can_read_leaves_the_rest_of_the_call_alone(
+    settings,
+    languages,
+):
+    handle = FakeHandle(["free ", "answer"], others=[another_answer("never asked for")])
+    cascade = fake_cascade(settings, handles=[handle])
+    completion = cascade.stream_completion(
+        "prompt",
+        languages["en"],
+        usable=lambda _answer: True,
+    )
+    assert await drain(completion) == ["free ", "answer"]
+    assert handle.another_calls == 0
+    assert handle.closed is True
+
+
+async def test_an_answer_handed_over_on_policy_does_not_ask_the_pool_again(
+    settings,
+    languages,
+):
+    """The hand-over is a preference for the better model on one kind of question, not
+    a complaint about the answer. Another pool answer would be another answer of the
+    same kind, which is not what the hand-over asked for."""
+    handle = FakeHandle(["free ", "answer"], others=[another_answer("second answer")])
+    cascade = fake_cascade(
+        settings,
+        handles=[handle],
+        client=FakeDirectClient(["paid ", "answer"]),
+    )
+    completion = cascade.stream_completion(
+        "prompt",
+        languages["en"],
+        usable=lambda _answer: True,
+        hand_over=lambda _answer: True,
+    )
+    assert await drain(completion) == ["free ", "answer", "paid ", "answer"]
+    assert handle.another_calls == 0
+
+
+async def test_a_lost_race_that_cannot_be_read_falls_back_on_the_lane_that_lost_it(
+    settings,
+    languages,
+):
+    """The lane that was beaten wrote a whole answer and llmbroker kept it. When the
+    winner's payload is the unreadable one, that retained answer is the nearest thing
+    to a card there is."""
+    lost = lost_the_race("winning answer", winner="free-flash", streamed="free-slow")
+    handle = FakeHandle(
+        ["half "],
+        error=lost,
+        others=[another_answer("second answer", llm_name="free-slow")],
+    )
+    cascade = fake_cascade(settings, handles=[handle], client=FakeDirectClient())
+    completion = cascade.stream_completion(
+        "prompt",
+        languages["en"],
+        usable=lambda answer: "second" in answer,
+    )
+    assert await drain(completion) == ["half ", "winning answer", "second answer"]
+    assert completion.llm_name == "free-slow"
+    assert cascade.broker.direct_calls == []
+
+
+async def test_the_call_is_released_once_its_answer_is_settled(settings, languages):
+    """The broker outlives every request, so the lanes this call kept open for the sake
+    of another answer are given back by leaving the stream's context and by nothing
+    else. Holding them past the verdict would keep pool slots for a finished request."""
+    handle = FakeHandle(["free ", "answer"], others=[another_answer("second answer")])
+    cascade = fake_cascade(settings, handles=[handle])
+    completion = cascade.stream_completion(
+        "prompt",
+        languages["en"],
+        usable=lambda answer: "second" in answer,
+    )
+    await drain(completion)
+    assert handle.closed is True
 
 
 async def test_a_failed_paid_step_gives_back_the_pool_answer_it_replaced(

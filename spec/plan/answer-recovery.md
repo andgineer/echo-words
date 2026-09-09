@@ -1,15 +1,17 @@
 # Implementation plan — recovering from an answer the parser cannot read
 
-**Status: designed, agreed with the operator, nothing implemented except the two
-logging commits below.** The design was settled in review on 2026-09-08 after a
-production failure was traced end to end; the parts that touch the prompt or the
-parser are unmeasured and gated on a bench run the operator has yet to schedule.
+**Status: designed, agreed with the operator; the second pool answer and the two
+logging commits below have landed, A, B and C have not.** The design was settled in
+review on 2026-09-08 after a production failure was traced end to end; the parts that
+touch the prompt or the parser are unmeasured and gated on a bench run the operator
+has yet to schedule.
 
 The subject is one path: what happens between "the pool answered" and "the reader
-has a card". Today a payload the parser cannot read costs the reader the page
+has a card". A payload the parser cannot read used to cost the reader the page
 they were already reading, twenty-five seconds of blank screen, and a paid call —
 and production says that payload is almost always an answer they would have
-accepted.
+accepted. D has taken the paid call out of the common case; the page is still
+cleared, and the answer is still refused whole where it could be repaired.
 
 ---
 
@@ -49,6 +51,12 @@ gap is what the logging commits close.
   judged against. Without the sentence, a copy that missed it by one word is
   indistinguishable from an invented one, and that distinction decides part B
   below.
+- **D has landed.** A payload the parser cannot read now asks the same pool call
+  for another whole answer, on llmbroker 1.9.0's `another()`, and reaches the paid
+  model only when that call has none left. The stream is held open across the
+  verdict and released by its own context, which is what keeps the losing lane's
+  answer reachable without keeping its pool slot past the request. The reader's
+  side of it is pinned in the browser suite.
 
 Nothing else has been written. `ANSWER_BUDGET_SECONDS` is untouched: on the one
 occasion it may have fired there is no evidence it was the wrong number, and the
@@ -132,9 +140,10 @@ taken on bench-authored contexts, not on reader-supplied ones.**
   `NoLLMAvailableError.reason` is one of `excluded`, `empty_pool`, `no_keys`,
   `all_disabled`, `timeout`.
 
-The gap is narrow and specific: an answer that *arrived* and that the host cannot
-use is, to the router, a success. The race is closed and the other lanes are gone
-before the host has parsed anything.
+The gap was narrow and specific: an answer that *arrived* and that the host cannot
+use is, to the router, a success, and the race was closed and the other lanes gone
+before the host had parsed anything. llmbroker 1.9.0 closes it — a streamed handle
+keeps its alternatives until it is closed, and D reads them.
 
 ---
 
@@ -192,8 +201,9 @@ less, not more.
 
 ### C. Two triggers, and never a blank page
 
-Today every unusable answer takes the same road as a pool that never answered.
-Split them:
+An unusable answer no longer buys a paid one before the pool has been asked again,
+but where the pool has nothing left it still takes the same road as a pool that
+never answered. Split those two:
 
 - **The pool did not answer** — `NoLLMAvailableError` of any reason, or the wait
   budget gone. There is nothing on the screen and nothing to show. The paid step
@@ -216,43 +226,6 @@ same answer. A failed replacement which preserves an older note does not make
 any sense of the new answer carded. Neither text comparison nor the mere
 existence of an older note can choose which chip to hide.
 
-### D. `another()`: the pool's next answer
-
-In llmbroker, on the streamed handle:
-
-```python
-stream = broker.stream(prompt, fastest_of=3, ...)
-async for delta in stream: ...      # the fastest answer
-answer = await stream.another()     # the next one, or None
-answer = await stream.another()     # and the next
-```
-
-- **No flag.** A lane another lane beat is not cancelled while the caller still
-  holds the handle; closing the handle — which every caller already does through
-  `aclosing` — is what ends everything. The only real cost of holding a lane is
-  the pool slot it keeps, and it is held for exactly as long as the host takes to
-  decide, which for this host is a synchronous parse.
-- **Not "the runner-up".** `another()` walks the lanes this call already has in
-  completion order, then models the call has not tried (`_untried`/`_refill`,
-  which exist), then returns `None`. Any `fastest_of` works and no width is
-  written into the API.
-- **Termination is structural.** `_Call` accumulates `tried | client_failed`
-  monotonically, `_untried` excludes them, and when nothing is left the pool
-  itself raises `NoLLMAvailableError(reason="excluded")` — "every candidate model
-  was excluded for this request". There is no counter to add and no loop to
-  guard: the sequence is finite by construction and bounded above by the `wait`
-  window.
-- It returns a complete `AsyncResult`, not a stream: the answer is already
-  written, and the cascade already knows how to put a whole answer on the page
-  (`_replacement_deltas`).
-
-In `echo_words/backend.py` this is one step between the pool and the paid model,
-and in `llm_backend.py` `pool_error()` grows the distinction C needs:
-`NoLLMAvailableError` of any reason means the pool is out and the paid step is
-right; anything else is one attempt failing, which is `another()`'s business. In
-practice that second branch rarely fires — the router holds a lane's failure
-until `not race.live()` — so it is a guard, not a working path.
-
 ---
 
 ## What this changes in the specs
@@ -265,10 +238,8 @@ same commit as the code that contradicts them.
   unusable, its text is discarded and replaced by the paid model's" — C replaces
   the discard with an atomic swap.
 - `functional-description.md`: an answer with no usable payload "moves the
-  request the same way" as a pool that missed its budget — A, C and D make those
-  two different roads.
-- `functional-description.md`: "The step-up happens at most once per request" —
-  still true of the *paid* step; the pool may now answer more than once.
+  request the same way" as a pool that missed its budget — A and C finish
+  separating those two roads, which D has already started.
 - `decision-answer-shape.md`: the strict-equality rule and its 152-answer
   measurement. B re-opens it, and only a measurement closes it again — never an
   edit.

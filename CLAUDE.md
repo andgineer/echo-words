@@ -42,8 +42,9 @@ tool looks for.
   when the parser cannot read the payload: production says fourteen of
   fifteen rejected payloads carried an answer the reader would have
   accepted, so the parse verdict is a poor reason to clear the page and
-  buy a paid answer. Local repair, a second pool answer through a new
-  llmbroker call, and two triggers instead of one.
+  buy a paid answer. The second pool answer has landed — a refused payload
+  asks the same call for another one before any paid step. Local repair
+  and two triggers instead of one are still open.
   `two-prompts.md` — a cheap model call to
   choose the branch for the submit box; **held** until `model-tier.md`
   reports, because no observed defect stands behind it and it adds a

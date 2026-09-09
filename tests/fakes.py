@@ -19,6 +19,7 @@ class FakeHandle:
         error: Exception | None = None,
         llm_name: str | None = "pool-model",
         hold: "Callable[[], Awaitable[None]] | None" = None,
+        others: "Iterable[FakeResult | Exception]" = (),
     ) -> None:
         self.deltas = list(deltas)
         self.error = error
@@ -28,6 +29,10 @@ class FakeHandle:
         self.scores: list[float] = []
         self.delivered: list[str] = []
         self.settled = False
+        # What this call can still answer with once the first answer is refused: the
+        # lanes it raced, then the models it has not tried. Exhausted, it says so.
+        self.others = list(others)
+        self.another_calls = 0
         self._iterator = self._stream()
 
     def __aiter__(self) -> AsyncIterator[str]:
@@ -54,6 +59,15 @@ class FakeHandle:
         await self._iterator.aclose()
         self.closed = True
 
+    async def another(self) -> "FakeResult | None":
+        self.another_calls += 1
+        if not self.others:
+            return None
+        other = self.others.pop(0)
+        if isinstance(other, Exception):
+            raise other
+        return other
+
     async def record_quality(self, score: float) -> None:
         if not self.settled:
             raise ValueError("a streamed call becomes rateable only after its answer ends")
@@ -74,6 +88,15 @@ class FakeResult:
 
     async def record_quality(self, score: float) -> None:
         await self._handle.record_quality(score)
+
+
+def another_answer(text: str, *, llm_name: str = "pool-other") -> FakeResult:
+    """A complete answer ``another()`` hands back: a lane of this same call that lost
+    the race and kept what it had written."""
+    handle = FakeHandle([text], llm_name=llm_name)
+    # It answered in full, which is what makes it rateable.
+    handle.settled = True
+    return FakeResult(text, handle)
 
 
 def lost_the_race(text: str, *, winner: str, streamed: str) -> StreamReplacementError:
