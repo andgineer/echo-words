@@ -459,15 +459,19 @@ the rewrite it existed to reject is now impossible by construction.
 
 **What this run does not establish, and must not be read as establishing.**
 
-- **The field was never load-bearing.** In all six clicks the words the answer named
-  were byte-identical to the submitted string, so the backend's fallback would have
-  built the same card had the answer said nothing. The case the field exists for — a
-  lemma submitted for a unit that stands in the sentence as separated pieces — has no
-  fixture in this tier, because the German click submits the inflected `steht auf`
-  already. That claim is untested, not shown safe.
-- **The bench's own `surface_exact` screen compares against the submitted string**, so
-  on the very fixture the field targets a correct answer would score false. A fixture
-  for it needs that screen looked at first.
+- **The field was never load-bearing here, and a click cannot make it so.** In all six
+  clicks the words the answer named were byte-identical to the submitted string, so the
+  fallback would have built the same card. That is not a gap in the fixtures: the chip
+  labels a reader taps are rebuilt from the sentence's own words, so a tap always
+  submits what is already in the sentence. The case the field exists for is reached by
+  the other road — a card rebuilt from an existing note is asked for under that note's
+  headword, which is the lemma, with the note's context still attached. `aufstehen`
+  against `Er steht jeden Morgen um sechs auf.` is that road, and it is pinned in the
+  parser's own tests, where it is deterministic: given the words, the marking follows.
+  What is measured on models is that they name the words correctly, which all six did.
+- **The bench's `surface_exact` screen compares against the submitted string**, which is
+  right for every fixture a tap can produce and would be wrong for one on that other
+  road. Worth knowing before such a fixture is added.
 - **The chosen sense lost its corroboration.** An answer that ignored the context used
   to fail the equality check; the index is now taken on trust, and all six returned
   `0`, which is also the fallback. The run says nothing about a non-zero selection.

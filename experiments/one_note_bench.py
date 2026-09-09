@@ -184,6 +184,10 @@ class ClickCase:
     text_id: str
     label: str
     segment_kind: str
+    # The unit's words as they stand in the sentence, where that is not the label the
+    # reader taps. A separable verb is tapped by its lemma and marked in two pieces, so
+    # the screen must expect those pieces and not the lemma.
+    in_context: str = ""
 
 
 @dataclass(frozen=True)
@@ -1553,7 +1557,12 @@ def vocab_metrics(shot: Shot, parsed: ParsedUnit, analysis: str) -> dict:
         )
         if shot.context
         else True,
-        "context_surface_exact": highlighted_parts == requested_parts
+        "context_surface_exact": highlighted_parts
+        == (
+            tokens(click_case.in_context)
+            if click_case is not None and click_case.in_context
+            else requested_parts
+        )
         if shot.context
         else True,
         "context_segments_empty": not parsed.segments if shot.context else True,
@@ -1859,7 +1868,11 @@ def click_success(shot: Shot) -> bool:
 
 def click_gate(rows: list[Shot]) -> dict[str, bool]:
     successful = {row.shot_id for row in rows if click_success(row)}
-    return {"at least five successful click cases": len(successful) >= MIN_CLICK_SUCCESS}
+    return {
+        f"at least {MIN_CLICK_SUCCESS} successful click cases": (
+            len(successful) >= MIN_CLICK_SUCCESS
+        ),
+    }
 
 
 def expression_success(shot: Shot) -> bool:

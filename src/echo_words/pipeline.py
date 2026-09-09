@@ -1276,22 +1276,25 @@ def _sense_sentence(meaning: Meaning) -> str:
 
 
 def _analysed_as(job: Job, parsed: ParsedAnswer | None) -> str | None:
-    """The wording the entry is about, when that is not the wording submitted.
+    """The wording the entry is about, when the answer called it a correction of what
+    was typed.
 
-    Said for a lookup and a failed card as much as for a stored one, and whatever the
-    answer called the difference: the reader typed one thing and is reading about
-    another, which is theirs to know. What the difference is called is decided
-    separately — a dictionary lemma for an inflected form is not a misspelling.
+    Comparing the two spellings is not how this is decided. That comparison announced a
+    normalisation as though it were an event — a German noun submitted with its article
+    is the same word, and an inflected form given its lemma is the answer doing its job
+    — so it fired on almost every submission and stopped being read, which is the one
+    thing a notice like this cannot afford. Whether the reader typed something other
+    than what they are reading about is the answer's judgement, and it makes it in
+    ``word_relation``.
     """
-    if not isinstance(parsed, ParsedUnit):
+    if not _declares_a_typo(parsed) or not isinstance(parsed, ParsedUnit):
         return None
-    # Folded as the relation itself was decided, so a case fold or the other Serbian
-    # script is the same wording rather than another word to announce.
-    same = fold_for_match(parsed.note.word, job.language) == fold_for_match(
-        job.word,
-        job.language,
-    )
-    return None if same else parsed.note.word
+    # The spellings are still compared, but only to keep the notice from reading
+    # "X instead of X": an answer that calls a wording misspelled and then heads
+    # itself with that same wording has announced nothing.
+    if fold_for_match(parsed.note.word, job.language) == fold_for_match(job.word, job.language):
+        return None
+    return parsed.note.word
 
 
 def _refuses(verdict: "Verdict | None | object") -> bool:

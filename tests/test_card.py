@@ -338,6 +338,52 @@ def test_the_context_example_is_built_from_our_sentence_whatever_the_answer_wrot
     assert parsed.note.meaning.examples[1].text == "The bank opens."
 
 
+def test_a_lemma_is_carded_from_the_words_the_answer_says_stand_in_the_sentence(languages):
+    """The one case the backend cannot do alone. A card rebuilt from an existing note is
+    asked for under that note's headword — `aufstehen` — while the sentence carries it
+    as `steht … auf`. No rule of ours finds those two pieces from the lemma, so the
+    answer names them and the backend marks its own sentence with them."""
+    context = "Er steht jeden Morgen um sechs auf."
+    parsed = parse_answer_payload(
+        payload(
+            word="aufstehen",
+            word_relation="same",
+            meanings=[meaning(translations=["вставать"], examples=[example("aufstehen")])],
+            context_sense=0,
+            context_translation="Он встаёт каждое утро в шесть.",
+            context_surface="steht auf",
+        ),
+        "aufstehen",
+        languages["de"],
+        unit_intent=True,
+        context=context,
+    )
+
+    assert isinstance(parsed, ParsedUnit)
+    first = parsed.note.meaning.examples[0]
+    assert first.highlighted == "Er <b>steht</b> jeden Morgen um sechs <b>auf</b>."
+    assert first.gapped == "Er ___ jeden Morgen um sechs ___."
+
+
+def test_a_lemma_with_no_words_named_has_no_contextual_card_to_build(languages):
+    """Without them there is nothing to mark: the lemma is not in the sentence, and
+    guessing which words it became is exactly what cannot be done here."""
+    with pytest.raises(CardParseError, match="does not occur in the supplied context"):
+        parse_answer_payload(
+            payload(
+                word="aufstehen",
+                word_relation="same",
+                meanings=[meaning(translations=["вставать"], examples=[example("aufstehen")])],
+                context_sense=0,
+                context_translation="Он встаёт каждое утро в шесть.",
+            ),
+            "aufstehen",
+            languages["de"],
+            unit_intent=True,
+            context="Er steht jeden Morgen um sechs auf.",
+        )
+
+
 def test_a_unit_that_is_not_in_the_context_it_came_from_cannot_be_carded(languages):
     with pytest.raises(CardParseError, match="does not occur in the supplied context"):
         parse_answer_payload(

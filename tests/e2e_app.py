@@ -127,13 +127,13 @@ def live_app(
 WORD = "Schlüssel"
 
 
-def answer(article: str, word: str = WORD) -> str:
+def answer(article: str, word: str = WORD, relation: str = "same") -> str:
     """One pool answer in the shape the prompt asks for: an article, then its card."""
     card = {
         "kind": "unit",
         "word": word,
-        "word_relation": "same",
-        "suggestion": "",
+        "word_relation": relation,
+        "suggestion": word if relation == "typo" else "",
         "meanings": [
             {
                 "label": "",

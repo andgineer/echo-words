@@ -810,7 +810,7 @@ def test_complete_current_attempt_packet_is_pending_review_not_accepted():
 
 def test_unavailable_click_sources_remain_failures_in_the_fixed_denominator():
     assert bench.context_shots({}) == []
-    assert not bench.click_gate([])["at least five successful click cases"]
+    assert not bench.click_gate([])[f"at least {bench.MIN_CLICK_SUCCESS} successful click cases"]
 
 
 def test_click_gate_allows_one_failure_but_each_success_is_fully_structural():

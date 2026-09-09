@@ -184,13 +184,10 @@ rewrite cannot happen because nothing is being reproduced.
 to decide this.** It would have measured how many rejections were meaning-preserving
 near-misses, which is a question about how to tune a comparison that no longer exists.
 
-Measured on the smoke tier and accepted; the decision and, more importantly, the four
-things that run does *not* establish are in `decision-answer-shape.md`. The first of
-them is the work left here: the field naming the unit's words in the sentence was
-byte-identical to the submitted string in all six clicks, so the case it was built for
-is still unmeasured, and the bench screen that would judge it is defined against the
-submitted string. A fixture that submits a separable verb's lemma with a context, and
-a screen that can score it, are what close this.
+Measured on the smoke tier and accepted; the decision and what that run does *not*
+establish are in `decision-answer-shape.md`. The one thing left open there is the
+chosen sense, which used to be corroborated by the equality check and is now taken on
+trust.
 
 ---
 

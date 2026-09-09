@@ -262,9 +262,10 @@ def test_a_card_made_for_another_headword_says_so_above_the_analysis(
     settings: Settings,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """An answer may card a headword other than the wording submitted — an article for
-    a bare noun, a corrected spelling. The page has to say so, or the reader drills a
-    card they never asked for and never sees that they did."""
+    """Only a correction is announced. A dictionary form given for what was typed — an
+    article added to a bare noun, a lemma for an inflected form — is the answer doing
+    its job, and saying so on every submission is how a notice stops being read. A
+    spelling the answer calls wrong is a different thing, and it says so itself."""
     carded = "der Schlüssel"
     with live_app(
         settings,
@@ -272,8 +273,17 @@ def test_a_card_made_for_another_headword_says_so_above_the_analysis(
         handles=[FakeHandle([answer(FIRST, word=carded)])],
     ) as app:
         submit(page, app.url)
-        expect(page.locator(".entry-notice")).to_contain_text(f"The card is for “{carded}”")
-        expect(page.locator(".entry-notice")).to_contain_text(f"not the “{WORD}” you typed")
+        expect(page.locator(".entry-text")).to_contain_text("the first analysis")
+        expect(page.locator(".entry-notice")).to_have_count(0)
+
+    corrected = "Schlüssel"
+    with live_app(
+        settings,
+        monkeypatch,
+        handles=[FakeHandle([answer(FIRST, word=corrected, relation="typo")])],
+    ) as app:
+        submit(page, app.url, word="Schlussel")
+        expect(page.locator(".entry-notice")).to_contain_text(corrected)
 
 
 def test_the_submitted_word_reaches_the_configured_deck_as_one_note(

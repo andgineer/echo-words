@@ -1173,7 +1173,9 @@ async def test_a_lemma_for_an_inflected_form_is_not_called_a_typo(languages):
         assert [note.word for note, _deck, _audio in anki.calls] == ["receive"]
         # Named, because the card is not about the wording that was typed — but not
         # named as a misspelling, which is the lie this test exists to prevent.
-        assert entry.analysed_as == "receive"
+        # A lemma given for an inflected form is the answer doing its job, not an event
+        # to announce: nothing is said above the analysis about it.
+        assert entry.analysed_as is None
         assert entry.typo_suspected is False
     finally:
         await pipeline.close()
