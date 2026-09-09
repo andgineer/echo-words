@@ -1,9 +1,9 @@
 # Implementation plan — recovering from an answer the parser cannot read
 
-**Status: C, D and the two logging commits below have landed. A is written and green
-on mocks but has never been run against a model — it must not be deployed until it
-has. B is waiting on production evidence that cannot exist yet.** The design was
-settled in review on 2026-09-08 after a production failure was traced end to end.
+**Status: A, C, D and the two logging commits below have landed and are measured.
+Only B is left.** The design was settled in review on 2026-09-08 after a production
+failure was traced end to end; A was measured on the smoke tier on 2026-09-09 and the
+decision is in `decision-answer-shape.md`.
 
 The subject is one path: what happens between "the pool answered" and "the reader
 has a card". A payload the parser cannot read used to cost the reader the page
@@ -54,6 +54,13 @@ gap is what the logging commits close.
   for another whole answer, on llmbroker 1.9.0's `another()`. The stream is held
   open across the verdict and released by its own context, which is what keeps the
   losing lane's answer reachable without keeping its pool slot past the request.
+- **A has landed and is measured.** The marking on an example is the backend's where
+  the model's own is unusable, and a dropped contextual sense is named instead of
+  becoming sense 0. Measured on the smoke tier with a fresh-agent reading of all 42
+  packet items: the repair fired three times, never mis-marked, and declined the two
+  wrong-language answers it must decline. What that run does not establish is in
+  `decision-answer-shape.md` — the repair never fired on a model-invented example, and
+  the dropped-sense branch never fired at all.
 - **C has landed.** The two triggers are split: only a pool that did not answer
   takes the paid step by itself. A payload no answer of the request could carry
   leaves the article on the page with its card marked failed, and offers the paid
@@ -154,33 +161,6 @@ keeps its alternatives until it is closed, and D reads them.
 ---
 
 ## The design
-
-### A. Repair locally instead of rejecting wholesale — written, unmeasured
-
-The code is in `card.py` and the suite is green, and that is worth exactly what a mock
-is worth here: it proves the repair does what was written, not that a model's answers
-are still good once it is applied. **The bench below has not been run.** Until it has
-and a fresh agent has read the packet, this is unmeasured work sitting on `main`.
-
-What it does now:
-
-1. **The marking is ours.** Where the model's own marking is unusable — the whole line
-   bolded, or one token of a two-token surface — the highlighted and gapped forms are
-   rebuilt from the submitted tokens against the sentence the answer wrote, by the same
-   machinery a matched context already used. Only a sentence our tokens cannot be found
-   in is beyond it. Covers `geradeaus`, `geseft`, `der Verkehr`.
-2. **Drop the piece, not the whole.** Already true of examples and senses, and C is what
-   removed its real cost: an answer with no retained meaning no longer buys a paid call.
-3. **A dropped contextual sense says so.** It no longer becomes sense 0 in silence and
-   then fails the context rule, which reported the sentence for a fault about the sense.
-
-What the repair must never do is hide the model's behaviour: the bench screens still
-report whole-sentence marking and an unmarked submitted token as defects of the answer,
-because the reviewer reads the answer and not our repair of it.
-
-The risk the bench is for: a repair that is too eager marks a sentence that was never
-about the submitted word, and cards a blank the answer did not mean. Mocks cannot see
-that. The control fixture below is aimed at it.
 
 ### B. The context copy is a key, not a claim
 

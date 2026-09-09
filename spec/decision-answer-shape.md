@@ -394,6 +394,50 @@ at most that prefix while draining any excess to provider settlement; the
 settled pool call is rated as unusable, and a final oversized attempt cannot
 make a note from its truncated prefix.
 
+## The marking on an example is the backend's — 2026-09-09
+
+Where the model's own marking of an example is unusable, the highlighted and gapped
+forms are rebuilt from the submitted tokens against the sentence the answer wrote.
+The two faults this covers are the same fault: the whole line wrapped in one span,
+and one token marked of a two-token surface. The sentence and the wording asked
+about are both the backend's, so the marking is the backend's too; only a sentence
+the submitted tokens cannot be found in is beyond it, and the rebuilt marking faces
+the same source-language test as the model's own.
+
+Measured on the smoke tier, 55 attempts and 55 provider answers, with the workhorse
+present (google-gemini-3.5-flash-lite 46, groq-gpt-oss-120b 8), so the pool was not
+exhausted. Every deterministic contract passed, including "accepted unit examples
+target less than the whole sentence"; registered units cardable 20/21, clicks 6/6,
+bare units 9/9.
+
+A fresh agent read all 42 items of the review packet. **The repair fired three times
+and never mis-marked.** Each was a click on the backend's own carried context, where
+the model had marked only part of the submitted unit: `steht auf`, `се вратио` and
+`gave up` were each rebuilt so the bold covers the submitted tokens and nothing else,
+with intervening words left outside the blanks. The stronger evidence is negative —
+for two answers whose examples were target-language sentences with the source word
+wedged in, the repair *declined* to rescue them and both payloads were refused
+outright, so it did not turn a wrong-language example into a card.
+
+**What this run does not establish.** The repair never fired on a model-invented
+example, so "it marks a sentence that was never about the submitted word" is untested
+rather than shown safe. The other half of the change — reporting a dropped contextual
+sense instead of falling back to sense 0 — never fired either: every click returned
+`context_sense: 0` and no sense was dropped.
+
+Answer quality, on the same reading: 17 of 42 items carry a defect a reader would
+notice and 3 of 27 notes carry one that reaches a card they drill. That is better
+than the roughly-a-fifth this document records for the free pool, and none of the
+three came from the parser. Two are Serbian sentences carrying a non-word
+(`Моратите`) and a Russianism (`красивом`); the third is recorded below.
+
+**A false friend confirmed on the card's translations field.** `неділя` was carded
+with translations `воскресенье, неделя`. The Ukrainian word means Sunday; the word
+for week is `тиждень`. This is worse than an article defect, because the translations
+field is a card field and the fixture exists to catch exactly this. It is recorded,
+not accepted: the false-friend pair is not vouched for on the strength of this run —
+`стол` passed and `неділя` failed.
+
 ## What would re-open this
 
 - Another production-prompt revision, because both the branch and answer-shape

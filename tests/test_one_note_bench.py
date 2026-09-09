@@ -331,14 +331,14 @@ def test_a_silently_corrected_spelling_is_a_safe_outcome():
 
 
 def test_tier_manifests_have_frozen_non_overlapping_counts():
-    assert len(bench.SMOKE_CANONICAL_IDS) == 30
+    assert len(bench.SMOKE_CANONICAL_IDS) == 31
     assert len(bench.HISTORICAL_HARD_IDS) == 38
     assert len(bench.CONFIRMATION_ANCHOR_IDS) == 8
-    assert len(bench.canonical_ids_for_tier("confirmation")) == 81
-    assert len(bench.canonical_ids_for_tier("full")) == 157
-    assert len(bench.initial_jobs_for_tier("smoke")) + len(bench.CLICK_IDS) == 61
-    assert len(bench.initial_jobs_for_tier("confirmation")) + len(bench.CLICK_IDS) == 131
-    assert len(bench.initial_jobs_for_tier("full")) + len(bench.CLICK_IDS) == 222
+    assert len(bench.canonical_ids_for_tier("confirmation")) == 82
+    assert len(bench.canonical_ids_for_tier("full")) == 159
+    assert len(bench.initial_jobs_for_tier("smoke")) + len(bench.CLICK_IDS) == 62
+    assert len(bench.initial_jobs_for_tier("confirmation")) + len(bench.CLICK_IDS) == 132
+    assert len(bench.initial_jobs_for_tier("full")) + len(bench.CLICK_IDS) == 224
     # A source language written in the target language's script is six calls on every
     # tier: no other fixture exercises the card path where the two scripts are shared.
     assert len(bench.cyrillic_ids_for_tier("smoke")) == 6

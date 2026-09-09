@@ -147,7 +147,7 @@ INITIAL_FIXTURES = 157
 VERDICT_FIXTURES_TOTAL = 122
 TEXT_FIXTURES = 26
 BARE_FIXTURES = 9
-REGISTERED_UNITS = 21
+REGISTERED_UNITS = 22
 CLICK_FIXTURES = 6
 EXPRESSION_FIXTURES = 3
 
@@ -401,6 +401,7 @@ SMOKE_CANONICAL_IDS = frozenset(
         "text-de-6",
         "text-de-7",
         "text-de-9",
+        "text-de-11",
         "text-en-0",
         "text-en-1",
         "text-en-3",
@@ -496,6 +497,8 @@ EXPECTED_SURFACE_GROUPS = {
     "text-de-6": (("kommt", "in", "Frage"),),
     "text-de-7": (("zieht", "um"),),
     "text-de-9": (("uns", "auf", "beschränken"),),
+    # `noch einmal` is the fixed unit; `wiederholen` is an ordinary verb beside it.
+    "text-de-11": (("noch", "einmal"),),
     "text-sr-0": (("се", "вратио"),),
     "text-sr-1": (("се", "јавио"),),
     "text-sr-2": (("se", "oblači"),),
@@ -2297,7 +2300,7 @@ def deterministic_gates(  # noqa: PLR0913 - the screen's inputs, and every arm o
         for row in accepted_initial
         if row.kind == "typo" and row.shot_id not in withheld
     ]
-    expected_canonical = {30: "smoke", 81: "confirmation", 157: "full"}
+    expected_canonical = {31: "smoke", 82: "confirmation", 159: "full"}
     expected_typo_count = 3 if tier == "smoke" else 6
     expected_attested_count = len(attested_ids_for_tier(tier))
     expected_attestation_count = len(attestation_ids_for_tier(tier))

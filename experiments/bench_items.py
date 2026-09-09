@@ -201,6 +201,12 @@ SENTENCES: dict[str, list[tuple[str, tuple[tuple[str, ...], ...], str]]] = {
         ("Er hat mich gestern überhaupt nicht angerufen.", (("anrufen",),), "phrase"),
         ("Wir müssen uns auf das Wesentliche beschränken.", (("sich auf etwas beschränken", "sich beschränken auf", "beschränken auf"),), "phrase"),
         ("Heute ist das Wetter richtig schön.", (), "plain"),
+        # Added after a production report of `einmal` and `wiederholen` arriving as two
+        # separate chips. What this sentence pins is the adverb: `noch einmal` is the
+        # fixed unit and `wiederholen` an ordinary verb beside it, so the fixture fails
+        # only if the adverb itself is split into single words. Whether a chip should
+        # ever span `einmal … wiederholen` is not settled here and not asserted.
+        ("Können Sie das bitte noch einmal wiederholen?", (("noch einmal", "noch einmal wiederholen", "einmal wiederholen"),), "phrase"),
     ],
     "sr": [
         ("Он се синоћ вратио кући веома касно.", (("вратити се", "vratiti se"),), "split"),

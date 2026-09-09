@@ -251,6 +251,63 @@ as English rather than a standing behaviour — which is why the open question i
 whether a note this wrong is reachable by any check the app can run, or whether
 it belongs with the qualitative model errors the backend does not adjudicate.
 
+## 16. The deeper article has no length anyone chose
+
+Reported from ordinary use: "Подробнее" — the paid deeper article — comes back
+"безумно длинный". Nothing bounds it. The pool answer is asked for a stated shape
+and is cut at the 16,000-character complete-answer bound; the extended prompt asks
+for neither, and the reader gets whatever the paid model felt like writing, on a
+screen they opened for one word.
+
+Length is the whole complaint, so it is the thing to decide: a reader who taps
+"the full entry" wants more than the article, not an essay. Whether that is a
+sentence in the prompt, a bound like the answer's, or both is open — but the
+budget the paid step spends is real money, and a longer answer also costs the
+reader the wait it takes to write.
+
+## 17. A sense chip repeats the sense already on the card
+
+`die Tafel` was carded, and the entry still offered a chip reading "плитка" with
+the same sense the note carries. A chip is an invitation to analyse that sense as
+its own unit; one that repeats the carded sense invites the reader to make the
+card they already have.
+
+The chip that was saved is hidden by index — the sense the note was built from is
+the one dropped from the display. That catches the ordinary case and misses this
+one, where the answer returned two senses whose content is the same and only one
+of them was carded. So there are two faults here and they need telling apart: an
+answer that returns a duplicate sense, and a display rule that can only recognise
+the duplicate by position. Neither a text comparison of the translations nor the
+mere count of senses settles it — the reader's question is whether the second chip
+would produce a different card.
+
+## 18. A false friend confirmed on the card's translations field
+
+`неділя` (uk) was carded with translations `воскресенье, неделя`. It means
+Sunday; the Ukrainian for week is `тиждень`. The Recall front therefore reads
+"воскресенье, неделя" and teaches the false friend the fixture exists to catch.
+The article compounds it — four of six table rows render `неділі` as "неделе".
+
+This is worse than the article defects around it because the translations field is
+a card field: the reader drills it. Nothing downstream can see it — the spelling
+is a real Ukrainian word, the sentences are in Ukrainian letters, the payload is
+well formed. Recorded in `decision-answer-shape.md` with the run that found it;
+the false-friend pair is not vouched for on the strength of that run, since `стол`
+passed and this one failed.
+
+## 19. Two card-front sentences that are not the language they claim
+
+From the same reading: `bare-sr-voditi` carded `Моратите ___ о свом здрављу.` —
+`Моратите` is not a Serbian word, the form is `Морате` — and `bare-sr-grad`
+carded `Живим у красивом старом ___.`, where `красивом` is the Russian adjective
+and Serbian wants `лепом`. Both are ContextRecognition fronts and
+ContextProduction stimuli, so both are drilled.
+
+The letter test cannot see either: every character is legal Serbian Cyrillic. It
+is the same class as 14 and 15 — a word that is spelled plausibly for the source
+language and is not a word of it — and it is what a reader meets rather than what
+a screen can catch.
+
 ## What is deliberately not here
 
 - **The cooldown ladder that took a working model out of the pool for half an
