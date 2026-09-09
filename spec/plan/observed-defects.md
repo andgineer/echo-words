@@ -308,6 +308,20 @@ is the same class as 14 and 15 — a word that is spelled plausibly for the sour
 language and is not a word of it — and it is what a reader meets rather than what
 a screen can catch.
 
+## 20. A contiguous two-word unit is gapped as two blanks
+
+`I gave up after ten minutes.` cards as `I ___ ___ after ten minutes.`, which tells
+the learner the answer is two words before they have recalled any of it. The same
+note's other example, marked by the model, reads `Never ___ no matter how hard it
+gets.` — one blank, as `decision-answer-shape.md` asks: "one contiguous unit earns
+one blank".
+
+The merge of adjacent spans lives only in the path that validates the model's own
+marking. The backend's own path marks each token separately and never merges, so
+every contiguous multi-word click leaks its word count. Pre-existing, and untouched
+by the change that made the backend's path the usual one — which is what makes it
+worth writing down now, since that path is no longer the exception.
+
 ## What is deliberately not here
 
 - **The cooldown ladder that took a working model out of the pool for half an

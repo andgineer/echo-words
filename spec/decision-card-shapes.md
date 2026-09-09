@@ -79,11 +79,14 @@ complete finished forms:
     Er <b>steht</b> jeden Morgen um sechs <b>auf</b>.
     Er ___ jeden Morgen um sechs ___.
 
-For a chip with context, the backend owns the safe exact case: it finds each
-submitted surface token in source order inside the exact carried context and
-constructs the bold and gapped forms. Separated pieces stay separated, and no
-neighbouring word can be absorbed. If exact mapping is impossible, the model's
-forms take the same validation path as generated examples.
+For a chip with context, the backend owns the marking outright: it finds each of
+the unit's tokens in source order inside the carried context and constructs the
+bold and gapped forms. Separated pieces stay separated, and no neighbouring word
+can be absorbed. Which tokens those are is the answer's to say — a separable verb
+submitted as its lemma stands in the sentence as two pieces, and no rule the
+backend can write will find them — so it names them, and the backend falls back on
+the submitted surface where it does not. A unit that cannot be located either way
+has no contextual card to build.
 
 That validation requires the highlighted form to be exactly the plain example
 with one or more bold spans added; the backend then produces the gapped form by

@@ -2328,7 +2328,7 @@ def deterministic_gates(  # noqa: PLR0913 - the screen's inputs, and every arm o
         and sum(row.kind == "attestation" for row in canonical) == expected_attestation_count
         and len(CLICK_IDS) == CLICK_FIXTURES
         and len(canonical) + len(CLICK_IDS)
-        == {"smoke": 61, "confirmation": 131, "full": 222}[tier],
+        == {"smoke": 62, "confirmation": 132, "full": 224}[tier],
         "accepted payloads contain one branch": all(
             not row.metrics.get("mixed_branch") for row in accepted
         ),

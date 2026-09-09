@@ -293,18 +293,21 @@ def test_the_plain_sentence_comes_from_the_highlight_not_from_a_returned_field(l
     assert parsed.note.meaning.examples[0].gapped == "Yesterday, the ___ opened!"
 
 
-def test_a_context_answer_that_translates_nothing_cannot_be_carded(languages):
-    """The sentence and its marking are ours; what only the answer can supply is which
-    sense the unit carries here and what the sentence means. Without the translation
-    there is no back for the context card, so there is no card."""
-    with pytest.raises(CardParseError, match="did not translate the supplied context"):
-        parse_answer_payload(
-            payload(context_sense=0),
-            "bank",
-            languages["en"],
-            unit_intent=True,
-            context="We sat on the bank.",
-        )
+def test_a_context_answer_that_translates_nothing_still_cards(languages):
+    """The translation is asked for and is not a condition of the card: no card field
+    carries an example's translation, so rejecting the answer over a missing one would
+    be the same kind of rejection this contract was changed to remove."""
+    parsed = parse_answer_payload(
+        payload(context_sense=0),
+        "bank",
+        languages["en"],
+        unit_intent=True,
+        context="We sat on the bank.",
+    )
+
+    assert isinstance(parsed, ParsedUnit)
+    assert parsed.note.meaning.examples[0].text == "We sat on the bank."
+    assert parsed.note.meaning.examples[0].gapped == "We sat on the ___."
 
 
 def test_the_context_example_is_built_from_our_sentence_whatever_the_answer_wrote(

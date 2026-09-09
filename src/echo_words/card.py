@@ -411,10 +411,10 @@ def _with_context_example(
         # The submitted unit is not in the sentence it was said to come from, so the
         # request itself does not hold together and no card can be built for it.
         raise CardParseError("the submitted unit does not occur in the supplied context")
-    rendered = _plain(translation)
-    if not rendered:
-        raise CardParseError("the answer did not translate the supplied context")
-    example = Example(request.context, rendered, *forms)
+    # Asked for, and not a condition of the card: no card field carries an example's
+    # translation, so refusing the answer over a missing one would be a rejection in
+    # the shape of the rejection this whole change removed.
+    example = Example(request.context, _plain(translation), *forms)
     kept = [item for item in meaning.examples if item.text != request.context]
     return Meaning(meaning.label, meaning.translations, [example, *kept][:MAX_EXAMPLES_PER_MEANING])
 

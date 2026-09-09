@@ -162,32 +162,35 @@ keeps its alternatives until it is closed, and D reads them.
 
 ## The design
 
-### B. The context copy is a key, not a claim
+### B. The copy is gone, and with it the comparison — landed and measured
 
-The card never carries the model's copy — `_parse_example` substitutes the
-sentence the backend owns. The comparison exists to identify *which* example is
-the contextual one, and to confirm the model analysed the sentence it was given
-rather than one it invented. Those are two different jobs and only the second
-justifies strictness.
+Not the graded tolerance this section used to propose. The comparison was removed
+outright, because the copy it compared was never needed: the card carries the
+backend's own sentence, so the copy only ever identified which example was the
+contextual one.
 
-The proposal is a graded tolerance: differences that cannot change meaning —
-case, whitespace runs, quote and dash forms, terminal punctuation — are accepted
-and the backend's own sentence is used; a changed, added or dropped word is still
-a rewrite and still rejected, because a rewrite means the translation and the
-`context_sense` belong to a sentence the reader never wrote.
+The answer is now asked for the three things the backend cannot derive — which sense
+the unit carries in the sentence, what the sentence means, and **which of the
+sentence's words the unit actually is**. That third field is what a graded tolerance
+would never have solved: a separable verb submitted as `aufstehen` stands in the
+sentence as `steht … auf`, and no comparison of strings finds that. The backend then
+marks its own sentence from those words.
 
-**This part is blocked on evidence, and collecting it starts with a deploy.**
-`034bfd31` logs the reader's sentence beside the rejected payload, so a fortnight
-of ordinary use will say how many of these rejections are meaning-preserving
-near-misses and how many are genuine rewrites — but only from the moment that
-commit is running on the host, which as of writing it is not. Deploy it, wait,
-then classify, and only then write the comparison or re-open
-`decision-answer-shape.md`.
+So the most common rejection in production — ten of fifteen, almost all of them a
+capital letter or a doubled space — cannot occur: there is nothing to compare, and a
+rewrite cannot happen because nothing is being reproduced.
 
-The end state worth considering if the residue is still large: stop asking for
-the copy at all. `context_sense` plus a translation of the context sentence is
-enough for the backend to build the example itself, and it asks the model for
-less, not more.
+**The fortnight of production evidence this section used to wait for was never needed
+to decide this.** It would have measured how many rejections were meaning-preserving
+near-misses, which is a question about how to tune a comparison that no longer exists.
+
+Measured on the smoke tier and accepted; the decision and, more importantly, the four
+things that run does *not* establish are in `decision-answer-shape.md`. The first of
+them is the work left here: the field naming the unit's words in the sentence was
+byte-identical to the submitted string in all six clicks, so the case it was built for
+is still unmeasured, and the bench screen that would judge it is defined against the
+submitted string. A fixture that submits a separable verb's lemma with a context, and
+a screen that can score it, are what close this.
 
 ---
 

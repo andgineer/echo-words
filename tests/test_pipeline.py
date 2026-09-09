@@ -3737,26 +3737,16 @@ async def test_unit_intent_rejecting_a_text_verdict_leaves_the_card_failed(
     assert anki.calls == []
 
 
-async def test_a_mismatched_context_example_leaves_the_card_failed(settings, languages):
+async def test_an_answer_that_ignores_the_context_in_its_examples_still_cards(
+    settings,
+    languages,
+):
+    """The answer is no longer asked to reproduce the sentence, so examples that have
+    nothing to do with it are just examples. The contextual card is built from the
+    reader's own sentence, and there is no comparison left to fail."""
     context = "The bank opens at nine."
-    wrong = valid_card("bank")
-    contextual = {
-        "text": context,
-        "translation": "Банк открывается в девять.",
-        "highlighted": "The <b>bank</b> opens at nine.",
-        "gapped": "The ___ opens at nine.",
-    }
-    right = card_with(
-        "bank",
-        meanings=[{"label": "", "translations": ["банк"], "examples": [contextual]}],
-        context_sense=0,
-    )
-    handle = FakeHandle([wrong])
-    cascade = fake_cascade(
-        settings,
-        handles=[handle],
-        client=FakeDirectClient([right]),
-    )
+    handle = FakeHandle([card_with("bank", context_sense=0)])
+    cascade = fake_cascade(settings, handles=[handle], client=FakeDirectClient())
     anki = RecordingAnki(Added(7, None))
     pipeline = WordPipeline(cascade, target_lang="Russian", anki=anki)
     pipeline.start()
@@ -3772,10 +3762,11 @@ async def test_a_mismatched_context_example_leaves_the_card_failed(settings, lan
     finally:
         await pipeline.close()
 
-    assert handle.scores == [0.0]
+    assert entry.card_status == ADDED_STATUS
     assert cascade.broker.direct_calls == []
-    assert entry.card_status == CARD_FAILED_STATUS
-    assert anki.calls == []
+    note = anki.calls[0][0]
+    assert note.meaning.examples[0].text == context
+    assert note.meaning.examples[0].gapped == "The ___ opens at nine."
 
 
 async def test_a_broken_card_block_stands_when_no_paid_model_can_replace_it(settings, languages):

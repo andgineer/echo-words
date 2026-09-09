@@ -377,16 +377,13 @@ These are article defects rather than card defects — the payload is usually cl
 while the visible prose carries them — and the mandatory semantic review is the
 only thing that sees them. Over a reviewed full tier, roughly half of a packet's
 items carry a defect the reader would read and about a fifth one that reaches a
-card they would drill. For an explicit context request, the selected meaning's
-first plain example must be the supplied context, allowing only the sentence's
-final punctuation to differ — a difference anywhere further in is a rewrite, and
-a rewrite is what the rule exists to reject. The card then carries the context
-the backend supplied rather than the model's copy of it, so the comparison has
-one degree of freedom and the card has none. Of 152 recorded contextual answers
-three failed strict equality: one dropped its full stop, and two rewrote the
-sentence. Where the submitted click surface can be matched token-for-token in
-that context, the backend constructs the two forms itself; otherwise the model's
-forms must pass the same structural checks. The parser does not verify morphology, infer the
+card they would drill. For an explicit context request, the answer is not asked to
+reproduce the sentence at all. It names the sense the unit carries there, the
+words the unit is in that sentence, and what the sentence means; the backend
+builds the contextual example from its own sentence and its own marking of it.
+Nothing is copied, so nothing is compared and a rewrite cannot occur. The
+translation is asked for and is not a condition of the card, because no card
+field carries an example's translation. The parser does not verify morphology, infer the
 linguistic boundary of a generated example, or decide whether prose agrees with
 `kind`. The complete response is bounded at
 16,000 characters before JSON decoding and segment filling. Streaming exposes
@@ -437,6 +434,53 @@ for week is `тиждень`. This is worse than an article defect, because the 
 field is a card field and the fixture exists to catch exactly this. It is recorded,
 not accepted: the false-friend pair is not vouched for on the strength of this run —
 `стол` passed and `неділя` failed.
+
+## The context sentence is not copied — 2026-09-09
+
+The answer names the sense the unit carries in the reader's sentence, the unit's own
+words as they stand there, and what the sentence means. The backend builds the
+contextual example from its own sentence and its own marking. The letter-for-letter
+comparison this replaced was the most common rejection in production — ten of fifteen,
+almost all of them a capital letter or a doubled space — and it protected nothing the
+card depended on, because the card never carried the copy.
+
+Measured on the smoke tier. The prompt changed only where a context is supplied, so
+the context-free fixtures kept their fingerprints and their answers; the six click
+fixtures are what this run bought. All six answered, on the workhorse. Every
+deterministic contract passed, clicks 6/6, "clicked context is example 1" 6/6,
+"clicked surface exact" 6/6, registered units 21/22.
+
+A fresh agent read all 42 packet items. Every click returned a correct sense, a
+correct set of words and a correct translation, and each built a correct card —
+including the German separated verb, whose front reads
+`Er ___ jeden Morgen um sechs ___.` with the two pieces apart and the words between
+them outside the blanks. Nothing the old comparison caught was seen slipping through:
+the rewrite it existed to reject is now impossible by construction.
+
+**What this run does not establish, and must not be read as establishing.**
+
+- **The field was never load-bearing.** In all six clicks the words the answer named
+  were byte-identical to the submitted string, so the backend's fallback would have
+  built the same card had the answer said nothing. The case the field exists for — a
+  lemma submitted for a unit that stands in the sentence as separated pieces — has no
+  fixture in this tier, because the German click submits the inflected `steht auf`
+  already. That claim is untested, not shown safe.
+- **The bench's own `surface_exact` screen compares against the submitted string**, so
+  on the very fixture the field targets a correct answer would score false. A fixture
+  for it needs that screen looked at first.
+- **The chosen sense lost its corroboration.** An answer that ignored the context used
+  to fail the equality check; the index is now taken on trust, and all six returned
+  `0`, which is also the fallback. The run says nothing about a non-zero selection.
+- **A missing translation no longer rejects the answer**, because no card field carries
+  an example's translation. Asking for a field nothing reads is left standing and
+  recorded rather than defended.
+
+Answer quality on the same reading: 23 of 42 items carry a defect a reader would
+notice, and 4 of 29 notes one that reaches a card. Two readers with different
+thresholds counted this and the run before it, so that is not a measured regression.
+Three of the four are the free pool's already-recorded Serbian and Ukrainian failures
+on the same fixtures, `неділя` among them — which stays recorded and not accepted, the
+fixture built to catch that false friend having failed it twice.
 
 ## What would re-open this
 
