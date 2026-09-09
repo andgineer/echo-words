@@ -114,6 +114,37 @@ def test_a_budget_miss_drops_the_half_answer_it_showed_for_the_paid_one(
         expect(entry).not_to_contain_text("the lane that lost")
 
 
+def test_an_unreadable_payload_leaves_the_analysis_and_offers_the_paid_card(
+    page: Page,
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The pool had no other answer and the payload still cannot be read. The article is
+    worth reading, so it stays; the entry says the card failed; and the paid answer is
+    offered rather than bought, because production says this verdict is usually wrong
+    about the analysis. Taking the offer is what spends the money and makes the card."""
+    with live_app(
+        settings,
+        monkeypatch,
+        handles=[FakeHandle([unreadable(FIRST)])],
+        client=FakeDirectClient([answer(PAID)]),
+    ) as app:
+        submit(page, app.url)
+        entry = page.locator(".entry-text")
+        expect(entry).to_contain_text("the first analysis")
+        expect(page.locator(".entry-card-status")).to_contain_text("⚠️ card failed")
+        offer = page.get_by_role("button", name="Ask the paid model for a card")
+        expect(offer).to_be_visible()
+        # Nothing was bought to get here, and nothing was cleared.
+        assert app.broker.direct_calls == []
+
+        offer.click()
+
+        expect(entry).to_contain_text("the answer that was paid for")
+        expect(page.locator(".entry-card-status")).to_contain_text("✅")
+        assert app.broker.direct_calls == ["gpt-fast"]
+
+
 def test_a_pool_failure_with_no_paid_step_settles_the_entry_into_a_retryable_error(
     page: Page,
     settings: Settings,

@@ -10,7 +10,15 @@ const props = defineProps({
   // Which side the card comes in from: +1 for a later entry, -1 for an earlier one.
   direction: { type: Number, default: 1 },
 });
-const emit = defineEmits(["switch", "detail", "delete-card", "retry", "segment", "swipe"]);
+const emit = defineEmits([
+  "switch",
+  "detail",
+  "delete-card",
+  "retry",
+  "segment",
+  "swipe",
+  "paid-answer",
+]);
 
 const SWIPE_THRESHOLD = 55;
 const ARRIVAL_OFFSET = 44;
@@ -332,6 +340,14 @@ function confirmDelete() {
     </div>
 
     <p v-if="!isText && entry.card_status" class="entry-card-status">{{ cardStatusText }}</p>
+    <button
+      v-if="entry.paid_answer_available"
+      class="btn-inline paid-answer"
+      :disabled="busy"
+      @click="emit('paid-answer')"
+    >
+      {{ t("add.paidAnswer") }}
+    </button>
 
     <div v-if="entry.error" class="entry-error">
       <p class="error-text">{{ errorText }}</p>

@@ -3,6 +3,7 @@ import json
 from collections.abc import AsyncIterator, Iterable
 
 from fakes import FakeDirectClient, FakeHandle, fake_cascade
+from llmbroker import NoLLMAvailableError
 
 from echo_words import pipeline as pipeline_module
 from echo_words.anki import Added, MisconfiguredNoteTypeError
@@ -21,6 +22,8 @@ from echo_words.pipeline import (
     WordPipeline,
 )
 from echo_words.prompt import MAX_COMPLETE_ANSWER_CHARS
+
+POOL_MISSED = NoLLMAvailableError("pool exhausted", reason="timeout")
 
 pytest = __import__("pytest")
 pytestmark = pytest.mark.anyio
@@ -221,6 +224,7 @@ async def test_deltas_are_throttled_cut_sanitized_and_finished(languages):
                 "context_audio_url": None,
                 "model": None,
                 "detail_available": False,
+                "paid_answer_available": True,
             },
         )
     finally:
@@ -298,6 +302,7 @@ async def test_card_parse_quality_and_suggestion_are_published_after_completion(
                 "context_audio_url": None,
                 "model": None,
                 "detail_available": True,
+                "paid_answer_available": True,
             },
         )
     finally:
@@ -348,6 +353,7 @@ async def test_card_without_examples_is_rated_as_a_failure_without_losing_analys
                 "context_audio_url": None,
                 "model": None,
                 "detail_available": False,
+                "paid_answer_available": True,
             },
         )
     finally:
@@ -3616,10 +3622,13 @@ BROKEN_CARD = (
 )
 
 
-async def test_an_answer_whose_card_block_is_broken_is_replaced_by_the_paid_model(
+async def test_an_answer_whose_card_block_is_broken_keeps_its_analysis_on_the_page(
     settings,
     languages,
 ):
+    """The article reads; only the card behind it failed. The reader keeps what they
+    were reading, the entry says the card failed, and no paid call is made on a verdict
+    about the payload."""
     handle = FakeHandle([BROKEN_CARD])
     cascade = fake_cascade(
         settings,
@@ -3637,16 +3646,17 @@ async def test_an_answer_whose_card_block_is_broken_is_replaced_by_the_paid_mode
             events = drain(subscriber)
     finally:
         await pipeline.close()
-    assert [note.word for note, _deck, _audio in anki.calls] == ["word"]
-    assert entry.card_status == ADDED_STATUS
-    assert entry.no_audio is True
-    assert entry.model == "gpt-fast"
+    assert anki.calls == []
+    assert entry.card_status == CARD_FAILED_STATUS
+    assert entry.model == "pool-model"
     assert entry.text == "analysis"
     assert handle.scores == [0.0]
-    assert [event.name for event in events].count("reset") == 1
+    assert cascade.broker.direct_calls == []
+    # Nothing was cleared, because nothing replaced it.
+    assert [event.name for event in events].count("reset") == 0
 
 
-async def test_unit_intent_rejects_a_text_verdict_and_uses_the_paid_fallback(
+async def test_unit_intent_rejecting_a_text_verdict_leaves_the_card_failed(
     settings,
     languages,
 ):
@@ -3672,13 +3682,12 @@ async def test_unit_intent_rejects_a_text_verdict_and_uses_the_paid_fallback(
         await pipeline.close()
 
     assert handle.scores == [0.0]
-    assert cascade.broker.direct_calls == ["gpt-fast"]
-    assert entry.shape == "unit"
-    assert entry.card_status == ADDED_STATUS
-    assert [note.word for note, _deck, _audio in anki.calls] == ["aufstehen"]
+    assert cascade.broker.direct_calls == []
+    assert entry.card_status == CARD_FAILED_STATUS
+    assert anki.calls == []
 
 
-async def test_mismatched_context_example_uses_the_paid_fallback(settings, languages):
+async def test_a_mismatched_context_example_leaves_the_card_failed(settings, languages):
     context = "The bank opens at nine."
     wrong = valid_card("bank")
     contextual = {
@@ -3714,9 +3723,9 @@ async def test_mismatched_context_example_uses_the_paid_fallback(settings, langu
         await pipeline.close()
 
     assert handle.scores == [0.0]
-    assert cascade.broker.direct_calls == ["gpt-fast"]
-    assert entry.card_status == ADDED_STATUS
-    assert anki.calls[0][0].meaning.examples[0].text == context
+    assert cascade.broker.direct_calls == []
+    assert entry.card_status == CARD_FAILED_STATUS
+    assert anki.calls == []
 
 
 async def test_a_broken_card_block_stands_when_no_paid_model_can_replace_it(settings, languages):
@@ -3762,8 +3771,60 @@ async def test_a_unit_answer_is_judged_by_its_card_and_a_text_answer_by_its_segm
     assert text_check("prose with no segments block") is False
 
 
+async def test_a_failed_card_offers_the_paid_answer_and_asking_for_it_makes_the_card(
+    settings,
+    languages,
+):
+    """The reader is left holding an analysis and no card. The paid answer is offered
+    rather than bought for them, and taking the offer is what makes the card."""
+    cascade = fake_cascade(
+        settings,
+        handles=[FakeHandle([BROKEN_CARD])],
+        client=FakeDirectClient([valid_card("word")]),
+    )
+    anki = RecordingAnki(Added(7, None))
+    pipeline = WordPipeline(cascade, target_lang="Russian", anki=anki)
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(languages["en"], "word", False)
+        await pipeline.join()
+        assert entry.card_status == CARD_FAILED_STATUS
+        assert entry.paid_answer_available is True
+        assert anki.calls == []
+
+        await pipeline.request_rebuild(entry.entry_id)
+        await pipeline.join()
+    finally:
+        await pipeline.close()
+
+    assert cascade.broker.direct_calls == ["gpt-fast"]
+    assert [note.word for note, _deck, _audio in anki.calls] == ["word"]
+    assert entry.card_status == ADDED_STATUS
+
+
+async def test_a_carded_entry_is_not_offered_the_paid_answer_a_failed_one_is(
+    settings,
+    languages,
+):
+    cascade = fake_cascade(settings, handles=[FakeHandle([valid_card("word")])])
+    anki = RecordingAnki(Added(7, None))
+    pipeline = WordPipeline(cascade, target_lang="Russian", anki=anki)
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(languages["en"], "word", False)
+        await pipeline.join()
+    finally:
+        await pipeline.close()
+
+    assert entry.card_status == ADDED_STATUS
+    assert entry.paid_answer_available is False
+
+
 async def test_a_card_block_the_paid_model_breaks_too_ends_the_request(settings, languages):
-    handle = FakeHandle([BROKEN_CARD])
+    """The pool missed its budget, so the paid model answered in its place — and broke
+    the payload in turn. There is no third step: the entry keeps the analysis and says
+    the card failed."""
+    handle = FakeHandle(error=POOL_MISSED)
     cascade = fake_cascade(
         settings,
         handles=[handle],

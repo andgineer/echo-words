@@ -221,6 +221,36 @@ describe("EntryCard", () => {
       );
     });
 
+  it("offers the paid model to a card that failed, and to nothing else", async () => {
+    await labelBehavior(EPIC.ANKI_CARDS, FEATURE.COLLECTION, "Card delivery status");
+    // The analysis is on the page and readable; only the card behind it failed, so
+    // buying a paid answer over it is the reader's own decision to make.
+    const failed = card({
+      entry_id: "entry-1",
+      word: "Word",
+      lang: "en",
+      status: "done",
+      text: "meaning",
+      card_status: "failed",
+      paid_answer_available: true,
+    });
+    expect(failed.get(".paid-answer").text()).toBe("Ask the paid model for a card");
+
+    await failed.get(".paid-answer").trigger("click");
+    expect(failed.emitted("paid-answer")).toHaveLength(1);
+
+    const added = card({
+      entry_id: "entry-2",
+      word: "Word",
+      lang: "en",
+      status: "done",
+      shape: "unit",
+      text: "meaning",
+      card_status: "added",
+    });
+    expect(added.find(".paid-answer").exists()).toBe(false);
+  });
+
   // A failed entry is an entry like any other, and one card is all there is to show it in.
   it("keeps a failed entry's retry, and the two control errors, inside the card", () => {
     const wrapper = card({

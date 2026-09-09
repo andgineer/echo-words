@@ -164,12 +164,7 @@ class Completion:
             miss = exc
         if not await self._steps_up(miss, "".join(delivered)):
             return
-        # Text already on the page cannot be spliced with the paid answer: the
-        # pipeline is told to drop it before the second step starts.
-        if delivered and self._request.on_reset is not None:
-            await self._request.on_reset()
-        self._oversized = False
-        async for delta in self._paid_or_the_answer_it_replaces(
+        async for delta in self._paid_replacement(
             delivered,
             restorable=self._pool_answer_usable and bool(delivered),
         ):
@@ -282,36 +277,62 @@ class Completion:
         yield replaced.result.text
         self._pool_answered = True
 
-    async def _paid_or_the_answer_it_replaces(
+    async def _paid_replacement(
         self,
         delivered: list[str],
         *,
         restorable: bool,
     ) -> AsyncIterator[str]:
-        """The paid step, giving back the pool answer it replaced when it fails.
+        """The paid answer, reaching the page only once it is whole and readable.
 
-        An answer the caller could have used, handed over on policy alone, is not spent
-        on a provider error the reader never caused: before this it was, and a complete
-        pool answer became a failed entry.
+        Nothing already written is cleared to make room for a step that has produced
+        nothing yet. A paid step that fails, or that answers as unusably as the one it
+        took over from, leaves the reader with the analysis they were already reading
+        rather than an empty page — and an answer the caller could have used, handed
+        over on policy alone, is not spent on a provider error the reader never caused.
         """
-        pool_name = self.llm_name
+        pool_name, pool_oversized = self.llm_name, self._oversized
+        # The bound belongs to the paid attempt while it is running, and goes back to
+        # the answer being given back if it is.
+        self._oversized = False
+        paid: list[str] = []
         try:
-            async with aclosing(self._paid_deltas()) as paid:
-                async for delta in self._bounded_deltas(paid):
-                    yield delta
+            async with aclosing(self._paid_deltas()) as stream:
+                async for delta in self._bounded_deltas(stream):
+                    paid.append(delta)
         except BackendError:
             if not restorable:
+                # Nothing usable to fall back on, so the entry fails — but it fails with
+                # whatever the pool had written still in front of the reader.
+                self._oversized = pool_oversized
                 raise
-            # The bound belongs to the answer being given back, not to the paid one
-            # that replaced it; a truncated pool answer is never usable, so never here.
-            self._oversized = False
-            # Rated afresh by the caller, because the answer it ends up with is this
-            # one again; a pool answer already rated down never reaches here.
-            self.paid, self.llm_name, self._rated = False, pool_name, False
-            if self._request.on_reset is not None:
-                await self._request.on_reset()
-            for delta in delivered:
-                yield delta
+            self._give_back(pool_name, pool_oversized)
+            return
+        if restorable and self._unusable("".join(paid)):
+            logger.info(
+                "the paid answer from %s for %s is unusable too; the pool answer stands",
+                self.llm_name or "unnamed",
+                self._request.language.code,
+            )
+            self._give_back(pool_name, pool_oversized)
+            return
+        # Whole, and the reader can use it: the page it replaces is dropped in the same
+        # breath as it is written, so text from two models is never spliced.
+        if delivered and self._request.on_reset is not None:
+            await self._request.on_reset()
+        for delta in paid:
+            yield delta
+
+    def _give_back(self, pool_name: str | None, oversized: bool) -> None:
+        """Leave the reader with the pool answer the paid step did not replace.
+
+        Nothing is put back on the page, because nothing was taken off it; only the
+        identity and the rating of the answer they are looking at have to return.
+        """
+        # Rated afresh by the caller, because the answer it ends up with is this one
+        # again; a pool answer already rated down never reaches here.
+        self.paid, self.llm_name, self._rated = False, pool_name, False
+        self._oversized = oversized
 
     async def _steps_up(self, miss: BudgetMissError | None, answer: str) -> bool:
         """Whether the paid model takes the request over from the pool."""
@@ -329,35 +350,41 @@ class Completion:
         code = self._request.language.code
         refusal = self._cascade.paid_refusal(self._request.language)
         if miss is not None:
+            # Nothing answered, so there is nothing on the page worth keeping and
+            # nothing for the reader to decide about. This is the one automatic step-up.
             if refusal is not None:
                 raise BackendError(f"{miss}; paid step unavailable: {refusal}") from miss
             logger.info("the paid model takes over for %s: %s", code, miss)
             return True
         if not usable:
-            # An answer the caller cannot use is no more complete than one that never
-            # arrived: it is rated down here, and stands only when nothing can replace it.
+            # The pool answered, and the payload is what failed. It is rated down, and
+            # the analysis stands: it is worth reading even when the card behind it
+            # failed, and buying a paid answer over it is the reader's call to make.
             await self.record_quality(0.0)
-        elif refusal is None:
-            # The pool answered as asked and another model takes it from here, so this
-            # call is settled unrated. The caller rates once, at the end of the stream,
-            # and that rating belongs to the answer it ends up with — not to this one.
-            self._rated = True
-        why = "a declared misspelling" if handed_over else "unusable"
-        if refusal is not None:
-            logger.warning(
-                "the pool answer from %s stands for %s — it is %s and the paid step is"
-                " unavailable: %s",
+            logger.info(
+                "the pool answer from %s stands for %s — the payload cannot be read and"
+                " the pool has no other answer; the card is left failed",
                 self.llm_name or "unnamed",
                 code,
-                why,
+            )
+            return False
+        if refusal is not None:
+            logger.warning(
+                "the pool answer from %s stands for %s — it is a declared misspelling"
+                " and the paid step is unavailable: %s",
+                self.llm_name or "unnamed",
+                code,
                 refusal,
             )
             return False
+        # The pool answered as asked and another model takes it from here, so this call
+        # is settled unrated. The caller rates once, at the end of the stream, and that
+        # rating belongs to the answer it ends up with — not to this one.
+        self._rated = True
         logger.info(
-            "the paid model takes over for %s: the pool answer from %s is %s",
+            "the paid model takes over for %s: the pool answer from %s is a declared misspelling",
             code,
             self.llm_name or "unnamed",
-            why,
         )
         return True
 

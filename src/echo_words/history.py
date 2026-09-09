@@ -57,6 +57,9 @@ class Entry:
     error: str | None = None
     model: str | None = None
     detail_available: bool = False
+    # The analysis reads and only the card behind it failed. Whether to spend a paid
+    # call on a second opinion is the reader's decision, so the entry offers it.
+    paid_answer_available: bool = False
 
     def __post_init__(self) -> None:
         if not self.shown_spelling:

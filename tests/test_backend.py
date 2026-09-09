@@ -116,7 +116,7 @@ async def test_the_lane_that_won_is_the_one_named_and_the_one_rated(settings, la
     assert handle.scores == []
 
 
-async def test_a_replacement_the_caller_cannot_use_steps_up_like_any_other_answer(
+async def test_a_replacement_the_caller_cannot_use_stands_like_any_other_answer(
     settings,
     languages,
 ):
@@ -134,9 +134,11 @@ async def test_a_replacement_the_caller_cannot_use_steps_up_like_any_other_answe
         usable=lambda answer: "paid" in answer,
     )
 
-    assert await drain(completion) == ["half ", "whole answer", "paid ", "answer"]
-    # Once for the deltas the race voided, once for the answer the paid model replaces.
-    assert reset.calls == 2
+    assert await drain(completion) == ["half ", "whole answer"]
+    # Once, for the deltas the race voided. Winning a race does not make an answer
+    # readable, and failing to be readable does not buy a paid one.
+    assert reset.calls == 1
+    assert cascade.broker.direct_calls == []
     assert lost.replacement.scores == [0.0]
 
 
@@ -186,7 +188,14 @@ async def test_a_pool_that_outlives_the_budget_steps_up_over_the_half_answer_it_
     assert reset.calls == 1
 
 
-async def test_a_pool_answer_the_caller_cannot_use_steps_up_with_a_reset(settings, languages):
+async def test_a_pool_answer_the_caller_cannot_use_stays_in_front_of_the_reader(
+    settings,
+    languages,
+):
+    """The analysis is worth reading even when the card behind it failed. Clearing it
+    for a paid step spends the cap and a second budget of waiting on a verdict about the
+    payload, which production says is wrong far more often than it is right — so the
+    paid answer becomes the reader's own call, and the page is left alone."""
     handle = FakeHandle(["free ", "answer"])
     cascade = fake_cascade(
         settings,
@@ -200,12 +209,16 @@ async def test_a_pool_answer_the_caller_cannot_use_steps_up_with_a_reset(setting
         on_reset=reset,
         usable=lambda answer: "paid" in answer,
     )
-    assert await drain(completion) == ["free ", "answer", "paid ", "answer"]
-    assert reset.calls == 1
-    assert cascade.calls_today == 1
+    assert await drain(completion) == ["free ", "answer"]
+    assert reset.calls == 0
+    assert cascade.broker.direct_calls == []
+    assert cascade.calls_today == 0
 
 
-async def test_an_answer_the_caller_cannot_use_is_stepped_up_to_exactly_once(settings, languages):
+async def test_an_answer_the_caller_cannot_use_never_buys_a_paid_one_by_itself(
+    settings,
+    languages,
+):
     cascade = fake_cascade(
         settings,
         handles=[FakeHandle(["free ", "answer"])],
@@ -216,9 +229,9 @@ async def test_an_answer_the_caller_cannot_use_is_stepped_up_to_exactly_once(set
         languages["en"],
         usable=lambda _answer: False,
     )
-    assert await drain(completion) == ["free ", "answer", "paid ", "answer"]
-    assert cascade.broker.direct_calls == ["gpt-fast"]
-    assert cascade.calls_today == 1
+    assert await drain(completion) == ["free ", "answer"]
+    assert cascade.broker.direct_calls == []
+    assert cascade.calls_today == 0
 
 
 async def test_a_usable_answer_handed_over_is_stepped_up_without_being_rated_down(
@@ -291,8 +304,9 @@ async def test_an_unusable_answer_is_rated_down_whatever_the_hand_over_says(
         usable=lambda _answer: False,
         hand_over=lambda _answer: False,
     )
-    assert await drain(completion) == ["free ", "answer", "paid ", "answer"]
+    assert await drain(completion) == ["free ", "answer"]
     assert handle.scores == [0.0]
+    assert cascade.broker.direct_calls == []
 
 
 async def test_an_unreadable_payload_takes_the_pools_next_answer_before_any_paid_one(
@@ -365,7 +379,7 @@ async def test_every_refused_answer_is_rated_down_and_the_one_that_stands_is_not
     assert handle.scores == [0.0]
 
 
-async def test_the_paid_step_takes_over_when_the_pool_has_no_other_answer(settings, languages):
+async def test_a_pool_with_no_other_answer_leaves_the_one_it_gave_standing(settings, languages):
     handle = FakeHandle(["free ", "answer"])
     cascade = fake_cascade(
         settings,
@@ -377,17 +391,17 @@ async def test_the_paid_step_takes_over_when_the_pool_has_no_other_answer(settin
         languages["en"],
         usable=lambda answer: "paid" in answer,
     )
-    assert await drain(completion) == ["free ", "answer", "paid ", "answer"]
+    assert await drain(completion) == ["free ", "answer"]
     assert handle.another_calls == 1
-    assert cascade.broker.direct_calls == ["gpt-fast"]
+    assert cascade.broker.direct_calls == []
 
 
-async def test_a_pool_that_fails_on_the_way_to_another_answer_still_reaches_the_paid_step(
+async def test_a_pool_that_fails_on_the_way_to_another_answer_does_not_fail_the_entry(
     settings,
     languages,
 ):
     """Nothing has failed for the reader when the pool cannot produce a second answer:
-    the first one is still in hand and the paid step is still ahead of it."""
+    the first one is still in front of them, and it is what the entry settles on."""
     handle = FakeHandle(
         ["free ", "answer"],
         others=[InvalidProviderResponseError("the provider returned no text", model="free-other")],
@@ -402,8 +416,8 @@ async def test_a_pool_that_fails_on_the_way_to_another_answer_still_reaches_the_
         languages["en"],
         usable=lambda answer: "paid" in answer,
     )
-    assert await drain(completion) == ["free ", "answer", "paid ", "answer"]
-    assert cascade.broker.direct_calls == ["gpt-fast"]
+    assert await drain(completion) == ["free ", "answer"]
+    assert cascade.broker.direct_calls == []
 
 
 async def test_an_answer_the_caller_can_read_leaves_the_rest_of_the_call_alone(
@@ -506,37 +520,119 @@ async def test_a_failed_paid_step_gives_back_the_pool_answer_it_replaced(
         hand_over=lambda _answer: True,
     )
 
-    assert await drain(completion) == ["free ", "answer", "free ", "answer"]
+    # Written once and never taken off the page: the paid step that was going to
+    # replace it produced nothing, so there was nothing to swap in and nothing to undo.
+    assert await drain(completion) == ["free ", "answer"]
+    assert reset.calls == 0
     assert completion.paid is False
     # The pool answer stands, so the caller's rating belongs to it again.
     await completion.record_quality(1.0)
     assert handle.scores == [1.0]
 
 
-async def test_an_unusable_pool_answer_is_not_given_back_when_the_paid_step_fails(
+async def test_a_failed_paid_step_after_a_budget_miss_fails_the_entry_but_keeps_the_page(
     settings,
     languages,
 ):
-    """Restoring is for an answer handed over on policy. One the caller called unusable
-    was rated down and replaced on quality: handing it back would show the reader text
-    the pipeline cannot read, and rate the same pool call a second time."""
-    handle = FakeHandle(["free ", "answer"])
+    """The pool never finished, so there is no answer to fall back on and the entry
+    fails. What the pool part-wrote is still what the reader is looking at: it was never
+    cleared to make room for a step that then produced nothing."""
+    handle = FakeHandle(["half an "], error=POOL_MISSED)
     cascade = fake_cascade(
         settings,
         handles=[handle],
         client=FakeDirectClient([], error=InvalidProviderResponseError("boom", model="gpt-fast")),
     )
-    completion = cascade.stream_completion(
-        "prompt",
-        languages["en"],
-        usable=lambda _answer: False,
-        hand_over=lambda _answer: False,
-    )
+    reset = ResetHook()
+    completion = cascade.stream_completion("prompt", languages["en"], on_reset=reset)
 
     with pytest.raises(BackendError):
         await drain(completion)
+    assert reset.calls == 0
+
+
+async def test_the_page_is_not_cleared_for_a_paid_step_that_has_written_nothing(
+    settings,
+    languages,
+):
+    """The reader keeps what the pool part-wrote until the paid answer is whole. The
+    swap happens in one breath, so text from two models is still never spliced, and a
+    paid step that produces nothing costs no one their page."""
+    order: list[str] = []
+
+    class WatchingReset(ResetHook):
+        async def __call__(self) -> None:
+            order.append("reset")
+            await super().__call__()
+
+    class WatchingClient(FakeDirectClient):
+        async def stream(self, prompt, *, timeout=None):
+            async for delta in super().stream(prompt, timeout=timeout):
+                order.append(f"paid:{delta}")
+                yield delta
+
+    reset = WatchingReset()
+    cascade = fake_cascade(
+        settings,
+        handles=[FakeHandle(["half an "], error=POOL_MISSED)],
+        client=WatchingClient(["paid ", "answer"]),
+    )
+    completion = cascade.stream_completion("prompt", languages["en"], on_reset=reset)
+
+    assert await drain(completion) == ["half an ", "paid ", "answer"]
+    # Every paid delta is in hand before the page is touched.
+    assert order == ["paid:paid ", "paid:answer", "reset"]
+
+
+async def test_a_paid_answer_no_more_readable_than_the_one_it_took_over_gives_way_to_it(
+    settings,
+    languages,
+):
+    """A hand-over is a bet that the better model does better. Losing the analysis the
+    reader already had when that bet does not pay is the one outcome worse than not
+    asking, so the answer in hand wins a tie it never sought."""
+    handle = FakeHandle(["free ", "answer"])
+    cascade = fake_cascade(
+        settings,
+        handles=[handle],
+        client=FakeDirectClient(["unreadable paid answer"]),
+    )
+    reset = ResetHook()
+    completion = cascade.stream_completion(
+        "prompt",
+        languages["en"],
+        on_reset=reset,
+        usable=lambda answer: "free" in answer,
+        hand_over=lambda _answer: True,
+    )
+
+    assert await drain(completion) == ["free ", "answer"]
+    assert reset.calls == 0
+    assert completion.paid is False
+    assert completion.llm_name == "pool-model"
     await completion.record_quality(1.0)
-    assert handle.scores == [0.0]
+    assert handle.scores == [1.0]
+
+
+async def test_a_budget_miss_still_buys_a_paid_answer_without_being_asked(
+    settings,
+    languages,
+):
+    """The two triggers are not the same road. Nothing answered, so there is nothing on
+    the page worth keeping and nothing for the reader to decide about."""
+    cascade = fake_cascade(
+        settings,
+        handles=[FakeHandle(error=POOL_MISSED)],
+        client=FakeDirectClient(["paid ", "answer"]),
+    )
+    completion = cascade.stream_completion(
+        "prompt",
+        languages["en"],
+        usable=lambda _answer: True,
+    )
+    assert await drain(completion) == ["paid ", "answer"]
+    assert cascade.broker.direct_calls == ["gpt-fast"]
+    assert cascade.calls_today == 1
 
 
 async def test_a_pool_only_call_never_reaches_the_paid_model(settings, languages):
@@ -585,7 +681,10 @@ async def test_a_pool_answer_the_caller_can_use_never_steps_up(settings, languag
     assert cascade.broker.direct_calls == []
 
 
-async def test_an_oversized_pool_answer_is_bounded_and_steps_up(settings, languages):
+async def test_an_oversized_pool_answer_is_bounded_and_stands(settings, languages):
+    """Truncated at the bound is one more way for an answer to be unreadable, and it
+    buys a paid answer no more than any other: the prefix stays on the page, rated down
+    and with its card failed."""
     oversized = "x" * (MAX_COMPLETE_ANSWER_CHARS + 500)
     handle = FakeHandle([oversized])
     cascade = fake_cascade(
@@ -597,10 +696,10 @@ async def test_an_oversized_pool_answer_is_bounded_and_steps_up(settings, langua
 
     deltas = await run(cascade, languages["en"], reset)
 
+    assert len(deltas) == 1
     assert len(deltas[0]) == MAX_COMPLETE_ANSWER_CHARS
-    assert deltas[1] == "paid answer"
-    assert reset.calls == 1
-    assert cascade.broker.direct_calls == ["gpt-fast"]
+    assert reset.calls == 0
+    assert cascade.broker.direct_calls == []
     assert handle.delivered == [oversized]
     assert handle.settled is True
     assert handle.scores == [0.0]
@@ -636,7 +735,8 @@ async def test_an_extra_delta_after_the_bound_is_drained_but_never_exposed(setti
 
     deltas = await run(cascade, languages["en"])
 
-    assert deltas == [answer, "paid answer"]
+    assert deltas == [answer]
+    assert cascade.broker.direct_calls == []
     assert handle.delivered == [answer, "excess"]
     assert handle.settled is True
     assert handle.scores == [0.0]
@@ -992,28 +1092,37 @@ async def test_the_step_up_says_which_answer_it_replaces_and_why(settings, langu
     completion = cascade.stream_completion(
         "prompt",
         languages["en"],
-        usable=lambda _answer: False,
-        hand_over=lambda _answer: False,
+        usable=lambda _answer: True,
+        hand_over=lambda _answer: True,
     )
     with caplog.at_level(logging.INFO, logger="echo_words.backend"):
         assert await drain(completion) == ["free ", "answer", "paid ", "answer"]
-    assert "the paid model takes over for en: the pool answer from pool-model is unusable" in (
-        caplog.text
+    assert (
+        "the paid model takes over for en: the pool answer from pool-model is a declared"
+        " misspelling"
+    ) in caplog.text
+
+
+async def test_an_unreadable_payload_says_in_the_log_that_the_card_was_left_failed(
+    settings,
+    languages,
+    caplog,
+):
+    """The entry keeps an analysis whose payload failed, and the log says so: the card
+    was lost to the payload, with the pool out of answers and no paid call made."""
+    cascade = fake_cascade(
+        settings,
+        handles=[FakeHandle(["free ", "answer"])],
+        client=FakeDirectClient(),
     )
-
-
-async def test_an_unusable_answer_nothing_can_replace_says_so_once(settings, languages, caplog):
-    """The entry keeps an analysis whose payload failed, and the log says the card was
-    lost to a spent step-up rather than to the answer alone."""
-    paidless = settings.model_copy(update={"api_model": ""})
-    cascade = fake_cascade(paidless, handles=[FakeHandle(["free ", "answer"])])
     completion = cascade.stream_completion(
         "prompt",
         languages["en"],
         usable=lambda _answer: False,
         hand_over=lambda _answer: False,
     )
-    with caplog.at_level(logging.WARNING, logger="echo_words.backend"):
+    with caplog.at_level(logging.INFO, logger="echo_words.backend"):
         assert await drain(completion) == ["free ", "answer"]
     assert "the pool answer from pool-model stands for en" in caplog.text
-    assert "no paid model is configured" in caplog.text
+    assert "the card is left failed" in caplog.text
+    assert cascade.broker.direct_calls == []

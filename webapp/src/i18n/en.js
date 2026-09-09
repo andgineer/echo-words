@@ -28,6 +28,7 @@ export default {
     "word tested. The card was still made.",
   "add.seeUsageSearch": "Search the web",
   "add.detail": "The full entry",
+  "add.paidAnswer": "Ask the paid model for a card",
   "add.detailReady": "The entry is ready",
   "add.deleteCard": "Delete from Anki",
   "add.deleteCardConfirm":

@@ -319,10 +319,15 @@ class WordPipeline:
         return self.history.counts(lang)
 
     async def request_rebuild(self, entry_id: str, *, locale: str = DEFAULT_LOCALE) -> Entry:
+        """The paid model asked for the same word again — to rebuild a card that exists,
+        or to make one where the pool's payload could not."""
         entry, state = self._active_control(entry_id)
-        if entry.shape != "unit":
+        # An entry whose card failed has no shape and no note, and is exactly the case
+        # this is for: the answer was refused a card, and the reader is buying another.
+        failed = entry.card_status == CARD_FAILED_STATUS
+        if not failed and entry.shape != "unit":
             raise BackendError(message("text.no_rebuild", locale))
-        if entry.action != "added" or state.note_id is None:
+        if not failed and (entry.action != "added" or state.note_id is None):
             raise BackendError(message("card.no_rebuild", locale))
         refusal = await self._paid_refusal_fresh(state.language)
         if refusal is not None:
@@ -688,10 +693,12 @@ class WordPipeline:
             )
             entry.shape = parsed.kind if parsed is not None else None
             entry.model = getattr(completion, "llm_name", None)
-            entry.detail_available = (
-                isinstance(parsed, ParsedUnit)
-                and await self._paid_refusal_fresh(job.language) is None
-            )
+            paid_ready = await self._paid_refusal_fresh(job.language) is None
+            entry.detail_available = isinstance(parsed, ParsedUnit) and paid_ready
+            # The payload failed where the article did not. The paid answer is offered
+            # rather than taken, because the analysis in front of the reader is usually
+            # a good one and only they can say it is worth replacing.
+            entry.paid_answer_available = stored.status == CARD_FAILED_STATUS and paid_ready
             self._update_state(
                 job,
                 parsed,
@@ -990,6 +997,7 @@ class WordPipeline:
                 "context_audio_url": entry.context_audio_url,
                 "model": entry.model,
                 "detail_available": entry.detail_available,
+                "paid_answer_available": entry.paid_answer_available,
             },
         )
         self.history.trim()
@@ -1172,6 +1180,7 @@ class WordPipeline:
         entry.segment_kind = None
         entry.carded_sense = None
         entry.detail_available = False
+        entry.paid_answer_available = False
         entry.no_audio = False
         entry.no_card_audio = False
         entry.card_kept = False

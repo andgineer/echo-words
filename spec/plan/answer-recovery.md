@@ -1,17 +1,15 @@
 # Implementation plan — recovering from an answer the parser cannot read
 
-**Status: designed, agreed with the operator; the second pool answer and the two
-logging commits below have landed, A, B and C have not.** The design was settled in
-review on 2026-09-08 after a production failure was traced end to end; the parts that
-touch the prompt or the parser are unmeasured and gated on a bench run the operator
-has yet to schedule.
+**Status: C, D and the two logging commits below have landed. A is written but
+unmeasured; B is waiting on production evidence that cannot exist yet.** The design was
+settled in review on 2026-09-08 after a production failure was traced end to end.
 
 The subject is one path: what happens between "the pool answered" and "the reader
 has a card". A payload the parser cannot read used to cost the reader the page
 they were already reading, twenty-five seconds of blank screen, and a paid call —
 and production says that payload is almost always an answer they would have
-accepted. D has taken the paid call out of the common case; the page is still
-cleared, and the answer is still refused whole where it could be repaired.
+accepted. D took the paid call out of that road and C took the blank page off it.
+What is left is the answer still being refused whole where it could be repaired.
 
 ---
 
@@ -52,11 +50,18 @@ gap is what the logging commits close.
   indistinguishable from an invented one, and that distinction decides part B
   below.
 - **D has landed.** A payload the parser cannot read now asks the same pool call
-  for another whole answer, on llmbroker 1.9.0's `another()`, and reaches the paid
-  model only when that call has none left. The stream is held open across the
-  verdict and released by its own context, which is what keeps the losing lane's
-  answer reachable without keeping its pool slot past the request. The reader's
-  side of it is pinned in the browser suite.
+  for another whole answer, on llmbroker 1.9.0's `another()`. The stream is held
+  open across the verdict and released by its own context, which is what keeps the
+  losing lane's answer reachable without keeping its pool slot past the request.
+- **C has landed.** The two triggers are split: only a pool that did not answer
+  takes the paid step by itself. A payload no answer of the request could carry
+  leaves the article on the page with its card marked failed, and offers the paid
+  answer as a button the reader presses — `rebuild` serves it, since asking the
+  paid model for the same word again is what it already did. And nothing on the
+  page is cleared for a step that has produced nothing: the paid answer is held
+  until it is whole and readable, then swapped in one stroke, so a paid step that
+  fails or answers as unusably leaves the reader with what they were reading. Both
+  the reader's path and the swap are pinned in the browser suite.
 
 Nothing else has been written. `ANSWER_BUDGET_SECONDS` is untouched: on the one
 occasion it may have fired there is no evidence it was the wrong number, and the
@@ -199,33 +204,6 @@ the copy at all. `context_sense` plus a translation of the context sentence is
 enough for the backend to build the example itself, and it asks the model for
 less, not more.
 
-### C. Two triggers, and never a blank page
-
-An unusable answer no longer buys a paid one before the pool has been asked again,
-but where the pool has nothing left it still takes the same road as a pool that
-never answered. Split those two:
-
-- **The pool did not answer** — `NoLLMAvailableError` of any reason, or the wait
-  budget gone. There is nothing on the screen and nothing to show. The paid step
-  runs automatically, as it does today.
-- **The pool answered and the payload cannot be repaired** — the article is
-  worth reading, and the entry already knows how to say the card failed (that is
-  what happens today when no paid model is configured). Keep the analysis on the
-  page, mark the card failed, and offer the paid step as the reader's own
-  decision.
-
-In both cases the page is never cleared to make room for a step that has not
-produced anything yet. The paid answer replaces what is on screen only when it
-has arrived complete and parsed; if it fails, what was there stays. Nothing is
-spliced — the rule the current clearing protects — because the replacement is
-atomic.
-
-Keep the answer, its chips and its carded-sense identity together during that
-swap. A sense chip is hidden only after a note is successfully saved from that
-same answer. A failed replacement which preserves an older note does not make
-any sense of the new answer carded. Neither text comparison nor the mere
-existence of an older note can choose which chip to hide.
-
 ---
 
 ## What this changes in the specs
@@ -234,12 +212,9 @@ Each is part of the work, not a follow-up. Where a plan and the functional
 description disagree, the description wins — so these sentences change in the
 same commit as the code that contradicts them.
 
-- `functional-description.md`: "When a whole answer already shown turns out
-  unusable, its text is discarded and replaced by the paid model's" — C replaces
-  the discard with an atomic swap.
 - `functional-description.md`: an answer with no usable payload "moves the
-  request the same way" as a pool that missed its budget — A and C finish
-  separating those two roads, which D has already started.
+  request the same way" as a pool that missed its budget — A is what is left to
+  change there, and it narrows which payloads count as unusable at all.
 - `decision-answer-shape.md`: the strict-equality rule and its 152-answer
   measurement. B re-opens it, and only a measurement closes it again — never an
   edit.
@@ -303,7 +278,7 @@ of `review-packet-*.json` and the decision is recorded in a `spec/decision-*.md`
 - `uv run inv pre` — every hook green, `0 errors` from pyrefly.
 - `uv run inv test` — the Python suite and the frontend suite, the latter passed
   rather than skipped.
-- The browser suite is where C is pinned: what the reader is left looking at when
-  a payload fails is behaviour that only exists in the browser, and the fake
-  answers stop at a gate the test opens by hand, so the provisional page is
-  asserted rather than raced.
+- The browser suite is where what the reader is left looking at is pinned, and the
+  fake answers stop at a gate the test opens by hand, so a provisional page is
+  asserted rather than raced. A's repairs change which payloads survive, so the
+  browser cases that turn on a refused payload are read again after it lands.

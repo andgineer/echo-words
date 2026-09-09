@@ -28,6 +28,7 @@ export default {
     "проверенное выдуманное слово. Карточка всё равно создана.",
   "add.seeUsageSearch": "Поискать в интернете",
   "add.detail": "Полная статья",
+  "add.paidAnswer": "Запросить карточку у платной модели",
   "add.detailReady": "Статья готова",
   "add.deleteCard": "Удалить из Anki",
   "add.deleteCardConfirm":

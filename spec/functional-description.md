@@ -162,8 +162,7 @@ The four requirements every design decision is weighed against:
    until then is provisional: it comes from whichever of the two started
    talking, and when the other one finishes the whole answer first the page is
    cleared and shows that answer instead. Text from two models is never
-   spliced, and pool text that never becomes a complete answer is cleared the
-   same way rather than left standing. The request moves to
+   spliced. The request moves to
    the **paid model** when the pool does not deliver a *complete* answer
    within the latency budget — whether it never started or started at
    once and then kept going — and the user sees a slower answer, not an
@@ -174,25 +173,32 @@ The four requirements every design decision is weighed against:
    that writes a good analysis and then botches the payload costs the user
    the requested result, which is the point of the request. That answer is
    rated down, so the router learns which model does this, and then **the
-   same pool request is asked for another whole answer before any paid one
-   is bought**. It has more than one to give: the models it raced are still
-   holding what they wrote, and the ones it never reached are still open to
-   it. An unreadable payload is a poor reason to clear the page and wait a
-   second budget for an answer that has to be paid for, because a payload
-   the app cannot read is far more often a sound answer with one botched
-   field than a bad answer. Each further answer is judged the same way and
-   rated on its own account, all of them inside the one latency budget the
-   request was given, and the paid model is reached only once this request
-   has no other answer left. Whichever answer ends up standing, the text it
-   replaces is discarded rather than spliced. Which model answered is
-   visible on the entry; nothing else about the paths differs, and the card
-   is built from whichever answer arrived. Every step displays as it writes.
-   The step-up to the paid model happens at most once per request: when no
-   paid model is configured or the daily cap is spent, an unusable answer
-   stands as it is — the analysis is worth reading even when the card behind
-   it failed, and the entry says the card failed. Every rejected payload is
-   logged with the reason it was rejected and the payload itself, since
-   nothing else keeps it.
+   same pool request is asked for another whole answer**. It has more than
+   one to give: the models it raced are still holding what they wrote, and
+   the ones it never reached are still open to it. Each further answer is
+   judged the same way and rated on its own account, all of them inside the
+   one latency budget the request was given.
+   **A payload that no answer of that request could carry does not buy a
+   paid one by itself.** The article is worth reading even when the card
+   behind it failed, so it stays on the page, the entry says the card
+   failed, and the paid answer is *offered* — spending it is the user's own
+   decision. The verdict being appealed is about the hidden payload, and a
+   payload the app cannot read is far more often a sound article with one
+   botched field than a bad answer; buying a second answer on that verdict
+   spends the daily cap and a second budget of waiting on a coin flip, and
+   throws away an analysis the user was already reading. Only the pool
+   failing to answer at all takes the paid step without being asked,
+   because then there is nothing on the page and nothing to judge.
+   **Nothing already written is cleared to make room for a step that has
+   produced nothing yet.** A paid answer reaches the page only once it has
+   arrived whole and can be read, and it replaces what was there in one
+   stroke, so text from two models is still never spliced. A paid step that
+   fails, or that answers as unusably as the one it took over from, leaves
+   the user with the analysis they were already reading rather than an
+   empty page. Which model answered is visible on the entry, and the card
+   is built from whichever answer arrived. Every rejected payload is logged
+   with the reason it was rejected and the payload itself, since nothing
+   else keeps it.
    The step-up is failure recovery, not part of the normal latency path.
    The paid model starts a new attempt with the same full complete-answer
    budget as the pool; time already lost waiting for the failed pool does
@@ -398,7 +404,8 @@ script from end to end.
 
 Behind that, the sentence outside the highlight is tested for the letters of the
 **configured** target language that the source language does not spell, and an example
-failing it is dropped; an entry left with no usable example is unusable and steps up.
+failing it is dropped; an entry left with no usable example is unusable, and takes the
+road every unusable payload takes.
 The target language is configuration, so the test follows it rather than assuming
 Russian: with a target the language directory does not know, its alphabet is unknown
 and no letter test runs at all.

@@ -231,6 +231,7 @@ async function requestDetail(entry) {
       @switch="entryAction(selectedEntry, 'switch')"
       @detail="requestDetail(selectedEntry)"
       @delete-card="entryAction(selectedEntry, 'delete-card')"
+      @paid-answer="entryAction(selectedEntry, 'rebuild')"
       @retry="retry(selectedEntry)"
       @segment="analyseSegment(selectedEntry, $event)"
       @swipe="swipe"
