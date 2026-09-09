@@ -168,6 +168,11 @@ def parse_answer_payload(  # noqa: C901, PLR0912, PLR0913 - the answer discrimin
     if not retained:
         raise CardParseError("answer.meanings contains no usable meaning")
     raw_sense = _context_sense(card.get("context_sense"), len(raw_meanings))
+    if context and raw_sense is not None and raw_sense not in remap:
+        # Falling back to sense 0 here cards a sense the answer did not choose, and
+        # then fails the context check below — which names the sentence, not the sense
+        # that went missing. Two different faults must not share one message.
+        raise CardParseError("the sense the answer chose for the context was dropped")
     sense = remap.get(raw_sense, 0)
     note = Note(headword, retained, sense)
     if context and note.meaning.examples[0].text != context:
@@ -342,22 +347,42 @@ def _parse_example(value: Any, request: "_Request") -> Example | None:
             highlighted, gapped = contextual
             # The backend owns the context, so the card carries ours, never the copy.
             return Example(context, translation, highlighted, gapped)
+    forms = _example_forms(text, marked, request)
+    if forms is None:
+        return None
+    return Example(text, translation, *forms)
+
+
+def _example_forms(text: str, marked: str, request: "_Request") -> tuple[str, str] | None:
+    """The marking the card carries: the model's where it is sound, ours where it is not.
+
+    A whole-sentence bold and a two-token surface with one token marked are the same
+    fault — the sentence is right and the marking of it is wrong — and both used to cost
+    the example, its sense, and usually the card. The sentence and the wording asked
+    about are both ours, so the marking is simply redone from them; only a sentence our
+    tokens cannot be found in is beyond it.
+    """
     sentence_forms = _normalized_sentence_forms(
         sanitize_html(marked),
         request.language,
         request.target,
     )
-    if sentence_forms is None or (
-        not context
-        and not _generated_target_covers_submitted_tokens(
+    if sentence_forms is not None and (
+        request.context
+        or _generated_target_covers_submitted_tokens(
             text,
             sentence_forms[0],
             request.selected_surface,
             request.target_lexeme,
         )
     ):
-        return None
-    return Example(text, translation, *sentence_forms)
+        return sentence_forms
+    return _context_sentence_forms(
+        text,
+        request.selected_surface,
+        request.language,
+        request.target,
+    )
 
 
 def _copies_context(text: str, context: str) -> bool:
@@ -396,7 +421,12 @@ def _marked_sentence_usable(
     )
 
 
-def _context_sentence_forms(context: str, selected_surface: str) -> tuple[str, str] | None:
+def _context_sentence_forms(
+    context: str,
+    selected_surface: str,
+    language: Language | None = None,
+    target: str = DEFAULT_TARGET_LANGUAGE,
+) -> tuple[str, str] | None:
     wanted = [_fold(match.group()) for match in _SOURCE_TOKEN.finditer(selected_surface)]
     if not wanted:
         return None
@@ -429,7 +459,7 @@ def _context_sentence_forms(context: str, selected_surface: str) -> tuple[str, s
     highlighted.append(tail)
     gapped.append(tail)
     result = "".join(highlighted), "".join(gapped)
-    return result if _marked_sentence_usable(result[0]) else None
+    return result if _marked_sentence_usable(result[0], language, target) else None
 
 
 def _generated_target_covers_submitted_tokens(

@@ -160,6 +160,29 @@ def test_a_dropped_or_unusable_context_sense_falls_back_to_the_first(languages):
     assert parsed.note.sense == 0
 
 
+def test_a_dropped_context_sense_is_named_rather_than_read_as_a_wrong_sentence(languages):
+    """Falling back to the first sense cards one the answer did not choose for this
+    sentence, and then fails the context check — which reports the sentence. The log is
+    the only record of why a payload was refused, so it must not name the wrong fault."""
+    context = "The bank opens at nine."
+    contextual = {
+        "text": context,
+        "translation": "Банк открывается в девять.",
+        "highlighted": "The <b>bank</b> opens at nine.",
+        "gapped": "The ___ opens at nine.",
+    }
+    with pytest.raises(CardParseError, match="the sense the answer chose for the context"):
+        parse_answer_payload(
+            payload(
+                meanings=[meaning("first", examples=[contextual]), meaning("bad", examples=[])],
+                context_sense=1,
+            ),
+            "bank",
+            languages["en"],
+            context=context,
+        )
+
+
 def test_an_answer_with_no_usable_meaning_fails(languages):
     with pytest.raises(CardParseError, match="no usable meaning"):
         parse_answer_payload(
@@ -226,7 +249,6 @@ def test_markup_leaking_into_the_plain_example_is_unwrapped(languages):
     [
         {"highlighted": ""},
         {"highlighted": 4},
-        {"highlighted": "The bank opens."},
     ],
 )
 def test_an_unmarked_or_unprintable_highlight_sinks_its_example(languages, changes):
@@ -524,7 +546,10 @@ def test_inconsistent_word_and_suggestion_combinations_are_reconciled(
     assert (parsed.word_relation, parsed.note.word, parsed.suggestion) == expected
 
 
-def test_generated_example_marks_every_submitted_token_that_occurs_verbatim(languages):
+def test_a_partly_marked_submitted_unit_is_marked_again_from_our_own_tokens(languages):
+    """The model marked `Rad zu` of a separable `Rad fahren`, which would card a blank
+    the answer is not about. The sentence and the wording asked about are both ours, so
+    the marking is redone from them rather than costing the reader the example."""
     incomplete = {
         "text": "Es macht Spaß, Rad zu fahren.",
         "translation": "Ездить на велосипеде весело.",
@@ -532,15 +557,19 @@ def test_generated_example_marks_every_submitted_token_that_occurs_verbatim(lang
         "gapped": "Es macht Spaß, ___ fahren.",
     }
 
-    with pytest.raises(CardParseError, match="no usable meaning"):
-        parse_answer_payload(
-            payload(
-                word="Rad fahren",
-                meanings=[meaning(examples=[incomplete])],
-            ),
-            "Rad fahren",
-            languages["de"],
-        )
+    parsed = parse_answer_payload(
+        payload(
+            word="Rad fahren",
+            meanings=[meaning(examples=[incomplete])],
+        ),
+        "Rad fahren",
+        languages["de"],
+    )
+
+    assert isinstance(parsed, ParsedUnit)
+    example_ = parsed.note.meaning.examples[0]
+    assert example_.highlighted == "Es macht Spaß, <b>Rad</b> zu <b>fahren</b>."
+    assert example_.gapped == "Es macht Spaß, ___ zu ___."
 
 
 def test_generated_example_token_check_does_not_assume_matching_morphology(languages):
@@ -575,17 +604,19 @@ def test_adjacent_bold_target_spans_are_normalized_for_one_blank(languages):
     assert parsed.note.meaning.examples[0].highlighted == "The <b>give up</b> opens."
 
 
-def test_adjacent_bold_normalization_does_not_allow_a_whole_sentence(languages):
+def test_a_sentence_marked_word_by_word_is_marked_again_around_the_unit(languages):
     split = example()
     split["highlighted"] = "<b>The</b> <b>bank</b> <b>opens</b>."
     split["gapped"] = "___."
 
-    with pytest.raises(CardParseError, match="no usable meaning"):
-        parse_answer_payload(
-            payload(meanings=[meaning(examples=[split])]),
-            "bank",
-            languages["en"],
-        )
+    parsed = parse_answer_payload(
+        payload(meanings=[meaning(examples=[split])]),
+        "bank",
+        languages["en"],
+    )
+
+    assert isinstance(parsed, ParsedUnit)
+    assert parsed.note.meaning.examples[0].highlighted == "The <b>bank</b> opens."
 
 
 def test_markup_other_than_the_unit_mark_makes_the_example_unusable(languages):
@@ -605,18 +636,26 @@ def test_markup_other_than_the_unit_mark_makes_the_example_unusable(languages):
     [
         "<b>The bank opens.</b>",
         "<b>The</b> <b>bank</b> <b>opens</b>.",
+        "The bank opens.",
     ],
 )
-def test_a_highlight_covering_the_whole_sentence_is_rejected(languages, highlighted):
+def test_a_highlight_covering_the_whole_sentence_is_marked_again(languages, highlighted):
+    """A card front gapped to `___` teaches nothing, and it is the commonest way a
+    sound answer failed: the content is faultless and only the marking is not. Our own
+    tokens are what the blank is cut from, so the model's marking is simply replaced."""
     broken = example()
     broken.update(highlighted=highlighted)
 
-    with pytest.raises(CardParseError, match="no usable meaning"):
-        parse_answer_payload(
-            payload(meanings=[meaning(examples=[broken])]),
-            "bank",
-            languages["en"],
-        )
+    parsed = parse_answer_payload(
+        payload(meanings=[meaning(examples=[broken])]),
+        "bank",
+        languages["en"],
+    )
+
+    assert isinstance(parsed, ParsedUnit)
+    example_ = parsed.note.meaning.examples[0]
+    assert example_.highlighted == "The <b>bank</b> opens."
+    assert example_.gapped == "The ___ opens."
 
 
 def test_text_answer_is_structurally_distinct(languages):

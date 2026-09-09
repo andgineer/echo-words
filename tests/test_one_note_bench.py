@@ -676,7 +676,7 @@ def test_markup_that_changes_a_sentence_is_rejected_before_the_safety_gate():
     )["accepted payloads are bounded and sanitized"]
 
 
-def test_whole_sentence_highlighting_is_exposed_even_when_parser_rejects_it():
+def test_whole_sentence_highlighting_is_exposed_even_though_the_parser_repairs_it():
     job = next(shot for shot in bench.bare_shots() if shot.shot_id == "bare-en-bank")
     payload = json.loads(_unit_answer("bank").split("===CARD===", 1)[1])
     example = payload["meanings"][0]["examples"][0]
@@ -687,11 +687,14 @@ def test_whole_sentence_highlighting_is_exposed_even_when_parser_rejects_it():
         replace(job, text="analysis===CARD===" + json.dumps(payload)),
     )
 
-    assert scored.metrics["payload_valid"] is False
+    # The card is buildable because the marking is redone from our own tokens. What the
+    # model did is still a defect in the answer, and the screen is what a reviewer reads:
+    # a repair that silences it would hide the model's behaviour behind our own.
+    assert scored.metrics["payload_valid"] is True
     assert scored.metrics["raw_sentence_issues"][0]["issue"] == "whole sentence is the unit"
 
 
-def test_unmarked_exact_bare_unit_token_is_exposed_even_when_parser_rejects_it():
+def test_unmarked_exact_bare_unit_token_is_exposed_even_though_the_parser_repairs_it():
     job = next(shot for shot in bench.bare_shots() if shot.shot_id == "bare-de-rad")
     payload = json.loads(_unit_answer("Rad fahren").split("===CARD===", 1)[1])
     payload["word_relation"] = "same"
@@ -706,7 +709,9 @@ def test_unmarked_exact_bare_unit_token_is_exposed_even_when_parser_rejects_it()
         replace(job, text="analysis===CARD===" + json.dumps(payload)),
     )
 
-    assert scored.metrics["payload_valid"] is False
+    # Repaired into a buildable card, and still reported: the model left a submitted
+    # token outside the marking, and the reviewer reads the answer, not our repair of it.
+    assert scored.metrics["payload_valid"] is True
     assert scored.metrics["raw_sentence_issues"][0]["issue"] == (
         "submitted token occurs outside target"
     )

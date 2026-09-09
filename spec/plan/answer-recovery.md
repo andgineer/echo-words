@@ -1,7 +1,8 @@
 # Implementation plan — recovering from an answer the parser cannot read
 
-**Status: C, D and the two logging commits below have landed. A is written but
-unmeasured; B is waiting on production evidence that cannot exist yet.** The design was
+**Status: C, D and the two logging commits below have landed. A is written and green
+on mocks but has never been run against a model — it must not be deployed until it
+has. B is waiting on production evidence that cannot exist yet.** The design was
 settled in review on 2026-09-08 after a production failure was traced end to end.
 
 The subject is one path: what happens between "the pool answered" and "the reader
@@ -154,28 +155,32 @@ keeps its alternatives until it is closed, and D reads them.
 
 ## The design
 
-### A. Repair locally instead of rejecting wholesale
+### A. Repair locally instead of rejecting wholesale — written, unmeasured
 
-The parser is all-or-nothing where it holds every fact needed to fix the answer
-itself. One misplaced `<b>` empties an example; an empty example list drops the
-meaning (`_parse_meaning` returns `None`); no retained meaning fails the answer;
-a failed answer costs a paid call. Three of the fifteen rejections are exactly
-this chain, and the repair needs no model:
+The code is in `card.py` and the suite is green, and that is worth exactly what a mock
+is worth here: it proves the repair does what was written, not that a model's answers
+are still good once it is applied. **The bench below has not been run.** Until it has
+and a fresh agent has read the packet, this is unmeasured work sitting on `main`.
 
-1. **Re-mark the highlight.** The submitted surface and the sentence are both
-   ours. Where the plain sentence contains the submitted tokens, build the
-   highlighted and gapped forms from our own marking and ignore the model's —
-   this is already what happens for a matched context (`_context_sentence_forms`),
-   and it should not be reserved for that case. Covers `geradeaus`, `geseft`,
-   `der Verkehr`.
-2. **Drop the piece, not the whole.** An unusable example drops that example; a
-   meaning keeps its remaining examples; a meaning with none left drops itself;
-   only an answer with no retained meaning fails. The first three steps exist;
-   the failure cascade is what turns one bad example into a paid call.
-3. **The chosen sense may not silently become sense 0.** `sense = remap.get(raw_sense, 0)`
-   makes a dropped contextual sense look like a context mismatch, which is a
-   second reason the context rule appears in the log more often than it fires.
-   When the sense the answer chose is gone, that is what the log must say.
+What it does now:
+
+1. **The marking is ours.** Where the model's own marking is unusable — the whole line
+   bolded, or one token of a two-token surface — the highlighted and gapped forms are
+   rebuilt from the submitted tokens against the sentence the answer wrote, by the same
+   machinery a matched context already used. Only a sentence our tokens cannot be found
+   in is beyond it. Covers `geradeaus`, `geseft`, `der Verkehr`.
+2. **Drop the piece, not the whole.** Already true of examples and senses, and C is what
+   removed its real cost: an answer with no retained meaning no longer buys a paid call.
+3. **A dropped contextual sense says so.** It no longer becomes sense 0 in silence and
+   then fails the context rule, which reported the sentence for a fault about the sense.
+
+What the repair must never do is hide the model's behaviour: the bench screens still
+report whole-sentence marking and an unmarked submitted token as defects of the answer,
+because the reviewer reads the answer and not our repair of it.
+
+The risk the bench is for: a repair that is too eager marks a sentence that was never
+about the submitted word, and cards a blank the answer did not mean. Mocks cannot see
+that. The control fixture below is aimed at it.
 
 ### B. The context copy is a key, not a claim
 
@@ -249,8 +254,17 @@ without knowing which failure it caused would be tuning blind.
 ## Bench plan
 
 One change per run, and the free pool's daily quota does not fit a tier twice.
-A is the first run; B does not go to the bench until its production evidence has
-been read.
+A is the run that is owed: its code is on `main` and unmeasured. B does not go to the
+bench until its production evidence has been read.
+
+**Blocked on keys, not on judgement.** The bench needs the pool's provider keys, and
+the machine this was written on has none — llmbroker reports no key for any of
+`GROQ_API_KEY`, `OPENROUTER_API_KEY`, `GEMINI_API_KEY`, `ZAI_API_KEY`. Whoever runs it
+needs those in the environment and a day's quota that has not been spent.
+
+Read the confound first: C and D both changed what a step-up means, so the step-up rate
+before them is not a baseline for the rate after A. Compare rejection counts against a
+tier measured on this same code, or the number will be about C and D and not about A.
 
 Fixtures, each chosen because it instantiates one repair and nothing else:
 
