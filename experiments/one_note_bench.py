@@ -1562,17 +1562,29 @@ def vocab_metrics(shot: Shot, parsed: ParsedUnit, analysis: str) -> dict:
         )
         if shot.context
         else True,
+        # What must be marked is the unit's words in the sentence. A tap submits the
+        # chip's name, which is the answer's dictionary form, so the submitted string
+        # is the wrong thing to compare against — the fixture knows the words.
         "context_surface_exact": highlighted_parts
-        == (
-            tokens(click_case.in_context)
-            if click_case is not None and click_case.in_context
-            else requested_parts
-        )
+        == (tokens(click_case.label) if click_case is not None else requested_parts)
         if shot.context
         else True,
-        "context_segments_empty": not parsed.segments if shot.context else True,
-        "click_target_exact": click_case is None
-        or normalize(shot.source) == normalize(click_case.label),
+        # A tap on a chip named by its dictionary form is a tap on an expression, and
+        # its parts are worth having: `auf` + `stehen`, `give` + `up`. What must stay
+        # empty is a tap that submits the words as they stand — there the unit is the
+        # sentence's own fragment, and breaking it up again offers nothing.
+        "context_segments_empty": (
+            not parsed.segments
+            if shot.context
+            and (click_case is None or tokens(click_case.label) == tokens(shot.source))
+            else True
+        ),
+        # The fixture names a chip by the words it spans, and a tap submits that chip's
+        # own name — its dictionary form — so the two are no longer the same string.
+        # Which chip was tapped is settled by `find_segment`, which will not build the
+        # shot at all unless it found that one; what was submitted is checked by
+        # `context_surface_exact`, against the words the fixture names.
+        "click_target_exact": click_case is None or bool(shot.source),
         "click_target_kind_exact": click_case is None
         or shot.selected_segment_kind == click_case.segment_kind,
         "expression_parts": len(parsed.segments)

@@ -48,6 +48,12 @@ or `text`. The contract is one; which of its branches the prompt states is not.
   Its JSON names only conservative multi-word combinations; the backend adds a
   chip for every source word alongside them. A combination chip carries the name
   the answer gave it — the dictionary form — and the words it spans separately.
+  A name that is no form of anything it spans is not a name for that unit: an
+  answer that truncated `ићи се` to `ћи се` put a non-word on the chip and into
+  the tap, and only the words can show that, since nothing about the name alone
+  can. Such a chip falls back to the words. A reflexive particle vouches for
+  nothing there, matching anywhere it appears; one carrying word is enough,
+  because no written rule relates `give` to `gave`.
   The backend once rebuilt the name out of the sentence instead, which put
   `steht auf` on a chip whose lemma is `aufstehen` and left the lemma unreachable;
   it was rebuilding from a split on whitespace, which is not a theory of words
@@ -490,6 +496,38 @@ thresholds counted this and the run before it, so that is not a measured regress
 Three of the four are the free pool's already-recorded Serbian and Ukrainian failures
 on the same fixtures, `неділя` among them — which stays recorded and not accepted, the
 fixture built to catch that false friend having failed it twice.
+
+## The chip is named by the answer — 2026-09-09
+
+Measured on the smoke tier after the change, with six click answers bought fresh
+because the change alters what a tap submits. Every deterministic contract passed,
+clicks 6/6, the marking of the context 6/6.
+
+**The lemma tap is now the road that is measured, and the field that serves it is
+load-bearing at last.** A tap submits the chip's name — the answer's dictionary form
+— so `aufstehen`, `give up` and `вратити се` reach the model with the sentence
+attached, and the submitted word is not in that sentence. All six named the sentence's
+own words correctly, and removing that field from the three lemma payloads leaves them
+with no card at all: the cards exist because the answer named the words.
+
+A tap on a dictionary form also returns the unit's parts — `auf` + `stehen`,
+`give` + `up`, `вратити` + `се` — and they are worth having, so the screen that
+required a click to carry no components now requires it only where the tap submits
+the words as they stand.
+
+**Costs recorded rather than accepted.** The reader's chip is no longer guaranteed to
+be a word of the sentence, and one answer in the packet truncated `ићи се` to `ћи се`.
+That is what the fallback above exists for, and it is a written rule, not a
+measurement: an answer that mangles a lemma into something that still shares a stem
+with what it spans will pass it. The `context_translation` field is still read by
+nothing, and two German answers rendered `jeden Morgen` as "каждый день"; the reader
+pays nothing today, and would if that field were ever shown.
+
+Answer quality on the same reading: 21 of 42 items carry a defect a reader would
+notice, 3 of 29 notes one that reaches a card — in line with the run before it, and
+none of the three from this change. `неділя` was carded as "воскресенье, неделя" for
+the third consecutive run: the false-friend fixture is not vouched for, and saying so
+a third time is the point of recording it.
 
 ## What would re-open this
 

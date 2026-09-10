@@ -25,6 +25,30 @@ def test_a_combination_is_named_by_the_answer_and_placed_by_its_surface(language
     ]
 
 
+def test_a_name_that_is_no_form_of_what_it_spans_falls_back_to_the_sentence(languages):
+    """The answer truncated `ићи се` to `ћи се` and the chip carried a non-word, which
+    is then what a tap submits. Nothing about the name alone shows that; only the words
+    it stands for can. A reflexive particle vouches for nothing — it matches anywhere."""
+    segments = fill_text_segments(
+        [{"label": "ћи се", "surface": "ми се ... иде", "why": "x"}],
+        "Данас ми се уопште не иде на посао.",
+        languages["sr"],
+    )
+
+    assert [item.label for item in segments if len(item.label.split()) > 1] == ["ми се иде"]
+
+
+def test_an_irregular_form_still_lets_the_answer_name_its_unit(languages):
+    """No written rule relates `give` to `gave`; `up` is what carries the name."""
+    segments = fill_text_segments(
+        [{"label": "give up", "surface": "gave up"}],
+        "I gave up after ten minutes.",
+        languages["en"],
+    )
+
+    assert [item.label for item in segments if len(item.label.split()) > 1] == ["give up"]
+
+
 def test_one_unmatchable_proposal_does_not_erase_other_combinations_or_words(languages):
     segments = fill_text_segments(
         [

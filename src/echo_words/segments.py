@@ -64,16 +64,28 @@ def fill_text_segments(value: Any, text: str, language: Language) -> list[Segmen
             )
             else ""
         )
-        # The words it spans are the fallback, and only that: a name the submission
-        # endpoint would refuse is not a lookup the reader can make.
-        if not label or validate_word(label, language) is not None:
-            label = " ".join(words[index] for index in source_order)
+        spanned = [words[index] for index in source_order]
+        # The words it spans are the fallback: for a name the submission endpoint would
+        # refuse, and for one that is no form of anything it spans. An answer that
+        # truncated `ићи се` to `ћи се` put a non-word on the chip and in the tap, and
+        # nothing about the name itself could show that — only the sentence can.
+        if (
+            not label
+            or validate_word(label, language) is not None
+            or not _names(label, spanned, language)
+        ):
+            label = " ".join(spanned)
         if validate_word(label, language) is not None:
             continue
         reason = display_text(proposal.get("why"), MAX_REASON_LENGTH)
-        spanned = " ".join(words[index] for index in source_order)
         placed.append(
-            (source_order[0], 0, Segment(label, reason, text, "" if spanned == label else spanned)),
+            (
+                source_order[0],
+                0,
+                Segment(
+                    label, reason, text, "" if " ".join(spanned) == label else " ".join(spanned)
+                ),
+            ),
         )
     # A word stays clickable in its own right even when a combination also claims it,
     # so an imprecise phrase boundary can never cost the learner a lookup.
@@ -101,7 +113,9 @@ def parse_component_segments(
     for item in value:
         if not isinstance(item, dict):
             continue
-        visible = display_text(item.get("surface"), None) or display_text(item.get("label"), None)
+        # Named by its dictionary form, like the combination chip it came from: the
+        # form seen in the expression is what it stands for, not what to call it.
+        visible = display_text(item.get("label"), None) or display_text(item.get("surface"), None)
         if not visible or validate_word(visible, language) is not None:
             continue
         result.append(
@@ -201,6 +215,36 @@ def _with_reflexive(
 def _label_tokens(proposal: dict, language: Language) -> list[str]:
     label = display_text(proposal.get("label"), MAX_SURFACE_LENGTH)
     return [fold_for_match(part, language) for part in split_words(label)]
+
+
+def _names(label: str, spanned: list[str], language: Language) -> bool:
+    """Whether the name the answer gave is a form of what it spans.
+
+    A dictionary form shares a stem with the words it stands for — `aufstehen` with
+    `steht`, `вратити се` with `вратио`. One that shares nothing with any of them is
+    not a name for this unit, whatever else it may be.
+    """
+    markers = {fold_for_match(mark, language) for mark in reflexive_markers(language)}
+    parts = [fold_for_match(part, language) for part in split_words(label)]
+    spans = [fold_for_match(word, language) for word in spanned]
+    # A reflexive particle matches everywhere and so vouches for nothing: `ћи се`
+    # against `ми се иде` is carried entirely by its `се`, and `ћи` is not a word.
+    carrying = [part for part in parts if part not in markers] or parts
+    # One carrying word is enough: `give up` names `gave up` through `up` alone, and no
+    # written rule relates `give` to `gave`. What it rules out is a name with no word of
+    # the unit in it at all.
+    return any(_kin(part, span) for part in carrying for span in spans)
+
+
+def _kin(part: str, span: str) -> bool:
+    """Whether two written forms are plausibly the same lexeme: a shared opening, or
+    one carrying the other's opening inside it — `aufstehen` holds `steh` of `steht`."""
+    if part == span:
+        return True
+    if _shares_stem(part, span):
+        return True
+    head = min(MIN_SHARED_STEM, len(part), len(span))
+    return head >= MIN_SHARED_STEM and (span[:head] in part or part[:head] in span)
 
 
 def _accounted(token: str, label: list[str]) -> bool:
