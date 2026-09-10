@@ -170,8 +170,9 @@ text reads as nothing having happened.
 
 **Nothing on the card is said twice.** The model name sits in its top right;
 the language is already named by the active button; the bottom meta line is
-gone. A sentence card shows no card status — the presence of word chips and
-the absence of a delete button say it. The chips carry no caption either:
+gone. Whether a note exists is not spelled out either: the control that
+removes it says so by standing there, and a sentence card, which never had a
+note, carries no such control. The chips carry no caption either:
 "tap one to analyse it" is read once in a lifetime and occupies space forever,
 and filled pills that look pressable say it instead. Sense chips are named by
 their translations. After a successful save, they offer only the other senses:
@@ -180,18 +181,36 @@ row. Failed saves and lookups keep every sense available. Older browser history
 without a recorded selection keeps its chips, because their wording cannot
 identify which sense was carded.
 
-**Deletion is per card, not "undo the last one".** Undo asks the reader to
-remember which word was last; the card in front of them is what they mean. It
-is offered only where a note exists, asks its question inside the card, and
-leaves the analysis on the screen. Because every card carries it, the
+**Every control the card offers is one row under the word.** Reading the
+answer and acting on it are different moments, so the actions do not hide
+among the sense chips at the foot of a long article: playing the recording,
+going deeper and getting rid of the entry sit together above the analysis they
+act on. The recording has no browser player of its own — a full-width
+transport bar costs more room than a button and offers nothing the button
+does not.
+
+**Two removals, and only one of them asks.** Deleting the note is per card,
+not "undo the last one": undo asks the reader to remember which word was last,
+and the card in front of them is what they mean. It names Anki on its face,
+because beside a second removal an unlabelled bin says nothing about which of
+the two it is; it asks its question under its own button, and leaves the
+analysis on the screen. Where no note exists that control keeps its place,
+crossed through and unpressable, so the absence is read rather than inferred.
+Taking the entry off the rail changes nothing in Anki, so it asks nothing and
+offers the way back afterwards instead. Because every card carries the
+deletion, the
 "lookup only" checkbox earned nothing: Anki calls are not worth saving, and a
 reader who has just typed a word does not yet know whether it is worth
 learning. The `?` prefix keeps that path for whoever wants it at no cost in
 pixels.
 
-**One paid action, named for where the answer lands.** "The full entry" is the
-extended prompt — every sense, origin, shades, usage — and it opens inside the
-card without touching Anki. Rewriting an existing note with the paid model is
+**One paid action, named for what it adds.** The button says only that there
+is more to read; the extended prompt behind it — every sense, origin, shades,
+usage — opens inside the card without touching Anki, as a section of its own,
+titled and signed by the model that wrote it rather than trailing the first
+answer as an unheaded paragraph. Once that article exists the button stops
+buying a second one and becomes the way down to it, because the article it
+paid for is what pushed itself off the screen. Rewriting an existing note with the paid model is
 **deferred, not built**: the reader never sees the note, and the plain
 translation a card needs is what the free model gets right the first time. The
 endpoint and its pipeline path stand; only the button went.

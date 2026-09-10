@@ -27,6 +27,7 @@ _DEFAULT_BEHAVIOR_BY_FILE: dict[str, tuple[str, str, str | None]] = {
     "test_card.py": (_VOCABULARY, "Card extraction", "Card payload validation"),
     "test_config.py": (_PLATFORM, "Configuration and lifecycle", "Settings"),
     "test_e2e_answers.py": (_VOCABULARY, "Answer delivery", "Browser end to end"),
+    "test_e2e_card_controls.py": (_VOCABULARY, "Answer delivery", "Browser end to end"),
     "test_e2e_resilience.py": (_PLATFORM, "PWA resilience", "Browser end to end"),
     "test_echo_words.py": (_PLATFORM, "Configuration and lifecycle", "CLI startup"),
     "test_i18n.py": (_PLATFORM, "Interface language", None),

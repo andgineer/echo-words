@@ -28,9 +28,12 @@ const helpOpen = ref(false);
 // the word it was left on rather than to its newest.
 const selectedIds = ref({});
 const direction = ref(1);
+// The entry the reader has just taken off the rail, kept only long enough to offer
+// it back. It is hidden rather than dropped so that "return" puts it where it was.
+const removedId = ref("");
 
 const railEntries = computed(() =>
-  entries.value.filter((entry) => entry.lang === selected.value),
+  entries.value.filter((entry) => entry.lang === selected.value && !entry.hidden),
 );
 
 const selectedId = computed(() => {
@@ -68,6 +71,7 @@ onUnmounted(() => {
 
 function pickLanguage(code) {
   if (code === selected.value) return;
+  removedId.value = "";
   // The other language's card has no position relative to this one's, so it simply
   // comes in from the right.
   direction.value = 1;
@@ -75,6 +79,7 @@ function pickLanguage(code) {
 }
 
 function selectEntry(entryId) {
+  removedId.value = "";
   if (entryId === selectedId.value) return;
   const from = railEntries.value.findIndex((entry) => entry.entry_id === selectedId.value);
   const to = railEntries.value.findIndex((entry) => entry.entry_id === entryId);
@@ -107,6 +112,7 @@ async function analyseSegment(entry, segment) {
 async function sendWord(submittedWord, context = "", shape = null, lang = selected.value) {
   busy.value = true;
   hint.value = "";
+  removedId.value = "";
   const body = withRequestId({
     word: submittedWord,
     lang,
@@ -157,6 +163,21 @@ async function sendWord(submittedWord, context = "", shape = null, lang = select
 async function retry(entry) {
   if (busy.value) return;
   await sendWord(entry.word, entry.context || "", entry.requested_shape ?? null, entry.lang);
+}
+
+function removeEntry(entry) {
+  upsertEntry({ entry_id: entry.entry_id, hidden: true });
+  removedId.value = entry.entry_id;
+}
+
+function undoRemove() {
+  const wanted = removedId.value;
+  removedId.value = "";
+  // The rail is capped, so a long session can have trimmed the entry away while the
+  // offer stood. Re-adding it then would put a card with no answer on the screen.
+  if (!entries.value.some((entry) => entry.entry_id === wanted)) return;
+  upsertEntry({ entry_id: wanted, hidden: false });
+  selectedIds.value = { ...selectedIds.value, [selected.value]: wanted };
 }
 
 // A control lives on a card, so its refusal belongs on that card and not over the
@@ -223,8 +244,14 @@ async function requestDetail(entry) {
 
   <section class="switcher">
     <WordRail :entries="railEntries" :selected-id="selectedId" @select="selectEntry" />
+    <div v-if="removedId" class="removed">
+      <span class="removed-text">{{ t("add.removedFromFeed") }}</span>
+      <button class="btn-inline undo-remove" @click="undoRemove">
+        {{ t("add.undoRemove") }}
+      </button>
+    </div>
     <EntryCard
-      v-if="selectedEntry"
+      v-else-if="selectedEntry"
       :entry="selectedEntry"
       :busy="busy"
       :direction="direction"
@@ -234,6 +261,7 @@ async function requestDetail(entry) {
       @paid-answer="entryAction(selectedEntry, 'rebuild')"
       @retry="retry(selectedEntry)"
       @segment="analyseSegment(selectedEntry, $event)"
+      @remove-entry="removeEntry(selectedEntry)"
       @swipe="swipe"
     />
     <p v-else class="empty">{{ t("add.empty") }}</p>
@@ -266,6 +294,29 @@ async function requestDetail(entry) {
 .switcher {
   margin-top: 1rem;
   margin-bottom: 1rem;
+}
+
+.removed {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 0.9rem 1rem;
+}
+
+.removed-text {
+  flex: 1 1 auto;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
+.undo-remove {
+  flex: 0 0 auto;
+  min-height: 32px;
+  padding: 0 0.75rem;
+  font-size: 0.8rem;
 }
 
 .empty {

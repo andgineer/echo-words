@@ -132,7 +132,7 @@ def test_an_unreadable_payload_leaves_the_analysis_and_offers_the_paid_card(
         submit(page, app.url)
         entry = page.locator(".entry-text")
         expect(entry).to_contain_text("the first analysis")
-        expect(page.locator(".entry-card-status")).to_contain_text("⚠️ card failed")
+        expect(page.locator(".act-anki-none.failed")).to_be_visible()
         offer = page.get_by_role("button", name="Ask the paid model for a card")
         expect(offer).to_be_visible()
         # Nothing was bought to get here, and nothing was cleared.
@@ -141,7 +141,7 @@ def test_an_unreadable_payload_leaves_the_analysis_and_offers_the_paid_card(
         offer.click()
 
         expect(entry).to_contain_text("the answer that was paid for")
-        expect(page.locator(".entry-card-status")).to_contain_text("✅")
+        expect(page.locator(".delete-card")).to_be_visible()
         assert app.broker.direct_calls == ["gpt-fast"]
 
 
@@ -171,7 +171,7 @@ def test_a_pool_failure_with_no_paid_step_settles_the_entry_into_a_retryable_err
         expect(page.locator(".entry-error")).to_be_visible()
         expect(page.get_by_role("button", name=f"Send “{WORD}” again")).to_be_visible()
         expect(page.locator(".working.pending")).to_have_count(0)
-        expect(page.locator(".entry-card-status")).to_have_count(0)
+        expect(page.locator(".act-anki")).to_have_count(0)
 
 
 def test_a_wording_the_judgement_refuses_is_never_shown_however_much_streamed(
@@ -189,7 +189,7 @@ def test_a_wording_the_judgement_refuses_is_never_shown_however_much_streamed(
         attestation='{"used": false, "where": ""}',
     ) as app:
         submit(page, app.url, "Löffelangst")
-        expect(page.locator(".entry-card-status")).to_have_text("🚫 no card")
+        expect(page.locator(".act-anki-none")).to_be_visible()
         expect(page.locator(".entry-notice")).to_contain_text("does not vouch")
         expect(page.locator(".entry-text")).to_have_count(0)
 
@@ -295,10 +295,10 @@ def test_the_submitted_word_reaches_the_configured_deck_as_one_note(
     at the page; this one opens the collection the server wrote and looks."""
     with live_app(settings, monkeypatch, handles=[FakeHandle([answer(FIRST)])]) as app:
         submit(page, app.url)
-        expect(page.locator(".entry-card-status")).to_contain_text("✅")
+        expect(page.locator(".delete-card")).to_be_visible()
         expect(page.locator(".segments")).to_have_count(0)
         page.reload()
-        expect(page.locator(".entry-card-status")).to_contain_text("✅")
+        expect(page.locator(".delete-card")).to_be_visible()
         expect(page.locator(".segments")).to_have_count(0)
         written = collection_path(app.settings)
 

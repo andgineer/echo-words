@@ -385,6 +385,45 @@ describe("AddView", () => {
       ).toEqual([["/api/words/entry-2/delete-card", { method: "POST" }]]);
     });
 
+    // Anki is never touched by this one, so it asks nothing before acting and offers
+    // the way back afterwards instead.
+    it("takes an analysis off the list without touching Anki, and offers it back", async () => {
+      await labelBehavior(EPIC.ANKI_CARDS, FEATURE.COLLECTION, "Card deletion");
+      entries.value = [unit("entry-2", "window"), unit("entry-1", "house")];
+      const wrapper = mount(AddView);
+      await flushPromises();
+
+      await wrapper.get(".remove-entry").trigger("click");
+      await flushPromises();
+
+      expect(apiRequest.mock.calls.map(([path]) => path)).toEqual(["/api/languages"]);
+      expect(wrapper.find(".entry-title").exists()).toBe(false);
+      expect(wrapper.get(".removed-text").text()).toBe(
+        "Removed from the list — nothing changed in Anki.",
+      );
+      expect(wrapper.findAll(".chip").map((chip) => chip.text())).toEqual(["house"]);
+
+      await wrapper.get(".undo-remove").trigger("click");
+      await flushPromises();
+
+      expect(wrapper.get(".entry-title").text()).toBe("window");
+      expect(wrapper.findAll(".chip").map((chip) => chip.text())).toEqual(["window", "house"]);
+    });
+
+    it("drops the offer to undo as soon as another word is opened", async () => {
+      entries.value = [unit("entry-2", "window"), unit("entry-1", "house")];
+      const wrapper = mount(AddView);
+      await flushPromises();
+
+      await wrapper.get(".remove-entry").trigger("click");
+      await flushPromises();
+      await wrapper.get('[data-testid="chip-entry-1"]').trigger("click");
+      await flushPromises();
+
+      expect(wrapper.find(".removed-text").exists()).toBe(false);
+      expect(wrapper.get(".entry-title").text()).toBe("house");
+    });
+
     it("says on the card itself that its note had already gone", async () => {
       await labelBehavior(EPIC.ANKI_CARDS, FEATURE.COLLECTION, "Card deletion");
       entries.value = [unit("entry-2", "window"), unit("entry-1", "house")];

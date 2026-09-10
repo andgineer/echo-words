@@ -30,7 +30,7 @@ def test_cached_startup_shows_languages_and_history_without_downloading_them(
 ) -> None:
     with live_app(settings, monkeypatch, handles=[FakeHandle([answer(ARTICLE)])]) as app:
         submit(page, app.url)
-        expect(page.locator(".entry-card-status")).to_contain_text("✅")
+        expect(page.locator(".delete-card")).to_be_visible()
         requests = []
 
         def refuse_download(route):
@@ -94,7 +94,7 @@ def test_the_installed_pwa_starts_offline_with_its_history_and_all_directories(
 ) -> None:
     with live_app(settings, monkeypatch, handles=[FakeHandle([answer(ARTICLE)])]) as app:
         submit(page, app.url)
-        expect(page.locator(".entry-card-status")).to_contain_text("✅")
+        expect(page.locator(".delete-card")).to_be_visible()
         page.evaluate("() => navigator.serviceWorker.ready")
         page.wait_for_function("navigator.serviceWorker.controller !== null")
         # A read transaction after the writes is a commit barrier, not a sleep.
@@ -131,7 +131,7 @@ def test_a_new_service_worker_and_bundle_keep_the_browser_database(
         settings, monkeypatch, static_build=build, handles=[FakeHandle([answer(ARTICLE)])]
     ) as app:
         submit(page, app.url)
-        expect(page.locator(".entry-card-status")).to_contain_text("✅")
+        expect(page.locator(".delete-card")).to_be_visible()
         page.evaluate("() => navigator.serviceWorker.ready")
         page.wait_for_function("navigator.serviceWorker.controller !== null")
 
@@ -183,10 +183,7 @@ def test_an_answer_finished_while_the_page_was_deaf_is_recovered_on_reconnect(
         gate.open()
         page.context.set_offline(False)
 
-        expect(page.locator(".entry-card-status")).to_contain_text(
-            "card",
-            timeout=RECONNECT_TIMEOUT_MS,
-        )
+        expect(page.locator(".delete-card")).to_be_visible(timeout=RECONNECT_TIMEOUT_MS)
         expect(page.locator(".working.pending")).to_have_count(0)
 
 
@@ -240,7 +237,7 @@ def test_a_page_reloaded_mid_answer_picks_the_entry_back_up(
 
         gate.open()
 
-        expect(page.locator(".entry-card-status")).to_contain_text("✅")
+        expect(page.locator(".delete-card")).to_be_visible()
         expect(page.locator(".working.pending")).to_have_count(0)
 
 
@@ -266,5 +263,5 @@ def test_a_second_page_open_on_the_same_server_is_told_the_same_answer(
         gate.open()
 
         expect(onlooker.locator(".entry-text")).to_contain_text("the finished analysis")
-        expect(onlooker.locator(".entry-card-status")).to_contain_text("✅")
+        expect(onlooker.locator(".delete-card")).to_be_visible()
         onlooker.close()

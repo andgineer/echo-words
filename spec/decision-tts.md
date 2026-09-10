@@ -89,8 +89,8 @@ the right primary because:
    language would be drilled into the learner dozens of times per card.
 2. The failure mode is structurally mild here: audio is generated
    **once per word** and stored forever in Anki media. An outage only
-   affects words added during the outage, the status line already
-   reports "🔇 no audio", and `/redo` retries.
+   affects words added during the outage, the card already says it has
+   no audio, and `/redo` retries.
 
 ## Decision
 

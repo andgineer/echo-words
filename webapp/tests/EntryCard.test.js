@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mount } from "@vue/test-utils";
 
 import EntryCard from "../src/components/EntryCard.vue";
@@ -138,8 +138,11 @@ describe("EntryCard", () => {
     expect(wrapper.get(".working").text()).toBe(
       "Building the full entry — usually about 10 seconds",
     );
-    // Nothing to press while it runs.
-    expect(wrapper.find(".entry-actions").exists()).toBe(false);
+    // The recording and the deletion have nothing to do with the paid call, so the
+    // row stays; only the button that started it is occupied.
+    expect(wrapper.find(".entry-actions").exists()).toBe(true);
+    expect(wrapper.get(".detail").element.disabled).toBe(true);
+    expect(wrapper.find(".detail .spinner").exists()).toBe(true);
   });
 
   it("shows the Anki result attached to a completed answer", async () => {
@@ -154,40 +157,35 @@ describe("EntryCard", () => {
       card_status: "added",
     });
 
-    expect(wrapper.get(".entry-card-status").text()).toBe("✅ added to Anki");
+    expect(wrapper.get(".delete-card").text()).toBe("Anki");
+    expect(wrapper.get(".delete-card").attributes("title")).toBe("Delete from Anki");
   });
 
-  it("gives all four card kinds distinct localized status labels", async () => {
+  it("says a card exists by the control that removes it, not by a count of cards", async () => {
     await labelBehavior(EPIC.ANKI_CARDS, FEATURE.COLLECTION, "Card delivery status");
     const wrapper = card(senseEntry());
 
-    expect(wrapper.get(".entry-card-status").text()).toBe(
-      "✅ 4 cards: word → meaning, meaning → word, sentence → meaning, gap → word",
-    );
+    // The count and the four card kinds were noise under the chips: whether there is a
+    // card at all is the only question, and the control at the top answers it.
+    expect(wrapper.find(".entry-card-status").exists()).toBe(false);
+    expect(wrapper.text()).not.toContain("4 cards");
+    expect(wrapper.find(".delete-card").exists()).toBe(true);
 
     locale.value = "ru";
     await wrapper.vm.$nextTick();
 
-    expect(wrapper.get(".entry-card-status").text()).toBe(
-      "✅ 4 карточки: слово → значение, значение → слово, предложение → значение, пропуск → слово",
-    );
-  });
-
-  it("falls back to the plain result when the kinds are not known", () => {
-    const wrapper = card({ ...senseEntry(), card_kinds: [] });
-
-    expect(wrapper.get(".entry-card-status").text()).toBe("✅ added to Anki");
+    expect(wrapper.get(".delete-card").attributes("title")).toBe("Удалить из Anki");
   });
 
   it("reports missing card audio separately from submitted-text audio", () => {
     const withNoAudio = card({ ...senseEntry(), card_kinds: [], no_audio: true });
-    expect(withNoAudio.get(".entry-card-status").text()).toBe(
-      "✅ added to Anki · 🔇 submitted text has no audio",
+    expect(withNoAudio.get(".delete-card").attributes("title")).toBe(
+      "Delete from Anki · 🔇 submitted text has no audio",
     );
 
     const withNoCardAudio = card({ ...senseEntry(), card_kinds: [], no_card_audio: true });
-    expect(withNoCardAudio.get(".entry-card-status").text()).toBe(
-      "✅ added to Anki · 🔇 Anki card has no audio",
+    expect(withNoCardAudio.get(".delete-card").attributes("title")).toBe(
+      "Delete from Anki · 🔇 Anki card has no audio",
     );
   });
 
@@ -205,8 +203,13 @@ describe("EntryCard", () => {
         card_status: "failed",
         card_error: "note type EchoWords is misconfigured",
       });
-      expect(failedCard.get(".entry-card-status").text()).toBe(
-        "⚠️ note type EchoWords is misconfigured",
+      expect(failedCard.get(".card-error").text()).toBe(
+        "note type EchoWords is misconfigured",
+      );
+      // Amber and crossed rather than muted and crossed: the card was meant to exist.
+      expect(failedCard.get(".act-anki-none").classes()).toContain("failed");
+      expect(failedCard.get(".act-anki-none").attributes("title")).toBe(
+        "Карточку не удалось создать",
       );
 
       const failedAnalysis = card({
@@ -283,6 +286,8 @@ describe("EntryCard", () => {
     const wrapper = card({ ...textEntry(), card_status: "text" });
 
     expect(wrapper.find(".entry-card-status").exists()).toBe(false);
+    // Not even a crossed-out marker: a sentence never had a card to be missing.
+    expect(wrapper.find(".act-anki").exists()).toBe(false);
   });
 
   it("says which word the card is for when a misspelling was corrected onto it", async () => {
@@ -336,7 +341,10 @@ describe("EntryCard", () => {
     expect(wrapper.get(".entry-notice").text()).toBe(
       "“blorptium” — the model does not vouch for this word. No card was made.",
     );
-    expect(wrapper.get(".entry-card-status").text()).toBe("🚫 no card");
+    const marker = wrapper.get(".act-anki-none");
+    expect(marker.text()).toBe("Anki");
+    expect(marker.attributes("title")).toBe("No card in Anki");
+    expect(marker.element.disabled).toBe(true);
     expect(wrapper.find(".entry-text").exists()).toBe(false);
   });
 
@@ -536,7 +544,9 @@ describe("EntryCard", () => {
     expect(wrapper.get(".entry-notice").text()).toContain(
       "This is “receive”, not the “recieve” you typed.",
     );
-    expect(wrapper.get(".entry-card-status").text()).toContain("the card you had is untouched");
+    expect(wrapper.get(".delete-card").attributes("title")).toContain(
+      "the card you had is untouched",
+    );
   });
 
   it("says which word a corrected lookup analysed, though it carded nothing", () => {
@@ -571,7 +581,10 @@ describe("EntryCard", () => {
 
     const player = wrapper.get("audio.entry-audio");
     expect(player.attributes("src")).toBe("/api/audio/pronunciation-aabbccddeeff00112233.mp3");
-    expect(player.attributes()).toHaveProperty("controls");
+    // The full-width browser player is gone: the element only makes the sound, and the
+    // button in the row above starts and stops it.
+    expect(player.attributes()).not.toHaveProperty("controls");
+    expect(wrapper.get(".speak-word").attributes("aria-label")).toBe("Play");
     // Reopened, not just made: it waits to be pressed.
     expect(player.attributes()).not.toHaveProperty("autoplay");
   });
@@ -618,7 +631,9 @@ describe("EntryCard", () => {
     ]);
     // Two players may not talk over each other: only the unit's own audio starts by itself.
     expect(players[1].attributes()).not.toHaveProperty("autoplay");
-    expect(wrapper.get(".context-audio-title").text()).toBe("The whole text");
+    expect(wrapper.find(".context-audio-title").exists()).toBe(false);
+    expect(wrapper.get(".speak-word").attributes("aria-label")).toBe("Play");
+    expect(wrapper.get(".speak-text").attributes("aria-label")).toBe("Play the whole text");
   });
 
   it("leaves a text answer with the single player that voices it whole", async () => {
@@ -743,23 +758,60 @@ describe("EntryCard", () => {
       await labelBehavior(EPIC.ANKI_CARDS, FEATURE.CORRECTION_AND_DETAIL, "Detail control");
       const wrapper = card({ ...senseEntry(), detail_available: true });
 
-      expect(wrapper.get(".detail").text()).toBe("The full entry");
+      expect(wrapper.get(".detail").text()).toBe("In depth");
       expect(wrapper.get(".detail").element.disabled).toBe(false);
-      expect(wrapper.get(".delete-card").text()).toBe("Delete from Anki");
+      // The word says which of the two removals this is; the crossed bin alone read as
+      // the same thing as the cross beside it.
+      expect(wrapper.get(".delete-card").text()).toBe("Anki");
+      expect(wrapper.get(".delete-card").attributes("title")).toBe("Delete from Anki");
       // The rebuild control is gone; nothing in the interface rewrites a note.
       expect(wrapper.find(".rebuild").exists()).toBe(false);
     });
 
-    it("says the entry is ready and stops offering it once it has landed", () => {
+    it("keeps the button once the entry has landed, as the way down to it", () => {
       const wrapper = card({
         ...senseEntry(),
         detail_available: true,
         detail_html: "<p>the long article</p>",
       });
 
-      expect(wrapper.get(".detail").text()).toBe("The entry is ready");
-      expect(wrapper.get(".detail").element.disabled).toBe(true);
+      const button = wrapper.get(".detail");
+      expect(button.text()).toBe("In depth");
+      // Still pressable, and it buys nothing: the article it would have paid for is
+      // already on the card, far below the row that offers it.
+      expect(button.element.disabled).toBe(false);
+      expect(button.attributes("title")).toBe("Go to the full entry");
       expect(wrapper.get(".entry-detail").html()).toContain("the long article");
+    });
+
+    it("goes to the article it already has instead of buying a second one", async () => {
+      const wrapper = card({
+        ...senseEntry(),
+        detail_available: true,
+        detail_html: "<p>the long article</p>",
+      });
+      const scrolled = vi.fn();
+      wrapper.get(".entry-detail-block").element.scrollIntoView = scrolled;
+
+      await wrapper.get(".detail").trigger("click");
+
+      expect(wrapper.emitted("detail")).toBeUndefined();
+      expect(scrolled).toHaveBeenCalledTimes(1);
+    });
+
+    it("titles the deeper article as a section of its own, signed by its own model", () => {
+      const wrapper = card({
+        ...senseEntry(),
+        detail_available: true,
+        detail_html: "<p>the long article</p>",
+        detail_model: "openai-gpt-5.6-luna",
+      });
+
+      // Without a heading of its own the model name read as a stray line trailing the
+      // short analysis, and the rule under it belonged to nothing.
+      const head = wrapper.get(".entry-detail-block .detail-head");
+      expect(head.get(".detail-title").text()).toBe("The full entry");
+      expect(head.get(".entry-model").text()).toBe("openai-gpt-5.6-luna");
     });
 
     // Every finished word answer can be gone deeper on; only a card can be deleted.
@@ -797,7 +849,7 @@ describe("EntryCard", () => {
     it("stops offering the deletion once the cards are gone", () => {
       const wrapper = card({ ...senseEntry(), card_status: "deleted", card_kinds: [] });
 
-      expect(wrapper.get(".entry-card-status").text()).toBe("🗑 cards deleted from Anki");
+      expect(wrapper.get(".act-anki-none").attributes("title")).toBe("No card in Anki");
       expect(wrapper.find(".delete-card").exists()).toBe(false);
       expect(wrapper.find(".detail").exists()).toBe(true);
     });
@@ -811,7 +863,9 @@ describe("EntryCard", () => {
       expect(wrapper.get(".confirm-text").text()).toBe(
         "Delete the cards for “bank” from Anki? The analysis stays on the screen.",
       );
-      expect(wrapper.find(".entry-actions").exists()).toBe(false);
+      // The question opens under the button that raised it; the row it belongs to does
+      // not vanish from under the reader's finger.
+      expect(wrapper.find(".entry-actions").exists()).toBe(true);
       expect(wrapper.emitted("delete-card")).toBeUndefined();
 
       await wrapper.get(".confirm-yes").trigger("click");
@@ -821,14 +875,39 @@ describe("EntryCard", () => {
       expect(wrapper.find(".entry-actions").exists()).toBe(true);
     });
 
-    it("puts the actions back when the question is declined", async () => {
+    it("closes the question when it is declined", async () => {
       const wrapper = card({ ...senseEntry(), detail_available: true });
 
       await wrapper.get(".delete-card").trigger("click");
       await wrapper.get(".confirm-no").trigger("click");
 
       expect(wrapper.emitted("delete-card")).toBeUndefined();
+      expect(wrapper.find(".confirm").exists()).toBe(false);
       expect(wrapper.find(".entry-actions").exists()).toBe(true);
+    });
+
+    // Taking the analysis off the screen costs nothing in Anki, so it is offered on
+    // every card and asks nothing before it acts.
+    it("offers the removal from the list on every card, with no question", async () => {
+      const wrapper = card(textEntry());
+
+      expect(wrapper.get(".remove-entry").attributes("title")).toBe("Remove from the list");
+
+      await wrapper.get(".remove-entry").trigger("click");
+
+      expect(wrapper.emitted("remove-entry")).toHaveLength(1);
+      expect(wrapper.find(".confirm").exists()).toBe(false);
+    });
+
+    it("offers nothing at all while the first answer is still coming", () => {
+      const wrapper = card({
+        entry_id: "entry-1",
+        word: "Wort",
+        lang: "de",
+        status: "pending",
+      });
+
+      expect(wrapper.find(".entry-actions").exists()).toBe(false);
     });
 
     it("asks for the full entry when it is pressed", async () => {

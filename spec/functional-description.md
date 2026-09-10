@@ -246,8 +246,7 @@ The four requirements every design decision is weighed against:
 8. When generation completes, the entry gains its submitted-text
    pronunciation. A usable unit answer creates one note unless the request is
    lookup-only; a text answer creates none. Every accepted note generates all
-   four templates, and the status line names their four distinct localized
-   kinds. The collection lives in-process, so adding a note cannot fail because
+   four templates. The collection lives in-process, so adding a note cannot fail because
    Anki is not running; delivery to other devices happens through the debounced
    AnkiWeb sync.
 
@@ -511,7 +510,8 @@ both in the answer entry and on the flashcard.
 - **Delivery**:
   - In the app: the pronunciation is attached to the answer entry —
     one tap to hear, replayable from the history. Where the whole text
-    is voiced beside a unit, it is a second player of its own. A recording
+    is voiced beside a unit, it has a button of its own, drawn to say that
+    what it plays is the text and not the word. A recording
     starts by itself exactly once: on the card just made, in front of the
     user. Reopening that card, switching back to it from another word or
     reloading the page finds it silent, because a card being looked at
@@ -573,8 +573,7 @@ both in the answer entry and on the flashcard.
   senses, forms where useful, usage, origin and examples. The six Anki fields
   contain only the selected sense's word, audio, optional label, translations,
   highlighted sentence and gapped sentence.
-- The status line reports all four distinct template kinds. Deleting the card
-  removes the note with all four cards.
+- Deleting the card removes the note with all four cards.
 
 - **One deck per source language**, set in the languages configuration
   (e.g. `EchoWords: English`, `EchoWords: German`,
