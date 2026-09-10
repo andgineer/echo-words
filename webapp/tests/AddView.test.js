@@ -385,6 +385,23 @@ describe("AddView", () => {
       ).toEqual([["/api/words/entry-2/delete-card", { method: "POST" }]]);
     });
 
+    // The flag lives in the stored history, so leaving it set is what made every
+    // reload hand the same cards their "just made" moment again.
+    it("spends the one automatic playback on the entry itself, not in memory", async () => {
+      await labelBehavior(EPIC.PRONUNCIATION, FEATURE.AUDIO_DELIVERY, "Playback");
+      entries.value = [
+        unit("entry-2", "window", "en", {
+          audio_url: "/api/audio/pronunciation-aabbccddeeff00112233.mp3",
+          just_finished: true,
+        }),
+      ];
+      const wrapper = mount(AddView);
+      await flushPromises();
+
+      expect(entries.value[0].just_finished).toBe(false);
+      expect(wrapper.get(".speak-word").exists()).toBe(true);
+    });
+
     // Anki is never touched by this one, so it asks nothing before acting and offers
     // the way back afterwards instead.
     it("takes an analysis off the list without touching Anki, and offers it back", async () => {

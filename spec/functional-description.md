@@ -516,7 +516,12 @@ both in the answer entry and on the flashcard.
     user. Reopening that card, switching back to it from another word or
     reloading the page finds it silent, because a card being looked at
     again is not a card being made, and a recording that plays every time
-    the entry is shown is noise the user did not ask for.
+    the entry is shown is noise the user did not ask for. The one chance is
+    spent when the card is shown, whether or not the sound came out: a reader
+    who swiped away before it could speak, or a browser that refused it, has
+    had the moment all the same. It is spent on the entry itself and stored
+    with it, because anything the page remembers dies with the page and the
+    history outlives it.
   - Anki: the audio of the carded unit is attached to the card front, so
     it plays during review. The audio of a surrounding text never is.
 - **Resilience**: submitted-text audio starts in parallel with the LLM call

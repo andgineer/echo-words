@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mount } from "@vue/test-utils";
+import { nextTick } from "vue";
 
 import EntryCard from "../src/components/EntryCard.vue";
 import { locale } from "../src/i18n/index.js";
@@ -602,11 +603,37 @@ describe("EntryCard", () => {
       just_finished: true,
     };
     const wrapper = card(entry);
-    expect(wrapper.get("audio.entry-audio").attributes()).toHaveProperty("autoplay");
+    await nextTick();
 
-    // Switching away and back is not the card being made again.
-    await wrapper.setProps({ entry: { ...entry, entry_id: "entry-other" } });
-    await wrapper.setProps({ entry });
+    // No `autoplay` attribute drives this: the card asks for the sound itself, once,
+    // and says so, so the one chance can be spent where it survives a reload.
+    expect(wrapper.get("audio.entry-audio").attributes()).not.toHaveProperty("autoplay");
+    expect(wrapper.emitted("played")).toHaveLength(1);
+
+    // Switching away and back is not the card being made again. The card it comes back
+    // to is the one the store has already marked, so nothing is asked for a second time.
+    await wrapper.setProps({ entry: { ...entry, entry_id: "entry-other", just_finished: false } });
+    await wrapper.setProps({ entry: { ...entry, just_finished: false } });
+    await nextTick();
+
+    expect(wrapper.emitted("played")).toHaveLength(1);
+  });
+
+  it("stays silent on a card restored from history, however it was left", async () => {
+    await labelBehavior(EPIC.PRONUNCIATION, FEATURE.AUDIO_DELIVERY, "Playback");
+    const wrapper = card({
+      entry_id: "entry-old",
+      word: "Word",
+      lang: "en",
+      status: "done",
+      shape: "unit",
+      text: "<b>Word</b> — meaning",
+      audio_url: "/api/audio/pronunciation-aabbccddeeff00112233.mp3",
+      just_finished: false,
+    });
+    await nextTick();
+
+    expect(wrapper.emitted("played")).toBeUndefined();
     expect(wrapper.get("audio.entry-audio").attributes()).not.toHaveProperty("autoplay");
   });
 

@@ -19,6 +19,7 @@ const emit = defineEmits([
   "swipe",
   "paid-answer",
   "remove-entry",
+  "played",
 ]);
 
 const SWIPE_THRESHOLD = 55;
@@ -132,22 +133,21 @@ function tick(which, event) {
 
 // A recording plays by itself exactly once: when the card it belongs to was just
 // made, in front of the reader. Reopening that card, switching back to it, or
-// reloading the page finds it silent, and the button is there to press. The set
-// outlives the component so that switching away and back is not "just made" again,
-// and dies with the page, so a reload is not either.
-const autoplayed = new Set();
-const autoplays = ref(false);
-
+// reloading the page finds it silent, and the button is there to press.
+//
+// The one chance is spent by clearing the entry's own flag rather than by remembering
+// what has played: a set of played recordings dies with the page, and the flag does
+// not, so every reload found the same cards still "just made" and spoke again. Spent
+// on the spot, whether or not the browser let the sound out — a card the reader
+// swiped away from before it could speak has still had its moment.
 watch(
   () => [props.entry.entry_id, props.entry.audio_url, props.entry.just_finished],
   ([id, url, fresh]) => {
-    // Keyed by the recording as well as the entry, so a card rebuilt with a different
-    // pronunciation still speaks once, and one rebuilt with the same does not.
-    const key = `${id}|${url}`;
-    autoplays.value = Boolean(url && fresh && id && !autoplayed.has(key));
-    if (autoplays.value) autoplayed.add(key);
+    if (!(id && url && fresh)) return;
+    emit("played");
+    void wordAudio.value?.play?.()?.catch?.(() => {});
   },
-  { immediate: true },
+  { immediate: true, flush: "post" },
 );
 
 watch(
@@ -498,7 +498,6 @@ function confirmDelete() {
       ref="wordAudio"
       class="entry-audio"
       :src="entry.audio_url"
-      :autoplay="autoplays"
       preload="none"
       @play="started('word')"
       @pause="stopped('word')"

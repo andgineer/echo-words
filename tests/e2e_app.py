@@ -53,9 +53,10 @@ class LiveApp:
     settings: Settings
 
 
-def _no_lookups(monkeypatch: pytest.MonkeyPatch) -> None:
+def _no_lookups(monkeypatch: pytest.MonkeyPatch, audio: object = None) -> None:
     """Silence the two boundaries an answer touches on its way to the page. Both reach
-    the network, and neither is what any of these tests is about."""
+    the network, and neither is what any of these tests is about — except where a test
+    is about the recording itself and hands one in."""
 
     async def no_audio(*_args: object, **_kwargs: object) -> None:
         return None
@@ -67,7 +68,7 @@ def _no_lookups(monkeypatch: pytest.MonkeyPatch) -> None:
         async def usage(self, *_args: object, **_kwargs: object) -> None:
             return None
 
-    monkeypatch.setattr("echo_words.api.fetch_pronunciation", no_audio)
+    monkeypatch.setattr("echo_words.api.fetch_pronunciation", audio or no_audio)
     monkeypatch.setattr("echo_words.api.Wiktionary", NoReference)
     monkeypatch.setattr("echo_words.api.Wikipedia", NoReference)
 
@@ -87,6 +88,7 @@ def live_app(
     monkeypatch: pytest.MonkeyPatch,
     *,
     static_build: Path = BUILT_PWA,
+    audio: object = None,
     **script: object,
 ) -> Iterator[LiveApp]:
     """Serve the real app on a loopback port until the block ends."""
@@ -94,7 +96,7 @@ def live_app(
         pytest.fail(f"{BUILT_PWA}/index.html is missing — run `uv run inv build-static`")
     box: list[FakeBroker] = []
     monkeypatch.setattr("llmbroker.AsyncBroker", _wired_broker(script, box))
-    _no_lookups(monkeypatch)
+    _no_lookups(monkeypatch, audio)
     served = Settings(**{**settings.model_dump(), "static_dir": static_build})
     server = uvicorn.Server(
         uvicorn.Config(
