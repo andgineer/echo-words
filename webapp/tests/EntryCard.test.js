@@ -760,6 +760,8 @@ describe("EntryCard", () => {
 
       expect(wrapper.get(".detail").text()).toBe("In depth");
       expect(wrapper.get(".detail").element.disabled).toBe(false);
+      // An arrow down onto a line: the article is not here yet and pressing fetches it.
+      expect(wrapper.find(".detail .glyph-fetch").exists()).toBe(true);
       // The word says which of the two removals this is; the crossed bin alone read as
       // the same thing as the cross beside it.
       expect(wrapper.get(".delete-card").text()).toBe("Anki");
@@ -781,6 +783,9 @@ describe("EntryCard", () => {
       // already on the card, far below the row that offers it.
       expect(button.element.disabled).toBe(false);
       expect(button.attributes("title")).toBe("Go to the full entry");
+      // The arrow would now read as a second download; the page it goes to is a page.
+      expect(button.find(".glyph-fetch").exists()).toBe(false);
+      expect(button.find(".glyph-goto").exists()).toBe(true);
       expect(wrapper.get(".entry-detail").html()).toContain("the long article");
     });
 

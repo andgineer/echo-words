@@ -401,16 +401,16 @@ function confirmDelete() {
           @click="hitDetail"
         >
           <span v-if="entry.detail_pending" class="spinner" aria-hidden="true"></span>
-          <svg v-else-if="detailReady" class="glyph" viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M12 4v10" />
-            <path d="m7.5 9.5 4.5 4.5 4.5-4.5" />
-            <path d="M5.5 19.5h13" />
-          </svg>
-          <svg v-else class="glyph" viewBox="0 0 24 24" aria-hidden="true">
+          <svg v-else-if="detailReady" class="glyph glyph-goto" viewBox="0 0 24 24" aria-hidden="true">
             <path d="M6 3.5h7l5 5v12a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-16a1 1 0 0 1 1-1Z" />
             <path d="M13 3.5v5h5" />
             <path d="M8.5 13h7" />
             <path d="M8.5 16.5h4.5" />
+          </svg>
+          <svg v-else class="glyph glyph-fetch" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 4v10" />
+            <path d="m7.5 9.5 4.5 4.5 4.5-4.5" />
+            <path d="M5.5 19.5h13" />
           </svg>
           {{ t("add.detail") }}
         </button>
