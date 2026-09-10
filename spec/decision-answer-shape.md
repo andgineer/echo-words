@@ -48,12 +48,13 @@ or `text`. The contract is one; which of its branches the prompt states is not.
   Its JSON names only conservative multi-word combinations; the backend adds a
   chip for every source word alongside them. A combination chip carries the name
   the answer gave it — the dictionary form — and the words it spans separately.
-  A name that is no form of anything it spans is not a name for that unit: an
-  answer that truncated `ићи се` to `ћи се` put a non-word on the chip and into
-  the tap, and only the words can show that, since nothing about the name alone
-  can. Such a chip falls back to the words. A reflexive particle vouches for
-  nothing there, matching anywhere it appears; one carrying word is enough,
-  because no written rule relates `give` to `gave`.
+  The name is taken as given. Whether it is a real form of what it spans is not
+  checked by comparing the two: a written comparison cannot tell a truncated
+  `ћи се` from the correct `ићи се` — it rejects both, and `fahren` over `fährt`
+  with them. A name that is not a word is caught where it can be, by the
+  judgement a tap already asks, which answers "no such word" rather than carding
+  one. The one rule left is the submission endpoint's own: a name it would refuse
+  is no lookup, and falls back to the words.
   The backend once rebuilt the name out of the sentence instead, which put
   `steht auf` on a chip whose lemma is `aufstehen` and left the lemma unreachable;
   it was rebuilding from a split on whitespace, which is not a theory of words
@@ -517,9 +518,7 @@ the words as they stand.
 
 **Costs recorded rather than accepted.** The reader's chip is no longer guaranteed to
 be a word of the sentence, and one answer in the packet truncated `ићи се` to `ћи се`.
-That is what the fallback above exists for, and it is a written rule, not a
-measurement: an answer that mangles a lemma into something that still shares a stem
-with what it spans will pass it. The `context_translation` field is still read by
+Such a chip stands, and is judged when it is tapped. The `context_translation` field is still read by
 nothing, and two German answers rendered `jeden Morgen` as "каждый день"; the reader
 pays nothing today, and would if that field were ever shown.
 

@@ -25,17 +25,19 @@ def test_a_combination_is_named_by_the_answer_and_placed_by_its_surface(language
     ]
 
 
-def test_a_name_that_is_no_form_of_what_it_spans_falls_back_to_the_sentence(languages):
-    """The answer truncated `ићи се` to `ћи се` and the chip carried a non-word, which
-    is then what a tap submits. Nothing about the name alone shows that; only the words
-    it stands for can. A reflexive particle vouches for nothing — it matches anywhere."""
+def test_a_mangled_name_is_left_to_the_judgement_a_tap_already_asks(languages):
+    """An answer that truncates `ићи се` to `ћи се` puts a non-word on the chip, and
+    the app leaves it there. Comparing written forms cannot tell the two apart — it
+    rejects the correct lemma just as readily, and `fahren` over `fährt` with it. What
+    can tell them apart is asked already: a tap is judged for whether the wording is
+    used at all, so the mangled one buys an honest "no such word", not a bad card."""
     segments = fill_text_segments(
         [{"label": "ћи се", "surface": "ми се ... иде", "why": "x"}],
         "Данас ми се уопште не иде на посао.",
         languages["sr"],
     )
 
-    assert [item.label for item in segments if len(item.label.split()) > 1] == ["ми се иде"]
+    assert [item.label for item in segments if len(item.label.split()) > 1] == ["ћи се"]
 
 
 def test_an_irregular_form_still_lets_the_answer_name_its_unit(languages):

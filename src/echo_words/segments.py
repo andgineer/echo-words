@@ -65,15 +65,12 @@ def fill_text_segments(value: Any, text: str, language: Language) -> list[Segmen
             else ""
         )
         spanned = [words[index] for index in source_order]
-        # The words it spans are the fallback: for a name the submission endpoint would
-        # refuse, and for one that is no form of anything it spans. An answer that
-        # truncated `ићи се` to `ћи се` put a non-word on the chip and in the tap, and
-        # nothing about the name itself could show that — only the sentence can.
-        if (
-            not label
-            or validate_word(label, language) is not None
-            or not _names(label, spanned, language)
-        ):
+        # The only fallback is a name the submission endpoint would refuse, which is
+        # no lookup the reader can make. Whether the name is a real form of what it
+        # spans is not decided here: comparing written forms cannot tell `ићи се` from
+        # `ћи се` — it rejects both, and `fahren` over `fährt` with them. A name that
+        # is not a word is caught where it can be, by the judgement a tap already asks.
+        if not label or validate_word(label, language) is not None:
             label = " ".join(spanned)
         if validate_word(label, language) is not None:
             continue
@@ -215,36 +212,6 @@ def _with_reflexive(
 def _label_tokens(proposal: dict, language: Language) -> list[str]:
     label = display_text(proposal.get("label"), MAX_SURFACE_LENGTH)
     return [fold_for_match(part, language) for part in split_words(label)]
-
-
-def _names(label: str, spanned: list[str], language: Language) -> bool:
-    """Whether the name the answer gave is a form of what it spans.
-
-    A dictionary form shares a stem with the words it stands for — `aufstehen` with
-    `steht`, `вратити се` with `вратио`. One that shares nothing with any of them is
-    not a name for this unit, whatever else it may be.
-    """
-    markers = {fold_for_match(mark, language) for mark in reflexive_markers(language)}
-    parts = [fold_for_match(part, language) for part in split_words(label)]
-    spans = [fold_for_match(word, language) for word in spanned]
-    # A reflexive particle matches everywhere and so vouches for nothing: `ћи се`
-    # against `ми се иде` is carried entirely by its `се`, and `ћи` is not a word.
-    carrying = [part for part in parts if part not in markers] or parts
-    # One carrying word is enough: `give up` names `gave up` through `up` alone, and no
-    # written rule relates `give` to `gave`. What it rules out is a name with no word of
-    # the unit in it at all.
-    return any(_kin(part, span) for part in carrying for span in spans)
-
-
-def _kin(part: str, span: str) -> bool:
-    """Whether two written forms are plausibly the same lexeme: a shared opening, or
-    one carrying the other's opening inside it — `aufstehen` holds `steh` of `steht`."""
-    if part == span:
-        return True
-    if _shares_stem(part, span):
-        return True
-    head = min(MIN_SHARED_STEM, len(part), len(span))
-    return head >= MIN_SHARED_STEM and (span[:head] in part or part[:head] in span)
 
 
 def _accounted(token: str, label: list[str]) -> bool:
