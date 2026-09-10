@@ -67,6 +67,7 @@ beforeEach(async () => {
 
 afterEach(() => {
   locale.value = "en";
+  vi.restoreAllMocks();
 });
 
 describe("EntryCard", () => {
@@ -590,51 +591,59 @@ describe("EntryCard", () => {
     expect(player.attributes()).not.toHaveProperty("autoplay");
   });
 
-  it("plays a recording by itself only on the card just made, and only once", async () => {
+  it("plays a recording the moment it arrives, on the card that is open", async () => {
     await labelBehavior(EPIC.PRONUNCIATION, FEATURE.AUDIO_DELIVERY, "Playback");
-    const entry = {
-      entry_id: "entry-fresh",
-      word: "Word",
-      lang: "en",
-      status: "done",
-      shape: "unit",
-      text: "<b>Word</b> — meaning",
-      audio_url: "/api/audio/pronunciation-aabbccddeeff00112233.mp3",
-      just_finished: true,
-    };
-    const wrapper = card(entry);
+    const play = vi.spyOn(window.HTMLMediaElement.prototype, "play").mockResolvedValue();
+    const pending = { entry_id: "entry-1", word: "Word", lang: "en", status: "pending" };
+    const wrapper = card(pending);
     await nextTick();
 
-    // No `autoplay` attribute drives this: the card asks for the sound itself, once,
-    // and says so, so the one chance can be spent where it survives a reload.
-    expect(wrapper.get("audio.entry-audio").attributes()).not.toHaveProperty("autoplay");
-    expect(wrapper.emitted("played")).toHaveLength(1);
+    expect(play).not.toHaveBeenCalled();
 
-    // Switching away and back is not the card being made again. The card it comes back
-    // to is the one the store has already marked, so nothing is asked for a second time.
-    await wrapper.setProps({ entry: { ...entry, entry_id: "entry-other", just_finished: false } });
-    await wrapper.setProps({ entry: { ...entry, just_finished: false } });
-    await nextTick();
-
-    expect(wrapper.emitted("played")).toHaveLength(1);
-  });
-
-  it("stays silent on a card restored from history, however it was left", async () => {
-    await labelBehavior(EPIC.PRONUNCIATION, FEATURE.AUDIO_DELIVERY, "Playback");
-    const wrapper = card({
-      entry_id: "entry-old",
-      word: "Word",
-      lang: "en",
-      status: "done",
-      shape: "unit",
-      text: "<b>Word</b> — meaning",
-      audio_url: "/api/audio/pronunciation-aabbccddeeff00112233.mp3",
-      just_finished: false,
+    await wrapper.setProps({
+      entry: {
+        ...pending,
+        status: "done",
+        shape: "unit",
+        text: "<b>Word</b> — meaning",
+        audio_url: "/api/audio/pronunciation-aabbccddeeff00112233.mp3",
+      },
     });
     await nextTick();
 
-    expect(wrapper.emitted("played")).toBeUndefined();
-    expect(wrapper.get("audio.entry-audio").attributes()).not.toHaveProperty("autoplay");
+    expect(play).toHaveBeenCalledTimes(1);
+  });
+
+  it("stays silent on a card that already had its recording when it was opened", async () => {
+    await labelBehavior(EPIC.PRONUNCIATION, FEATURE.AUDIO_DELIVERY, "Playback");
+    const play = vi.spyOn(window.HTMLMediaElement.prototype, "play").mockResolvedValue();
+    const finished = {
+      entry_id: "entry-1",
+      word: "Word",
+      lang: "en",
+      status: "done",
+      shape: "unit",
+      text: "<b>Word</b> — meaning",
+      audio_url: "/api/audio/pronunciation-aabbccddeeff00112233.mp3",
+    };
+
+    // Opened from the rail, or restored by a reload: the recording was there before the
+    // card was, so there is no arrival to react to.
+    const wrapper = card(finished);
+    await nextTick();
+    expect(play).not.toHaveBeenCalled();
+
+    // Switching to another finished word is not an arrival either.
+    await wrapper.setProps({
+      entry: {
+        ...finished,
+        entry_id: "entry-2",
+        audio_url: "/api/audio/pronunciation-1122334455667788990a.mp3",
+      },
+    });
+    await nextTick();
+
+    expect(play).not.toHaveBeenCalled();
   });
 
   it("plays the whole text beside the pronunciation of the unit taken from it", async () => {

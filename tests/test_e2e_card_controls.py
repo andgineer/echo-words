@@ -20,7 +20,7 @@ ARTICLE = "<b>Schlüssel</b> — ключ"
 RAIL = '[role="tablist"][aria-label="Analysed words"] [role="tab"]'
 
 # The rail the PWA restores itself from, read out of the browser's own database.
-_STORED_FRESHNESS = """async () => {
+_STORED_KEYS = """async () => {
   const open = indexedDB.open("echo-words", 1);
   const db = await new Promise((resolve, reject) => {
     open.onsuccess = () => resolve(open.result);
@@ -31,7 +31,7 @@ _STORED_FRESHNESS = """async () => {
     read.onsuccess = () => resolve(read.result);
     read.onerror = () => reject(read.error);
   });
-  return (saved?.data ?? []).map((entry) => Boolean(entry.just_finished));
+  return (saved?.data ?? []).flatMap((entry) => Object.keys(entry));
 }"""
 
 
@@ -111,15 +111,15 @@ def _one_second_of_silence(settings: Settings):
     return recording
 
 
-def test_a_recording_speaks_on_the_card_just_made_and_stays_silent_after_a_reload(
+def test_a_recording_speaks_when_it_arrives_and_never_again_from_history(
     page: Page,
     settings: Settings,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The one automatic playback belongs to the card made in front of the reader. A
-    reload restores that same card from the browser's own history, and the entry has to
-    come back already spent: a page that hands the moment out again speaks at a reader
-    who only reopened the app."""
+    """A recording is played when it arrives, if the card that owns it is still the one
+    on screen. There is nothing to carry forward from that: a card restored by a reload
+    has its recording already, so there is no arrival, and the history must hold no mark
+    that could hand the moment out a second time."""
     with live_app(
         settings,
         monkeypatch,
@@ -135,6 +135,6 @@ def test_a_recording_speaks_on_the_card_just_made_and_stays_silent_after_a_reloa
 
         # The silence itself proves little here — a reloaded page has had no gesture
         # from the reader, and the browser would refuse the sound whatever the card
-        # asked for. What has to hold is the reason it will stay silent once a gesture
-        # does arrive: the entry the browser restored is marked as having had its turn.
-        assert page.evaluate(_STORED_FRESHNESS) == [False]
+        # asked for. What has to hold is that nothing was written down to play from:
+        # the restored entry carries no mark of having been fresh.
+        assert "just_finished" not in page.evaluate(_STORED_KEYS)

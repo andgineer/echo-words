@@ -165,12 +165,6 @@ async function retry(entry) {
   await sendWord(entry.word, entry.context || "", entry.requested_shape ?? null, entry.lang);
 }
 
-// The card has had its one chance to speak; clearing the flag on the entry itself is
-// what keeps a reload from handing that chance out again.
-function markPlayed(entry) {
-  upsertEntry({ entry_id: entry.entry_id, just_finished: false });
-}
-
 function removeEntry(entry) {
   upsertEntry({ entry_id: entry.entry_id, hidden: true });
   removedId.value = entry.entry_id;
@@ -267,7 +261,6 @@ async function requestDetail(entry) {
       @paid-answer="entryAction(selectedEntry, 'rebuild')"
       @retry="retry(selectedEntry)"
       @segment="analyseSegment(selectedEntry, $event)"
-      @played="markPlayed(selectedEntry)"
       @remove-entry="removeEntry(selectedEntry)"
       @swipe="swipe"
     />

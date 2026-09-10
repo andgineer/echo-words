@@ -19,7 +19,6 @@ const emit = defineEmits([
   "swipe",
   "paid-answer",
   "remove-entry",
-  "played",
 ]);
 
 const SWIPE_THRESHOLD = 55;
@@ -131,23 +130,16 @@ function tick(which, event) {
   progress.value = element.duration ? (element.currentTime / element.duration) * 100 : 0;
 }
 
-// A recording plays by itself exactly once: when the card it belongs to was just
-// made, in front of the reader. Reopening that card, switching back to it, or
-// reloading the page finds it silent, and the button is there to press.
-//
-// The one chance is spent by clearing the entry's own flag rather than by remembering
-// what has played: a set of played recordings dies with the page, and the flag does
-// not, so every reload found the same cards still "just made" and spoke again. Spent
-// on the spot, whether or not the browser let the sound out — a card the reader
-// swiped away from before it could speak has still had its moment.
+// The recording is played the moment it arrives, if the card that owns it is still
+// the one on screen. Nothing is remembered and nothing is stored: a card opened again,
+// or restored by a reload, has no arrival to react to and waits for the button.
 watch(
-  () => [props.entry.entry_id, props.entry.audio_url, props.entry.just_finished],
-  ([id, url, fresh]) => {
-    if (!(id && url && fresh)) return;
-    emit("played");
+  () => [props.entry.entry_id, props.entry.audio_url],
+  ([id, url], [shownId, hadUrl]) => {
+    if (!url || hadUrl || id !== shownId) return;
     void wordAudio.value?.play?.()?.catch?.(() => {});
   },
-  { immediate: true, flush: "post" },
+  { flush: "post" },
 );
 
 watch(

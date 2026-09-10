@@ -511,17 +511,13 @@ both in the answer entry and on the flashcard.
   - In the app: the pronunciation is attached to the answer entry —
     one tap to hear, replayable from the history. Where the whole text
     is voiced beside a unit, it has a button of its own, drawn to say that
-    what it plays is the text and not the word. A recording
-    starts by itself exactly once: on the card just made, in front of the
-    user. Reopening that card, switching back to it from another word or
-    reloading the page finds it silent, because a card being looked at
-    again is not a card being made, and a recording that plays every time
-    the entry is shown is noise the user did not ask for. The one chance is
-    spent when the card is shown, whether or not the sound came out: a reader
-    who swiped away before it could speak, or a browser that refused it, has
-    had the moment all the same. It is spent on the entry itself and stored
-    with it, because anything the page remembers dies with the page and the
-    history outlives it.
+    what it plays is the text and not the word. A recording plays by
+    itself when it arrives, and only if the card that owns it is still the
+    one on screen. That is the whole rule: nothing is written down and
+    nothing is remembered, so a card opened from the rail, switched back to,
+    or restored by a reload has no arrival to react to and waits for the
+    button. A recording that plays every time the entry is shown is noise the
+    user did not ask for.
   - Anki: the audio of the carded unit is attached to the card front, so
     it plays during review. The audio of a surrounding text never is.
 - **Resilience**: submitted-text audio starts in parallel with the LLM call
