@@ -55,8 +55,8 @@
         </aside>
         <h2>
             <span class="text">344 statements &nbsp;</span>
-            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">322<span class="text"> run</span></button>
-            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">22<span class="text"> missing</span></button>
+            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">323<span class="text"> run</span></button>
+            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">21<span class="text"> missing</span></button>
             <button type="button" class="exc show_exc button_toggle_exc" value="exc" data-shortcut="x" title="Toggle lines excluded">0<span class="text"> excluded</span></button>
         </h2>
         <p class="text">
@@ -65,7 +65,7 @@
             <a id="nextFileLink" class="nav" href="z_7696b2d023042320_api_backend_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.15.4">coverage.py v7.15.4</a>,
-            created at 2026-09-08 11:17 +0000
+            created at 2026-09-10 04:06 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -476,7 +476,7 @@
     <p class="run"><span class="n"><a id="t394" href="#t394">394</a></span><span class="t">            <span class="key">raise</span> <span class="nam">HTTPException</span><span class="op">(</span><span class="nam">status_code</span><span class="op">=</span><span class="num">410</span><span class="op">,</span> <span class="nam">detail</span><span class="op">=</span><span class="str">&quot;request expired&quot;</span><span class="op">)</span> <span class="key">from</span> <span class="nam">exc</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t395" href="#t395">395</a></span><span class="t">        <span class="key">except</span> <span class="nam">BackendError</span> <span class="key">as</span> <span class="nam">exc</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t396" href="#t396">396</a></span><span class="t">            <span class="key">raise</span> <span class="nam">HTTPException</span><span class="op">(</span><span class="nam">status_code</span><span class="op">=</span><span class="num">409</span><span class="op">,</span> <span class="nam">detail</span><span class="op">=</span><span class="nam">str</span><span class="op">(</span><span class="nam">exc</span><span class="op">)</span><span class="op">)</span> <span class="key">from</span> <span class="nam">exc</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t397" href="#t397">397</a></span><span class="t">        <span class="key">return</span> <span class="op">{</span><span class="str">&quot;entry_id&quot;</span><span class="op">:</span> <span class="nam">entry</span><span class="op">.</span><span class="nam">entry_id</span><span class="op">,</span> <span class="str">&quot;queued&quot;</span><span class="op">:</span> <span class="key">True</span><span class="op">}</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t397" href="#t397">397</a></span><span class="t">        <span class="key">return</span> <span class="op">{</span><span class="str">&quot;entry_id&quot;</span><span class="op">:</span> <span class="nam">entry</span><span class="op">.</span><span class="nam">entry_id</span><span class="op">,</span> <span class="str">&quot;queued&quot;</span><span class="op">:</span> <span class="key">True</span><span class="op">}</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t398" href="#t398">398</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t399" href="#t399">399</a></span><span class="t">    <span class="op">@</span><span class="nam">app</span><span class="op">.</span><span class="nam">post</span><span class="op">(</span><span class="str">&quot;/api/words/{entry_id}/detail&quot;</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t400" href="#t400">400</a></span><span class="t">    <span class="key">async</span> <span class="key">def</span> <span class="nam">detail_word</span><span class="op">(</span><span class="nam">request</span><span class="op">:</span> <span class="nam">Request</span><span class="op">,</span> <span class="nam">entry_id</span><span class="op">:</span> <span class="nam">str</span><span class="op">)</span> <span class="op">-&gt;</span> <span class="nam">dict</span><span class="op">[</span><span class="nam">str</span><span class="op">,</span> <span class="nam">object</span><span class="op">]</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
@@ -691,7 +691,7 @@
             <a class="nav" href="z_7696b2d023042320_api_backend_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.15.4">coverage.py v7.15.4</a>,
-            created at 2026-09-08 11:17 +0000
+            created at 2026-09-10 04:06 +0000
         </p>
     </div>
 </footer>
