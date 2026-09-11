@@ -29,8 +29,8 @@ What one word gets you:
   hard parts, and turns every useful word or expression into a one-tap lesson
 * **a deeper entry on demand** — one tap asks the strongest model for rare senses,
   deeper etymology, near-synonyms, and the mistakes learners make
-* **private and free by default** — tailnet-only, no application database, and a
-  pool of free LLM providers; the optional paid model is capped
+* **light enough for the cheapest server** — runs on a 1 GB free-tier VM with no
+  application database; answers come from a pool of free LLM providers
 
 # Documentation
 
