@@ -2,11 +2,12 @@
 [![Coverage](https://raw.githubusercontent.com/andgineer/echo-words/python-coverage-comment-action-data/badge.svg)](https://htmlpreview.github.io/?https://github.com/andgineer/echo-words/blob/python-coverage-comment-action-data/htmlcov/index.html)
 # echo-words
 
-A private AI vocabulary tutor for every word you meet. Send a word, phrase, or
-whole sentence, and echo-words explains what a dictionary will not: distinct
-senses and registers, real usage, origins, and examples worth remembering. It
-also creates the Anki material for you — four cards that test one selected sense
-in both directions, with natural pronunciation — in the deck you already review.
+**From a word you meet to a word you remember.**
+
+Understand words and expressions in context, hear their pronunciation, and send
+audio-backed flashcards straight to AnkiWeb — ready to sync into the Anki apps
+you already use.
+
 echo-words explains; Anki makes you remember.
 
 <table>
@@ -17,58 +18,66 @@ echo-words explains; Anki makes you remember.
 </tr>
 </table>
 
-What one word gets you:
+* **Understand the word.** Explore meanings, register, collocations, and translated
+  examples. Choose the sense you want to learn.
+* **Learn from a sentence.** Get a translation and an explanation of the difficult
+  parts, then tap a word or expression to explore it.
+* **Keep it in Anki.** Each selected sense becomes four cards covering recognition
+  and production, with and without context, in its source-language deck.
 
-* **an explanation, not just a translation** — distinct senses and registers,
-  collocations, prepositions, common confusions, origins, and translated examples;
-  a phrase is taught as a whole while its words remain available as chips
-* **one selected sense, reviewed four ways** — word and context test recognition
-  and production; every other sense stays one tap away from its own note
-* **a real voice, not a robot** — natural-sounding audio in the app and on the cards
-* **a whole sentence becomes a lesson** — echo-words translates it, explains the
-  hard parts, and turns every useful word or expression into a one-tap lesson
-* **a deeper entry on demand** — one tap asks the strongest model for rare senses,
-  deeper etymology, near-synonyms, and the mistakes learners make
-* **light enough for the cheapest server** — runs on a 1 GB free-tier VM with no
-  application database; answers come from a pool of free LLM providers
+[Documentation](https://andgineer.github.io/echo-words/)
 
-# Documentation
+## Under the hood
 
-[echo-words](https://andgineer.github.io/echo-words/)
+**Getting a complete answer from a changing model pool.** Free LLM providers vary
+in availability, speed, and instruction-following. Through llmbroker, echo-words
+races two models and selects the first complete, usable answer. Streaming lets the
+reader start earlier; recovery preserves an existing explanation if card creation
+fails.
+
+If your application needs a pool of free LLM providers with automatic failover and
+streaming, [llmbroker](https://github.com/andgineer/llmbroker) is available as a
+standalone Python library.
+
+**Checking what the cards actually teach.** Valid JSON can still contain the wrong
+meaning, an invented origin, or a word from the wrong language. Model-facing changes
+go through real-model benchmarks and a separate agent's review of the concrete
+answers. The [evaluation records](spec/decision-llm-backend.md) document both
+findings and remaining limitations.
+
+**Keeping the backend operational in less than 1G.** FastAPI serves the Vue PWA and maintains Anki through
+its headless Python library, syncing directly with AnkiWeb. There is no separate
+application database or running Anki desktop instance. Access to the web app is
+restricted to a Tailscale network.
+
+### Development process
+
+In this project, I experimented with a staged AI development workflow: Fable for
+design, sol for the initial implementation with iterative reviews automatically
+coordinated by Astra, and Opus for subsequent fixes, coordinating its own review
+cycles.
+
+The continuity between those stages lives in the repository: a functional
+specification, decision records, and working plans. [Agent instructions](AGENTS.md)
+define the verification gates, including browser tests and real-model evaluation
+for changes to prompts or answer handling.
 
 <details>
-<summary><b>Development</b></summary>
+<summary><b>Contributing</b></summary>
 
 ```bash
 uv sync
 npm --prefix webapp ci
-inv dev     # http://127.0.0.1:8080
-inv test    # Python + frontend suites
-inv pre     # ruff, ruff-format, pyrefly, file hygiene
-```
-
-`inv test` silently skips the frontend suite when `webapp/node_modules` is
-missing, so `npm ci` is part of the setup, not an optional extra. Never call
-Ruff directly — `inv pre` is the only gate that matches CI.
-
-Deployment is `invoke` over ssh, and the frontend is built on the VM by the
-deploy itself:
-
-```bash
-inv setup-app --with-host-prep   # one-time, idempotent
-inv deploy --ref=main
-inv status
-inv logs
+uv run playwright install chromium
+uv run inv dev     # http://127.0.0.1:8080
+uv run inv pre     # lint, format, type-check, file hygiene
+uv run inv test    # Python + frontend suites
 ```
 
 See [Development](https://andgineer.github.io/echo-words/development/) and
 [Deploy to Oracle Cloud](https://andgineer.github.io/echo-words/deploy-oracle/)
 in the docs.
 
-## Reports
-
-* [Allure test report](https://andgineer.github.io/echo-words/builds/tests/)
+[Allure test report](https://andgineer.github.io/echo-words/builds/tests/)
 
 </details>
-
-> Created with cookiecutter using [template](https://github.com/andgineer/cookiecutter-python-package)
