@@ -199,7 +199,7 @@ def build_static(c: Context):
 
 @task(name="readme-screenshots")
 def readme_screenshots(c: Context):
-    """Rebuild the PWA and capture README screenshots from stable demo data."""
+    """Rebuild the PWA and capture the README and docs screenshots from stable demo data."""
     c.run("uv run python scripts/capture_readme_screenshots.py")
 
 

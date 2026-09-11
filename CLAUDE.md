@@ -68,6 +68,7 @@ tool looks for.
 | Browser e2e only | `uv run pytest -m e2e` |
 | Dev server (auto-reload) | `uv run inv dev` |
 | Build the PWA into `_static/` | `uv run inv build-static` |
+| Recapture the README and docs screenshots after a visible UI change | `uv run inv readme-screenshots` |
 | List every task | `uv run inv --list` |
 
 The `uv run` prefix is optional inside an activated `.venv`.

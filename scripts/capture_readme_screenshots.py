@@ -1,4 +1,4 @@
-"""Rebuild the PWA and capture the three README screenshots from stable demo data."""
+"""Rebuild the PWA and capture the README and docs screenshots from stable demo data."""
 
 import argparse
 import asyncio
@@ -15,10 +15,12 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.responses import Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import Browser, Locator, Page, ViewportSize, expect, sync_playwright
 
 REPO = Path(__file__).resolve().parents[1]
 SCREENSHOTS = REPO / "docs" / "common" / "images" / "screenshots"
+VIEWPORT: ViewportSize = {"width": 390, "height": 640}
+PAGE_MARGIN = 16
 
 WORD_ENTRY = {
     "entry_id": "word-demo",
@@ -50,8 +52,14 @@ WORD_ENTRY = {
             "reason": "for freedom",
             "context": "Sie spürte Sehnsucht nach Freiheit.",
         },
+        {
+            "label": "Sehnsucht",
+            "reason": "for home",
+            "context": "Die Sehnsucht nach der Heimat wurde immer stärker.",
+        },
     ],
     "segment_kind": "senses",
+    "carded_sense": 0,
     "card_status": "added",
     "card_kinds": [
         "Recognition",
@@ -96,6 +104,52 @@ TEXT_ENTRY = {
     "detail_available": False,
 }
 
+SERBIAN_ENTRY = {
+    "entry_id": "cyrillic-demo",
+    "word": "инат",
+    "lang": "sr",
+    "language": "Српски",
+    "lookup_only": False,
+    "status": "done",
+    "shape": "unit",
+    "text": (
+        "<b>spite</b> (colloquial); <b>defiance</b> (neutral)\n\n"
+        "Noun, masculine; plural <i>инати</i>. Stubborn contrariness: doing something "
+        "precisely because someone is against it, even at one's own cost. Most often in "
+        "<i>из ината</i> “out of spite” and <i>терати инат</i> “to be contrary.”\n\n"
+        "<b>Origin.</b> From Turkish <i>inat</i> “obstinacy,” itself from Arabic "
+        "<i>ʿinād</i>.\n\n"
+        "<b>Examples</b>\n"
+        "<i>Урадио је то из ината.</i> — He did it out of spite.\n"
+        "<i>Престани да тераш инат.</i> — Stop being so contrary."
+    ),
+    "audio_url": "/demo.wav",
+    "segments": [
+        {"label": "инат", "reason": "out of spite", "context": "Урадио је то из ината."},
+        {"label": "инат", "reason": "in defiance", "context": "Живео је дуго, свима у инат."},
+        {"label": "инат", "reason": "stubbornness", "context": "Престани да тераш инат."},
+    ],
+    "segment_kind": "senses",
+    "carded_sense": 0,
+    "card_status": "added",
+    "card_kinds": [
+        "Recognition",
+        "Recall",
+        "ContextRecognition",
+        "ContextProduction",
+    ],
+    "detail_available": True,
+}
+
+# The PWA keeps its history on the device, and reads this localStorage copy when
+# IndexedDB holds none.
+SEED_HISTORY = """entries => {
+    const now = Date.now();
+    localStorage.setItem("echo-words.cache.v1:history", JSON.stringify(
+        { key: "history", data: entries, fetchedAt: now, attemptedAt: now, updatedAt: now },
+    ));
+}"""
+
 
 def silent_wav() -> bytes:
     buffer = io.BytesIO()
@@ -119,9 +173,84 @@ async def languages():
     ]
 
 
-@app.get("/api/words/recent")
-async def recent():
-    return [WORD_ENTRY, TEXT_ENTRY]
+@app.get("/api/stats")
+async def stats():
+    return {
+        "languages": {
+            "en": {
+                "name": "English",
+                "today": 3,
+                "last_7_days": 18,
+                "all_time": 412,
+                "lookup_only": 1,
+            },
+            "de": {
+                "name": "Deutsch",
+                "today": 5,
+                "last_7_days": 31,
+                "all_time": 687,
+                "lookup_only": 2,
+            },
+            "sr": {
+                "name": "Српски",
+                "today": 2,
+                "last_7_days": 9,
+                "all_time": 143,
+                "lookup_only": 0,
+            },
+        },
+        "session_counters_since": "startup",
+    }
+
+
+def language_status(name: str, deck: str, model: str, at: str) -> dict[str, object]:
+    return {
+        "name": name,
+        "deck": deck,
+        "paid_alias": "gpt-fast",
+        "paid_available_today": True,
+        "paid_refusal": None,
+        "last_call": {"model": model, "paid": False, "ok": True, "at": at, "error": None},
+    }
+
+
+@app.get("/api/status")
+async def status():
+    return {
+        "pool": {
+            "available": True,
+            "providers_usable": 4,
+            "providers_total": 4,
+            "degraded": False,
+            "missing_keys": [],
+            "direct_missing_keys": [],
+        },
+        "paid_calls": {"today": 1, "daily_cap": 100},
+        "languages": {
+            "en": language_status(
+                "English", "EchoWords: English", "groq-gpt-oss-120b", "2026-09-11T09:41:00Z"
+            ),
+            "de": language_status(
+                "Deutsch",
+                "EchoWords: German",
+                "google-gemini-3.5-flash-lite",
+                "2026-09-11T14:52:00Z",
+            ),
+            "sr": language_status(
+                "Српски",
+                "EchoWords: Serbian",
+                "google-gemini-3.5-flash-lite",
+                "2026-09-11T14:37:00Z",
+            ),
+        },
+        "anki": {
+            "last_result": "ok",
+            "last_sync_at": "2026-09-11T15:05:00Z",
+            "unsynced_changes": False,
+            "full_sync_required": False,
+            "error": None,
+        },
+    }
 
 
 @app.get("/api/events")
@@ -139,7 +268,13 @@ async def audio():
     return Response(silent_wav(), media_type="audio/wav")
 
 
-app.mount("/", StaticFiles(directory=REPO / "_static", html=True), name="static")
+# The e2e suite imports this module, and a missing build must fail that one test
+# rather than the collection of the whole suite.
+app.mount(
+    "/",
+    StaticFiles(directory=REPO / "_static", html=True, check_dir=False),
+    name="static",
+)
 
 
 @contextlib.contextmanager
@@ -161,8 +296,77 @@ def live_server() -> Iterator[str]:
         thread.join(timeout=10)
 
 
-def capture(*, build: bool = True) -> None:
-    if build:
+def settled_card(page: Page) -> Locator:
+    """The card slides in on every switch; a shot taken mid-slide is off-centre and faded."""
+    card = page.locator(".deck")
+    expect(card).to_have_css("transform", "matrix(1, 0, 0, 1, 0, 0)")
+    expect(card).to_have_css("opacity", "1")
+    return card
+
+
+def shot_down_to(page: Page, card: Locator, path: Path) -> None:
+    """A page shorter than the screen is cut under its card, not padded with empty ground."""
+    box = card.bounding_box()
+    if box is None:
+        raise RuntimeError(f"nothing on the page to photograph for {path.name}")
+    page.screenshot(
+        path=path,
+        animations="disabled",
+        full_page=True,
+        clip={
+            "x": 0,
+            "y": 0,
+            "width": VIEWPORT["width"],
+            "height": box["y"] + box["height"] + PAGE_MARGIN,
+        },
+    )
+
+
+def capture(browser: Browser, url: str, out: Path) -> None:
+    context = browser.new_context(
+        viewport=VIEWPORT,
+        device_scale_factor=2,
+        color_scheme="dark",
+        locale="en-US",
+        timezone_id="UTC",
+    )
+    try:
+        page = context.new_page()
+        page.goto(url)
+        page.evaluate(SEED_HISTORY, [WORD_ENTRY, TEXT_ENTRY, SERBIAN_ENTRY])
+        page.reload(wait_until="networkidle")
+        page.get_by_role("tab", name="Deutsch", exact=True).click()
+        page.get_by_placeholder("a word or a phrase").fill("sich verlassen auf")
+        settled_card(page)
+        page.screenshot(path=out / "add-word.png", animations="disabled")
+
+        page.get_by_placeholder("a word or a phrase").fill("")
+        page.get_by_role("tab", name="Sehnsucht", exact=True).click()
+        settled_card(page).screenshot(path=out / "card-added.png", animations="disabled")
+
+        page.get_by_role("tab", name=SENTENCE, exact=True).click()
+        settled_card(page).screenshot(path=out / "sentence.png", animations="disabled")
+
+        page.get_by_role("tab", name="Српски", exact=True).click()
+        settled_card(page).screenshot(path=out / "cyrillic-card.png", animations="disabled")
+
+        for view, name in (("Stats", "stats.png"), ("Status", "status.png")):
+            page.get_by_role("tab", name=view, exact=True).click()
+            card = page.locator(".app-main > .card")
+            expect(card.get_by_role("heading", name=view, exact=True)).to_be_visible()
+            shot_down_to(page, card, out / name)
+    finally:
+        context.close()
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--skip-build",
+        action="store_true",
+        help="capture the already-built _static bundle",
+    )
+    if not parser.parse_args().skip_build:
         subprocess.run(
             [sys.executable, "-m", "invoke", "build-static"],
             cwd=REPO,
@@ -171,32 +375,9 @@ def capture(*, build: bool = True) -> None:
     SCREENSHOTS.mkdir(parents=True, exist_ok=True)
     with live_server() as url, sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)
-        context = browser.new_context(
-            viewport={"width": 390, "height": 640},
-            device_scale_factor=2,
-            color_scheme="dark",
-            locale="en-US",
-        )
-        page = context.new_page()
-        page.goto(url, wait_until="networkidle")
-        page.get_by_role("tab", name="Deutsch", exact=True).click()
-        page.get_by_placeholder("a word or a phrase").fill("sich verlassen auf")
-        page.screenshot(path=SCREENSHOTS / "add-word.png")
-
-        page.get_by_placeholder("a word or a phrase").fill("")
-        page.get_by_role("tab", name="Sehnsucht", exact=True).click()
-        page.locator(".deck").screenshot(path=SCREENSHOTS / "card-added.png")
-
-        page.get_by_role("tab", name=SENTENCE, exact=True).click()
-        page.locator(".deck").screenshot(path=SCREENSHOTS / "sentence.png")
+        capture(browser, url, SCREENSHOTS)
         browser.close()
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--skip-build",
-        action="store_true",
-        help="capture the already-built _static bundle",
-    )
-    capture(build=not parser.parse_args().skip_build)
+    main()
