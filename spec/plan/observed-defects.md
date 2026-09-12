@@ -1,6 +1,6 @@
 # Implementation plan — defects seen in use and in the bench, none of them fixed yet
 
-Twenty items, from three readings.
+Twenty-one items, from four readings.
 
 Items 1 to 5, 16 and 17 were found while running the app against the real provider
 keys and reading what it did. Each was reproduced and has its evidence written
@@ -18,6 +18,9 @@ run directories are not checked in and the evidence has to outlive them.
 Item 20 comes from neither: an audit of what the deployed host had actually
 cached, which is what showed that the head of the audio chain had been answering
 nothing at all.
+
+Item 21 comes from a fourth: asking Commons itself, through the URL the app
+derives, for forty everyday words of two languages.
 
 The items are independent. None blocks another, and each is finished on its own.
 
@@ -327,6 +330,32 @@ New cards are unaffected: the head of the chain reaches Wikimedia Commons now.
 The 42 are a maintenance pass of its own — fetch each headword again and attach
 the media to its existing note — and it **needs the operator's word before
 anything writes to the collection**, which is why it is here rather than done.
+
+## 21. A recording filed under another extension is invisible to the app
+
+The app asks for the mp3 transcode of `{prefix}-{word}.ogg`. A recording uploaded
+as `.oga` or as `.wav` is published under that name instead, at a path the app
+never asks for, so a word Commons has is missed as though it had none:
+`Pt-br-casa.ogg` answers 404 while `Pt-br-casa.wav` answers 200.
+
+Measured 13 Sep 2026 through the app's own derived URL, twenty everyday words per
+language, requests at least 1.5 s apart. French answered 15 of 20, and not one of
+the five misses was reachable under `.oga` or `.wav`. Brazilian Portuguese
+answered 6 of 20, and two of its fourteen misses — `casa` and `cachorro` — answered
+under `.wav`. So of the 19 words the app misses across the two languages, 2 are
+extension misses and 17 are words Commons does not hold under that prefix at all.
+The gap is real and it is about a tenth of the shortfall, not the bulk of it.
+
+Closing it needs no API call: the media handler publishes an mp3 transcode of an
+`.oga` and a `.wav` at the same derived path, so the step would ask for the other
+two names when the `.ogg` misses. The deadline is not the obstacle — one or two
+more requests, each measured at ~0.2 s, inside a step budgeted 3 s. The throttle
+is: a miss is the common case in Portuguese, so this triples the requests a
+session makes, against a service that answered 429 to fourteen fired back to back.
+
+Recording it is not accepting it. Two words in forty for triple the requests is a
+trade worth stating plainly and worth nobody making silently; whether the app
+takes it is the operator's call.
 
 ## What is deliberately not here
 

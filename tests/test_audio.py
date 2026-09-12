@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+import logging
 import sys
 import threading
 import time
@@ -77,6 +78,44 @@ async def test_the_commons_url_is_derived_from_the_file_name_md5(
     assert requested == [f"{COMMONS}/4/4c/De-schneiden.ogg/De-schneiden.ogg.mp3"]
 
 
+@pytest.mark.parametrize(
+    ("code", "prefix", "word", "directories", "escaped"),
+    [
+        ("ru", "Ru", "дом", "1/16", "Ru-%D0%B4%D0%BE%D0%BC.ogg"),
+        ("pt", "Pt-br", "água", "6/6d", "Pt-br-%C3%A1gua.ogg"),
+    ],
+)
+async def test_the_commons_directories_hash_the_name_before_it_is_escaped(
+    languages,
+    settings,
+    monkeypatch,
+    code,
+    prefix,
+    word,
+    escaped,
+    directories,
+):
+    """Commons hashes the file name itself, never its percent-encoded spelling.
+    Digesting the escaped name sends every accented and Cyrillic word to a path
+    that answers 404, which the chain cannot tell from a word Commons lacks."""
+    requested = []
+
+    def handler(request):
+        requested.append(str(request.url))
+        return httpx.Response(200, content=b"commons mp3")
+
+    monkeypatch.setattr(
+        audio,
+        "_piper_audio",
+        AsyncMock(side_effect=AssertionError("Piper must not run after a hit")),
+    )
+    language = replace(languages["de"], code=code, recordings=prefix)
+    async with mock_client(handler) as client:
+        await audio.fetch_pronunciation(word, language, settings=settings, client=client)
+
+    assert requested == [f"{COMMONS}/{directories}/{escaped}/{escaped}.mp3"]
+
+
 async def test_a_word_commons_does_not_have_falls_through_to_the_voice(
     languages,
     settings,
@@ -134,6 +173,45 @@ async def test_a_throttled_commons_leaves_the_word_to_the_voice(
     assert result is not None
     assert result.read_bytes() == b"piper"
     assert len(requested) == 1
+
+
+@pytest.mark.parametrize(
+    ("status", "level"),
+    [
+        (404, logging.INFO),
+        (429, logging.WARNING),
+        (503, logging.WARNING),
+    ],
+)
+async def test_only_an_unexpected_commons_answer_is_worth_a_warning(
+    languages,
+    settings,
+    monkeypatch,
+    caplog,
+    status,
+    level,
+):
+    """Commons has no recording of a good share of the ordinary words of several
+    configured languages, so warning on that would warn in normal operation and stop
+    telling the operator anything about the throttles and outages the log is kept for."""
+
+    async def fake_piper(_word, _lang, output, _settings):
+        output.write_bytes(b"piper")
+        return True
+
+    monkeypatch.setattr(audio, "_piper_audio", fake_piper)
+    with caplog.at_level(logging.INFO, logger=audio.logger.name):
+        async with mock_client(lambda _request: httpx.Response(status)) as client:
+            await audio.fetch_pronunciation(
+                "Haus",
+                languages["de"],
+                settings=settings,
+                client=client,
+            )
+
+    missed = [record for record in caplog.records if "no Commons recording" in record.getMessage()]
+    assert [record.levelno for record in missed] == [level]
+    assert [str(status) in record.getMessage() for record in missed] == [True]
 
 
 async def test_a_commons_that_never_answers_leaves_the_word_to_the_voice(

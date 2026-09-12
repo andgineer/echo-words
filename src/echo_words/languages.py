@@ -121,13 +121,8 @@ def _language_from_entry(code: str, entry: object, path: Path) -> Language:
 
 
 def _recordings_prefix(code: str, accent: object) -> str | None:
-    """The Commons prefix a table naming a dictionary code and an accent stands for.
-
-    A file written before the two became one keeps its recordings instead of losing
-    them to the deploy that reads it. The prefix is the directory's measured one
-    rather than the code spelled with a capital: half the codes are filed under
-    something else, and a guess costs a round trip per word and finds nothing.
-    """
+    """The prefix a table naming a dictionary code and an accent stands for, so that a
+    file already written keeps its recordings through the deploy that reads it."""
     reference = catalog_language(code)
     prefix = reference.recordings if reference is not None else None
     suffix = _optional(accent)

@@ -478,10 +478,11 @@ both in the answer entry and on the flashcard.
   beside it, the whole text that unit came from. Running text, which
   makes no note at all, is still voiced whole in the app.
 - **Source priority**: a real native-speaker recording from Wikimedia
-  Commons when one exists (for the languages it covers — English,
-  German; Serbian has next to none). When no recording exists
-  (phrases, rare words, unsupported languages), generate audio with a
-  free TTS engine, **local where a usable voice model exists** — local
+  Commons when one exists, for every language the directory carries a
+  recording prefix for; Turkish and Serbian carry none, because Commons
+  has next to no word recordings of either. When no recording exists
+  (phrases, rare words, a language with no prefix), generate audio with
+  a free TTS engine, **local where a usable voice model exists** — local
   so that audio keeps working with no external service to break: Piper
   for English and German (Piper's voices fit the 1 GB host). Serbian
   has no usable local voice model at all (the decision record

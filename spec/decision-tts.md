@@ -138,7 +138,11 @@ the one deployment target — the 1 GB (+ swap) micro instance:
   found, and a word Commons does not have answers in a quarter of a
   second. The step is given 3 s of its own against that worst case, and
   a miss, a throttle, a timeout or any other error falls through to the
-  next step silently, logged with whatever it failed on. Nothing is
+  next step silently. Only the failures that are not an ordinary miss —
+  a throttle, a server error, a timeout — are logged as warnings: the
+  log is kept so that a change in Commons' behaviour is visible in it,
+  and Commons having no recording of a word is normal for most of the
+  configured languages, so warning on that would bury the rest. Nothing is
   remembered as a miss: the next step writes its own recording at the
   same cache path, so a word that missed once never reaches Commons
   again. The request names the app and its repository, which Wikimedia's
@@ -148,11 +152,17 @@ the one deployment target — the 1 GB (+ swap) micro instance:
   so the choice between the American and the British recordings of an
   English word is the same setting as the choice to have recordings at
   all, and Spanish and Portuguese are carded in the Latin American and
-  Brazilian recordings their prefixes name. Every prefix in the language
-  directory was put there by asking Commons for ordinary words of that
-  language: German, French, Italian, Russian and American English answer
-  nearly all of them, Latin American Spanish and Brazilian Portuguese a
-  useful minority. Where Commons answers for none of a language's
+  Brazilian recordings their prefixes name. What a prefix is worth is
+  measured through the URL the app itself derives, never by asking
+  whether Commons holds a file of that name: a recording uploaded under
+  another extension is published at a name the app never asks for, so it
+  counts for the reader as an absence. Measured that way on 13 Sep 2026,
+  twenty everyday words apiece: German and Russian answered all twenty,
+  American English 18, French 15, Italian 12, Brazilian Portuguese 6,
+  Latin American Spanish 3. A thin prefix is still worth carrying — the
+  words it does answer are spoken by a human, and the words it misses
+  cost one request of about a fifth of a second before the engines
+  speak. Where Commons answers for none of a language's
   ordinary words it carries no prefix rather than a plausible guess,
   because a prefix nothing is filed under costs a wasted round trip
   inside the answer's deadline for every word of that language. Turkish

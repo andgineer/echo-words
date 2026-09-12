@@ -220,7 +220,11 @@ async def _commons_recording(
         timeout=RECORDING_TIMEOUT_SECONDS,
     )
     if response.status_code != httpx.codes.OK:
-        logger.warning(
+        # Commons having no recording of a word is ordinary and says nothing; the log
+        # is watched for Commons answering differently, which every other status is.
+        ordinary = response.status_code == httpx.codes.NOT_FOUND
+        logger.log(
+            logging.INFO if ordinary else logging.WARNING,
             "no Commons recording for %s/%r: HTTP %s",
             lang.code,
             word,
