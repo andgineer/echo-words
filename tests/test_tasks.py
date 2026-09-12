@@ -48,6 +48,11 @@ def test_host_prep_provisions_swap_hardening_and_bounded_journal():
     assert "/etc/systemd/journald.conf.d/echo-words.conf" in script
     assert "SystemMaxUse=200M" in script
     assert "MaxRetentionSec=3month" in script
+    assert "/etc/sysctl.d/99-echo-words.conf" in script
+    assert "vm.swappiness=10" in script
+    assert script.index("vm.swappiness=10") < script.index(
+        "sudo sysctl -p /etc/sysctl.d/99-echo-words.conf",
+    )
 
 
 def test_host_prep_never_fails_on_the_firewall_recheck():

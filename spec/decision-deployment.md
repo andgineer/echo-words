@@ -53,11 +53,19 @@ removes the memory constraints.)
   (`SystemMaxUse=200M`) and by age (`MaxRetentionSec=3month`), so a quiet
   box does not keep records past the horizon llmbroker's own call journal
   holds itself to.
+- **The kernel reclaims the page cache before the voices** —
+  `vm.swappiness=10` in `/etc/sysctl.d/99-echo-words.conf`. At the
+  default of 60 the box trades a day-idle Piper voice for file cache
+  while nothing is being asked of it, and the first word of the next
+  session waits for ~110 MB of weights to come back from the block
+  device instead of the 0.13 s a loaded voice costs. The swap file stays
+  as insurance for a real spike; this only decides what gets written
+  there first.
 - **The unit stays memory-bounded anyway** — `MemoryHigh=600M` /
   `MemoryMax=700M`. Not to protect a neighbour, there is none, but so a
   runaway is killed as itself instead of taking the box down and
   stranding dinary's replica target. The budget is ~70 MB uvicorn plus
-  the collection plus every configured Piper voice held loaded, and both
+  the collection plus the Piper voices the app keeps loaded, and both
   terms are measured on this box: 103 MB peak for pylib with the real
   collection, and ~110 MB for a loaded medium voice.
 - **Tailscale is the front door.** The backend binds `127.0.0.1:8080`

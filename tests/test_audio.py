@@ -666,3 +666,90 @@ async def test_cancelled_piper_inference_cannot_publish_late_audio(
 
     assert await asyncio.to_thread(finished.wait, 1)
     assert list((settings.data_dir / "audio").glob("pronunciation-*.mp3")) == []
+
+
+def test_only_the_two_most_recent_voices_stay_loaded(tmp_path, monkeypatch):
+    loaded = []
+
+    def fake_load(model, *, config_path):
+        loaded.append(model)
+        return SimpleNamespace(model=model)
+
+    monkeypatch.setitem(
+        sys.modules,
+        "piper",
+        SimpleNamespace(PiperVoice=SimpleNamespace(load=fake_load)),
+    )
+    models = [tmp_path / f"voice{index}.onnx" for index in range(3)]
+
+    for model in models:
+        audio._load_voice(model, model.with_suffix(".json"))
+
+    assert list(audio._VOICES) == models[1:]
+    assert loaded == [str(model) for model in models]
+
+
+def test_a_voice_spoken_again_outlives_the_one_loaded_after_it(tmp_path, monkeypatch):
+    monkeypatch.setitem(
+        sys.modules,
+        "piper",
+        SimpleNamespace(
+            PiperVoice=SimpleNamespace(load=lambda model, *, config_path: SimpleNamespace()),
+        ),
+    )
+    first, second, third = (tmp_path / f"voice{index}.onnx" for index in range(3))
+
+    audio._load_voice(first, first.with_suffix(".json"))
+    audio._load_voice(second, second.with_suffix(".json"))
+    audio._load_voice(first, first.with_suffix(".json"))
+    audio._load_voice(third, third.with_suffix(".json"))
+
+    assert list(audio._VOICES) == [first, third]
+
+
+async def test_voice_preparation_loads_no_more_voices_than_the_cache_holds(
+    languages,
+    settings,
+    monkeypatch,
+):
+    contents = {"https://voices/model": b"model", "https://voices/config": b"config"}
+    files = audio.PiperVoiceFiles(
+        model=audio.VoiceFile(
+            ".onnx",
+            "https://voices/model",
+            hashlib.sha256(contents["https://voices/model"]).hexdigest(),
+        ),
+        config=audio.VoiceFile(
+            ".onnx.json",
+            "https://voices/config",
+            hashlib.sha256(contents["https://voices/config"]).hexdigest(),
+        ),
+    )
+    monkeypatch.setattr(
+        audio,
+        "PIPER_VOICES",
+        {"first": files, "second": files, "third": files},
+    )
+    loaded = []
+
+    def fake_load(model, *, config_path):
+        loaded.append(model)
+        return SimpleNamespace()
+
+    monkeypatch.setitem(
+        sys.modules,
+        "piper",
+        SimpleNamespace(PiperVoice=SimpleNamespace(load=fake_load)),
+    )
+    configured = [
+        replace(languages["en"], code=name, tts_voice=name) for name in ("first", "second", "third")
+    ]
+
+    async with mock_client(
+        lambda request: httpx.Response(200, content=contents[str(request.url)])
+    ) as client:
+        await audio.prepare_configured_voices(configured, settings, client=client)
+
+    models = settings.data_dir / "models"
+    assert loaded == [str(models / "first.onnx"), str(models / "second.onnx")]
+    assert (models / "third.onnx").is_file()

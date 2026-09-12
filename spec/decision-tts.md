@@ -116,14 +116,17 @@ the one deployment target — the 1 GB (+ swap) micro instance:
   actually referenced by `languages.toml` are fetched — with no
   `kokoro` entry possible, the ~300 MB Kokoro model is never
   downloaded.
-- **Every configured Piper voice is loaded once, at startup, and held
-  for the life of the process.** Measured on the deployment host:
+- **The two most recently spoken Piper voices stay loaded**, and the
+  startup pass loads that many of the configured ones so the first word
+  after a restart does not pay for it. Measured on the deployment host:
   loading a medium voice costs 3.4 s and ~110 MB, while synthesizing one
   word with a loaded one costs 0.33 s. Loading per word put audio outside
   the deadline the answer waits on, and a cache of one voice would pay
-  that on nearly every word, because the reader alternates between three
-  languages. Two Piper voices are configured, so the memory limits in
-  `decision-deployment.md` are sized to hold both.
+  that on nearly every word, because the reader alternates between
+  languages within a session. Two is where the memory limits in
+  `decision-deployment.md` are drawn; a reader working in more Piper
+  languages at once than that pays the load when the turn comes back
+  round, which is rare enough to accept.
 - The dictionary-recording step (real native recordings) stays first in
   the chain for languages that have it; edge-tts stays the last-resort
   fallback for every language, and is simultaneously Serbian's primary.

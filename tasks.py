@@ -409,6 +409,14 @@ SystemMaxUse=200M
 MaxRetentionSec=3month
 ECHOWORDS_JOURNAL_EOF
 sudo systemctl restart systemd-journald
+sudo install -d /etc/sysctl.d
+sudo tee /etc/sysctl.d/99-echo-words.conf >/dev/null <<'ECHOWORDS_SYSCTL_EOF'
+# Reclaim the page cache before the loaded Piper voices: at the kernel's default
+# the box trades a day-idle voice for file cache, and the next word waits for the
+# weights to come back from swap.
+vm.swappiness=10
+ECHOWORDS_SYSCTL_EOF
+sudo sysctl -p /etc/sysctl.d/99-echo-words.conf
 {_swap_prep_script()}
 sudo systemctl enable --now fail2ban
 """

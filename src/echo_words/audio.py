@@ -9,6 +9,7 @@ import re
 import tempfile
 import threading
 import wave
+from collections import OrderedDict
 from collections.abc import Iterable
 from functools import partial
 from pathlib import Path
@@ -28,11 +29,13 @@ HTTP_TIMEOUT_SECONDS = 10
 _DICTIONARY_URL = "https://api.dictionaryapi.dev/api/v2/entries/{lang}/{word}"
 _AUDIO_NAME_PATTERN = re.compile(r"pronunciation-[0-9a-f]{20}\.mp3")
 
-# Loading a voice costs seconds and around 110 MB, synthesizing with a loaded one
-# costs a fraction of a second, so every configured voice is kept for the process's
-# life and the service's memory limits are sized for all of them at once. One lock
-# per voice, because a shared voice is used from several synthesis threads at once.
-_VOICES: dict[Path, Any] = {}
+MAX_LOADED_VOICES = 2
+
+# Loading a voice costs seconds and around 110 MB, synthesizing with a loaded one costs
+# a fraction of a second, so the most recently spoken voices are kept and a reader of
+# more languages than that pays the load again. One lock per voice, because a shared
+# voice is used from several synthesis threads at once.
+_VOICES: OrderedDict[Path, Any] = OrderedDict()
 _VOICE_LOCKS: dict[Path, threading.Lock] = {}
 _VOICES_LOCK = threading.Lock()
 
@@ -145,7 +148,13 @@ async def _prepare_voice(
 
 
 async def _preload_voice(voice_name: str, files: PiperVoiceFiles, settings: Settings) -> None:
-    """Pay the load at startup instead of inside the deadline of the first word."""
+    """Pay the load at startup instead of inside the deadline of the first word.
+
+    Past what the cache holds there is nothing to pay forward: the load would only
+    evict a voice loaded a moment ago.
+    """
+    if len(_VOICES) >= MAX_LOADED_VOICES:
+        return
     models = settings.data_dir / "models"
     try:
         await asyncio.to_thread(
@@ -251,14 +260,23 @@ def _load_voice(model: Path, config: Path) -> Any:
 
 
 def _cached_voice(model: Path, config: Path) -> Any:
-    """Load once and keep it. Callers hold this voice's lock."""
+    """Load once and keep the newest few. Callers hold this voice's lock."""
     # Piper is deliberately lazy: a broken native install must degrade to edge-tts.
     from piper import PiperVoice  # noqa: PLC0415 - sanctioned native dependency boundary.
 
-    voice = _VOICES.get(model)
-    if voice is None:
-        voice = PiperVoice.load(str(model), config_path=str(config))
+    with _VOICES_LOCK:
+        voice = _VOICES.get(model)
+        if voice is not None:
+            _VOICES.move_to_end(model)
+            return voice
+    voice = PiperVoice.load(str(model), config_path=str(config))
+    with _VOICES_LOCK:
         _VOICES[model] = voice
+        _VOICES.move_to_end(model)
+        while len(_VOICES) > MAX_LOADED_VOICES:
+            # Evicting drops this cache's own reference and nothing else: a thread
+            # already speaking with that voice holds it until it is done.
+            _VOICES.popitem(last=False)
     return voice
 
 

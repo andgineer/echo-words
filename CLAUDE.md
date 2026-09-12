@@ -26,7 +26,7 @@ tool looks for.
 - `spec/plan/` — work that is started and not finished, one file each.
   **Read these first when picking work up**: each says where its work
   stands, what is already built, what its experiments established and
-  what is left. Four are open, and one of them is held.
+  what is left. Five are open, and one of them is held.
   `model-tier.md` — whether any model is both fast enough for an
   interactive tool and obedient enough to retire some of the
   deterministic repairs in the answer path; the paid catalog's fast
@@ -45,6 +45,11 @@ tool looks for.
   buy a paid answer. The second pool answer has landed — a refused payload
   asks the same call for another one before any paid step. Local repair
   and two triggers instead of one are still open.
+  `commons-recordings.md` — the head of the audio chain moves from
+  dictionaryapi.dev, which serves no German at all and answers English in
+  19 seconds against a 10-second budget, to the Wikimedia Commons
+  recordings it was proxying: one request, a third of a second, and every
+  word of a real session found. It is measured and not started.
   `two-prompts.md` — a cheap model call to
   choose the branch for the submit box; **held** until `model-tier.md`
   reports, because no observed defect stands behind it and it adds a
