@@ -53,14 +53,19 @@ removes the memory constraints.)
   (`SystemMaxUse=200M`) and by age (`MaxRetentionSec=3month`), so a quiet
   box does not keep records past the horizon llmbroker's own call journal
   holds itself to.
-- **The kernel reclaims the page cache before the voices** —
-  `vm.swappiness=10` in `/etc/sysctl.d/99-echo-words.conf`. At the
-  default of 60 the box trades a day-idle Piper voice for file cache
-  while nothing is being asked of it, and the first word of the next
-  session waits for ~110 MB of weights to come back from the block
-  device instead of the 0.13 s a loaded voice costs. The swap file stays
-  as insurance for a real spike; this only decides what gets written
-  there first.
+- **The service is never swapped** — `MemorySwapMax=0` in the unit, with
+  `vm.swappiness=10` in `/etc/sysctl.d/99-echo-words.conf` easing the
+  same pressure box-wide. A voice the kernel has paged out costs the word
+  its recording: measured on this host, a word whose voice was in swap
+  produced nothing inside the deadline, and the next word, with the same
+  voice warm, was spoken in under a second. The swappiness knob alone
+  does not hold it — 92 MB of the process went to swap within nine
+  minutes of a restart while the cgroup's own limits were untouched,
+  because the reclaim was the box's and not the group's. Forbidding this
+  cgroup the swap file leaves the kernel its page cache to reclaim
+  instead, and the anonymous side — ~400 MB with both voices and the
+  collection — sits far enough under `MemoryMax` to make that safe. The
+  swap file stays for the rest of the box.
 - **The unit stays memory-bounded anyway** — `MemoryHigh=600M` /
   `MemoryMax=700M`. Not to protect a neighbour, there is none, but so a
   runaway is killed as itself instead of taking the box down and

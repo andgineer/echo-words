@@ -4,9 +4,12 @@ Replace the dictionaryapi.dev step at the head of the audio chain with a
 direct fetch from Wikimedia Commons, the place those recordings come from.
 
 **Where this stands:** nothing of the code change is written. The
-measurements below are done and settle the design. Two small fixes found in
-the same investigation — the two-voice Piper cache and `vm.swappiness=10` —
-have landed already and are not part of this work.
+measurements below are done and settle the design. Three fixes found in the
+same investigation are not part of this work and are already in: the
+two-voice Piper cache and `MemorySwapMax=0` in the unit, both in the repo,
+and `vm.swappiness=10`, applied to the host by
+`inv setup-app --with-host-prep`. The unit change reaches the box on the
+next deploy.
 
 ---
 
@@ -103,8 +106,24 @@ Touch, in this order:
 4. `webapp/src/views/LanguageDetailView.vue`,
    `webapp/src/views/LanguagesView.vue` — the field name and its label; the
    current label says "dictionaryapi.dev code" and would be a lie.
-5. `languages.example.toml`, `docs/src/en/configuration.md`,
-   `docs/src/ru/configuration.md`, `tests/conftest.py` fixtures.
+5. `webapp/src/i18n/en.js` and `webapp/src/i18n/ru.js` — the keys
+   `languages.dictApi`, `languages.dictApiPlaceholder`,
+   `languages.accent`, `languages.accentPlaceholder`. The editor's
+   two-field pair becomes one field, because the prefix states the accent:
+   `"En-us"` is the answer the `accent` box used to give.
+6. **The row's `accent` goes with it.** `audio.py` picking a dictionary
+   recording by accent is its only reader, and the prefix replaces it. Drop
+   it from `Language`, from the submission model, from the editor and its
+   fixtures. `Settings.accent` in `config.py` is a different field — it
+   chooses the default edge-tts voice — and stays.
+7. `languages.example.toml`, `docs/src/en/configuration.md`,
+   `docs/src/ru/configuration.md`, `tests/conftest.py` fixtures,
+   `tests/test_api.py` (the catalog-write test asserts `dict_api ==
+   "pt-BR"`), `webapp/tests/LanguageDetailView.test.js`,
+   `webapp/tests/LanguagesView.test.js`.
+8. `spec/decision-interface.md` describes the editor as carrying a
+   "dictionary code and accent" and the catalog as carrying a dictionary
+   code; both sentences become the recordings prefix.
 
 ---
 
@@ -153,6 +172,11 @@ In `tests/test_audio.py`:
 - `test_commons_is_not_asked_for_a_phrase` — two words → no request at all.
 - `test_a_commons_request_names_the_app` — the User-Agent header is sent.
 - `test_a_language_without_recordings_never_asks_commons`.
+- Delete what tested the source being replaced:
+  `test_dictionary_recording_prefers_the_configured_english_accent` and
+  `test_dictionary_miss_and_http_error_fall_through_to_piper`. The rest of
+  `tests/test_audio.py` reaches Piper by passing `dict_api=None` on the
+  language and needs the field's new name at those seven call sites.
 - In `tests/test_languages.py`: `recordings` round-trips through the editor,
   and a file still carrying `dict_api` loads with the derived prefix.
 

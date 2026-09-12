@@ -46,6 +46,7 @@ Restart=always
 RestartSec=5
 MemoryHigh=600M
 MemoryMax=700M
+MemorySwapMax=0
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=read-only

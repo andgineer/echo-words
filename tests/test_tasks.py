@@ -33,6 +33,7 @@ def test_systemd_unit_has_the_required_network_gate_and_sandbox():
     assert "ReadWritePaths=/home/ubuntu/echo-words/data" in unit
     assert "MemoryHigh=600M" in unit
     assert "MemoryMax=700M" in unit
+    assert "MemorySwapMax=0" in unit
 
 
 def test_host_prep_provisions_swap_hardening_and_bounded_journal():
