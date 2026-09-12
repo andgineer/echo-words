@@ -21,34 +21,20 @@ def mock_client(handler):
     return httpx.AsyncClient(transport=httpx.MockTransport(handler))
 
 
-async def test_dictionary_recording_prefers_the_configured_english_accent(
+COMMONS = "https://upload.wikimedia.org/wikipedia/commons/transcoded"
+
+
+async def test_a_commons_recording_is_used_before_the_local_voice(
     languages,
     settings,
     monkeypatch,
 ):
-    requested = []
-
-    def handler(request):
-        requested.append(str(request.url))
-        if "/entries/en/word" in request.url.path:
-            return httpx.Response(
-                200,
-                json=[
-                    {
-                        "phonetics": [
-                            {"audio": "https://cdn.example/word-uk.mp3"},
-                            {"audio": "https://cdn.example/word-us.mp3"},
-                        ],
-                    },
-                ],
-            )
-        return httpx.Response(200, content=b"dictionary mp3")
-
     piper = AsyncMock(side_effect=AssertionError("Piper must not run after a hit"))
     edge = AsyncMock(side_effect=AssertionError("edge must not run after a hit"))
     monkeypatch.setattr(audio, "_piper_audio", piper)
     monkeypatch.setattr(audio, "_edge_audio", edge)
-    async with mock_client(handler) as client:
+
+    async with mock_client(lambda _request: httpx.Response(200, content=b"commons mp3")) as client:
         result = await audio.fetch_pronunciation(
             "word",
             languages["en"],
@@ -57,13 +43,41 @@ async def test_dictionary_recording_prefers_the_configured_english_accent(
         )
 
     assert result is not None
-    assert result.read_bytes() == b"dictionary mp3"
-    assert requested[-1] == "https://cdn.example/word-us.mp3"
+    assert result.read_bytes() == b"commons mp3"
     piper.assert_not_awaited()
     edge.assert_not_awaited()
 
 
-async def test_dictionary_miss_and_http_error_fall_through_to_piper(
+async def test_the_commons_url_is_derived_from_the_file_name_md5(
+    languages,
+    settings,
+    monkeypatch,
+):
+    """Commons files a recording under two directories taken from the md5 of its name,
+    so the recording is reached without asking an API where it is."""
+    requested = []
+
+    def handler(request):
+        requested.append(str(request.url))
+        return httpx.Response(200, content=b"commons mp3")
+
+    monkeypatch.setattr(
+        audio,
+        "_piper_audio",
+        AsyncMock(side_effect=AssertionError("Piper must not run after a hit")),
+    )
+    async with mock_client(handler) as client:
+        await audio.fetch_pronunciation(
+            "schneiden",
+            languages["de"],
+            settings=settings,
+            client=client,
+        )
+
+    assert requested == [f"{COMMONS}/4/4c/De-schneiden.ogg/De-schneiden.ogg.mp3"]
+
+
+async def test_a_word_commons_does_not_have_falls_through_to_the_voice(
     languages,
     settings,
     monkeypatch,
@@ -78,21 +92,123 @@ async def test_dictionary_miss_and_http_error_fall_through_to_piper(
         "_edge_audio",
         AsyncMock(side_effect=AssertionError("edge must not run after Piper")),
     )
-    for status in (404, 503):
-        word = f"word-{status}"
 
-        def handler(_request, response_status=status):
-            return httpx.Response(response_status, json=[])
+    async with mock_client(lambda _request: httpx.Response(404)) as client:
+        result = await audio.fetch_pronunciation(
+            "blorptium",
+            languages["de"],
+            settings=settings,
+            client=client,
+        )
 
-        async with mock_client(handler) as client:
-            result = await audio.fetch_pronunciation(
-                word,
-                languages["en"],
-                settings=settings,
-                client=client,
-            )
-        assert result is not None
-        assert result.read_bytes() == b"piper"
+    assert result is not None
+    assert result.read_bytes() == b"piper"
+
+
+async def test_a_throttled_commons_leaves_the_word_to_the_voice(
+    languages,
+    settings,
+    monkeypatch,
+):
+    """A throttle is not retried inside the deadline the answer waits on: the voice
+    speaks the word instead, and its recording is what the cache keeps."""
+    requested = []
+
+    def handler(request):
+        requested.append(str(request.url))
+        return httpx.Response(429)
+
+    async def fake_piper(_word, _lang, output, _settings):
+        output.write_bytes(b"piper")
+        return True
+
+    monkeypatch.setattr(audio, "_piper_audio", fake_piper)
+    async with mock_client(handler) as client:
+        result = await audio.fetch_pronunciation(
+            "Haus",
+            languages["de"],
+            settings=settings,
+            client=client,
+        )
+
+    assert result is not None
+    assert result.read_bytes() == b"piper"
+    assert len(requested) == 1
+
+
+async def test_commons_is_not_asked_for_a_phrase(languages, settings, monkeypatch):
+    """A headword carded with its article is not one word, and the recording of the
+    bare noun would speak a text the card does not show."""
+    requested = []
+
+    def handler(request):
+        requested.append(str(request.url))
+        return httpx.Response(200, content=b"commons mp3")
+
+    async def fake_piper(_word, _lang, output, _settings):
+        output.write_bytes(b"piper")
+        return True
+
+    monkeypatch.setattr(audio, "_piper_audio", fake_piper)
+    async with mock_client(handler) as client:
+        result = await audio.fetch_pronunciation(
+            "die Zwiebel",
+            languages["de"],
+            settings=settings,
+            client=client,
+        )
+
+    assert result is not None and result.read_bytes() == b"piper"
+    assert requested == []
+
+
+async def test_a_commons_request_names_the_app(languages, settings, monkeypatch):
+    """Wikimedia's policy refuses a generic client agent, and httpx's default is one."""
+    agents = []
+
+    def handler(request):
+        agents.append(request.headers.get("user-agent"))
+        return httpx.Response(200, content=b"commons mp3")
+
+    monkeypatch.setattr(
+        audio,
+        "_piper_audio",
+        AsyncMock(side_effect=AssertionError("Piper must not run after a hit")),
+    )
+    async with mock_client(handler) as client:
+        await audio.fetch_pronunciation("Haus", languages["de"], settings=settings, client=client)
+
+    assert agents == [audio._USER_AGENT]
+    assert agents[0].startswith("echo-words/")
+    assert "github.com/andgineer/echo-words" in agents[0]
+
+
+async def test_a_language_without_recordings_never_asks_commons(
+    languages,
+    settings,
+    monkeypatch,
+):
+    requested = []
+
+    def handler(request):
+        requested.append(str(request.url))
+        return httpx.Response(200, content=b"commons mp3")
+
+    async def fake_piper(_word, _lang, output, _settings):
+        output.write_bytes(b"piper")
+        return True
+
+    monkeypatch.setattr(audio, "_piper_audio", fake_piper)
+    async with mock_client(handler) as client:
+        result = await audio.fetch_pronunciation(
+            "Haus",
+            replace(languages["de"], recordings=None),
+            settings=settings,
+            client=client,
+        )
+
+    assert result is not None and result.read_bytes() == b"piper"
+    assert requested == []
 
 
 async def test_fake_piper_synthesizes_wav_and_encodes_mp3(
@@ -125,7 +241,7 @@ async def test_fake_piper_synthesizes_wav_and_encodes_mp3(
         "_edge_audio",
         AsyncMock(side_effect=AssertionError("edge must not run after Piper")),
     )
-    language = replace(languages["en"], dict_api=None)
+    language = replace(languages["en"], recordings=None)
     async with mock_client(lambda _request: httpx.Response(500)) as client:
         result = await audio.fetch_pronunciation(
             "word",
@@ -150,7 +266,7 @@ async def test_piper_import_and_inference_failures_fall_through_to_edge(
     models.mkdir(parents=True)
     (models / f"{voice_name}.onnx").write_bytes(b"model")
     (models / f"{voice_name}.onnx.json").write_text("{}")
-    language = replace(languages["en"], dict_api=None)
+    language = replace(languages["en"], recordings=None)
 
     async def fake_edge(_word, _lang, output, _settings):
         output.write_bytes(b"edge")
@@ -189,14 +305,14 @@ async def test_edge_language_and_phrase_skip_earlier_chain_steps(
     settings,
     monkeypatch,
 ):
-    dictionary = AsyncMock(side_effect=AssertionError("dictionary must be skipped"))
+    commons = AsyncMock(side_effect=AssertionError("Commons must be skipped"))
     piper = AsyncMock(side_effect=AssertionError("Piper must be skipped"))
 
     async def fake_edge(_word, _lang, output, _settings):
         output.write_bytes(b"edge")
         return True
 
-    monkeypatch.setattr(audio, "_dictionary_audio", dictionary)
+    monkeypatch.setattr(audio, "_commons_recording", commons)
     monkeypatch.setattr(audio, "_piper_audio", piper)
     monkeypatch.setattr(audio, "_edge_audio", fake_edge)
     async with mock_client(lambda _request: httpx.Response(500)) as client:
@@ -215,7 +331,7 @@ async def test_edge_language_and_phrase_skip_earlier_chain_steps(
 
     assert serbian is not None and serbian.read_bytes() == b"edge"
     assert phrase is not None and phrase.read_bytes() == b"edge"
-    dictionary.assert_not_awaited()
+    commons.assert_not_awaited()
     piper.assert_not_awaited()
 
 
@@ -320,7 +436,7 @@ async def test_a_cyrillic_locale_voice_is_never_handed_latin(
             )
         assert await audio.fetch_pronunciation(
             "wardrobe",
-            replace(languages["en"], tts="edge", dict_api=None),
+            replace(languages["en"], tts="edge", recordings=None),
             settings=settings,
             client=client,
         )
@@ -363,7 +479,7 @@ async def test_a_voice_is_loaded_once_and_reused_for_every_later_word(
             wav_file.writeframes(b"\x00\x00" * 2205)
 
     monkeypatch.setitem(sys.modules, "piper", SimpleNamespace(PiperVoice=FakeVoice))
-    language = replace(languages["en"], dict_api=None)
+    language = replace(languages["en"], recordings=None)
     async with mock_client(lambda _request: httpx.Response(500)) as client:
         for word in ("first", "second"):
             result = await audio.fetch_pronunciation(
@@ -413,7 +529,7 @@ async def test_one_shared_voice_synthesizes_one_word_at_a_time(
             wav_file.writeframes(b"\x00\x00" * 2205)
 
     monkeypatch.setitem(sys.modules, "piper", SimpleNamespace(PiperVoice=FakeVoice))
-    language = replace(languages["en"], dict_api=None)
+    language = replace(languages["en"], recordings=None)
 
     async with mock_client(lambda _request: httpx.Response(500)) as client:
         results = await asyncio.gather(
@@ -641,7 +757,7 @@ async def test_cancelled_piper_inference_cannot_publish_late_audio(
     models.mkdir(parents=True)
     (models / f"{voice_name}.onnx").write_bytes(b"model")
     (models / f"{voice_name}.onnx.json").write_text("{}")
-    language = replace(languages["en"], dict_api=None)
+    language = replace(languages["en"], recordings=None)
     started = threading.Event()
     release = threading.Event()
     finished = threading.Event()

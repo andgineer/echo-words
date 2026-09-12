@@ -73,11 +73,10 @@ class Language:
     name: str
     deck: str
     script: str
-    dict_api: str | None = None
+    recordings: str | None = None
     tts: str | None = None
     tts_voice: str | None = None
     edge_tts_voice: str | None = None
-    accent: str | None = None
     api_model: str | None = None
     prompt_hints: str | None = None
 
@@ -114,8 +113,21 @@ def _language_from_entry(code: str, entry: object, path: Path) -> Language:
             f"expected one of {', '.join(sorted(_ALLOWED_SCRIPTS))}",
         )
     known = {field.name for field in Language.__dataclass_fields__.values()} - {"code"}
-    language = Language(code=code, **{k: v for k, v in entry.items() if k in known})
+    values = {k: v for k, v in entry.items() if k in known}
+    if not values.get("recordings") and entry.get("dict_api"):
+        values["recordings"] = _recordings_prefix(code, entry.get("accent"))
+    language = Language(code=code, **values)
     return _joined_to_the_directory(language, path)
+
+
+def _recordings_prefix(code: str, accent: object) -> str:
+    """The Commons prefix a table naming a dictionary code and an accent stands for.
+
+    A file written before the two became one keeps its recordings instead of losing
+    them to the deploy that reads it.
+    """
+    suffix = _optional(accent)
+    return f"{code.capitalize()}-{suffix.lower()}" if suffix else code.capitalize()
 
 
 def _joined_to_the_directory(language: Language, path: Path) -> Language:
@@ -198,11 +210,10 @@ def validated_language(
         name=name,
         deck=required["deck"] or "",
         script=script,
-        dict_api=_optional(submitted.get("dict_api")),
+        recordings=_optional(submitted.get("recordings")),
         tts=tts,
         tts_voice=voice,
         edge_tts_voice=_optional(submitted.get("edge_tts_voice")),
-        accent=_optional(submitted.get("accent")),
         **{field: getattr(existing, field, None) for field in FILE_ONLY_FIELDS},
     )
 

@@ -110,8 +110,8 @@ the one deployment target — the 1 GB (+ swap) micro instance:
   fall-through never gets a chance to help. Sizing engines to the host
   is the **config's** job, done ahead of time; the runtime fall-through
   only covers genuine runtime errors. English pronunciation mostly comes
-  from real dictionary recordings anyway, so an engine-quality gap shows
-  only on words the dictionary lacks.
+  from real human recordings anyway, so an engine-quality gap shows only
+  on words no recording exists for.
 - Model downloads are config-driven: only engines and voices
   actually referenced by `languages.toml` are fetched — with no
   `kokoro` entry possible, the ~300 MB Kokoro model is never
@@ -127,9 +127,34 @@ the one deployment target — the 1 GB (+ swap) micro instance:
   `decision-deployment.md` are drawn; a reader working in more Piper
   languages at once than that pays the load when the turn comes back
   round, which is rare enough to accept.
-- The dictionary-recording step (real native recordings) stays first in
-  the chain for languages that have it; edge-tts stays the last-resort
-  fallback for every language, and is simultaneously Serbian's primary.
+- **Human recordings from Wikimedia Commons head the chain** for every
+  language configured with a recording prefix; edge-tts stays the
+  last-resort fallback for every language, and is simultaneously
+  Serbian's primary. The recording is addressed without an API call —
+  the md5 of the file name gives the two directory levels Commons files
+  it under, and an mp3 transcode is published beside the ogg — so one
+  request fetches it. Measured 12 Sep 2026 against a real session's
+  German: 0.12–0.40 s per word and 16 of the 16 words carded that day
+  found, and a word Commons does not have answers in a quarter of a
+  second. The step is given 3 s of its own against that worst case, and
+  a miss, a throttle, a timeout or any other error falls through to the
+  next step silently, logged with its status. Nothing is remembered as a
+  miss: the next step writes its own recording at the same cache path,
+  so a word that missed once never reaches Commons again. The request
+  names the app and its repository, which Wikimedia's policy requires of
+  a client.
+- **The prefix is also the accent.** It is what the recordings of a
+  language are filed under — `De`, `Ru`, `En-us` or `En-uk` — so the
+  choice between the American and the British recordings of an English
+  word is the same setting as the choice to have recordings at all. A
+  language with no prefix is spoken by the engines alone.
+- **Only single words are asked for.** A headword carded with its
+  article is not one word, and the recording of the bare noun would
+  speak a text the card does not show; a phrase has no recording to find
+  either. Both are left to the engines.
+- **Nothing is attributed on the card.** The recordings are CC-BY-SA or
+  CC0, and the app is private and tailnet-only: it publishes nothing and
+  redistribution is not in question.
 - **Piper is offered only where the app has a voice to install, and only
   as the voices it can install.** A Piper voice arrives as one of the
   app's own pinned downloads and in no other way, so a language it

@@ -477,9 +477,9 @@ both in the answer entry and on the flashcard.
   out of a longer text, the entry offers the unit's pronunciation *and*,
   beside it, the whole text that unit came from. Running text, which
   makes no note at all, is still voiced whole in the app.
-- **Source priority**: a real native-speaker recording from free
-  dictionary sources when one exists (for the languages those sources
-  cover — English, German; Serbian has none). When no recording exists
+- **Source priority**: a real native-speaker recording from Wikimedia
+  Commons when one exists (for the languages it covers — English,
+  German; Serbian has next to none). When no recording exists
   (phrases, rare words, unsupported languages), generate audio with a
   free TTS engine, **local where a usable voice model exists** — local
   so that audio keeps working with no external service to break: Piper
@@ -673,7 +673,7 @@ Kept minimal — everything beyond typing a word:
 - **Language editor** — reached from the pencil beside the language row, not
   from the navigation. A list with add and remove, and a settings screen per
   language: the deck above, with the script beside it as a fact rather than a
-  choice, and voice engine, voice, dictionary code and accent behind
+  choice, and voice engine, voice and recordings prefix behind
   "Advanced". A Piper voice is picked from the ones this build can install,
   never typed: the editor accepts only a voice the server can actually put on
   disk, so choosing one is never choosing silence. An Edge voice stays free
@@ -688,8 +688,8 @@ Kept minimal — everything beyond typing a word:
 - **The language directory** — a language is added by searching a reference
   table of the languages the app can **reach** and pressing the one wanted; it
   is found by its own name, its English name, its Russian name or its code. The
-  table gives the language its **code**, its **name**, its script and its
-  dictionary code, and the deck is named after it. Reaching a language is not
+  table gives the language its **code**, its **name**, its script and the
+  prefix its recordings are filed under, and the deck is named after it. Reaching a language is not
   vouching for its answers, and the two are never conflated: every row carries
   what is known about that language — vouched for, measured and unreliable, or
   nobody has looked — and says it in the row where the language is picked and
@@ -795,8 +795,9 @@ same prompt is not how a weak answer gets fixed.
   scaffolding and everything the backend streams into the shared history —
   card statuses and the analysis itself — follow the target language,
   because that history is broadcast to every client at once.
-- **Accent**: applies to English audio (dictionary recording choice and
-  TTS voice), set per language in configuration; American by default.
+- **Accent**: applies to English audio. The recordings prefix set per
+  language chooses the accent of the human recording; the app-wide accent
+  setting chooses the default TTS voice. American by default in both.
   Never two recordings per card.
 
 ## Out of scope — final

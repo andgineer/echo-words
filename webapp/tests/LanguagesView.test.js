@@ -24,7 +24,7 @@ const CATALOG = [
     russian: "немецкий",
     script: "latin",
     deck: "EchoWords: German",
-    dict_api: "de",
+    recordings: "De",
     answers: "vouched",
   },
   {
@@ -34,7 +34,7 @@ const CATALOG = [
     russian: "испанский",
     script: "latin",
     deck: "EchoWords: Spanish",
-    dict_api: "es",
+    recordings: "Es",
     answers: "unmeasured",
   },
   {
@@ -44,7 +44,7 @@ const CATALOG = [
     russian: "русский",
     script: "cyrillic",
     deck: "EchoWords: Russian",
-    dict_api: "ru",
+    recordings: "Ru",
   },
   {
     code: "be",
@@ -53,7 +53,7 @@ const CATALOG = [
     russian: "белорусский",
     script: "cyrillic",
     deck: "EchoWords: Belarusian",
-    dict_api: null,
+    recordings: null,
     answers: "unreliable",
   },
 ];
@@ -210,7 +210,7 @@ describe("LanguagesView", () => {
 
     expect(apiRequest).toHaveBeenCalledWith("/api/languages/es", {
       method: "PUT",
-      body: { deck: "EchoWords: Spanish", dict_api: "es" },
+      body: { deck: "EchoWords: Spanish", recordings: "Es" },
     });
     expect(wrapper.get("#new-lang").element.value).toBe("");
   });

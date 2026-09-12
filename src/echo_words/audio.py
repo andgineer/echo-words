@@ -20,13 +20,19 @@ import edge_tts
 import httpx
 import lameenc  # pyrefly: ignore[missing-import] - compiled extension has no type metadata.
 
+from echo_words.__about__ import __version__
 from echo_words.config import Settings
 from echo_words.config import settings as default_settings
 from echo_words.languages import Language
 from echo_words.voices import PIPER_VOICES, PiperVoiceFiles, VoiceFile
 
 HTTP_TIMEOUT_SECONDS = 10
-_DICTIONARY_URL = "https://api.dictionaryapi.dev/api/v2/entries/{lang}/{word}"
+RECORDING_TIMEOUT_SECONDS = 3
+_COMMONS_URL = (
+    "https://upload.wikimedia.org/wikipedia/commons/transcoded/{a}/{ab}/{name}/{name}.mp3"
+)
+# Wikimedia's policy refuses a generic client agent, and httpx's default is one.
+_USER_AGENT = f"echo-words/{__version__} (https://github.com/andgineer/echo-words)"
 _AUDIO_NAME_PATTERN = re.compile(r"pronunciation-[0-9a-f]{20}\.mp3")
 
 MAX_LOADED_VOICES = 2
@@ -65,7 +71,7 @@ async def fetch_pronunciation(
     settings: Settings = default_settings,
     client: httpx.AsyncClient | None = None,
 ) -> Path | None:
-    """Return one cached mp3, falling through dictionary, Piper, then edge-tts."""
+    """Return one cached mp3, falling through a human recording, Piper, then edge-tts."""
     try:
         output = _audio_path(word, lang, settings)
         if output.is_file():
@@ -76,9 +82,9 @@ async def fetch_pronunciation(
         return None
 
     if (
-        lang.dict_api
+        lang.recordings
         and len(word.split()) == 1
-        and await _try_dictionary_audio(word, lang, output, client)
+        and await _try_commons_recording(word, lang, output, client)
     ):
         return output
 
@@ -171,62 +177,58 @@ def is_audio_filename(name: str) -> bool:
     return _AUDIO_NAME_PATTERN.fullmatch(name) is not None
 
 
-async def _try_dictionary_audio(
+async def _try_commons_recording(
     word: str,
     lang: Language,
     output: Path,
     client: httpx.AsyncClient | None,
 ) -> bool:
-    dictionary_client = client
-    owns_client = dictionary_client is None
+    recording_client = client
+    owns_client = recording_client is None
     try:
-        if dictionary_client is None:
-            dictionary_client = httpx.AsyncClient(follow_redirects=True)
-        return await _dictionary_audio(word, lang, output, dictionary_client)
-    except Exception as exc:  # noqa: BLE001 - every dictionary boundary degrades.
-        logger.warning("dictionary audio failed for %s/%r: %s", lang.code, word, exc)
+        if recording_client is None:
+            recording_client = httpx.AsyncClient(follow_redirects=True)
+        return await _commons_recording(word, lang, output, recording_client)
+    except Exception as exc:  # noqa: BLE001 - every recording boundary degrades.
+        logger.warning("Commons recording failed for %s/%r: %s", lang.code, word, exc)
         return False
     finally:
-        if owns_client and dictionary_client is not None:
+        if owns_client and recording_client is not None:
             try:
-                await dictionary_client.aclose()
+                await recording_client.aclose()
             except Exception as exc:  # noqa: BLE001 - closing must not fail the answer.
-                logger.warning("dictionary client close failed: %s", exc)
+                logger.warning("Commons client close failed: %s", exc)
 
 
-async def _dictionary_audio(
+def _commons_url(word: str, lang: Language) -> str:
+    name = f"{lang.recordings}-{word}.ogg"
+    # Commons addresses a file by the md5 of its name; no API call stands in between.
+    digest = hashlib.md5(name.encode(), usedforsecurity=False).hexdigest()
+    quoted = quote(name, safe="")
+    return _COMMONS_URL.format(a=digest[0], ab=digest[:2], name=quoted)
+
+
+async def _commons_recording(
     word: str,
     lang: Language,
     output: Path,
     client: httpx.AsyncClient,
 ) -> bool:
-    url = _DICTIONARY_URL.format(
-        lang=quote(lang.dict_api or "", safe=""),
-        word=quote(word, safe=""),
+    response = await client.get(
+        _commons_url(word, lang),
+        headers={"User-Agent": _USER_AGENT},
+        timeout=RECORDING_TIMEOUT_SECONDS,
     )
-    response = await client.get(url, timeout=HTTP_TIMEOUT_SECONDS)
-    if response.status_code == httpx.codes.NOT_FOUND:
+    if response.status_code != httpx.codes.OK:
+        logger.warning(
+            "no Commons recording for %s/%r: HTTP %s",
+            lang.code,
+            word,
+            response.status_code,
+        )
         return False
-    response.raise_for_status()
-    audio_urls = [
-        phonetic.get("audio")
-        for entry in response.json()
-        if isinstance(entry, dict)
-        for phonetic in entry.get("phonetics", [])
-        if isinstance(phonetic, dict) and phonetic.get("audio")
-    ]
-    if not audio_urls:
-        return False
-    preferred = next(
-        (candidate for candidate in audio_urls if f"-{lang.accent}" in candidate.lower()),
-        audio_urls[0],
-    )
-    if preferred.startswith("//"):
-        preferred = f"https:{preferred}"
-    recording = await client.get(preferred, timeout=HTTP_TIMEOUT_SECONDS)
-    recording.raise_for_status()
     _raise_if_cancelling()
-    _write_atomic(output, recording.content)
+    _write_atomic(output, response.content)
     return True
 
 

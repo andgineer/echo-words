@@ -152,6 +152,9 @@ _LANGUAGE_CONFIG_TESTS = frozenset(
         "test_load_languages_indexes_by_code",
         "test_load_languages_keeps_optional_fields",
         "test_load_languages_ignores_unknown_keys",
+        "test_a_table_naming_the_old_dictionary_key_keeps_its_recordings",
+        "test_a_recordings_prefix_of_its_own_outranks_the_old_dictionary_key",
+        "test_a_recordings_prefix_round_trips_through_the_editor",
         "test_missing_file_is_a_config_error",
         "test_broken_toml_is_a_config_error",
         "test_table_without_languages_is_a_config_error",
@@ -175,19 +178,18 @@ LANGUAGES_TOML = """
 [languages.en]
 name       = "English"
 deck       = "English::Vocabulary"
-dict_api   = "en"
+recordings = "En-us"
 tts        = "piper"
 tts_voice  = "en_US-lessac-medium"
-accent     = "us"
 script     = "latin"
 
 [languages.de]
-name      = "Deutsch"
-deck      = "German::Vocabulary"
-dict_api  = "de"
-tts       = "piper"
-tts_voice = "de_DE-thorsten-medium"
-script    = "latin"
+name       = "Deutsch"
+deck       = "German::Vocabulary"
+recordings = "De"
+tts        = "piper"
+tts_voice  = "de_DE-thorsten-medium"
+script     = "latin"
 
 [languages.sr]
 name      = "Српски"

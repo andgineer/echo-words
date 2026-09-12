@@ -197,7 +197,7 @@ discussion: it is AnkiConnect's flaw made heavier.)
 ## Effect on pronunciation audio
 
 Leaving AnkiConnect does **not** disturb the audio pipeline — its
-chain (dictionary recording → local Piper → edge-tts) is
+chain (human recording → local Piper → edge-tts) is
 independent of the card store:
 
 - **Option B:** the mp3 goes into the server collection's media via

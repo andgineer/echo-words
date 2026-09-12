@@ -308,6 +308,20 @@ is the same class as 14 and 15 — a word that is spelled plausibly for the sour
 language and is not a word of it — and it is what a reader meets rather than what
 a screen can catch.
 
+## 20. Cards already made silent still carry no recording
+
+Of the 200 cards made since 21 Aug, 42 carry no audio at all: the head of the
+audio chain was answering nothing, and where the engines had no voice either the
+note was written silent. Fingerprinting the mp3 frames of the 305 recordings
+cached on the host found 293 at 22 050 Hz and 12 at 24 000 Hz — the two engines —
+and none at the 44.1 kHz a human recording carries, so nothing came from the
+chain's first step at all.
+
+New cards are unaffected: the head of the chain reaches Wikimedia Commons now.
+The 42 are a maintenance pass of its own — fetch each headword again and attach
+the media to its existing note — and it **needs the operator's word before
+anything writes to the collection**, which is why it is here rather than done.
+
 ## What is deliberately not here
 
 - **The cooldown ladder that took a working model out of the pool for half an

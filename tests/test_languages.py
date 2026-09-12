@@ -39,9 +39,8 @@ def test_load_languages_indexes_by_code(languages_file: Path):
 
 def test_load_languages_keeps_optional_fields(languages_file: Path):
     languages = load_languages(languages_file)
-    assert languages["en"].dict_api == "en"
-    assert languages["en"].accent == "us"
-    assert languages["sr"].dict_api is None
+    assert languages["en"].recordings == "En-us"
+    assert languages["sr"].recordings is None
     assert languages["sr"].api_model == "gpt-fast"
     assert languages["sr"].edge_tts_voice == "sr-RS-SophieNeural"
     assert languages["sr"].prompt_hints == "for nouns give gender and plural"
@@ -55,6 +54,35 @@ def test_load_languages_ignores_unknown_keys(tmp_path: Path):
         encoding="utf-8",
     )
     assert load_languages(path)["en"].name == "English"
+
+
+def test_a_table_naming_the_old_dictionary_key_keeps_its_recordings(tmp_path: Path):
+    """A deployed table is read by the build that renames the key, not only after it."""
+    path = tmp_path / "languages.toml"
+    path.write_text(
+        '[languages.en]\nname="English"\ndeck="D"\nscript="latin"\n'
+        'dict_api="en"\naccent="us"\n\n'
+        '[languages.de]\nname="Deutsch"\ndeck="D"\nscript="latin"\ndict_api="de"\n\n'
+        '[languages.fr]\nname="Français"\ndeck="D"\nscript="latin"\n',
+        encoding="utf-8",
+    )
+
+    table = load_languages(path)
+
+    assert table["en"].recordings == "En-us"
+    assert table["de"].recordings == "De"
+    assert table["fr"].recordings is None
+
+
+def test_a_recordings_prefix_of_its_own_outranks_the_old_dictionary_key(tmp_path: Path):
+    path = tmp_path / "languages.toml"
+    path.write_text(
+        '[languages.en]\nname="English"\ndeck="D"\nscript="latin"\n'
+        'recordings="En-uk"\ndict_api="en"\naccent="us"\n',
+        encoding="utf-8",
+    )
+
+    assert load_languages(path)["en"].recordings == "En-uk"
 
 
 def test_missing_file_is_a_config_error(tmp_path: Path):
@@ -299,11 +327,10 @@ COMPLETE = Language(
     name="Српски",
     deck="EchoWords: Serbian",
     script="latin+cyrillic",
-    dict_api="sr",
+    recordings="Sr",
     tts="edge",
     tts_voice="sr_RS-unusable-medium",
     edge_tts_voice="sr-RS-SophieNeural",
-    accent="ekavian",
     api_model="gpt-fast",
     prompt_hints="for nouns give gender and plural",
 )
@@ -322,9 +349,9 @@ def test_an_absent_optional_field_is_left_out_rather_than_written_empty(tmp_path
 
     save_languages(path, {"fr": MINIMAL})
 
-    # `dict_api = ""` would claim the language has a dictionary code that is blank.
-    assert "dict_api" not in path.read_text(encoding="utf-8")
-    assert load_languages(path)["fr"].dict_api is None
+    # `recordings = ""` would claim the language has a recording prefix that is blank.
+    assert "recordings" not in path.read_text(encoding="utf-8")
+    assert load_languages(path)["fr"].recordings is None
 
 
 def test_a_failed_write_leaves_the_previous_table_intact(tmp_path, monkeypatch):
@@ -358,7 +385,7 @@ def test_a_submitted_language_is_built_from_the_fields_the_editor_shows():
         "fr",
         {
             "deck": "EchoWords: French",
-            "dict_api": "  ",
+            "recordings": "  ",
             "tts": "edge",
             "edge_tts_voice": "fr-FR-DeniseNeural",
         },
@@ -372,6 +399,18 @@ def test_a_submitted_language_is_built_from_the_fields_the_editor_shows():
         tts="edge",
         edge_tts_voice="fr-FR-DeniseNeural",
     )
+
+
+def test_a_recordings_prefix_round_trips_through_the_editor(tmp_path):
+    """The prefix is the accent too, so the editor writing it back is what keeps an
+    English language on its American recordings rather than its British ones."""
+    path = tmp_path / "languages.toml"
+    language = validated_language("en", {"deck": "EchoWords: English", "recordings": "En-uk"})
+
+    save_languages(path, {"en": language})
+
+    assert language.recordings == "En-uk"
+    assert load_languages(path)["en"].recordings == "En-uk"
 
 
 def test_the_two_file_only_fields_survive_a_save_of_the_fields_the_editor_shows():

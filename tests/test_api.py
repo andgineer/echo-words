@@ -716,7 +716,7 @@ def test_a_language_is_added_under_the_directory_code_it_was_picked_by(
 
     response = client.put(
         f"/api/languages/{picked['code']}",
-        json={"deck": picked["deck"], "dict_api": picked["dict_api"]},
+        json={"deck": picked["deck"], "recordings": picked["recordings"]},
     )
 
     assert response.status_code == 200
@@ -724,7 +724,7 @@ def test_a_language_is_added_under_the_directory_code_it_was_picked_by(
     assert written.code == "pt"
     assert written.name == "Português"
     assert written.deck == "EchoWords: Portuguese"
-    assert written.dict_api == "pt-BR"
+    assert written.recordings == "Pt"
     assert written.script == "latin"
 
 

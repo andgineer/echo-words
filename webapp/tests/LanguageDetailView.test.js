@@ -14,11 +14,10 @@ const SERBIAN = {
   name: "Српски",
   deck: "EchoWords: Serbian",
   script: "latin+cyrillic",
-  dict_api: null,
+  recordings: null,
   tts: "edge",
   tts_voice: null,
   edge_tts_voice: "sr-RS-SophieNeural",
-  accent: null,
   api_model: "gpt-fast",
   prompt_hints: "for nouns give gender and plural",
 };
@@ -28,11 +27,10 @@ const ENGLISH = {
   name: "English",
   deck: "EchoWords: English",
   script: "latin",
-  dict_api: "en",
+  recordings: "En-us",
   tts: "piper",
   tts_voice: "en_US-lessac-medium",
   edge_tts_voice: null,
-  accent: "us",
   api_model: null,
   prompt_hints: null,
 };
@@ -42,11 +40,10 @@ const GERMAN = {
   name: "Deutsch",
   deck: "EchoWords: German",
   script: "latin",
-  dict_api: "de",
+  recordings: "De",
   tts: null,
   tts_voice: null,
   edge_tts_voice: null,
-  accent: null,
   api_model: null,
   prompt_hints: null,
 };
@@ -56,11 +53,10 @@ const POLISH = {
   name: "Polski",
   deck: "EchoWords: Polish",
   script: "latin",
-  dict_api: null,
+  recordings: null,
   tts: null,
   tts_voice: null,
   edge_tts_voice: null,
-  accent: null,
   api_model: null,
   prompt_hints: null,
 };
@@ -70,11 +66,10 @@ const BULGARIAN = {
   name: "Български",
   deck: "EchoWords: Bulgarian",
   script: "cyrillic",
-  dict_api: null,
+  recordings: null,
   tts: null,
   tts_voice: null,
   edge_tts_voice: null,
-  accent: null,
   api_model: null,
   prompt_hints: null,
 };
@@ -84,11 +79,10 @@ const ITALIAN = {
   name: "Italiano",
   deck: "EchoWords: Italian",
   script: "latin",
-  dict_api: "it",
+  recordings: "It",
   tts: "piper",
   tts_voice: "it_IT-riccardo-x_low",
   edge_tts_voice: null,
-  accent: null,
   api_model: null,
   prompt_hints: null,
 };
@@ -202,8 +196,7 @@ describe("LanguageDetailView", () => {
     expect(wrapper.get('[data-testid="voice-en_US-lessac-medium"]').classes()).toContain(
       "active",
     );
-    expect(wrapper.get("#lang-dict").element.value).toBe("en");
-    expect(wrapper.get("#lang-accent").element.value).toBe("us");
+    expect(wrapper.get("#lang-recordings").element.value).toBe("En-us");
   });
 
   // A prompt fragment is part of what the model is asked, and a change to it would
@@ -223,10 +216,9 @@ describe("LanguageDetailView", () => {
 
     const sent = apiRequest.mock.calls.find(([, init]) => init?.method === "PUT")[1].body;
     expect(Object.keys(sent).sort()).toEqual([
-      "accent",
       "deck",
-      "dict_api",
       "edge_tts_voice",
+      "recordings",
       "tts",
       "tts_voice",
     ]);
@@ -237,7 +229,7 @@ describe("LanguageDetailView", () => {
     await wrapper.get('[data-testid="advanced"]').trigger("click");
     await wrapper.get("#lang-deck").setValue("Serbian::Vocabulary");
     await wrapper.get("#lang-voice").setValue("sr-RS-NicholasNeural");
-    await wrapper.get("#lang-accent").setValue("ekavian");
+    await wrapper.get("#lang-recordings").setValue("Sr");
 
     await wrapper.get(".btn-save").trigger("click");
     await flushPromises();
@@ -249,8 +241,7 @@ describe("LanguageDetailView", () => {
         tts: "edge",
         tts_voice: "",
         edge_tts_voice: "sr-RS-NicholasNeural",
-        dict_api: "",
-        accent: "ekavian",
+        recordings: "Sr",
       },
     });
     expect(wrapper.get(".saved").text()).toBe("Saved.");
@@ -365,11 +356,11 @@ describe("LanguageDetailView", () => {
     expect(refused.get(".answers-note").classes()).toContain("warn");
   });
 
-  it("keeps the voice, dictionary and accent behind Advanced", async () => {
+  it("keeps the voice and the recordings prefix behind Advanced", async () => {
     const wrapper = await open();
 
     expect(wrapper.find("#lang-voice").exists()).toBe(false);
-    expect(wrapper.find("#lang-dict").exists()).toBe(false);
+    expect(wrapper.find("#lang-recordings").exists()).toBe(false);
     expect(wrapper.get("#lang-deck").exists()).toBe(true);
   });
 

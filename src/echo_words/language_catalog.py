@@ -36,8 +36,9 @@ class CatalogLanguage:
     english: str
     russian: str
     script: str
-    # dictionaryapi.dev's code, on the dozen languages it covers.
-    dict_api: str | None = None
+    # The Wikimedia Commons file-name prefix of this language's recordings, which
+    # is also the accent they are spoken in; none where Commons carries too few.
+    recordings: str | None = None
     # Piper voices this language not at all: either its directory holds nothing, or
     # the model listed under this code speaks another language (spec/decision-tts.md).
     piper_unusable: bool = False
@@ -69,20 +70,28 @@ CATALOG: tuple[CatalogLanguage, ...] = (
         "English",
         "английский",
         _LATIN,
-        dict_api="en",
+        recordings="En-us",
         answers=VOUCHED,
     ),
     CatalogLanguage("eo", "Esperanto", "Esperanto", "эсперанто", _LATIN),
     CatalogLanguage("et", "Eesti", "Estonian", "эстонский", _LATIN),
     CatalogLanguage("fi", "Suomi", "Finnish", "финский", _LATIN),
-    CatalogLanguage("fr", "Français", "French", "французский", _LATIN, dict_api="fr"),
+    CatalogLanguage("fr", "Français", "French", "французский", _LATIN, recordings="Fr"),
     CatalogLanguage("gl", "Galego", "Galician", "галисийский", _LATIN),
-    CatalogLanguage("de", "Deutsch", "German", "немецкий", _LATIN, dict_api="de", answers=VOUCHED),
+    CatalogLanguage(
+        "de",
+        "Deutsch",
+        "German",
+        "немецкий",
+        _LATIN,
+        recordings="De",
+        answers=VOUCHED,
+    ),
     CatalogLanguage("hu", "Magyar", "Hungarian", "венгерский", _LATIN),
     CatalogLanguage("is", "Íslenska", "Icelandic", "исландский", _LATIN),
     CatalogLanguage("id", "Bahasa Indonesia", "Indonesian", "индонезийский", _LATIN),
     CatalogLanguage("ga", "Gaeilge", "Irish", "ирландский", _LATIN),
-    CatalogLanguage("it", "Italiano", "Italian", "итальянский", _LATIN, dict_api="it"),
+    CatalogLanguage("it", "Italiano", "Italian", "итальянский", _LATIN, recordings="It"),
     CatalogLanguage("kk", "Қазақ тілі", "Kazakh", "казахский", _CYRILLIC),
     CatalogLanguage("ky", "Кыргызча", "Kyrgyz", "киргизский", _CYRILLIC),
     CatalogLanguage("la", "Latina", "Latin", "латинский", _LATIN),
@@ -93,9 +102,9 @@ CATALOG: tuple[CatalogLanguage, ...] = (
     CatalogLanguage("mn", "Монгол", "Mongolian", "монгольский", _CYRILLIC),
     CatalogLanguage("no", "Norsk", "Norwegian", "норвежский", _LATIN),
     CatalogLanguage("pl", "Polski", "Polish", "польский", _LATIN),
-    CatalogLanguage("pt", "Português", "Portuguese", "португальский", _LATIN, dict_api="pt-BR"),
+    CatalogLanguage("pt", "Português", "Portuguese", "португальский", _LATIN, recordings="Pt"),
     CatalogLanguage("ro", "Română", "Romanian", "румынский", _LATIN),
-    CatalogLanguage("ru", "Русский", "Russian", "русский", _CYRILLIC, dict_api="ru"),
+    CatalogLanguage("ru", "Русский", "Russian", "русский", _CYRILLIC, recordings="Ru"),
     CatalogLanguage(
         "sr",
         "Српски",
@@ -107,12 +116,12 @@ CATALOG: tuple[CatalogLanguage, ...] = (
     ),
     CatalogLanguage("sk", "Slovenčina", "Slovak", "словацкий", _LATIN),
     CatalogLanguage("sl", "Slovenščina", "Slovene", "словенский", _LATIN),
-    CatalogLanguage("es", "Español", "Spanish", "испанский", _LATIN, dict_api="es"),
+    CatalogLanguage("es", "Español", "Spanish", "испанский", _LATIN, recordings="Es"),
     CatalogLanguage("sw", "Kiswahili", "Swahili", "суахили", _LATIN),
     CatalogLanguage("sv", "Svenska", "Swedish", "шведский", _LATIN),
     CatalogLanguage("tg", "Тоҷикӣ", "Tajik", "таджикский", _CYRILLIC),
     CatalogLanguage("tt", "Татарча", "Tatar", "татарский", _CYRILLIC),
-    CatalogLanguage("tr", "Türkçe", "Turkish", "турецкий", _LATIN, dict_api="tr"),
+    CatalogLanguage("tr", "Türkçe", "Turkish", "турецкий", _LATIN, recordings="Tr"),
     CatalogLanguage("uk", "Українська", "Ukrainian", "украинский", _CYRILLIC, answers=UNRELIABLE),
     CatalogLanguage("uz", "Oʻzbekcha", "Uzbek", "узбекский", _LATIN),
     CatalogLanguage("vi", "Tiếng Việt", "Vietnamese", "вьетнамский", _LATIN),

@@ -14,10 +14,10 @@ echo-words настраивается в двух местах: TOML-табли�
 [languages.en]
 name       = "English"
 deck       = "EchoWords: English"
-dict_api   = "en"              # код dictionaryapi.dev; опустите, если языка там нет
+recordings = "En-us"           # префикс записей на Wikimedia Commons, вместе с акцентом;
+                               # опустите, если записей этого языка там нет
 tts        = "piper"           # piper | edge
 tts_voice  = "en_US-lessac-medium"
-accent     = "us"              # имеет смысл для английского
 script     = "latin"           # latin | cyrillic | latin+cyrillic
 
 [languages.sr]
@@ -30,8 +30,9 @@ prompt_hints   = "for nouns give gender and plural, for verbs give aspect"
 ```
 
 Каждая запись задаёт отображаемое имя, собственную колоду Anki (`deck`),
-допустимую письменность ввода (`script`), код словаря, если он есть, а также
-движок и голос произношения. В репозитории лежит `languages.example.toml` с
+допустимую письменность ввода (`script`), префикс, под которым живые записи
+этого языка лежат на Wikimedia Commons, если они там есть, а также движок и
+голос произношения. В репозитории лежит `languages.example.toml` с
 готовыми записями для английского, немецкого и сербского.
 
 !!! note

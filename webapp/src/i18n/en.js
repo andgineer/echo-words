@@ -122,10 +122,11 @@ export default {
   "languages.voiceNoPiperBuild":
     "This build ships no Piper voice for this language, so Piper would stay silent. " +
     "Use Edge.",
-  "languages.dictApi": "Dictionary",
-  "languages.dictApiPlaceholder": "e.g. en",
-  "languages.accent": "Accent",
-  "languages.accentPlaceholder": "e.g. us",
+  "languages.recordings": "Recordings",
+  "languages.recordingsPlaceholder": "e.g. En-us",
+  "languages.recordingsHint":
+    "The Wikimedia Commons prefix of this language's human recordings, accent " +
+    "included. Empty means the app speaks every word itself.",
   "languages.save": "Save",
   "languages.saved": "Saved.",
 

@@ -238,13 +238,14 @@ Status: **decided 2026-09-03.**
 
 Adding a language was a file edit and a restart, which is the wrong shape for
 something a reader does from a phone. The editor covers everything they
-actually do: add a language, remove one, and fix its deck, voice engine, voice,
-dictionary code and accent.
+actually do: add a language, remove one, and fix its deck, voice engine, voice
+and recordings prefix.
 
 **A language is picked from a directory, not named.** The directory holds the
 languages the app can reach — those written in the Latin or the Cyrillic script,
 which are the scripts the input validator can check — each with its endonym, its
-English and Russian names for the search, its script, and its dictionary code.
+English and Russian names for the search, its script, and the prefix its human
+recordings are filed under.
 The reader searches it by any of those names and presses a row.
 
 **Reaching a language is not evidence about its answers, and the directory says

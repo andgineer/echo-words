@@ -77,7 +77,7 @@ async function add(entry) {
   try {
     await apiRequest(`/api/languages/${entry.code}`, {
       method: "PUT",
-      body: { deck: entry.deck, dict_api: entry.dict_api ?? "" },
+      body: { deck: entry.deck, recordings: entry.recordings ?? "" },
     });
     draft.value = "";
     invalidateLanguages();

@@ -25,8 +25,7 @@ const form = ref({
   tts: "",
   tts_voice: "",
   edge_tts_voice: "",
-  dict_api: "",
-  accent: "",
+  recordings: "",
 });
 const advanced = ref(false);
 const asking = ref(false);
@@ -89,8 +88,7 @@ onMounted(async () => {
       tts: found.tts ?? "",
       tts_voice: found.tts_voice ?? "",
       edge_tts_voice: found.edge_tts_voice ?? "",
-      dict_api: found.dict_api ?? "",
-      accent: found.accent ?? "",
+      recordings: found.recordings ?? "",
     };
     const catalog = await cachedRequest("/api/languages/catalog", { background: true });
     const listed = catalog.find((entry) => entry.code === props.code);
@@ -228,27 +226,16 @@ async function remove() {
         <p class="form-hint voice-hint" :class="{ warn: !piperOffered }">{{ voiceHint }}</p>
       </div>
 
-      <div class="pair">
-        <div>
-          <label for="lang-dict">{{ t("languages.dictApi") }}</label>
-          <input
-            id="lang-dict"
-            v-model="form.dict_api"
-            type="text"
-            autocomplete="off"
-            :placeholder="t('languages.dictApiPlaceholder')"
-          />
-        </div>
-        <div>
-          <label for="lang-accent">{{ t("languages.accent") }}</label>
-          <input
-            id="lang-accent"
-            v-model="form.accent"
-            type="text"
-            autocomplete="off"
-            :placeholder="t('languages.accentPlaceholder')"
-          />
-        </div>
+      <div class="group">
+        <label for="lang-recordings">{{ t("languages.recordings") }}</label>
+        <input
+          id="lang-recordings"
+          v-model="form.recordings"
+          type="text"
+          autocomplete="off"
+          :placeholder="t('languages.recordingsPlaceholder')"
+        />
+        <p class="form-hint recordings-hint">{{ t("languages.recordingsHint") }}</p>
       </div>
     </div>
 
@@ -394,13 +381,6 @@ async function remove() {
   padding: 0.75rem 0;
   margin-bottom: 0.25rem;
   cursor: pointer;
-}
-
-.pair {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.75rem;
-  margin-bottom: 1rem;
 }
 
 .script-fact {

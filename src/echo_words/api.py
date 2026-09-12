@@ -246,11 +246,10 @@ class LanguageConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     deck: str = Field(max_length=_MAX_FIELD_INPUT)
-    dict_api: str | None = Field(default=None, max_length=_MAX_FIELD_INPUT)
+    recordings: str | None = Field(default=None, max_length=_MAX_FIELD_INPUT)
     tts: str | None = Field(default=None, max_length=_MAX_FIELD_INPUT)
     tts_voice: str | None = Field(default=None, max_length=_MAX_FIELD_INPUT)
     edge_tts_voice: str | None = Field(default=None, max_length=_MAX_FIELD_INPUT)
-    accent: str | None = Field(default=None, max_length=_MAX_FIELD_INPUT)
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:  # noqa: C901, PLR0915

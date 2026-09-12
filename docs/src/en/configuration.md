@@ -14,10 +14,10 @@ configuration change, not a code change.
 [languages.en]
 name       = "English"
 deck       = "EchoWords: English"
-dict_api   = "en"              # dictionaryapi.dev code; omit if unsupported
+recordings = "En-us"           # Wikimedia Commons recording prefix, accent included;
+                               # omit where Commons has none for the language
 tts        = "piper"           # piper | edge
 tts_voice  = "en_US-lessac-medium"
-accent     = "us"              # meaningful for English
 script     = "latin"           # latin | cyrillic | latin+cyrillic
 
 [languages.sr]
@@ -30,8 +30,9 @@ prompt_hints   = "for nouns give gender and plural, for verbs give aspect"
 ```
 
 Each entry names its display name, its own Anki `deck`, the `script` accepted
-from the input field, the dictionary code where one exists, and its
-pronunciation engine and voice. `languages.example.toml` in the repository
+from the input field, the Wikimedia Commons prefix its human recordings are
+filed under where the language has them, and its pronunciation engine and
+voice. `languages.example.toml` in the repository
 carries complete English, German, and Serbian entries.
 
 !!! note
@@ -41,8 +42,8 @@ carries complete English, German, and Serbian entries.
 ### Editing it from the app
 
 The pencil beside the language row on the words screen opens an editor that
-adds a language, removes one, and changes its deck, voice engine, voice,
-dictionary code and accent. It rewrites this file and takes effect
+adds a language, removes one, and changes its deck, voice engine, voice and
+recordings prefix. It rewrites this file and takes effect
 without a restart; a new Piper voice downloads in the background. Removing a
 language never touches its Anki deck, and the last remaining language cannot be
 removed — the app does not start without one. A save rewrites the whole file, so

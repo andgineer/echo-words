@@ -11,24 +11,24 @@
 [languages.en]
 name       = "English"
 deck       = "EchoWords: English"
-dict_api   = "en"              # dictionaryapi.dev code; omit if unsupported
+recordings = "En-us"           # Wikimedia Commons recording prefix, accent included;
+                               # omit where Commons has no recordings of the language
 tts        = "piper"           # piper | edge
 tts_voice  = "en_US-lessac-medium"
-accent     = "us"              # meaningful for English
 script     = "latin"
 
 [languages.de]
-name      = "Deutsch"
-deck      = "EchoWords: German"
-dict_api  = "de"
-tts       = "piper"
-tts_voice = "de_DE-thorsten-medium"
-script    = "latin"
+name       = "Deutsch"
+deck       = "EchoWords: German"
+recordings = "De"
+tts        = "piper"
+tts_voice  = "de_DE-thorsten-medium"
+script     = "latin"
 
 [languages.sr]
 name      = "Српски"
 deck      = "EchoWords: Serbian"
-# dict_api omitted — dictionaryapi.dev has no Serbian
+# recordings omitted — Commons carries few Serbian word recordings
 tts       = "edge"             # no usable local voice: Piper's lone sr_RS model
                                # ("serbski_institut") is actually Lower Sorbian —
                                # never use it (spec/decision-tts.md)

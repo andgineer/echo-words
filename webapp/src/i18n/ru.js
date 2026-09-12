@@ -119,10 +119,11 @@ export default {
     "озвучивает другой язык. Возьмите Edge.",
   "languages.voiceNoPiperBuild":
     "В этой сборке нет голоса Piper для этого языка — Piper промолчит. Возьмите Edge.",
-  "languages.dictApi": "Словарь",
-  "languages.dictApiPlaceholder": "напр. en",
-  "languages.accent": "Акцент",
-  "languages.accentPlaceholder": "напр. us",
+  "languages.recordings": "Записи",
+  "languages.recordingsPlaceholder": "напр. En-us",
+  "languages.recordingsHint":
+    "Префикс живых записей этого языка на Wikimedia Commons — вместе с акцентом. " +
+    "Пусто — и приложение произносит каждое слово само.",
   "languages.save": "Сохранить",
   "languages.saved": "Сохранено.",
 
