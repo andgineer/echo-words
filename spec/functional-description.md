@@ -673,38 +673,38 @@ Kept minimal — everything beyond typing a word:
 - **Language editor** — reached from the pencil beside the language row, not
   from the navigation. A list with add and remove, and a settings screen per
   language: the deck above, with the script beside it as a fact rather than a
-  choice, and voice engine, voice and recordings prefix behind
-  "Advanced". A Piper voice is picked from the ones this build can install,
-  never typed: the editor accepts only a voice the server can actually put on
-  disk, so choosing one is never choosing silence. An Edge voice stays free
-  text — there are hundreds of them and the app installs none. Both deletions ask inside the row they came from
-  rather than in a modal. A write replaces the languages table on disk
-  atomically and takes effect without a restart; a new voice is fetched in the
-  background. Removing a language **never** deletes its Anki deck — the cards
-  are the reader's — and the last remaining language cannot be removed,
-  because the app does not start without one. Entries already in history for a
-  removed language stay; the rail filters by language, so they simply stop
-  being reachable.
+  choice, and voice engine, voice and recordings prefix behind "Advanced". A
+  Piper voice is picked from the ones this build can install, never typed: the
+  editor accepts only a voice the server can actually put on disk, so choosing
+  one is never choosing silence. An Edge voice stays free text — there are
+  hundreds of them and the app installs none. Both deletions ask inside the
+  row they came from rather than in a modal. A write replaces the languages
+  table on disk atomically and takes effect without a restart; a new voice is
+  fetched in the background. Removing a language **never** deletes its Anki
+  deck — the cards are the reader's — and the last remaining language cannot
+  be removed, because the app does not start without one. Entries already in
+  history for a removed language stay; the rail filters by language, so they
+  simply stop being reachable.
 - **The language directory** — a language is added by searching a reference
   table of the languages the app can **reach** and pressing the one wanted; it
-  is found by its own name, its English name, its Russian name or its code. The
-  table gives the language its **code**, its **name**, its script and the
-  prefix its recordings are filed under, and the deck is named after it. Reaching a language is not
-  vouching for its answers, and the two are never conflated: every row carries
-  what is known about that language — vouched for, measured and unreliable, or
-  nobody has looked — and says it in the row where the language is picked and
-  again in its editor afterwards, because a reader cannot tell a fluent
-  invention from an answer. The code and the name are
-  the directory's rather than the reader's, and a submission carrying a name is
-  refused: the code addresses the encyclopedia, the dictionary and the audio
-  cache and cannot be changed once the language exists, and the name is what
-  the prompt calls the source language. Under a code the directory does carry,
-  the name and the script are the directory's whatever the file says, from the
-  moment the table is read rather than from the next save: the input field, the
-  card-sentence filter, the editor and the prompt have to be testing one
-  alphabet and naming one language, and a file disagreeing is logged and
-  overridden. A language configured by hand under a code the directory does not
-  carry stays editable and keeps its own name.
+  is found by its own name, its English name, its Russian name or its code.
+  The table gives the language its **code**, its **name**, its script and the
+  prefix its recordings are filed under, and the deck is named after it.
+  Reaching a language is not vouching for its answers, and the two are never
+  conflated: every row carries what is known about that language — vouched
+  for, measured and unreliable, or nobody has looked — and says it in the row
+  where the language is picked and again in its editor afterwards, because a
+  reader cannot tell a fluent invention from an answer. The code and the name
+  are the directory's rather than the reader's, and a submission carrying a
+  name is refused: the code addresses the encyclopedia, the dictionary and the
+  audio cache and cannot be changed once the language exists, and the name is
+  what the prompt calls the source language. Under a code the directory does
+  carry, the name and the script are the directory's whatever the file says,
+  from the moment the table is read rather than from the next save: the input
+  field, the card-sentence filter, the editor and the prompt have to be
+  testing one alphabet and naming one language, and a file disagreeing is
+  logged and overridden. A language configured by hand under a code the
+  directory does not carry stays editable and keeps its own name.
   The editor does **not** expose `api_model` or `prompt_hints`, and refuses a
   request that carries either. They are the two fields whose value reaches
   machinery the editor can neither show nor check: a prompt hint is

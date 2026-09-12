@@ -34,10 +34,11 @@ tool looks for.
   constraint. Its first arm — the incumbent paid model at a low
   reasoning effort — waits on llmbroker, which cannot yet send a
   request parameter to a model reached by name.
-  `observed-defects.md` — fifteen faults left unfixed, each with its
-  evidence: five reproduced in local use, from an unignored `.env` to a
-  search that denies a language it merely already carries, and ten read
-  out of bench review packets whose every automated screen was green.
+  `observed-defects.md` — twenty faults left unfixed, each with its
+  evidence: seven met while using the app, from an unignored `.env` to a
+  deeper article nobody ever chose a length for, twelve read out of bench
+  review packets whose every automated screen was green, and one found by
+  auditing the recordings the deployed host had cached.
   `answer-recovery.md` — what happens between a pool answer and a card
   when the parser cannot read the payload: production says fourteen of
   fifteen rejected payloads carried an answer the reader would have

@@ -34,7 +34,7 @@ const CATALOG = [
     russian: "испанский",
     script: "latin",
     deck: "EchoWords: Spanish",
-    recordings: "Es",
+    recordings: "Es-am-lat",
     answers: "unmeasured",
   },
   {
@@ -210,7 +210,7 @@ describe("LanguagesView", () => {
 
     expect(apiRequest).toHaveBeenCalledWith("/api/languages/es", {
       method: "PUT",
-      body: { deck: "EchoWords: Spanish", recordings: "Es" },
+      body: { deck: "EchoWords: Spanish", recordings: "Es-am-lat" },
     });
     expect(wrapper.get("#new-lang").element.value).toBe("");
   });

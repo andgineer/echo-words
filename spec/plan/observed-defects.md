@@ -1,17 +1,23 @@
 # Implementation plan — defects seen in use and in the bench, none of them fixed yet
 
-Items 1 to 5 were found while running the app locally against the real provider
+Twenty items, from three readings.
+
+Items 1 to 5, 16 and 17 were found while running the app against the real provider
 keys and reading what it did. Each was reproduced and has its evidence written
 down; two sibling defects found in the same session — the player speaking a
 corrected misspelling, and sense chips that all carried the same word — are
 already fixed and are not repeated here.
 
-Items 6 to 15 come from a different reading: the review packets of the two
-smoke-tier bench runs behind the source-language sense cue, read item by item by
-a fresh agent each time. Every deterministic contract and every quality threshold
-in both runs was green, so these are the faults an automated screen cannot see.
-Each quotes the answer it was found in, because the run directories are not
-checked in and the evidence has to outlive them.
+Items 6 to 15, 18 and 19 come from a different reading: the review packets of the
+smoke-tier bench runs behind the source-language sense cue and the answer shape,
+read item by item by a fresh agent each time. Every deterministic contract and
+every quality threshold in those runs was green, so these are the faults an
+automated screen cannot see. Each quotes the answer it was found in, because the
+run directories are not checked in and the evidence has to outlive them.
+
+Item 20 comes from neither: an audit of what the deployed host had actually
+cached, which is what showed that the head of the audio chain had been answering
+nothing at all.
 
 The items are independent. None blocks another, and each is finished on its own.
 

@@ -74,6 +74,56 @@ def test_a_table_naming_the_old_dictionary_key_keeps_its_recordings(tmp_path: Pa
     assert table["fr"].recordings is None
 
 
+def test_an_old_table_with_no_accent_derives_the_prefix_that_serves_each_language(
+    tmp_path: Path,
+):
+    """The accent was optional and clearable, so a deployed table can name the old
+    dictionary key alone. Commons files half of these languages under something other
+    than the capitalised code, and a language it carries too little of gets no prefix
+    rather than a round trip per word that finds nothing."""
+    rows = (
+        ("en", "English", "latin"),
+        ("de", "Deutsch", "latin"),
+        ("fr", "Français", "latin"),
+        ("it", "Italiano", "latin"),
+        ("ru", "Русский", "cyrillic"),
+        ("es", "Español", "latin"),
+        ("pt", "Português", "latin"),
+        ("tr", "Türkçe", "latin"),
+    )
+    path = tmp_path / "languages.toml"
+    path.write_text(
+        "".join(
+            f'[languages.{code}]\nname="{name}"\ndeck="D"\nscript="{script}"\ndict_api="{code}"\n\n'
+            for code, name, script in rows
+        ),
+        encoding="utf-8",
+    )
+
+    table = load_languages(path)
+
+    assert {code: table[code].recordings for code, _, _ in rows} == {
+        "en": "En-us",
+        "de": "De",
+        "fr": "Fr",
+        "it": "It",
+        "ru": "Ru",
+        "es": "Es-am-lat",
+        "pt": "Pt-br",
+        "tr": None,
+    }
+
+
+def test_an_old_english_table_keeps_the_accent_it_named(tmp_path: Path):
+    path = tmp_path / "languages.toml"
+    path.write_text(
+        '[languages.en]\nname="English"\ndeck="D"\nscript="latin"\ndict_api="en"\naccent="uk"\n',
+        encoding="utf-8",
+    )
+
+    assert load_languages(path)["en"].recordings == "En-uk"
+
+
 def test_a_recordings_prefix_of_its_own_outranks_the_old_dictionary_key(tmp_path: Path):
     path = tmp_path / "languages.toml"
     path.write_text(

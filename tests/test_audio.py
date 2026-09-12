@@ -136,6 +136,103 @@ async def test_a_throttled_commons_leaves_the_word_to_the_voice(
     assert len(requested) == 1
 
 
+async def test_a_commons_that_never_answers_leaves_the_word_to_the_voice(
+    languages,
+    settings,
+    monkeypatch,
+):
+    """Spending the step's deadline is not a failure of the answer: a connection that
+    never completes falls through as quietly as a word Commons does not have, and
+    leaves the cache to whichever step does speak the word."""
+
+    def handler(_request):
+        raise httpx.ConnectTimeout("Commons did not answer")
+
+    async def fake_piper(_word, _lang, output, _settings):
+        output.write_bytes(b"piper")
+        return True
+
+    monkeypatch.setattr(audio, "_piper_audio", fake_piper)
+    monkeypatch.setattr(
+        audio,
+        "_edge_audio",
+        AsyncMock(side_effect=AssertionError("edge must not run after Piper")),
+    )
+
+    async with mock_client(handler) as client:
+        result = await audio.fetch_pronunciation(
+            "Haus",
+            languages["de"],
+            settings=settings,
+            client=client,
+        )
+
+    assert result is not None
+    assert result.read_bytes() == b"piper"
+    assert list((settings.data_dir / "audio").glob("pronunciation-*.mp3")) == [result]
+
+
+async def test_the_recording_step_spends_only_its_own_short_deadline(
+    languages,
+    settings,
+    monkeypatch,
+):
+    """The whole point of the step is that it answers inside the deadline the answer
+    waits on, so it is given seconds rather than the budget a background download has."""
+    timeouts = []
+
+    def handler(request):
+        timeouts.append(request.extensions["timeout"])
+        return httpx.Response(200, content=b"commons mp3")
+
+    monkeypatch.setattr(
+        audio,
+        "_piper_audio",
+        AsyncMock(side_effect=AssertionError("Piper must not run after a hit")),
+    )
+    async with mock_client(handler) as client:
+        await audio.fetch_pronunciation("Haus", languages["de"], settings=settings, client=client)
+
+    assert timeouts == [dict.fromkeys(("connect", "read", "write", "pool"), 3)]
+
+
+async def test_a_voice_download_keeps_the_longer_budget_of_its_own(
+    languages,
+    settings,
+    monkeypatch,
+):
+    """A voice is megabytes fetched in the background at startup, and nothing waits on
+    it, so the recording step's few seconds must not be imposed on it."""
+    contents = {"https://voices/model": b"model", "https://voices/config": b"config"}
+    files = audio.PiperVoiceFiles(
+        model=audio.VoiceFile(
+            ".onnx",
+            "https://voices/model",
+            hashlib.sha256(contents["https://voices/model"]).hexdigest(),
+        ),
+        config=audio.VoiceFile(
+            ".onnx.json",
+            "https://voices/config",
+            hashlib.sha256(contents["https://voices/config"]).hexdigest(),
+        ),
+    )
+    monkeypatch.setattr(audio, "PIPER_VOICES", {"configured": files})
+    timeouts = []
+
+    def handler(request):
+        timeouts.append(request.extensions["timeout"])
+        return httpx.Response(200, content=contents[str(request.url)])
+
+    async with mock_client(handler) as client:
+        await audio.prepare_configured_voices(
+            [replace(languages["en"], tts_voice="configured")],
+            settings,
+            client=client,
+        )
+
+    assert timeouts == [dict.fromkeys(("connect", "read", "write", "pool"), 10)] * 2
+
+
 async def test_commons_is_not_asked_for_a_phrase(languages, settings, monkeypatch):
     """A headword carded with its article is not one word, and the recording of the
     bare noun would speak a text the card does not show."""

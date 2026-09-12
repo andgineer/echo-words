@@ -120,14 +120,20 @@ def _language_from_entry(code: str, entry: object, path: Path) -> Language:
     return _joined_to_the_directory(language, path)
 
 
-def _recordings_prefix(code: str, accent: object) -> str:
+def _recordings_prefix(code: str, accent: object) -> str | None:
     """The Commons prefix a table naming a dictionary code and an accent stands for.
 
     A file written before the two became one keeps its recordings instead of losing
-    them to the deploy that reads it.
+    them to the deploy that reads it. The prefix is the directory's measured one
+    rather than the code spelled with a capital: half the codes are filed under
+    something else, and a guess costs a round trip per word and finds nothing.
     """
+    reference = catalog_language(code)
+    prefix = reference.recordings if reference is not None else None
     suffix = _optional(accent)
-    return f"{code.capitalize()}-{suffix.lower()}" if suffix else code.capitalize()
+    if prefix is None or suffix is None:
+        return prefix
+    return f"{prefix.split('-')[0]}-{suffix.lower()}"
 
 
 def _joined_to_the_directory(language: Language, path: Path) -> Language:

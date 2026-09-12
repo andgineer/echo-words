@@ -153,6 +153,8 @@ _LANGUAGE_CONFIG_TESTS = frozenset(
         "test_load_languages_keeps_optional_fields",
         "test_load_languages_ignores_unknown_keys",
         "test_a_table_naming_the_old_dictionary_key_keeps_its_recordings",
+        "test_an_old_table_with_no_accent_derives_the_prefix_that_serves_each_language",
+        "test_an_old_english_table_keeps_the_accent_it_named",
         "test_a_recordings_prefix_of_its_own_outranks_the_old_dictionary_key",
         "test_a_recordings_prefix_round_trips_through_the_editor",
         "test_missing_file_is_a_config_error",
