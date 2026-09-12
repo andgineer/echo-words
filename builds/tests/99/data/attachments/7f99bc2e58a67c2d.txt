@@ -1,0 +1,78 @@
+ERROR    echo_words.pipeline:pipeline.py:461 word processing failed unexpectedly
+Traceback (most recent call last):
+  File "/home/runner/work/echo-words/echo-words/src/echo_words/pipeline.py", line 459, in _work
+    await self.process_word(job)
+  File "/home/runner/work/echo-words/echo-words/src/echo_words/pipeline.py", line 560, in process_word
+    async for delta in completion:
+    ...<35 lines>...
+        )
+  File "/home/runner/work/echo-words/echo-words/src/echo_words/backend.py", line 118, in _recorded
+    async for delta in answer:
+        yield delta
+  File "/home/runner/work/echo-words/echo-words/src/echo_words/backend.py", line 161, in _answer
+    async for delta in pool:
+        yield delta
+  File "/home/runner/work/echo-words/echo-words/src/echo_words/backend.py", line 182, in _pool_answers
+    async with self._open_pool() as stream:
+               ~~~~~~~~~~~~~~~^^
+  File "/opt/hostedtoolcache/Python/3.13.15/x64/lib/python3.13/contextlib.py", line 214, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/work/echo-words/echo-words/src/echo_words/backend.py", line 423, in _open_pool
+    stream = open_pool_stream(
+        self._cascade.broker,
+    ...<3 lines>...
+        trace_id=self._request.trace_id,
+    )
+  File "/home/runner/work/echo-words/echo-words/src/echo_words/llm_backend.py", line 129, in open_pool_stream
+    broker.stream(
+    ~~~~~~~~~~~~~^
+        prompt,
+        ^^^^^^^
+    ...<3 lines>...
+        fastest_of=POOL_FASTEST_OF,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ),
+    ^
+  File "/home/runner/work/echo-words/echo-words/tests/fakes.py", line 234, in stream
+    raise AssertionError("the pool was asked for one stream more than the test prepared")
+AssertionError: the pool was asked for one stream more than the test prepared
+ERROR    echo_words.pipeline:pipeline.py:461 word processing failed unexpectedly
+Traceback (most recent call last):
+  File "/home/runner/work/echo-words/echo-words/src/echo_words/pipeline.py", line 459, in _work
+    await self.process_word(job)
+  File "/home/runner/work/echo-words/echo-words/src/echo_words/pipeline.py", line 560, in process_word
+    async for delta in completion:
+    ...<35 lines>...
+        )
+  File "/home/runner/work/echo-words/echo-words/src/echo_words/backend.py", line 118, in _recorded
+    async for delta in answer:
+        yield delta
+  File "/home/runner/work/echo-words/echo-words/src/echo_words/backend.py", line 161, in _answer
+    async for delta in pool:
+        yield delta
+  File "/home/runner/work/echo-words/echo-words/src/echo_words/backend.py", line 182, in _pool_answers
+    async with self._open_pool() as stream:
+               ~~~~~~~~~~~~~~~^^
+  File "/opt/hostedtoolcache/Python/3.13.15/x64/lib/python3.13/contextlib.py", line 214, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/work/echo-words/echo-words/src/echo_words/backend.py", line 423, in _open_pool
+    stream = open_pool_stream(
+        self._cascade.broker,
+    ...<3 lines>...
+        trace_id=self._request.trace_id,
+    )
+  File "/home/runner/work/echo-words/echo-words/src/echo_words/llm_backend.py", line 129, in open_pool_stream
+    broker.stream(
+    ~~~~~~~~~~~~~^
+        prompt,
+        ^^^^^^^
+    ...<3 lines>...
+        fastest_of=POOL_FASTEST_OF,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ),
+    ^
+  File "/home/runner/work/echo-words/echo-words/tests/fakes.py", line 234, in stream
+    raise AssertionError("the pool was asked for one stream more than the test prepared")
+AssertionError: the pool was asked for one stream more than the test prepared

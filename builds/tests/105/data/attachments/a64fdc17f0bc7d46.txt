@@ -1,0 +1,1 @@
+WARNING  echo_words.languages:languages.py:134 [languages.bg] in /tmp/pytest-of-runner/pytest-0/test_the_directory_supplies_th0/languages.toml says name='Bulgarian' script='latin'; the language directory says 'Български' and 'cyrillic', and the directory is what the app uses

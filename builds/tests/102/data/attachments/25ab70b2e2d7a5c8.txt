@@ -1,0 +1,1 @@
+WARNING  echo_words.backend:backend.py:125 no answer for en after 0.0 s from the paid model gpt-fast (trace none): the paid model 'gpt-fast' failed (InvalidProviderResponseError: boom)

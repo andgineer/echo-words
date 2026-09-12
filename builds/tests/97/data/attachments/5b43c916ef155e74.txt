@@ -1,0 +1,1 @@
+WARNING  echo_words.prompt:prompt.py:354 unusable answer block for en/'I have no idea' in context '': answer payload is not valid JSON: Expecting property name enclosed in double quotes: line 1 column 2 (char 1); payload '{'

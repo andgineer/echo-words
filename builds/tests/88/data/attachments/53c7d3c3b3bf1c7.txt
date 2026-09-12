@@ -1,0 +1,5 @@
+WARNING  echo_words.audio:audio.py:178 dictionary audio failed for en/'partial': a test tried to resolve b'api.dictionaryapi.dev'
+WARNING  echo_words.audio:audio.py:235 Piper voice en_US-lessac-medium is not ready
+WARNING  echo_words.audio:audio.py:93 edge-tts audio failed for en/'partial': a test tried to resolve 'speech.platform.bing.com'
+WARNING  echo_words.prompt:prompt.py:331 no answer block for en/'partial': the answer never wrote the delimiter
+WARNING  echo_words.prompt:prompt.py:331 no answer block for en/'partial': the answer never wrote the delimiter

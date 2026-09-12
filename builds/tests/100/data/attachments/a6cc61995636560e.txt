@@ -1,0 +1,1 @@
+WARNING  echo_words.audio:audio.py:157 could not load Piper voice configured: Expecting value: line 1 column 1 (char 0)
