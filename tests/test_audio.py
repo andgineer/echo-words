@@ -175,6 +175,93 @@ async def test_a_throttled_commons_leaves_the_word_to_the_voice(
     assert len(requested) == 1
 
 
+def _mp3_with_rate(path, rate, *, id3=False):
+    version, index = (3, {44100: 0, 48000: 1, 32000: 2}.get(rate, 0)), 0
+    if rate in (22050, 24000, 16000):
+        version = (2, {22050: 0, 24000: 1, 16000: 2}[rate])
+    header = bytes(
+        [
+            0xFF,
+            0xE0 | (version[0] << 3) | 0x02,
+            0x90 | (version[1] << 2),
+            0x00,
+        ],
+    )
+    tag = b"ID3\x04\x00\x00\x00\x00\x00\x05" + b"\x00" * 5 if id3 else b""
+    path.write_bytes(tag + header + b"\x00" * 64)
+    return path
+
+
+@pytest.mark.parametrize(
+    ("rate", "human"),
+    [(44100, True), (48000, True), (32000, True), (24000, False), (22050, False)],
+)
+def test_a_recording_is_told_from_a_synthesized_one_by_its_rate(tmp_path, rate, human):
+    """The engines synthesize at their own fixed rates and a Commons transcode carries
+    the source's, so a word the throttle cost a recording can be found again."""
+    assert audio.is_human_recording(_mp3_with_rate(tmp_path / f"{rate}.mp3", rate)) is human
+
+
+def test_an_id3_tag_does_not_hide_the_rate(tmp_path):
+    """Commons' own transcodes carry one, so reading the first frame naively finds none."""
+    tagged = _mp3_with_rate(tmp_path / "tagged.mp3", 44100, id3=True)
+
+    assert audio.is_human_recording(tagged) is True
+
+
+def test_an_unreadable_file_is_not_taken_for_a_recording(tmp_path):
+    empty = tmp_path / "empty.mp3"
+    empty.write_bytes(b"")
+
+    assert audio.is_human_recording(empty) is False
+
+
+async def test_a_refreshed_fetch_asks_again_for_a_word_the_voice_already_spoke(
+    languages,
+    settings,
+    monkeypatch,
+):
+    """The voice writes at the cache path, so a throttled word is answered from disk for
+    ever unless the cache is discarded first."""
+    requested = []
+
+    def handler(request):
+        requested.append(str(request.url))
+        return httpx.Response(200, content=b"commons mp3")
+
+    monkeypatch.setattr(
+        audio,
+        "_piper_audio",
+        AsyncMock(side_effect=AssertionError("Piper must not run after a hit")),
+    )
+    cached = audio._audio_path("Haus", languages["de"], settings)
+    cached.parent.mkdir(parents=True, exist_ok=True)
+    cached.write_bytes(b"piper")
+
+    async with mock_client(handler) as client:
+        kept = await audio.fetch_pronunciation(
+            "Haus",
+            languages["de"],
+            settings=settings,
+            client=client,
+        )
+        assert kept is not None
+        assert kept.read_bytes() == b"piper"
+        assert requested == []
+
+        refreshed = await audio.fetch_pronunciation(
+            "Haus",
+            languages["de"],
+            settings=settings,
+            client=client,
+            refresh=True,
+        )
+
+    assert refreshed is not None
+    assert refreshed.read_bytes() == b"commons mp3"
+    assert len(requested) == 1
+
+
 @pytest.mark.parametrize("extension", ["oga", "wav"])
 async def test_a_recording_filed_under_another_extension_is_still_found(
     languages,

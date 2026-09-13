@@ -110,8 +110,8 @@ def test_the_label_sweep_writes_nothing_unless_yes_is_passed(monkeypatch):
 def test_the_recording_backfill_writes_nothing_unless_yes_is_passed(monkeypatch):
     confirmations = []
 
-    def record(_settings, *, confirmed):
-        confirmations.append(confirmed)
+    def record(_settings, *, confirmed, replace_synthetic=False):
+        confirmations.append((confirmed, replace_synthetic))
         return "what it would fetch"
 
     monkeypatch.setattr("echo_words.main.backfill_recordings", record)
@@ -119,10 +119,16 @@ def test_the_recording_backfill_writes_nothing_unless_yes_is_passed(monkeypatch)
     dry = CliRunner().invoke(echo_words, ["backfill-recordings"])
     assert dry.exit_code == 0
     assert "what it would fetch" in dry.output
-    assert confirmations == [False]
+    assert confirmations == [(False, False)]
 
     assert CliRunner().invoke(echo_words, ["backfill-recordings", "--yes"]).exit_code == 0
-    assert confirmations == [False, True]
+    # The wider sweep is asked for, never assumed: it replaces media a reader already has.
+    replaced = CliRunner().invoke(
+        echo_words,
+        ["backfill-recordings", "--yes", "--replace-synthetic"],
+    )
+    assert replaced.exit_code == 0
+    assert confirmations == [(False, False), (True, False), (True, True)]
 
 
 def test_a_backfill_with_no_collection_there_fails_instead_of_reporting_success(

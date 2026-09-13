@@ -196,6 +196,13 @@ cannot speak is left as it is and counted in the report. The console command
 behind it is `echo-words backfill-recordings`, which writes nothing without
 `--yes`.
 
+The fetches are spaced: Commons answers a burst with a throttle, and a throttled
+word is left to the local voice as though Commons had never had it. `--replace-
+synthetic` widens the sweep to those words — a note whose recording one of the
+engines made is asked for again, and the human recording replaces it where
+Commons now answers. Without the flag a note that already carries audio is never
+touched.
+
 As with the label sweep, a note is only filled where its deck belongs to a
 configured language, and the command syncs with AnkiWeb itself and says whether
 that succeeded. The sync leaves its media transfer running in the background, so

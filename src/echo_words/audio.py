@@ -33,6 +33,12 @@ _COMMONS_URL = (
 )
 # A word is uploaded under any of these, and each is published at its own name.
 _RECORDING_EXTENSIONS = ("ogg", "oga", "wav")
+# Fourteen requests fired back to back drew a throttle, and a throttled word is
+# left to the voice: anything asking for many words in a row waits this long
+# between them.
+RECORDING_PACE_SECONDS = 1.5
+# Commons publishes its transcodes at the source's rate; the engines are slower.
+_HUMAN_RECORDING_HZ = 32000
 # Wikimedia's policy refuses a generic client agent, and httpx's default is one.
 _USER_AGENT = f"echo-words/{__version__} (https://github.com/andgineer/echo-words)"
 _AUDIO_NAME_PATTERN = re.compile(r"pronunciation-[0-9a-f]{20}\.mp3")
@@ -72,10 +78,17 @@ async def fetch_pronunciation(
     *,
     settings: Settings = default_settings,
     client: httpx.AsyncClient | None = None,
+    refresh: bool = False,
 ) -> Path | None:
-    """Return one cached mp3, falling through a human recording, Piper, then edge-tts."""
+    """Return one cached mp3, falling through a human recording, Piper, then edge-tts.
+
+    ``refresh`` discards what the cache holds, which is the only way to ask Commons
+    again for a word the voice already spoke: the voice writes at the same path.
+    """
     try:
         output = _audio_path(word, lang, settings)
+        if refresh:
+            output.unlink(missing_ok=True)
         if output.is_file():
             return output
         output.parent.mkdir(parents=True, exist_ok=True)
@@ -172,6 +185,45 @@ async def _preload_voice(voice_name: str, files: PiperVoiceFiles, settings: Sett
         )
     except Exception as exc:  # noqa: BLE001 - a failed load only costs the first word.
         logger.warning("could not load Piper voice %s: %s", voice_name, exc)
+
+
+def is_human_recording(path: Path) -> bool:
+    """Whether an mp3 came from Commons rather than from one of the engines.
+
+    The engines synthesize at 22 050 Hz (Piper) and 24 000 Hz (edge-tts); a Commons
+    transcode carries the source recording's own rate, which is higher.
+    """
+    try:
+        return _sample_rate(path) >= _HUMAN_RECORDING_HZ
+    except Exception as exc:  # noqa: BLE001 - an unreadable file is not a recording.
+        logger.warning("could not read the sample rate of %s: %s", path.name, exc)
+        return False
+
+
+_FRAME_SYNC = 0xFF
+_FRAME_SYNC_TAIL = 0xE0
+_RESERVED_RATE = 3
+_MPEG_RATES = {3: (44100, 48000, 32000), 2: (22050, 24000, 16000), 0: (11025, 12000, 8000)}
+
+
+def _sample_rate(path: Path) -> int:
+    data = path.read_bytes()
+    start = 0
+    if data[:3] == b"ID3":
+        # An ID3v2 header states its length in seven bits of each of four bytes, and
+        # Commons' transcodes carry one: the first frame is behind it.
+        size = 0
+        for byte in data[6:10]:
+            size = (size << 7) | (byte & 0x7F)
+        start = 10 + size
+    for index in range(start, len(data) - 3):
+        if data[index] != _FRAME_SYNC or data[index + 1] & _FRAME_SYNC_TAIL != _FRAME_SYNC_TAIL:
+            continue
+        rates = _MPEG_RATES.get((data[index + 1] >> 3) & 3)
+        selected = (data[index + 2] >> 2) & 3
+        if rates is not None and selected != _RESERVED_RATE:
+            return rates[selected]
+    return 0
 
 
 def is_audio_filename(name: str) -> bool:

@@ -514,6 +514,108 @@ async def test_a_silent_note_in_a_deck_no_language_claims_is_left_alone_and_coun
     assert stored_audio(settings) == [""]
 
 
+def with_recordings(settings: Settings) -> Settings:
+    """A row that names a Commons prefix, which is what makes asking again possible."""
+    settings.languages_config.write_text(
+        '[languages.en]\nname = "English"\ndeck = "EchoWords: English"\n'
+        'script = "latin"\nrecordings = "En-us"\n',
+        encoding="utf-8",
+    )
+    return settings
+
+
+def _voiced(tmp_path: Path, rate: int) -> Path:
+    """An mp3 whose first frame declares the rate the engines or Commons would give it."""
+    version, index = (3, {44100: 0}[rate]) if rate == 44100 else (2, {22050: 0}[rate])
+    path = tmp_path / f"voiced-{rate}.mp3"
+    path.write_bytes(
+        bytes([0xFF, 0xE0 | (version << 3) | 0x02, 0x90 | (index << 2), 0x00]) + b"\x00" * 64
+    )
+    return path
+
+
+async def test_a_word_the_voice_spoke_is_asked_again_only_when_that_is_asked_for(tmp_path):
+    """A throttled word is spoken by the voice and cached as though Commons never had
+    it, so the wider sweep is the only thing that asks again."""
+    settings = with_recordings(local_settings(tmp_path))
+    await stored_with_audio(
+        settings,
+        make_note("money"),
+        ENGLISH_DECK,
+        _voiced(tmp_path, 22050),
+    )
+    await stored_with_audio(
+        settings,
+        make_note("receive"),
+        ENGLISH_DECK,
+        _voiced(tmp_path, 44100),
+    )
+
+    narrow = await asyncio.to_thread(backfill_recordings, settings, confirmed=False)
+    wider = await asyncio.to_thread(
+        backfill_recordings,
+        settings,
+        confirmed=False,
+        replace_synthetic=True,
+    )
+
+    assert "every one of 2 notes carries audio" in narrow
+    assert "would fetch a recording for 1 of 2 notes" in wider
+    assert "money" in wider and "receive" not in wider
+
+
+async def test_replacing_a_synthesized_recording_trashes_the_one_it_replaces(tmp_path):
+    settings = with_recordings(local_settings(tmp_path))
+    await stored_with_audio(
+        settings,
+        make_note("money"),
+        ENGLISH_DECK,
+        _voiced(tmp_path, 22050),
+    )
+    before = stored_audio(settings)
+
+    reported = await asyncio.to_thread(
+        backfill_recordings,
+        settings,
+        confirmed=True,
+        replace_synthetic=True,
+        fetch=spoken(tmp_path),
+    )
+
+    assert "attached a recording to 1 of 1 notes" in reported
+    assert stored_audio(settings) != before
+    collection = Collection(str(collection_path(settings)))
+    try:
+        kept = {Path(name).name for name in Path(collection.media.dir()).iterdir()}
+    finally:
+        collection.close()
+    assert len(kept) == 1
+
+
+async def test_the_wider_sweep_leaves_a_language_that_has_no_recordings_alone(tmp_path):
+    """Nothing to ask: the row names no prefix, so the voice is the whole chain."""
+    settings = with_language_table(local_settings(tmp_path))
+    settings.languages_config.write_text(
+        '[languages.en]\nname = "English"\ndeck = "EchoWords: English"\nscript = "latin"\n',
+        encoding="utf-8",
+    )
+    await stored_with_audio(
+        settings,
+        make_note("money"),
+        ENGLISH_DECK,
+        _voiced(tmp_path, 22050),
+    )
+
+    reported = await asyncio.to_thread(
+        backfill_recordings,
+        settings,
+        confirmed=False,
+        replace_synthetic=True,
+    )
+
+    assert "every one of 1 notes carries audio" in reported
+
+
 async def test_the_fill_waits_for_the_media_upload_it_started(tmp_path):
     """A collection sync returns with its media still going up in a background thread,
     and a one-shot command would exit from under it."""

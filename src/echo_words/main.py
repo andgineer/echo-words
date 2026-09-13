@@ -78,11 +78,16 @@ def clear_sense_labels_command(yes: bool, env_file: Path | None) -> None:
 @echo_words.command(name="backfill-recordings")
 @click.option("--yes", is_flag=True, help="Attach them. Without it nothing is written.")
 @click.option(
+    "--replace-synthetic",
+    is_flag=True,
+    help="Also re-ask for the words an engine spoke, which a throttle can cause.",
+)
+@click.option(
     "--env-file",
     type=click.Path(exists=True, dir_okay=False, path_type=Path),
     help="Read settings from this file, as the service reads its own.",
 )
-def backfill_recordings_command(yes: bool, env_file: Path | None) -> None:
+def backfill_recordings_command(yes: bool, replace_synthetic: bool, env_file: Path | None) -> None:
     """
     Give every note written without audio the recording the chain would produce today.
 
@@ -92,10 +97,16 @@ def backfill_recordings_command(yes: bool, env_file: Path | None) -> None:
     syncs with AnkiWeb itself and says whether that worked, because the service
     only syncs off its own adds. Stop the service first: the collection must not be
     open elsewhere.
+
+    With --replace-synthetic it also re-asks for the words one of the engines spoke:
+    a word Commons had but answered a throttle for is cached as the voice's, and
+    nothing in ordinary use asks again.
     """
     active = Settings(_env_file=env_file) if env_file is not None else settings
     try:
-        click.echo(backfill_recordings(active, confirmed=yes))
+        click.echo(
+            backfill_recordings(active, confirmed=yes, replace_synthetic=replace_synthetic),
+        )
     except AnkiError as exc:
         raise click.ClickException(str(exc)) from exc
 

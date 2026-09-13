@@ -409,6 +409,9 @@ def test_the_backfill_runs_with_the_service_down_under_the_service_settings():
     assert f"--env-file {tasks.REMOTE_DEPLOY_ENV}" in dry
     assert dry.endswith(tasks.REMOTE_DEPLOY_ENV)
     assert confirmed.endswith(" --yes")
+    wider = tasks._backfill_recordings_script(confirmed=True, replace_synthetic=True)
+    assert wider.endswith(" --yes --replace-synthetic")
+    assert "--replace-synthetic" not in confirmed
     # The collection must not be open elsewhere, and the settings must be the unit's.
     assert dry.index("systemctl stop") < dry.index("echo-words backfill-recordings")
 

@@ -638,21 +638,26 @@ def healthcheck(c: Context):
     _health_check(c)
 
 
-def _backfill_recordings_script(*, confirmed: bool) -> str:
+def _backfill_recordings_script(*, confirmed: bool, replace_synthetic: bool = False) -> str:
     """Fetch with the service down, under the very settings systemd hands it."""
-    flag = " --yes" if confirmed else ""
+    flags = " --yes" if confirmed else ""
+    if replace_synthetic:
+        flags += " --replace-synthetic"
     return (
         "set -euo pipefail; "
         f"cd {REMOTE_ROOT}; "
         f"sudo systemctl stop {SERVICE_NAME}; "
         "source /home/ubuntu/.local/bin/env; "
         "uv run --no-dev echo-words backfill-recordings "
-        f"--env-file {REMOTE_DEPLOY_ENV}{flag}"
+        f"--env-file {REMOTE_DEPLOY_ENV}{flags}"
     )
 
 
-@task(name="backfill-recordings")
-def backfill_recordings(c: Context):
+@task(
+    name="backfill-recordings",
+    help={"replace_synthetic": "Also re-ask for the words an engine spoke."},
+)
+def backfill_recordings(c: Context, replace_synthetic=False):
     """Attach a recording to every note written while the chain could produce none.
 
     It names the notes it would fill and writes nothing until that is confirmed by
@@ -661,11 +666,11 @@ def backfill_recordings(c: Context):
     """
     _deploy_host()
     try:
-        _ssh(c, _backfill_recordings_script(confirmed=False))
+        _ssh(c, _backfill_recordings_script(confirmed=False, replace_synthetic=replace_synthetic))
         if input('Fetch them? Type "yes" to confirm: ').strip() != "yes":
             print("Nothing fetched.")
             return
-        _ssh(c, _backfill_recordings_script(confirmed=True))
+        _ssh(c, _backfill_recordings_script(confirmed=True, replace_synthetic=replace_synthetic))
     finally:
         # The confirmation sits between the stop and the start, so an answer of no,
         # a failed remote command and a Ctrl-C all have to leave the service up.

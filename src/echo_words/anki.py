@@ -25,7 +25,7 @@ from anki.notes import NoteId
 from anki.sync import SyncAuth
 from anki.sync_pb2 import SyncCollectionResponse, SyncStatusResponse
 
-from echo_words.audio import fetch_pronunciation
+from echo_words.audio import RECORDING_PACE_SECONDS, fetch_pronunciation, is_human_recording
 from echo_words.card import Note, usable_sense_label
 from echo_words.config import Settings
 from echo_words.languages import Language, load_languages
@@ -336,11 +336,12 @@ class _Sweep:
 
 @dataclass(frozen=True)
 class SilentNote:
-    """A note written without audio, and the language whose chain would speak it."""
+    """A note the chain owes a recording, and the language whose chain would speak it."""
 
     note_id: NoteId
     word: str
     language: Language
+    spoken_by_an_engine: str = ""
 
 
 @dataclass(frozen=True)
@@ -390,6 +391,7 @@ def clear_sense_labels(
     return f"{_cleared(sweep)}; {delivered}"
 
 
+_MEDIA_REFERENCE = re.compile(r"\[sound:([^\]]+)\]")
 MEDIA_SYNC_POLL_SECONDS = 0.5
 MEDIA_SYNC_WAIT_SECONDS = 300
 
@@ -418,6 +420,7 @@ def backfill_recordings(
     confirmed: bool,
     sync_backend: SyncBackend | None = None,
     fetch: RecordingFetch | None = None,
+    replace_synthetic: bool = False,
 ) -> str:
     """Give a note written without audio the recording the chain would produce today.
 
@@ -433,12 +436,15 @@ def backfill_recordings(
     by_deck = {
         language.deck: language for language in load_languages(settings.languages_config).values()
     }
+    # The dry run reads a copy, and a copy has no media beside it: what an engine
+    # spoke is only tellable from the collection's own media directory.
+    media_dir = path.parent / f"{path.stem}.media"
     if not confirmed:
         with _read_only_copy(path) as collection:
-            return _would_attach(_silent_notes(collection, by_deck))
+            return _would_attach(_silent_notes(collection, by_deck, replace_synthetic, media_dir))
     collection = Collection(str(path))
     try:
-        sweep = _silent_notes(collection, by_deck)
+        sweep = _silent_notes(collection, by_deck, replace_synthetic, media_dir)
         recordings = asyncio.run(_fetch_recordings(sweep.silent, settings, fetch))
         attached = 0
         for item in sweep.silent:
@@ -454,6 +460,8 @@ def backfill_recordings(
             note["Audio"] = f"[sound:{media_filename}]"
             collection.update_note(note)
             attached += 1
+            if item.spoken_by_an_engine and item.spoken_by_an_engine != media_filename:
+                _trash_replaced_media(collection, item.spoken_by_an_engine)
         delivered = _deliver(collection, settings, sync_backend)
         if attached:
             delivered += _await_media(collection, settings, sync_backend)
@@ -467,12 +475,26 @@ async def _fetch_recordings(
     settings: Settings,
     fetch: RecordingFetch | None,
 ) -> dict[NoteId, Path | None]:
-    """One word at a time: the recordings come from a service that throttles a burst."""
-    ask = fetch or partial(fetch_pronunciation, settings=settings)
-    return {item.note_id: await ask(item.word, item.language) for item in silent}
+    """One word at a time, and spaced: a burst of these is what draws a throttle, and a
+    throttled word is left to the voice as though Commons had never had it."""
+    # A caller that supplies its own fetch supplies its own pacing; the pace here is
+    # the Commons step's politeness, and it only applies when that step is the one asked.
+    pace = 0.0 if fetch else RECORDING_PACE_SECONDS
+    ask = fetch or partial(fetch_pronunciation, settings=settings, refresh=True)
+    fetched: dict[NoteId, Path | None] = {}
+    for index, item in enumerate(silent):
+        if index and pace:
+            await asyncio.sleep(pace)
+        fetched[item.note_id] = await ask(item.word, item.language)
+    return fetched
 
 
-def _silent_notes(collection: Collection, by_deck: dict[str, Language]) -> _SilentSweep:
+def _silent_notes(
+    collection: Collection,
+    by_deck: dict[str, Language],
+    replace_synthetic: bool,
+    media_dir: Path,
+) -> _SilentSweep:
     if collection.models.by_name(NOTE_TYPE_NAME) is None:
         return _SilentSweep([], 0, 0)
     silent: list[SilentNote] = []
@@ -481,7 +503,8 @@ def _silent_notes(collection: Collection, by_deck: dict[str, Language]) -> _Sile
     for note_id in collection.find_notes(f'note:"{NOTE_TYPE_NAME}"'):
         note = collection.get_note(note_id)
         read += 1
-        if note["Audio"].strip():
+        engine_media = _engine_spoken_media(note, media_dir) if replace_synthetic else ""
+        if note["Audio"].strip() and not engine_media:
             continue
         language = by_deck.get(_note_deck(collection, note))
         if language is None:
@@ -489,8 +512,28 @@ def _silent_notes(collection: Collection, by_deck: dict[str, Language]) -> _Sile
             # record of that a note carries.
             unclaimed += 1
             continue
-        silent.append(SilentNote(note_id, html.unescape(note["Word"]), language))
+        if engine_media and not language.recordings:
+            # Nothing to ask: the language names no prefix, so the voice is the chain.
+            continue
+        silent.append(
+            SilentNote(note_id, html.unescape(note["Word"]), language, engine_media),
+        )
     return _SilentSweep(silent, read, unclaimed)
+
+
+def _engine_spoken_media(note: AnkiNote, media_dir: Path) -> str:
+    """The note's own recording, when an engine rather than a human made it.
+
+    A word Commons had but was throttled on is spoken by the voice and cached as
+    though Commons never had it, and nothing in ordinary use asks again.
+    """
+    match = _MEDIA_REFERENCE.search(note["Audio"])
+    if match is None:
+        return ""
+    stored = media_dir / match.group(1)
+    if not stored.is_file() or is_human_recording(stored):
+        return ""
+    return match.group(1)
 
 
 def _unclaimed_silent(sweep: _SilentSweep) -> str:
