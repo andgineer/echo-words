@@ -133,7 +133,11 @@ the one deployment target — the 1 GB (+ swap) micro instance:
   Serbian's primary. The recording is addressed without an API call —
   the md5 of the file name gives the two directory levels Commons files
   it under, and an mp3 transcode is published beside the ogg — so one
-  request fetches it. Measured 12 Sep 2026 against a real session's
+  request fetches it. A word is uploaded as an `.ogg`, an `.oga` or a
+  `.wav`, and each is published under its own name, so a miss on the
+  first asks the other two at once: the words that answer first time pay
+  nothing, a miss costs one more round trip of about a fifth of a
+  second, and a throttle or a fault is never asked twice more. Measured 12 Sep 2026 against a real session's
   German: 0.12–0.40 s per word and 16 of the 16 words carded that day
   found, and a word Commons does not have answers in a quarter of a
   second. The step is given 3 s of its own against that worst case, and
@@ -159,9 +163,8 @@ the one deployment target — the 1 GB (+ swap) micro instance:
   all, and Spanish and Portuguese are carded in the Latin American and
   Brazilian recordings their prefixes name. What a prefix is worth is
   measured through the URL the app itself derives, never by asking
-  whether Commons holds a file of that name: a recording uploaded under
-  another extension is published at a name the app never asks for, so it
-  counts for the reader as an absence. Measured that way on 13 Sep 2026,
+  whether Commons holds a file of that name. Measured that way on
+  13 Sep 2026, when the step still asked for the `.ogg` alone,
   twenty everyday words apiece: German and Russian answered all twenty,
   American English 18, French 15, Italian 12, Brazilian Portuguese 6,
   Latin American Spanish 3. Spanish is thin because of what Commons

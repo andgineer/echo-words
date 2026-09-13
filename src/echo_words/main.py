@@ -6,7 +6,7 @@ import rich_click as click
 import uvicorn
 
 from echo_words import __version__
-from echo_words.anki import AnkiError, clear_sense_labels, rebuild_note_type
+from echo_words.anki import AnkiError, backfill_recordings, clear_sense_labels, rebuild_note_type
 from echo_words.config import Settings, settings
 
 click.rich_click.USE_MARKDOWN = True
@@ -71,6 +71,31 @@ def clear_sense_labels_command(yes: bool, env_file: Path | None) -> None:
     active = Settings(_env_file=env_file) if env_file is not None else settings
     try:
         click.echo(clear_sense_labels(active, confirmed=yes))
+    except AnkiError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+
+@echo_words.command(name="backfill-recordings")
+@click.option("--yes", is_flag=True, help="Attach them. Without it nothing is written.")
+@click.option(
+    "--env-file",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    help="Read settings from this file, as the service reads its own.",
+)
+def backfill_recordings_command(yes: bool, env_file: Path | None) -> None:
+    """
+    Give every note written without audio the recording the chain would produce today.
+
+    A note keeps what it was made with, so one written while the head of the chain
+    was answering nothing stays silent until this fills it. Nothing else about a
+    note changes, and a word the chain still cannot speak is left as it is. It
+    syncs with AnkiWeb itself and says whether that worked, because the service
+    only syncs off its own adds. Stop the service first: the collection must not be
+    open elsewhere.
+    """
+    active = Settings(_env_file=env_file) if env_file is not None else settings
+    try:
+        click.echo(backfill_recordings(active, confirmed=yes))
     except AnkiError as exc:
         raise click.ClickException(str(exc)) from exc
 

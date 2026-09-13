@@ -4,6 +4,7 @@ import logging
 import threading
 import time
 from collections import deque
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -29,6 +30,7 @@ from echo_words.anki import (
     PylibSyncBackend,
     UploadFailedError,
     _wait_past_millisecond,
+    backfill_recordings,
     card_fields,
     clear_sense_labels,
     collection_path,
@@ -37,6 +39,7 @@ from echo_words.anki import (
 )
 from echo_words.card import Example, Meaning, Note
 from echo_words.config import Settings
+from echo_words.languages import Language
 
 pytestmark = pytest.mark.anyio
 
@@ -391,6 +394,139 @@ async def test_a_note_in_a_deck_no_language_claims_is_left_alone_and_counted(tmp
     assert "no stored sense label of 0 contradicts the rule" in reported
     assert "1 labelled note(s) sit in a deck no configured language claims" in reported
     assert stored_labels(settings) == ["учреждение"]
+
+
+async def stored_with_audio(settings: Settings, note: Note, deck: str, audio_path: Path) -> None:
+    backend = FakeSyncBackend([SyncCollectionResponse.NO_CHANGES]) if settings.anki_sync else None
+    store = AnkiStore(settings, sync_backend=backend)
+    await store.open()
+    try:
+        assert isinstance(await store.add_note(note, deck, audio_path), Added)
+    finally:
+        await store.close()
+
+
+def stored_audio(settings: Settings) -> list[str]:
+    collection = Collection(str(collection_path(settings)))
+    try:
+        return sorted(
+            collection.get_note(note_id)["Audio"]
+            for note_id in collection.find_notes(f'note:"{NOTE_TYPE_NAME}"')
+        )
+    finally:
+        collection.close()
+
+
+def spoken(tmp_path: Path) -> Callable[[str, Language], Awaitable[Path | None]]:
+    async def fetch(word: str, _language: Language) -> Path | None:
+        path = tmp_path / f"fetched-{word}.mp3"
+        path.write_bytes(b"fetched mp3")
+        return path
+
+    return fetch
+
+
+async def silent(_word: str, _language: Language) -> Path | None:
+    return None
+
+
+async def test_a_note_written_without_audio_is_named_then_given_one(tmp_path):
+    """The head of the chain answered nothing for a while, and a note keeps what it
+    was made with: the cards of that window stay silent until this fills them."""
+    settings = with_language_table(local_settings(tmp_path))
+    already = tmp_path / "spoken.mp3"
+    already.write_bytes(b"already spoken")
+    await stored_with_audio(settings, make_note("receive"), ENGLISH_DECK, already)
+    await stored(settings, (make_note("money"), ENGLISH_DECK))
+
+    named = await asyncio.to_thread(backfill_recordings, settings, confirmed=False)
+
+    assert "would fetch a recording for 1 of 2" in named
+    assert "money" in named
+    # Reading must not be writing: closing a collection saves it.
+    assert await asyncio.to_thread(backfill_recordings, settings, confirmed=False) == named
+    assert [value.startswith("[sound:") for value in stored_audio(settings)] == [False, True]
+
+    reported = await asyncio.to_thread(
+        backfill_recordings,
+        settings,
+        confirmed=True,
+        fetch=spoken(tmp_path),
+    )
+
+    assert "attached a recording to 1 of 2 notes" in reported
+    assert all(value.startswith("[sound:") for value in stored_audio(settings))
+
+
+async def test_a_word_the_chain_still_cannot_speak_is_left_as_it_is(tmp_path):
+    settings = with_language_table(local_settings(tmp_path))
+    await stored(settings, (make_note("money"), ENGLISH_DECK))
+
+    reported = await asyncio.to_thread(
+        backfill_recordings,
+        settings,
+        confirmed=True,
+        fetch=silent,
+    )
+
+    assert "attached a recording to 0 of 1 notes, 1 still silent" in reported
+    assert stored_audio(settings) == [""]
+
+
+async def test_filling_the_audio_leaves_every_other_field_of_the_note_alone(tmp_path):
+    settings = with_language_table(local_settings(tmp_path))
+    await stored(settings, (labelled("учреждение"), ENGLISH_DECK))
+
+    await asyncio.to_thread(
+        backfill_recordings,
+        settings,
+        confirmed=True,
+        fetch=spoken(tmp_path),
+    )
+
+    collection = Collection(str(collection_path(settings)))
+    try:
+        note = collection.get_note(collection.find_notes(f'note:"{NOTE_TYPE_NAME}"')[0])
+        assert (note["Word"], note["Translations"], note["Label"]) == ("bank", "банк", "учреждение")
+        assert note["Highlighted"] == "The <b>bank</b> opens at nine."
+        assert note["Audio"].startswith("[sound:echo-words-bank-")
+        assert len(note.cards()) == 4
+    finally:
+        collection.close()
+
+
+async def test_a_silent_note_in_a_deck_no_language_claims_is_left_alone_and_counted(tmp_path):
+    settings = with_language_table(local_settings(tmp_path))
+    await stored(settings, (make_note("money"), "Someone else::Vocabulary"))
+
+    reported = await asyncio.to_thread(
+        backfill_recordings,
+        settings,
+        confirmed=True,
+        fetch=spoken(tmp_path),
+    )
+
+    assert "every one of 1 notes carries audio" in reported
+    assert "1 silent note(s) sit in a deck no configured language claims" in reported
+    assert stored_audio(settings) == [""]
+
+
+async def test_the_fill_delivers_what_it_attached_to_ankiweb(tmp_path):
+    settings = with_language_table(synced_settings(tmp_path))
+    backend = FakeSyncBackend([SyncCollectionResponse.NORMAL_SYNC])
+    await stored(settings, (make_note("money"), ENGLISH_DECK))
+
+    reported = await asyncio.to_thread(
+        backfill_recordings,
+        settings,
+        confirmed=True,
+        sync_backend=backend,
+        fetch=spoken(tmp_path),
+    )
+
+    assert "attached a recording to 1 of 1 notes" in reported
+    assert "synced to AnkiWeb" in reported
+    assert backend.calls == ["sync"]
 
 
 async def test_the_sweep_delivers_what_it_emptied_to_ankiweb(tmp_path):

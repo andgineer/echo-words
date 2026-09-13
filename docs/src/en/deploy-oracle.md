@@ -181,6 +181,26 @@ says so — the labels are emptied on the server, and resolving the sync in Anki
 delivers them. A run whose sync failed is simply repeated: it has nothing left to
 empty and syncs again.
 
+## Filling in a missing recording
+
+A note keeps what it was made with, audio included. While the head of the audio
+chain was answering nothing, a word the engines could not speak either was carded
+silent, and it stays silent on its own cards however well the chain works now.
+
+`inv backfill-recordings` fills those, and only those. It stops the service, names
+every note whose audio field is empty, and writes nothing until you type `yes`.
+Confirmed, it fetches each headword through the chain as it stands today — a human
+recording from Commons first, then the local voice, then edge-tts — and attaches
+what comes back. Nothing else about a note changes, and a word the chain still
+cannot speak is left as it is and counted in the report. The console command
+behind it is `echo-words backfill-recordings`, which writes nothing without
+`--yes`.
+
+As with the label sweep, a note is only filled where its deck belongs to a
+configured language, and the command syncs with AnkiWeb itself and says whether
+that succeeded. Media is carried by the ordinary merging sync, so this costs no
+card its scheduling.
+
 ## Releases
 
 `inv ver-bug`, `inv ver-feature`, and `inv ver-release` bump the version in

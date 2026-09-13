@@ -34,15 +34,13 @@ tool looks for.
   constraint. Its first arm — the incumbent paid model at a low
   reasoning effort — waits on llmbroker, which cannot yet send a
   request parameter to a model reached by name.
-  `observed-defects.md` — twenty-one faults left unfixed, each with its
-  evidence, from four readings: seven met while using the app, from an
+  `observed-defects.md` — twenty faults left unfixed, each with its
+  evidence, from three readings: seven met while using the app, from an
   unignored `.env` to a deeper article nobody ever chose a length for,
   twelve read out of bench review packets whose every automated screen
-  was green, one found by auditing the recordings the deployed host had
-  cached, and one from asking Commons itself through the URL the app
-  derives — a recording uploaded as `.oga` or `.wav` is published at a
-  name the app never asks for, and two of the forty words probed are
-  missed that way.
+  was green, and one found by auditing the recordings the deployed host
+  had cached — the cards that carry none are waiting on
+  `inv backfill-recordings`, which fills them once the operator runs it.
   `answer-recovery.md` — what happens between a pool answer and a card
   when the parser cannot read the payload: production says fourteen of
   fifteen rejected payloads carried an answer the reader would have

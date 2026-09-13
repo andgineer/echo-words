@@ -638,6 +638,41 @@ def healthcheck(c: Context):
     _health_check(c)
 
 
+def _backfill_recordings_script(*, confirmed: bool) -> str:
+    """Fetch with the service down, under the very settings systemd hands it."""
+    flag = " --yes" if confirmed else ""
+    return (
+        "set -euo pipefail; "
+        f"cd {REMOTE_ROOT}; "
+        f"sudo systemctl stop {SERVICE_NAME}; "
+        "source /home/ubuntu/.local/bin/env; "
+        "uv run --no-dev echo-words backfill-recordings "
+        f"--env-file {REMOTE_DEPLOY_ENV}{flag}"
+    )
+
+
+@task(name="backfill-recordings")
+def backfill_recordings(c: Context):
+    """Attach a recording to every note written while the chain could produce none.
+
+    It names the notes it would fill and writes nothing until that is confirmed by
+    typing "yes". Only the audio field of a silent note changes, a word the chain
+    still cannot speak is left alone, and the next sync carries the edit.
+    """
+    _deploy_host()
+    try:
+        _ssh(c, _backfill_recordings_script(confirmed=False))
+        if input('Fetch them? Type "yes" to confirm: ').strip() != "yes":
+            print("Nothing fetched.")
+            return
+        _ssh(c, _backfill_recordings_script(confirmed=True))
+    finally:
+        # The confirmation sits between the stop and the start, so an answer of no,
+        # a failed remote command and a Ctrl-C all have to leave the service up.
+        _ssh(c, f"sudo systemctl start {SERVICE_NAME}")
+        _health_check(c)
+
+
 @task(help={"follow": "Follow new log lines.", "lines": "Number of existing lines."})
 def logs(c: Context, follow=False, lines=100):
     """Show production service logs."""

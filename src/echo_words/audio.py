@@ -31,6 +31,8 @@ RECORDING_TIMEOUT_SECONDS = 3
 _COMMONS_URL = (
     "https://upload.wikimedia.org/wikipedia/commons/transcoded/{a}/{ab}/{name}/{name}.mp3"
 )
+# A word is uploaded under any of these, and each is published at its own name.
+_RECORDING_EXTENSIONS = ("ogg", "oga", "wav")
 # Wikimedia's policy refuses a generic client agent, and httpx's default is one.
 _USER_AGENT = f"echo-words/{__version__} (https://github.com/andgineer/echo-words)"
 _AUDIO_NAME_PATTERN = re.compile(r"pronunciation-[0-9a-f]{20}\.mp3")
@@ -200,12 +202,61 @@ async def _try_commons_recording(
                 logger.warning("Commons client close failed: %s", exc)
 
 
-def _commons_url(word: str, lang: Language) -> str:
-    name = f"{lang.recordings}-{word}.ogg"
+def _commons_url(word: str, lang: Language, extension: str = "ogg") -> str:
+    name = f"{lang.recordings}-{word}.{extension}"
     # Commons addresses a file by the md5 of its name; no API call stands in between.
     digest = hashlib.md5(name.encode(), usedforsecurity=False).hexdigest()
     quoted = quote(name, safe="")
     return _COMMONS_URL.format(a=digest[0], ab=digest[:2], name=quoted)
+
+
+async def _commons_get(
+    word: str,
+    lang: Language,
+    extension: str,
+    client: httpx.AsyncClient,
+) -> httpx.Response:
+    return await client.get(
+        _commons_url(word, lang, extension),
+        headers={"User-Agent": _USER_AGENT},
+        timeout=RECORDING_TIMEOUT_SECONDS,
+    )
+
+
+async def _commons_content(
+    word: str,
+    lang: Language,
+    client: httpx.AsyncClient,
+) -> tuple[bytes | None, dict[str, int]]:
+    primary, *rest = _RECORDING_EXTENSIONS
+    response = await _commons_get(word, lang, primary, client)
+    statuses = {primary: response.status_code}
+    if response.status_code == httpx.codes.OK:
+        return response.content, statuses
+    if response.status_code != httpx.codes.NOT_FOUND:
+        # A throttle or a fault is the one answer not worth asking twice more.
+        return None, statuses
+    others = await asyncio.gather(
+        *(_commons_get(word, lang, extension, client) for extension in rest),
+    )
+    statuses.update(zip(rest, (other.status_code for other in others), strict=True))
+    for other in others:
+        if other.status_code == httpx.codes.OK:
+            return other.content, statuses
+    return None, statuses
+
+
+def _log_commons_miss(word: str, lang: Language, statuses: dict[str, int]) -> None:
+    # Commons having no recording of a word is ordinary and says nothing; the log is
+    # watched for Commons answering differently, which every other status is.
+    ordinary = all(status == httpx.codes.NOT_FOUND for status in statuses.values())
+    logger.log(
+        logging.INFO if ordinary else logging.WARNING,
+        "no Commons recording for %s/%r: %s",
+        lang.code,
+        word,
+        ", ".join(f"{extension} HTTP {status}" for extension, status in statuses.items()),
+    )
 
 
 async def _commons_recording(
@@ -214,25 +265,12 @@ async def _commons_recording(
     output: Path,
     client: httpx.AsyncClient,
 ) -> bool:
-    response = await client.get(
-        _commons_url(word, lang),
-        headers={"User-Agent": _USER_AGENT},
-        timeout=RECORDING_TIMEOUT_SECONDS,
-    )
-    if response.status_code != httpx.codes.OK:
-        # Commons having no recording of a word is ordinary and says nothing; the log
-        # is watched for Commons answering differently, which every other status is.
-        ordinary = response.status_code == httpx.codes.NOT_FOUND
-        logger.log(
-            logging.INFO if ordinary else logging.WARNING,
-            "no Commons recording for %s/%r: HTTP %s",
-            lang.code,
-            word,
-            response.status_code,
-        )
+    content, statuses = await _commons_content(word, lang, client)
+    if content is None:
+        _log_commons_miss(word, lang, statuses)
         return False
     _raise_if_cancelling()
-    _write_atomic(output, response.content)
+    _write_atomic(output, content)
     return True
 
 

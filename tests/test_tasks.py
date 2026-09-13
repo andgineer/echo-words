@@ -400,6 +400,19 @@ def test_status_separates_process_and_cgroup_memory_measurements():
     assert "tail -5 || true" not in script
 
 
+def test_the_backfill_runs_with_the_service_down_under_the_service_settings():
+    dry = tasks._backfill_recordings_script(confirmed=False)
+    confirmed = tasks._backfill_recordings_script(confirmed=True)
+
+    assert f"sudo systemctl stop {tasks.SERVICE_NAME}" in dry
+    assert "echo-words backfill-recordings" in dry
+    assert f"--env-file {tasks.REMOTE_DEPLOY_ENV}" in dry
+    assert dry.endswith(tasks.REMOTE_DEPLOY_ENV)
+    assert confirmed.endswith(" --yes")
+    # The collection must not be open elsewhere, and the settings must be the unit's.
+    assert dry.index("systemctl stop") < dry.index("echo-words backfill-recordings")
+
+
 def test_status_reports_what_the_disk_holds():
     script = tasks._status_script()
 

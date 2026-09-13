@@ -9,10 +9,11 @@ import re
 import shutil
 import tempfile
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import Awaitable, Callable, Iterator
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from functools import partial
 from pathlib import Path
 from typing import Protocol
 
@@ -24,6 +25,7 @@ from anki.notes import NoteId
 from anki.sync import SyncAuth
 from anki.sync_pb2 import SyncCollectionResponse, SyncStatusResponse
 
+from echo_words.audio import fetch_pronunciation
 from echo_words.card import Note, usable_sense_label
 from echo_words.config import Settings
 from echo_words.languages import Language, load_languages
@@ -327,6 +329,25 @@ class _Sweep:
     unclaimed: int
 
 
+@dataclass(frozen=True)
+class SilentNote:
+    """A note written without audio, and the language whose chain would speak it."""
+
+    note_id: NoteId
+    word: str
+    language: Language
+
+
+@dataclass(frozen=True)
+class _SilentSweep:
+    silent: list[SilentNote]
+    read: int
+    unclaimed: int
+
+
+RecordingFetch = Callable[[str, Language], Awaitable[Path | None]]
+
+
 def clear_sense_labels(
     settings: Settings,
     *,
@@ -364,6 +385,117 @@ def clear_sense_labels(
     return f"{_cleared(sweep)}; {delivered}"
 
 
+def backfill_recordings(
+    settings: Settings,
+    *,
+    confirmed: bool,
+    sync_backend: SyncBackend | None = None,
+    fetch: RecordingFetch | None = None,
+) -> str:
+    """Give a note written without audio the recording the chain would produce today.
+
+    A note keeps what it was made with, so one written while the head of the chain was
+    answering nothing stays silent on its own cards until something fills it. Nothing
+    else about a note changes, and no startup path reaches this.
+    """
+    path = collection_path(settings)
+    if not path.exists():
+        raise CollectionAbsentError(path)
+    if settings.anki_sync:
+        _check_sync_credentials(settings)
+    by_deck = {
+        language.deck: language for language in load_languages(settings.languages_config).values()
+    }
+    if not confirmed:
+        with _read_only_copy(path) as collection:
+            return _would_attach(_silent_notes(collection, by_deck))
+    collection = Collection(str(path))
+    try:
+        sweep = _silent_notes(collection, by_deck)
+        recordings = asyncio.run(_fetch_recordings(sweep.silent, settings, fetch))
+        attached = 0
+        for item in sweep.silent:
+            audio_path = recordings.get(item.note_id)
+            media_filename = _add_media(collection, item.word, audio_path)
+            if media_filename is None:
+                continue
+            note = collection.get_note(item.note_id)
+            note["Audio"] = f"[sound:{media_filename}]"
+            collection.update_note(note)
+            attached += 1
+        delivered = _deliver(collection, settings, sync_backend)
+    finally:
+        collection.close()
+    return f"{_attached(sweep, attached)}; {delivered}"
+
+
+async def _fetch_recordings(
+    silent: list[SilentNote],
+    settings: Settings,
+    fetch: RecordingFetch | None,
+) -> dict[NoteId, Path | None]:
+    """One word at a time: the recordings come from a service that throttles a burst."""
+    ask = fetch or partial(fetch_pronunciation, settings=settings)
+    return {item.note_id: await ask(item.word, item.language) for item in silent}
+
+
+def _silent_notes(collection: Collection, by_deck: dict[str, Language]) -> _SilentSweep:
+    if collection.models.by_name(NOTE_TYPE_NAME) is None:
+        return _SilentSweep([], 0, 0)
+    silent: list[SilentNote] = []
+    read = 0
+    unclaimed = 0
+    for note_id in collection.find_notes(f'note:"{NOTE_TYPE_NAME}"'):
+        note = collection.get_note(note_id)
+        read += 1
+        if note["Audio"].strip():
+            continue
+        language = by_deck.get(_note_deck(collection, note))
+        if language is None:
+            # Which chain would speak it is the language's, and the deck is the only
+            # record of that a note carries.
+            unclaimed += 1
+            continue
+        silent.append(SilentNote(note_id, html.unescape(note["Word"]), language))
+    return _SilentSweep(silent, read, unclaimed)
+
+
+def _unclaimed_silent(sweep: _SilentSweep) -> str:
+    if not sweep.unclaimed:
+        return ""
+    return (
+        f"; {sweep.unclaimed} silent note(s) sit in a deck no configured language "
+        "claims and were left alone"
+    )
+
+
+def _named_silent(silent: list[SilentNote], limit: int = 10) -> str:
+    shown = ", ".join(item.word for item in silent[:limit])
+    rest = len(silent) - limit
+    return shown if rest <= 0 else f"{shown} and {rest} more"
+
+
+def _would_attach(sweep: _SilentSweep) -> str:
+    if not sweep.silent:
+        return f"every one of {sweep.read} notes carries audio{_unclaimed_silent(sweep)}"
+    return (
+        f"would fetch a recording for {len(sweep.silent)} of {sweep.read} notes: "
+        f"{_named_silent(sweep.silent)}{_unclaimed_silent(sweep)}; nothing was changed — "
+        "pass --yes to attach them"
+    )
+
+
+def _attached(sweep: _SilentSweep, attached: int) -> str:
+    if not sweep.silent:
+        return f"every one of {sweep.read} notes carries audio{_unclaimed_silent(sweep)}"
+    left = len(sweep.silent) - attached
+    still = "" if not left else f", {left} still silent"
+    return (
+        f"attached a recording to {attached} of {sweep.read} notes{still}: "
+        f"{_named_silent(sweep.silent)}{_unclaimed_silent(sweep)}"
+    )
+
+
 def _deliver(collection: Collection, settings: Settings, backend: SyncBackend | None) -> str:
     """Put the change where the reader's own Anki will find it.
 
@@ -371,15 +503,15 @@ def _deliver(collection: Collection, settings: Settings, backend: SyncBackend | 
     is stopped sits in the server's collection until the reader happens to add a
     word. A field edit is no schema change, so an ordinary merging sync carries it,
     and a run whose sync failed is repeated to deliver it — which is why this syncs
-    whether or not the pass emptied anything.
+    whether or not the pass changed anything.
     """
     if not settings.anki_sync:
-        return "sync is off, so AnkiWeb still holds what this emptied"
+        return "sync is off, so AnkiWeb still holds what this changed"
     try:
         _auth, output = _sync(collection, settings, backend or PylibSyncBackend())
     except Exception as exc:
         raise AnkiError(
-            f"the labels were emptied, but AnkiWeb was not reached: {exc}. "
+            f"the collection was changed, but AnkiWeb was not reached: {exc}. "
             "Run this again to deliver them.",
         ) from exc
     if output.required in (

@@ -175,6 +175,102 @@ async def test_a_throttled_commons_leaves_the_word_to_the_voice(
     assert len(requested) == 1
 
 
+@pytest.mark.parametrize("extension", ["oga", "wav"])
+async def test_a_recording_filed_under_another_extension_is_still_found(
+    languages,
+    settings,
+    monkeypatch,
+    extension,
+):
+    """A word uploaded as .oga or .wav is published under that name and nowhere else,
+    so asking only for the .ogg counts a recording Commons holds as an absence."""
+    requested = []
+
+    def handler(request):
+        url = str(request.url)
+        requested.append(url)
+        if f".{extension}/" in url:
+            return httpx.Response(200, content=b"commons mp3")
+        return httpx.Response(404)
+
+    monkeypatch.setattr(
+        audio,
+        "_piper_audio",
+        AsyncMock(side_effect=AssertionError("Piper must not run after a hit")),
+    )
+    async with mock_client(handler) as client:
+        result = await audio.fetch_pronunciation(
+            "casa",
+            replace(languages["de"], code="pt", recordings="Pt-br"),
+            settings=settings,
+            client=client,
+        )
+
+    assert result is not None
+    assert result.read_bytes() == b"commons mp3"
+    assert [url.split("/")[-1] for url in requested[:1]] == ["Pt-br-casa.ogg.mp3"]
+    assert any(f".{extension}/" in url for url in requested)
+
+
+async def test_the_other_names_are_asked_only_when_the_ogg_misses(
+    languages,
+    settings,
+    monkeypatch,
+):
+    """The words that answer first time are the common case, and they must not pay a
+    round trip for a coverage gap they do not have."""
+    requested = []
+
+    def handler(request):
+        requested.append(str(request.url))
+        return httpx.Response(200, content=b"commons mp3")
+
+    monkeypatch.setattr(
+        audio,
+        "_piper_audio",
+        AsyncMock(side_effect=AssertionError("Piper must not run after a hit")),
+    )
+    async with mock_client(handler) as client:
+        await audio.fetch_pronunciation("Haus", languages["de"], settings=settings, client=client)
+
+    assert requested == [f"{COMMONS}/7/7e/De-Haus.ogg/De-Haus.ogg.mp3"]
+
+
+async def test_a_word_under_none_of_the_names_falls_through_to_the_voice(
+    languages,
+    settings,
+    monkeypatch,
+    caplog,
+):
+    requested = []
+
+    def handler(request):
+        requested.append(str(request.url))
+        return httpx.Response(404)
+
+    async def fake_piper(_word, _lang, output, _settings):
+        output.write_bytes(b"piper")
+        return True
+
+    monkeypatch.setattr(audio, "_piper_audio", fake_piper)
+    caplog.set_level(logging.INFO, logger="echo_words")
+    async with mock_client(handler) as client:
+        result = await audio.fetch_pronunciation(
+            "blorptium",
+            languages["de"],
+            settings=settings,
+            client=client,
+        )
+
+    assert result is not None
+    assert result.read_bytes() == b"piper"
+    assert len(requested) == 3
+    miss = [record for record in caplog.records if "no Commons recording" in record.message]
+    assert len(miss) == 1
+    assert miss[0].levelno == logging.INFO
+    assert "ogg HTTP 404, oga HTTP 404, wav HTTP 404" in miss[0].getMessage()
+
+
 @pytest.mark.parametrize(
     ("status", "level"),
     [

@@ -1,6 +1,6 @@
 # Implementation plan — defects seen in use and in the bench, none of them fixed yet
 
-Twenty-one items, from four readings.
+Twenty items, from three readings.
 
 Items 1 to 5, 16 and 17 were found while running the app against the real provider
 keys and reading what it did. Each was reproduced and has its evidence written
@@ -18,11 +18,6 @@ run directories are not checked in and the evidence has to outlive them.
 Item 20 comes from neither: an audit of what the deployed host had actually
 cached, which is what showed that the head of the audio chain had been answering
 nothing at all.
-
-Item 21 comes from a fourth: asking Commons itself, through the URL the app
-derives, for forty everyday words of two languages.
-
-The items are independent. None blocks another, and each is finished on its own.
 
 ## 1. `.env` is not ignored by git
 
@@ -345,47 +340,11 @@ Three ways to close it, and what each costs.
   forty-two cards whose text changes for the sake of their audio.
 - **Leaving them** costs nothing and leaves a fifth of that window's cards mute.
 
-The pass is the one worth building. Running it is still the operator's word, at
-its own confirmation prompt.
-
-## 21. A recording filed under another extension is invisible to the app
-
-The app asks for the mp3 transcode of `{prefix}-{word}.ogg`. A recording uploaded
-as `.oga` or as `.wav` is published under that name instead, at a path the app
-never asks for, so a word Commons has is missed as though it had none:
-`Pt-br-casa.ogg` answers 404 while `Pt-br-casa.wav` answers 200.
-
-Measured 13 Sep 2026 through the app's own derived URL, twenty everyday words per
-language, requests at least 1.5 s apart. French answered 15 of 20, and not one of
-the five misses was reachable under `.oga` or `.wav`. Brazilian Portuguese
-answered 6 of 20, and two of its fourteen misses — `casa` and `cachorro` — answered
-under `.wav`. So of the 19 words the app misses across the two languages, 2 are
-extension misses and 17 are words Commons does not hold under that prefix at all.
-The gap is real and it is about a tenth of the shortfall, not the bulk of it.
-
-Closing it needs no API call: the media handler publishes an mp3 transcode of an
-`.oga` and a `.wav` at the same derived path, so the step would ask for the other
-two names when the `.ogg` misses. The deadline is not the obstacle — one or two
-more requests, each measured at ~0.2 s, inside a step budgeted 3 s. The throttle
-is: a miss is the common case in Portuguese, so this triples the requests a
-session makes, against a service that answered 429 to fourteen fired back to back.
-
-Recording it is not accepting it. Three shapes, and what each costs.
-
-- **Ask for the other two names only when the `.ogg` misses**, both at once, so a
-  miss costs one more round trip of about 0.2 s and a hit costs nothing. Volume
-  grows only on misses, and since a miss ends with the voice writing the file at
-  the cache path, a word is probed once in its life. About thirty lines with its
-  tests.
-- **Ask for all three names always**: one code path and one latency for
-  everybody, at the price of charging every German and Russian word — the ones
-  that answer first time — for a coverage gap they do not have. Strictly worse
-  against the throttle.
-- **Leave it**: the request budget stays exactly as measured, and those two words
-  in forty keep a synthetic voice where a human one exists.
-
-The first is the one worth taking. Whether the app takes it is the operator's
-call.
+The pass is the one worth building, and it is built: `inv backfill-recordings`
+names what it would fill, writes nothing until that is confirmed, fetches through
+the chain as it stands, changes only the audio of a silent note, leaves a word the
+chain still cannot speak alone, and syncs. The defect stands until it is run,
+which is the operator's word.
 
 ## What is deliberately not here
 

@@ -107,6 +107,39 @@ def test_the_label_sweep_writes_nothing_unless_yes_is_passed(monkeypatch):
     assert confirmations == [False, True]
 
 
+def test_the_recording_backfill_writes_nothing_unless_yes_is_passed(monkeypatch):
+    confirmations = []
+
+    def record(_settings, *, confirmed):
+        confirmations.append(confirmed)
+        return "what it would fetch"
+
+    monkeypatch.setattr("echo_words.main.backfill_recordings", record)
+
+    dry = CliRunner().invoke(echo_words, ["backfill-recordings"])
+    assert dry.exit_code == 0
+    assert "what it would fetch" in dry.output
+    assert confirmations == [False]
+
+    assert CliRunner().invoke(echo_words, ["backfill-recordings", "--yes"]).exit_code == 0
+    assert confirmations == [False, True]
+
+
+def test_a_backfill_with_no_collection_there_fails_instead_of_reporting_success(
+    monkeypatch,
+    tmp_path,
+):
+    monkeypatch.setattr(
+        "echo_words.main.settings",
+        Settings(_env_file=None, data_dir=tmp_path, anki_sync=False),
+    )
+
+    result = CliRunner().invoke(echo_words, ["backfill-recordings", "--yes"])
+
+    assert result.exit_code != 0
+    assert "no collection at" in result.output
+
+
 def test_a_label_sweep_with_no_collection_there_fails_instead_of_reporting_success(
     monkeypatch,
     tmp_path,
