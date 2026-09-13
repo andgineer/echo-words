@@ -8,7 +8,7 @@ down; two sibling defects found in the same session — the player speaking a
 corrected misspelling, and sense chips that all carried the same word — are
 already fixed and are not repeated here.
 
-Items 3 to 9, 14 and 15 come from a different reading: the review packets of the
+Items 3 to 11, 14 and 15 come from a different reading: the review packets of the
 smoke-tier bench runs behind the source-language sense cue and the answer shape,
 read item by item by a fresh agent each time. Every deterministic contract and
 every quality threshold in those runs was green, so these are the faults an
@@ -261,7 +261,7 @@ and Serbian wants `лепом`. Both are ContextRecognition fronts and
 ContextProduction stimuli, so both are drilled.
 
 The letter test cannot see either: every character is legal Serbian Cyrillic. It
-is the same class as 14 and 15 — a word that is spelled plausibly for the source
+is the same class as 10 and 11 — a word that is spelled plausibly for the source
 language and is not a word of it — and it is what a reader meets rather than what
 a screen can catch.
 

@@ -34,13 +34,14 @@ tool looks for.
   constraint. Its first arm — the incumbent paid model at a low
   reasoning effort — waits on llmbroker, which cannot yet send a
   request parameter to a model reached by name.
-  `observed-defects.md` — twenty faults left unfixed, each with its
-  evidence, from three readings: seven met while using the app, from an
-  unignored `.env` to a deeper article nobody ever chose a length for,
-  twelve read out of bench review packets whose every automated screen
-  was green, and one found by auditing the recordings the deployed host
-  had cached — the cards that carry none are waiting on
-  `inv backfill-recordings`, which fills them once the operator runs it.
+  `observed-defects.md` — sixteen faults left unfixed, each with its
+  evidence, from three readings: four met while using the app, from a
+  rebuilt bundle that can leave the reader on a white screen to a deeper
+  article nobody ever chose a length for, eleven read out of bench review
+  packets whose every automated screen was green, and one found by
+  auditing the recordings the deployed host had cached — the cards that
+  carry none are waiting on `inv backfill-recordings`, which fills them
+  once the operator runs it.
   `answer-recovery.md` — what happens between a pool answer and a card
   when the parser cannot read the payload: production says fourteen of
   fifteen rejected payloads carried an answer the reader would have
