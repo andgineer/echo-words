@@ -62,7 +62,8 @@ def test_host_prep_keeps_the_unrotated_logs_and_the_package_cache_bounded():
     assert "apt-get install -y fail2ban logrotate" in script
     assert "/etc/apt/apt.conf.d/99-echo-words-autoclean" in script
     assert 'APT::Periodic::AutocleanInterval "7";' in script
-    assert "sudo apt-get clean" in script
+    assert "sudo apt-get clean || true" in script
+    assert "sudo systemctl enable --now fail2ban logrotate.timer" in script
 
 
 def test_host_prep_never_fails_on_the_firewall_recheck():

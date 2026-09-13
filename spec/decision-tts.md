@@ -168,8 +168,8 @@ the one deployment target — the 1 GB (+ swap) micro instance:
   holds and not because of the prefix it is asked under: `Es-mx` and
   `Es-es` answer nothing at all, and on sixteen everyday words
   `Es-am-lat` answered two while plain `Es` answered one that
-  `Es-am-lat` misses, so the four prefixes together reach about three
-  words in sixteen and `Es-am-lat` is the best single one. A thin prefix
+  `Es-am-lat` misses, so the four prefixes together reach three or four
+  words in sixteen with none of them ahead of the rest. A thin prefix
   is still worth carrying — the
   words it does answer are spoken by a human, and the words it misses
   cost one request of about a fifth of a second before the engines

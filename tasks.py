@@ -414,7 +414,7 @@ sudo install -d /etc/apt/apt.conf.d
 sudo tee /etc/apt/apt.conf.d/99-echo-words-autoclean >/dev/null <<'ECHOWORDS_APT_EOF'
 APT::Periodic::AutocleanInterval "7";
 ECHOWORDS_APT_EOF
-sudo apt-get clean
+sudo apt-get clean || true
 sudo install -d /etc/sysctl.d
 sudo tee /etc/sysctl.d/99-echo-words.conf >/dev/null <<'ECHOWORDS_SYSCTL_EOF'
 # Reclaim the page cache before the loaded Piper voices: at the kernel's default
@@ -424,7 +424,7 @@ vm.swappiness=10
 ECHOWORDS_SYSCTL_EOF
 sudo sysctl -p /etc/sysctl.d/99-echo-words.conf
 {_swap_prep_script()}
-sudo systemctl enable --now fail2ban
+sudo systemctl enable --now fail2ban logrotate.timer
 """
 
 
