@@ -1,37 +1,25 @@
 # Implementation plan — defects seen in use and in the bench, none of them fixed yet
 
-Twenty items, from three readings.
+Sixteen items, from three readings.
 
-Items 1 to 5, 16 and 17 were found while running the app against the real provider
+Items 1, 2, 12 and 13 were found while running the app against the real provider
 keys and reading what it did. Each was reproduced and has its evidence written
 down; two sibling defects found in the same session — the player speaking a
 corrected misspelling, and sense chips that all carried the same word — are
 already fixed and are not repeated here.
 
-Items 6 to 15, 18 and 19 come from a different reading: the review packets of the
+Items 3 to 9, 14 and 15 come from a different reading: the review packets of the
 smoke-tier bench runs behind the source-language sense cue and the answer shape,
 read item by item by a fresh agent each time. Every deterministic contract and
 every quality threshold in those runs was green, so these are the faults an
 automated screen cannot see. Each quotes the answer it was found in, because the
 run directories are not checked in and the evidence has to outlive them.
 
-Item 20 comes from neither: an audit of what the deployed host had actually
+Item 16 comes from neither: an audit of what the deployed host had actually
 cached, which is what showed that the head of the audio chain had been answering
 nothing at all.
 
-## 1. `.env` is not ignored by git
-
-`.gitignore` does not carry `.env`, and `git check-ignore -v .env` reports nothing.
-That file is the documented home of local secrets: `config.py` reads it through
-`ENV_FILE`, and llmbroker's zero-config secrets resolver reads `./.env` behind the
-process environment. So the one file a developer is told to put provider keys in is
-the one file `git add -A` will commit.
-
-Nothing else about it changes: the file stays untracked and stays the local home
-for keys. The fix is the ignore rule, and it is worth doing before the next person
-follows the documentation.
-
-## 2. A rebuilt bundle can leave the reader on a white screen
+## 1. A rebuilt bundle can leave the reader on a white screen
 
 Observed locally: after `inv build-static` produced a new hashed bundle, the next
 page load rendered nothing. The service worker served its cached `index.html`,
@@ -50,29 +38,7 @@ machinery for nothing.
 If it does reproduce, the reader meets a blank page after every release, which is
 the most serious of the items on this page.
 
-## 3. The status screen prints markdown links as text
-
-The "no free-pool keys" panel shows provider help verbatim, and that help arrives
-as markdown from llmbroker: the screen reads
-`Create a free API key at [groq](https://console.groq.com/keys)`, brackets and all.
-The text is correct and the rendering is not, so the reader is shown a URL they
-cannot follow beside punctuation that means nothing to them.
-
-Whether the interface renders the link or the backend hands over something already
-plain is the open choice; the constraint is that the wording stays llmbroker's,
-because it is the party that knows how a key is obtained.
-
-## 4. Search denies a language that is merely already added
-
-Typing `eng` while English is configured answers "the directory has no such
-language". The directory does have it — the search excludes languages already in
-the table, which is right, and then reports the exclusion with the sentence for a
-word the directory never carried, which is not.
-
-Both cases are legitimate and they need different sentences: nothing matched, and
-everything that matched is already yours.
-
-## 5. One user action makes two concurrent pool calls
+## 2. One user action makes two concurrent pool calls
 
 Every unit submission opens two pool calls at once — the article and the
 attestation. When the pool's first choice refuses, both meet the same refusal, so
@@ -85,7 +51,7 @@ that would justify changing our call shape is described in
 [`two-prompts.md`](two-prompts.md), which is itself waiting. Revisit once the
 routing fix has shipped and the pool's behaviour has been re-measured.
 
-## 6. A wrong grammatical form reaches a card, and nothing can see it
+## 3. A wrong grammatical form reaches a card, and nothing can see it
 
 Bulgarian `разказвам` was carded with three examples that wedge the first-person
 citation form into sentences needing another person:
@@ -113,7 +79,7 @@ anything is built: a repair that guesses an inflected form is the failure mode t
 answer-shape decisions have refused elsewhere. The stray `<` `>` around the bold
 span is separable and is a plain sanitizer question.
 
-## 7. A coinage was carded because the judge vouched for it
+## 4. A coinage was carded because the judge vouched for it
 
 `Löffelangst`, a word that does not exist, was carded with a confident sense —
 "боязнь заболеть бешенством" — an invented folk etymology about rabies and
@@ -128,7 +94,7 @@ without the run saying so. What is open is whether the judgement is asked
 differently, asked of more than one model, or whether a single vouching answer
 should stop being enough.
 
-## 8. A word of two scripts reaches a card front
+## 5. A word of two scripts reaches a card front
 
 `bare-sr-grad` carded this example:
 
@@ -146,7 +112,7 @@ the backend can settle deterministically: a word-shaped token of a
 example is dropped or the note refused is the open choice; mixing scripts within
 one word is not a spelling any of these languages has.
 
-## 9. Invented origins reach the reader
+## 6. Invented origins reach the reader
 
 Three confident and wrong, in one smoke tier: `олівець` said to be borrowed from
 Turkic (it is from `олово`); `разказвам` traced to "казнить" (the root is
@@ -164,7 +130,7 @@ The instruction is not obeyed, and no screen tests it — an etymology is prose,
 prose is only checked for its markup. What is open is whether this is worth a
 measurement of its own or is the price of the section.
 
-## 10. A near-neighbour warning that does not fire, and a collocation invented in its place
+## 7. A near-neighbour warning that does not fire, and a collocation invented in its place
 
 `wider` was answered with no mention of `wieder`, which is the whole reason that
 fixture exists. The same article invents the collocation `wider Erwachten` — the
@@ -175,7 +141,7 @@ prose translations ("против, навстречу, о") also disagree with t
 
 `causal` did warn about `casual`, so the arm is not dead; one of two fired.
 
-## 11. The article's markup and prose are not held to what the format rules ask
+## 8. The article's markup and prose are not held to what the format rules ask
 
 From one run: `text-sr-8` returns Markdown, not HTML — `**Sve mi se čini da …**`,
 whose asterisks print literally. Several answers nest bold inside bold
@@ -189,7 +155,7 @@ The sanitizer decides what tags survive; it does not decide whether the text
 around them is one language, one script, or grammatical. Some of this is
 sanitizer work and some is not, which is the first thing to separate.
 
-## 12. Card content in the wrong language, and reader-visible translations that invert the sense
+## 9. Card content in the wrong language, and reader-visible translations that invert the sense
 
 `typo-en-recieve` carried "приймать" into the `Translations` field — the Ukrainian
 word, not a Russian one, and it is the answer the card gives. Separately, and
@@ -209,20 +175,7 @@ The translations that do reach a card are the ones worth a guard, if any is
 possible: the target language's alphabet is testable, a wrong word inside it is
 not.
 
-## 13. The forms-table screen counts a face as a grammatical person
-
-`bare-sr-umoran` returned a legitimate forms table whose cell reads `уставшее
-лицо` — a tired face. `_GRAMMAR_TERMS` in the bench matches `лицо\b`, the
-grammatical person, so the run reported `tables_naming_terms: 1` against an answer
-that named no category.
-
-This is the bench's own defect, not the product's, and it costs a real signal: the
-diagnostic exists to catch a table that labels a paradigm, and a false positive in
-it makes the number unreadable. The term needs the context that separates the
-grammatical sense from the everyday one, or that diagnostic needs to stop being a
-word list.
-
-## 14. A target-language word inside a source-language sentence, where the letter test cannot see it
+## 10. A target-language word inside a source-language sentence, where the letter test cannot see it
 
 `bare-sr-grad` carded `Живим у красивом старом граду.` — `красивом` is Russian;
 Serbian is `лепом`. `cyrillic-uk-rozmovlyaty` printed the Russian ending in its
@@ -238,7 +191,7 @@ seen from the sentence side, where what it lets through is what the reader
 reviews. Any fix is a judgement about how the backend can know a word belongs to
 a language at all, which is why nothing is proposed here.
 
-## 15. A note carded on the wrong language's word
+## 11. A note carded on the wrong language's word
 
 `neighbour-de-wider` was answered as though `wider` were the English word: the
 note carries the translations "шире, более широкий", the carded sentence
@@ -255,7 +208,7 @@ as English rather than a standing behaviour — which is why the open question i
 whether a note this wrong is reachable by any check the app can run, or whether
 it belongs with the qualitative model errors the backend does not adjudicate.
 
-## 16. The deeper article has no length anyone chose
+## 12. The deeper article has no length anyone chose
 
 Reported from ordinary use: "Подробнее" — the paid deeper article — comes back
 "безумно длинный". Nothing bounds it. The pool answer is asked for a stated shape
@@ -269,7 +222,7 @@ sentence in the prompt, a bound like the answer's, or both is open — but the
 budget the paid step spends is real money, and a longer answer also costs the
 reader the wait it takes to write.
 
-## 17. A sense chip repeats the sense already on the card
+## 13. A sense chip repeats the sense already on the card
 
 `die Tafel` was carded, and the entry still offered a chip reading "плитка" with
 the same sense the note carries. A chip is an invitation to analyse that sense as
@@ -285,7 +238,7 @@ the duplicate by position. Neither a text comparison of the translations nor the
 mere count of senses settles it — the reader's question is whether the second chip
 would produce a different card.
 
-## 18. A false friend confirmed on the card's translations field
+## 14. A false friend confirmed on the card's translations field
 
 `неділя` (uk) was carded with translations `воскресенье, неделя`. It means
 Sunday; the Ukrainian for week is `тиждень`. The Recall front therefore reads
@@ -299,7 +252,7 @@ well formed. Recorded in `decision-answer-shape.md` with the run that found it;
 the false-friend pair is not vouched for on the strength of that run, since `стол`
 passed and this one failed.
 
-## 19. Two card-front sentences that are not the language they claim
+## 15. Two card-front sentences that are not the language they claim
 
 From the same reading: `bare-sr-voditi` carded `Моратите ___ о свом здрављу.` —
 `Моратите` is not a Serbian word, the form is `Морате` — and `bare-sr-grad`
@@ -312,7 +265,7 @@ is the same class as 14 and 15 — a word that is spelled plausibly for the sour
 language and is not a word of it — and it is what a reader meets rather than what
 a screen can catch.
 
-## 20. Cards already made silent still carry no recording
+## 16. Cards already made silent still carry no recording
 
 Of the 200 cards made since 21 Aug, 42 carry no audio at all: the head of the
 audio chain was answering nothing, and where the engines had no voice either the
