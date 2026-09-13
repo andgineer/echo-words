@@ -70,7 +70,9 @@ nothing else would run it — and the files the distribution's own configs name,
 record of failed logins among them, stop growing for the life of the host. Rotation
 is monthly, so a file that has never been rotated is first trimmed a calendar month
 after the pass. Setup also tightens apt's periodic autoclean and empties the package
-cache. It leaves the host firewall as it finds it: the loopback and terminal-REJECT
+cache, and it installs a weekly timer that sweeps what no owner clears: a stray
+collection backup left in the home directory after a month, and the partial writes a
+kill leaves behind in the data directory after a day. It leaves the host firewall as it finds it: the loopback and terminal-REJECT
 rules are re-asserted only when absent, and a rejected change is skipped instead of
 failing the pass. It deliberately leaves an existing checkout and running service
 untouched, and on a fresh host it does not start the service.

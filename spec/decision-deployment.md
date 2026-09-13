@@ -65,10 +65,14 @@ removes the memory constraints.)
   bounded by what it holds: the Piper voices by the languages configured, the Anki media by
   the cards made, the pronunciation cache by the words submitted at some
   tens of kilobytes each, and llmbroker's store by its own ninety-day
-  purge. Outside all of it sits the Oracle agent's updater log, which no
+  purge. A weekly timer sweeps what no owner clears: a stray collection
+  backup left in the home directory after a month, and the partial writes
+  a kill leaves behind in the audio, voice and staging directories after
+  a day. Outside all of it sits the Oracle agent's updater log, which no
   config names and which gains about a megabyte a month. `inv status`
-  prints the disk, the data directory and the journal so that growth is
-  read rather than surveyed.
+  prints the disk, the data directory and the journal, and the health
+  gate every deploy ends on prints the last two, so growth is read rather
+  than surveyed.
 - **The service is never swapped** — `MemorySwapMax=0` in the unit, with
   `vm.swappiness=10` in `/etc/sysctl.d/99-echo-words.conf` easing the
   same pressure box-wide. A voice the kernel has paged out costs the word

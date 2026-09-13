@@ -272,7 +272,7 @@ like the finite shared resource it is.
 
 - Deployment is `invoke` tasks run over ssh from the operator's machine:
   `inv setup-app` (one-time, idempotent), `inv deploy --ref=…`,
-  `inv status`, `inv logs`. The host and the rules it imposes are in
+  `inv status`, `inv healthcheck`, `inv logs`. The host and the rules it imposes are in
   `spec/decision-deployment.md`; what each task does is `tasks.py`, with
   the operator walkthrough in `docs/src/en/deploy-oracle.md`.
 - **Deploy an exact ref.** `inv deploy --ref=…` pins the ref to a single

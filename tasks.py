@@ -253,14 +253,20 @@ def _sync_deploy_env(c: Context) -> None:
     _ssh(c, f"chmod 600 {REMOTE_DEPLOY_ENV}")
 
 
-def _health_check(c: Context) -> None:
-    _ssh(
-        c,
+def _health_script() -> str:
+    return (
         "for i in $(seq 1 30); do "
         "if out=$(curl -fsS http://127.0.0.1:8080/api/health 2>&1); then "
-        'echo "$out"; exit 0; fi; sleep 1; done; '
-        'echo "health check failed after 30s: $out" >&2; exit 1',
+        'echo "$out"; '
+        f"du -sh {REMOTE_DATA} 2>/dev/null || true; "
+        "sudo journalctl --disk-usage; "
+        "exit 0; fi; sleep 1; done; "
+        'echo "health check failed after 30s: $out" >&2; exit 1'
     )
+
+
+def _health_check(c: Context) -> None:
+    _ssh(c, _health_script())
 
 
 def _resolve_commit(c: Context, ref: str) -> str:
@@ -415,6 +421,32 @@ sudo tee /etc/apt/apt.conf.d/99-echo-words-autoclean >/dev/null <<'ECHOWORDS_APT
 APT::Periodic::AutocleanInterval "7";
 ECHOWORDS_APT_EOF
 sudo apt-get clean || true
+sudo tee /etc/systemd/system/echo-words-tidy.service >/dev/null <<'ECHOWORDS_TIDY_EOF'
+[Unit]
+Description=Remove stray backups and the partial writes a kill leaves behind
+
+[Service]
+Type=oneshot
+ExecStart=-/usr/bin/find /home/ubuntu -maxdepth 1 \
+-name 'collection-backup-*.anki2' -mtime +30 -delete
+ExecStart=-/usr/bin/find {REMOTE_DATA}/audio {REMOTE_DATA}/models \
+-maxdepth 1 -type f -name '.*' -mtime +1 -delete
+ExecStart=-/usr/bin/find {REMOTE_DATA}/anki/echo-words-staging \
+-maxdepth 1 -type f -mtime +1 -delete
+ECHOWORDS_TIDY_EOF
+sudo tee /etc/systemd/system/echo-words-tidy.timer >/dev/null <<'ECHOWORDS_TIDY_TIMER_EOF'
+[Unit]
+Description=Weekly tidy of stray backups and partial writes
+
+[Timer]
+OnCalendar=weekly
+Persistent=true
+AccuracySec=1h
+
+[Install]
+WantedBy=timers.target
+ECHOWORDS_TIDY_TIMER_EOF
+sudo systemctl daemon-reload
 sudo install -d /etc/sysctl.d
 sudo tee /etc/sysctl.d/99-echo-words.conf >/dev/null <<'ECHOWORDS_SYSCTL_EOF'
 # Reclaim the page cache before the loaded Piper voices: at the kernel's default
@@ -424,7 +456,7 @@ vm.swappiness=10
 ECHOWORDS_SYSCTL_EOF
 sudo sysctl -p /etc/sysctl.d/99-echo-words.conf
 {_swap_prep_script()}
-sudo systemctl enable --now fail2ban logrotate.timer
+sudo systemctl enable --now fail2ban logrotate.timer echo-words-tidy.timer
 """
 
 
@@ -598,6 +630,12 @@ def clear_sense_labels(c: Context):
         # a failed remote command and a Ctrl-C all have to leave the service up.
         _ssh(c, f"sudo systemctl start {SERVICE_NAME}")
         _health_check(c)
+
+
+@task
+def healthcheck(c: Context):
+    """Poll the live service and report what its data and its journal occupy."""
+    _health_check(c)
 
 
 @task(help={"follow": "Follow new log lines.", "lines": "Number of existing lines."})

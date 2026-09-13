@@ -63,7 +63,34 @@ def test_host_prep_keeps_the_unrotated_logs_and_the_package_cache_bounded():
     assert "/etc/apt/apt.conf.d/99-echo-words-autoclean" in script
     assert 'APT::Periodic::AutocleanInterval "7";' in script
     assert "sudo apt-get clean || true" in script
-    assert "sudo systemctl enable --now fail2ban logrotate.timer" in script
+    assert "sudo systemctl enable --now fail2ban logrotate.timer echo-words-tidy.timer" in script
+
+
+def test_host_prep_sweeps_stray_backups_and_the_writes_a_kill_interrupts():
+    script = tasks._host_prep_script()
+
+    assert "/etc/systemd/system/echo-words-tidy.service" in script
+    assert "/etc/systemd/system/echo-words-tidy.timer" in script
+    assert "collection-backup-*.anki2' -mtime +30 -delete" in script
+    assert f"{tasks.REMOTE_DATA}/audio {tasks.REMOTE_DATA}/models" in script
+    assert f"{tasks.REMOTE_DATA}/anki/echo-words-staging" in script
+    # A missing directory must not fail the unit, nor a tidy fail the pass.
+    assert script.count("ExecStart=-/usr/bin/find") == 3
+    assert "OnCalendar=weekly" in script
+    assert "Persistent=true" in script
+    assert script.index("ECHOWORDS_TIDY_TIMER_EOF") < script.index(
+        "sudo systemctl daemon-reload",
+    )
+
+
+def test_the_health_gate_reports_what_the_data_and_the_journal_occupy():
+    script = tasks._health_script()
+
+    assert f"du -sh {tasks.REMOTE_DATA} 2>/dev/null || true" in script
+    assert "sudo journalctl --disk-usage" in script
+    assert script.index("curl -fsS") < script.index("du -sh")
+    assert "health check failed after 30s" in script
+    assert script.index("du -sh") < script.index("exit 0")
 
 
 def test_host_prep_never_fails_on_the_firewall_recheck():

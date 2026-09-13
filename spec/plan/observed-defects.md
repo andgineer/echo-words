@@ -327,9 +327,26 @@ and none at the 44.1 kHz a human recording carries, so nothing came from the
 chain's first step at all.
 
 New cards are unaffected: the head of the chain reaches Wikimedia Commons now.
-The 42 are a maintenance pass of its own — fetch each headword again and attach
-the media to its existing note — and it **needs the operator's word before
-anything writes to the collection**, which is why it is here rather than done.
+The 42 are a maintenance pass of its own, and it **needs the operator's word
+before anything writes to the collection**, which is why it is here rather than
+done.
+
+Three ways to close it, and what each costs.
+
+- **A pass of its own**, in the shape of the two maintenance commands that
+  already exist: it names the notes it would touch, writes nothing until that is
+  confirmed, runs with the service stopped, fetches each headword through the
+  chain as it now stands, attaches the media to the existing note, leaves every
+  other field alone, and syncs. No model call, about two minutes for the
+  forty-two, and it stays useful for any card made silent later. Roughly a
+  hundred and fifty lines with its tests.
+- **Re-submitting the words by hand** needs no code and buys a fresh analysis for
+  each one: forty-two pool answers against a daily cap of a hundred, and
+  forty-two cards whose text changes for the sake of their audio.
+- **Leaving them** costs nothing and leaves a fifth of that window's cards mute.
+
+The pass is the one worth building. Running it is still the operator's word, at
+its own confirmation prompt.
 
 ## 21. A recording filed under another extension is invisible to the app
 
@@ -353,9 +370,22 @@ more requests, each measured at ~0.2 s, inside a step budgeted 3 s. The throttle
 is: a miss is the common case in Portuguese, so this triples the requests a
 session makes, against a service that answered 429 to fourteen fired back to back.
 
-Recording it is not accepting it. Two words in forty for triple the requests is a
-trade worth stating plainly and worth nobody making silently; whether the app
-takes it is the operator's call.
+Recording it is not accepting it. Three shapes, and what each costs.
+
+- **Ask for the other two names only when the `.ogg` misses**, both at once, so a
+  miss costs one more round trip of about 0.2 s and a hit costs nothing. Volume
+  grows only on misses, and since a miss ends with the voice writing the file at
+  the cache path, a word is probed once in its life. About thirty lines with its
+  tests.
+- **Ask for all three names always**: one code path and one latency for
+  everybody, at the price of charging every German and Russian word — the ones
+  that answer first time — for a coverage gap they do not have. Strictly worse
+  against the throttle.
+- **Leave it**: the request budget stays exactly as measured, and those two words
+  in forty keep a synthetic voice where a human one exists.
+
+The first is the one worth taking. Whether the app takes it is the operator's
+call.
 
 ## What is deliberately not here
 
