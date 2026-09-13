@@ -1,8 +1,8 @@
 # Implementation plan — defects seen in use and in the bench, none of them fixed yet
 
-Seventeen items, from three readings.
+Eighteen items, from three readings.
 
-Items 1, 2, 12, 13 and 17 were found while running the app against the real
+Items 1, 2, 12, 13, 17 and 18 were found while running the app against the real
 provider keys and reading what it did, or by tracing what it did in production. Each was reproduced and has its evidence written
 down; two sibling defects found in the same session — the player speaking a
 corrected misspelling, and sense chips that all carried the same word — are
@@ -325,6 +325,37 @@ Two ways to close it.
   knowing which failure it caused is tuning blind.
 
 Waiting is the one worth taking, and it costs nothing but the wait.
+
+## 18. A word the chain could not speak has no second chance the reader can give it
+
+The chain runs once, when the card is made. A word it could not speak — Commons
+throttled, a voice not yet downloaded, the network gone — is carded silent, and
+the next step writes at the same cache path, so nothing in ordinary use asks
+again. The reader sees a card with no sound and has no way to say "try that
+again": the only thing that can heal it is an operator running
+`inv backfill-recordings` over the whole collection with the service stopped.
+
+The cost is small per word and it accumulates in the only place that matters, the
+deck the reader reviews. It is also invisible: nothing on the page says the audio
+failed rather than that this word simply has no recording.
+
+Two ways to give it back to the reader.
+
+- **A retry beside the entry**, shown when the answer produced no audio: it asks
+  the chain again with the cache discarded, and on success attaches the recording
+  to the note that was already saved, so the deck gets it without the card being
+  rebuilt. The pieces exist — the chain already takes a refresh that ignores what
+  the cache holds, and the maintenance pass already replaces a note's media and
+  syncs it. What is new is the affordance, an endpoint behind it, and saying on
+  the page whether the word has no recording or the attempt failed.
+- **Leave it to the operator's pass**, which is where it stands. It works, it is
+  measured, and it costs the reader nothing — but it needs the service stopped, it
+  runs over the whole collection, and a reader who is not the operator has no way
+  to ask for it.
+
+The retry is the one worth building, and the same affordance covers the word an
+engine spoke where Commons has a recording — the condition is wider, the
+machinery identical.
 
 ## What is deliberately not here
 

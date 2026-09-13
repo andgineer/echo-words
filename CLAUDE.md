@@ -34,14 +34,12 @@ tool looks for.
   aliases have never been called, latency rather than money is the
   constraint, and the plan is runnable — llmbroker now takes a request
   parameter for a model reached by name, which its first arm needed.
-  `observed-defects.md` — seventeen faults left unfixed, each with its
-  evidence, from three readings: five met while using the app, from a
-  rebuilt bundle that can leave the reader on a white screen to an answer
-  budget that bounds silence rather than the answer, eleven read out of
-  bench review packets whose every automated screen was green, and one
-  found by auditing the recordings the deployed host had cached — the
-  cards that carry none are waiting on `inv backfill-recordings`, which
-  fills them once the operator runs it.
+  `observed-defects.md` — eighteen faults left unfixed, each with its
+  evidence, from three readings: six met while using the app, from a
+  rebuilt bundle that can leave the reader on a white screen to a word the
+  chain could not speak that no reader can ask again for, eleven read out
+  of bench review packets whose every automated screen was green, and one
+  found by auditing the recordings the deployed host had cached.
   Writing a defect into a decision spec documents it; it does not accept
   it, and only the operator accepts a limitation of the product. Write
   a new plan only for work that needs one, and delete it once that work
