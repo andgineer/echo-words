@@ -35,23 +35,35 @@ function answersNote(entry) {
 // The reader searches the directory rather than naming a language: the code
 // addresses the wikis and the audio cache, and the name is what the prompt calls
 // the source language, so neither is theirs to type.
-const matches = computed(() => {
+function searched(entry) {
+  return [entry.code, entry.name, entry.english, entry.russian].map((field) =>
+    (field ?? "").toLowerCase(),
+  );
+}
+
+const found = computed(() => {
   const query = draft.value.trim().toLowerCase();
-  if (!query) return [];
+  if (!query) return { offered: [], carried: [] };
   const opens = [];
   const contains = [];
+  const carried = [];
   for (const entry of catalog.value) {
-    if (configured.value.has(entry.code)) continue;
-    const fields = [entry.code, entry.name, entry.english, entry.russian].map((field) =>
-      (field ?? "").toLowerCase(),
-    );
+    const fields = searched(entry);
+    if (!fields.some((field) => field.includes(query))) continue;
+    if (configured.value.has(entry.code)) {
+      carried.push(entry);
+      continue;
+    }
     // A name the query opens is what the reader is typing towards; one that merely
     // holds it somewhere is a fallback, so "ru" offers Русский before Belarusian.
     if (fields.some((field) => field.startsWith(query))) opens.push(entry);
-    else if (fields.some((field) => field.includes(query))) contains.push(entry);
+    else contains.push(entry);
   }
-  return [...opens, ...contains].slice(0, MATCHES_SHOWN);
+  return { offered: [...opens, ...contains].slice(0, MATCHES_SHOWN), carried };
 });
+
+const matches = computed(() => found.value.offered);
+const alreadyCarried = computed(() => found.value.carried);
 
 onMounted(async () => {
   await refresh();
@@ -197,6 +209,9 @@ async function remove(code) {
         </span>
       </button>
     </div>
+    <p v-else-if="alreadyCarried.length" class="form-hint no-matches">
+      {{ t("languages.alreadyAdded", { names: alreadyCarried.map((e) => e.name).join(", ") }) }}
+    </p>
     <p v-else-if="draft.trim()" class="form-hint no-matches">{{ t("languages.noMatches") }}</p>
 
     <p class="form-hint deck-hint">{{ t("languages.deckHintEmpty") }}</p>

@@ -89,6 +89,7 @@ export default {
   "languages.addTitle": "Add a language",
   "languages.searchPlaceholder": "Search for a language: “German”, “Deutsch”, “de”",
   "languages.noMatches": "The directory has no such language.",
+  "languages.alreadyAdded": "{names} is already in your list.",
   "languages.deckHintEmpty":
     "The language comes from the directory, which sets the code the dictionaries are " +
     "asked under and the name the analysis is asked for. The deck and the script come " +

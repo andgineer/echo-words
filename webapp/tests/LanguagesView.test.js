@@ -229,12 +229,16 @@ describe("LanguagesView", () => {
     expect(wrapper.get(".match-answers").classes()).toContain("warn");
   });
 
-  it("leaves out a language that is already configured", async () => {
+  it("leaves out a language that is already configured, and says why rather than denying it", async () => {
     const wrapper = await open();
 
     await wrapper.get("#new-lang").setValue("de");
 
     expect(wrapper.find('[data-testid="add-de"]').exists()).toBe(false);
+    // The directory does carry it; answering as though it did not is the defect.
+    const said = wrapper.get(".no-matches").text();
+    expect(said).toContain("already in your list");
+    expect(said).not.toContain("no such language");
   });
 
   it("offers a name the query opens before one that merely contains it", async () => {

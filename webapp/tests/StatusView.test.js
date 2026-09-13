@@ -63,4 +63,32 @@ describe("StatusView", () => {
     expect(wrapper.text()).toContain("Sync error: sync failed");
     expect(wrapper.text()).toContain("Last sync:");
   });
+
+  it("makes the key help's own link followable instead of printing its markdown", async () => {
+    apiRequest.mockResolvedValue({
+      pool: {
+        available: true,
+        providers_usable: 1,
+        providers_total: 1,
+        degraded: false,
+        missing_keys: [
+          {
+            api_key_ref: "GROQ_API_KEY",
+            help: "Create a free API key at [groq](https://console.groq.com/keys) first",
+          },
+        ],
+      },
+      paid_calls: { today: 0, daily_cap: 10 },
+      anki: { last_result: "ok", unsynced_changes: false, full_sync_required: false },
+      languages: {},
+    });
+    const wrapper = mount(StatusView);
+    await flushPromises();
+
+    const link = wrapper.get("a[href='https://console.groq.com/keys']");
+    expect(link.text()).toBe("groq");
+    expect(link.attributes("rel")).toContain("noopener");
+    expect(wrapper.text()).toContain("Create a free API key at groq first");
+    expect(wrapper.text()).not.toContain("](");
+  });
 });

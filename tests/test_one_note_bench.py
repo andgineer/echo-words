@@ -733,6 +733,20 @@ def test_forms_table_terms_reads_tables_and_not_the_prose_around_them():
     assert bench.forms_table_terms(prose) == []
 
 
+def test_a_face_in_a_forms_table_is_not_a_grammatical_person():
+    """A cell reading "уставшее лицо" names no category, and counting it as one makes
+    the diagnostic unreadable in exactly the runs it exists to measure."""
+    face = (
+        "<b>umoran</b> уставший<table><tr><td>уморно лице</td><td>уставшее лицо</td></tr></table>"
+    )
+    person = (
+        "<b>читати</b><table><tr><td>читам</td><td>1-е лицо единственного числа</td></tr></table>"
+    )
+
+    assert bench.forms_table_terms(face) == []
+    assert bench.forms_table_terms(person) == ["1-е лицо единственного числа"]
+
+
 def test_review_packet_shows_a_forms_table_that_names_a_grammatical_category():
     shot = bench.bare_shots()[0]
     article = (

@@ -7,6 +7,22 @@ const { t, locale } = useI18n();
 const status = ref(null);
 const error = ref("");
 
+// The help is llmbroker's wording, and it arrives as markdown: its own link is
+// where the reader gets the key, so it has to be followable rather than printed.
+const MARKDOWN_LINK = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/gu;
+
+function helpSegments(help) {
+  const segments = [];
+  let read = 0;
+  for (const match of help.matchAll(MARKDOWN_LINK)) {
+    if (match.index > read) segments.push({ text: help.slice(read, match.index) });
+    segments.push({ text: match[1], href: match[2] });
+    read = match.index + match[0].length;
+  }
+  if (read < help.length) segments.push({ text: help.slice(read) });
+  return segments;
+}
+
 function formattedTime(value) {
   if (!value) return t("status.never");
   return new Intl.DateTimeFormat(locale.value, {
@@ -47,13 +63,31 @@ onMounted(async () => {
     <div v-if="status.pool.missing_keys?.length" class="diagnostics">
       <p><b>{{ t("status.missingFreeKeys") }}</b></p>
       <p v-for="key in status.pool.missing_keys" :key="key.api_key_ref">
-        {{ key.api_key_ref }}<span v-if="key.help"> — {{ key.help }}</span>
+        {{ key.api_key_ref
+        }}<span v-if="key.help">
+          —
+          <template v-for="(segment, index) in helpSegments(key.help)" :key="index"
+            ><a v-if="segment.href" :href="segment.href" target="_blank" rel="noopener noreferrer">{{
+              segment.text
+            }}</a
+            ><template v-else>{{ segment.text }}</template></template
+          >
+        </span>
       </p>
     </div>
     <div v-if="status.pool.direct_missing_keys?.length" class="diagnostics">
       <p><b>{{ t("status.missingPaidKeys") }}</b></p>
       <p v-for="key in status.pool.direct_missing_keys" :key="key.api_key_ref">
-        {{ key.api_key_ref }}<span v-if="key.help"> — {{ key.help }}</span>
+        {{ key.api_key_ref
+        }}<span v-if="key.help">
+          —
+          <template v-for="(segment, index) in helpSegments(key.help)" :key="index"
+            ><a v-if="segment.href" :href="segment.href" target="_blank" rel="noopener noreferrer">{{
+              segment.text
+            }}</a
+            ><template v-else>{{ segment.text }}</template></template
+          >
+        </span>
       </p>
     </div>
     <p>

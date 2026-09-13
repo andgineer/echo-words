@@ -87,6 +87,7 @@ export default {
   "languages.addTitle": "Добавить язык",
   "languages.searchPlaceholder": "Найдите язык: «немецкий», «Deutsch», «de»",
   "languages.noMatches": "В справочнике такого языка нет.",
+  "languages.alreadyAdded": "{names} — уже в вашем списке.",
   "languages.deckHintEmpty":
     "Язык выбирается из справочника: он задаёт код для словарей и название для " +
     "разбора. Колода и письменность берутся оттуда же; голос и словарь можно " +
