@@ -27,13 +27,15 @@ tool looks for.
   **Read these first when picking work up**: each says where its work
   stands, what is already built, what its experiments established and
   what is left. Two are open.
-  `model-tier.md` — whether any model is both fast enough for an
-  interactive tool and better than the pool at what only a model can be
-  better at: eleven of the defects left unfixed are the model's own work,
-  and no deterministic guard can see any of them. The paid catalog's fast
-  aliases have never been called, latency rather than money is the
-  constraint, and the plan is runnable — llmbroker now takes a request
-  parameter for a model reached by name, which its first arm needed.
+  `model-tier.md` — which paid model, for which job. The design is
+  settled and nothing is measured: the judgement stays in the pool, where
+  paying buys a worse answer; the card's article gets a tier setting on
+  the language row, defaulting to the pool because no metered API may be
+  required to run the app; and the deeper article keeps a setting of its
+  own, screened on quality with no latency bar. What is unmeasured is the
+  catalog's fast aliases — every card-level number there is was taken on
+  the cheapest paid model in it — and the run waits on the operator's
+  approval for the spend.
   `observed-defects.md` — eighteen faults left unfixed, each with its
   evidence, from three readings: six met while using the app, from a
   rebuilt bundle that can leave the reader on a white screen to a word the

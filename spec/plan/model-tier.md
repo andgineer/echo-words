@@ -1,22 +1,30 @@
-# Implementation plan — is there a model that is fast *and* obeys
+# Implementation plan — a paid tier chosen by the job, not by the case
+
+**Nothing here is started, and nothing is to be run until the operator approves the
+spend.** The design below is settled; the measurements it depends on are not taken.
 
 ## Why this is open
 
 Most of what is left unfixed in `observed-defects.md` is the model's own work:
-invented origins, a wrong grammatical form on a card front, a false friend carded
-as a translation, a note built on the wrong language's word. Eleven of its
-seventeen items are that class, and no deterministic guard can see any of them —
-the backend tests a sentence's alphabet, never its grammar. The levers on that
-class are two: the prompt, and which model answers. This plan is the second one,
-and the paid catalog's fast aliases have never been called even once.
+invented origins, a wrong grammatical form on a card front, a false friend carded as
+a translation, a note built on the wrong language's word. Eleven of its eighteen
+items are that class, and no deterministic guard can see any of them — the backend
+tests a sentence's alphabet, never its grammar. The levers on that class are two: the
+prompt, and which model answers. This plan is the second one.
 
-The repairs the answer path carries — the card-sentence letter test, the JSON
-repair applied before parsing, the formatting sanitiser, the escalation of a
-declared misspelling — are a lesser prize than they look, and the measured table
-below says why: paying buys formatting and the wrong-language sentence outright,
-buys nothing at all on the JSON repair, and is worse on coinage judgement. A
-faster, more obedient tier is worth having for what the reader reads, not for the
-repairs it might retire.
+`decision-llm-backend.md` measured what money buys on cards rather than on a rubric,
+and it buys a great deal. Over the same fixtures the paid tier carried **none** of the
+target-language example sentences, none of the corrupted or mixed-script table cells,
+none of the corrupted Serbian words, none of the parts of speech named in prose, none
+of the invented etymologies stated as fact and none of the cards headed by a word
+other than the one analysed — where the free pool carried 11, 10, 8, 10, 2 and 3 of
+them. Cards teaching something false went 6 of 42 free to 4 of 42 paid.
+
+**And that was measured on the cheapest paid model there is.** `gpt-fast` is
+`gpt-5.6-luna`, which llmbroker's catalog labels "optimized for cost-sensitive
+workloads". The aliases whose whole selling point is being fast *and* strong have
+never been called even once. What a good one would do is unmeasured in both
+directions, and that is the gap this plan exists to close.
 
 Over 179 fixtures answered by both tiers under an identical prompt:
 
@@ -30,28 +38,87 @@ Over 179 fixtures answered by both tiers under an identical prompt:
 | payload needed JSON repair | 13.4% | 13.4% |
 | verdict correct | 93.3% | 92.7% |
 
-So paying retires *some* classes outright and leaves others untouched: the JSON
-repair layer is identical on both tiers, and coinage judgement is measurably worse
-paid (`decision-llm-backend.md`, "What money buys"). The hypothesis under test is
-therefore narrow and must not be inflated into "a better model fixes everything".
+Two things that table settles. The JSON repair layer is identical on both tiers, so no
+tier retires it. And **the constraint is latency, not money**: seven of `gpt-fast`'s
+ten seconds pass before the first character, and the app streams, so 0.9 s of waiting
+becomes 7 s. That is why a tier this good is not simply switched on, and why an arm is
+screened on latency before it is read on quality.
 
-**The constraint is latency, not money.** The operator has stated that the cost of a
-paid tier at this volume is not a constraint. Seven of `gpt-fast`'s ten seconds pass
-before the first character arrives, and the app streams, so that is the number a
-reader feels: 0.9 s of waiting becomes 7 s. That is the whole reason a tier this
-good is not simply switched on, and it is why an arm is screened on latency before
-it is read on quality.
+What the reader waits for is no longer the model in any case: the dead step at the head
+of the audio chain spent up to its whole ten-second budget inside a job the pool
+answered in 2.2 s, and it is gone. This is not a rescue from a slow app; it is a bid to
+improve the answers of one that is fast enough.
 
-What the reader waits for today is no longer the model in any case: the dead step at
-the head of the audio chain spent up to its whole ten-second budget inside a job the
-pool answered in 2.2 s, and it is gone. So this plan is not a rescue from a slow app;
-it is a bid to improve the answers of one that is fast enough.
+---
 
-**And the survey that chose the tier was partial.** It measured `sonnet`, `gpt` and
-`gpt-fast`. llmbroker's curated paid catalog carries nine aliases, and the ones
-whose whole selling point is speed have never been called. The catalog is readable
-programmatically, so the list below is what it carried when this was written and the
-run takes its own from the catalog.
+## The design: the tier is chosen by the job
+
+A request's kind is known before the call, so nothing here predicts anything. Three
+jobs, three answers.
+
+### The judgement stays in the pool — already true, and it stays that way
+
+The call that asks whether a word is really used is `pool_only` today, and the reason
+is measured: paid judgement is the one class where money buys a worse answer.
+`Löffelangst`, a word that does not exist, was vouched for by the paid model and
+carded with an invented etymology about rabies. Nothing in this plan moves that call.
+Whatever wins below, the vouching machinery and its tier survive unchanged.
+
+This also decides the shape of item 2 in `observed-defects.md`, one reader action
+making two concurrent pool calls: moving the *article* to a paid tier leaves one pool
+call per submission. That is a consequence, not a reason, and it holds only where the
+paid tier is switched on.
+
+### The card's article gets a tier setting, defaulting to the pool
+
+- **Default: the pool.** That no metered API is ever required to run the app is a
+  standing cost requirement, not a preference. A fresh install keeps working with no
+  key.
+- **A paid model may be named instead**, and then the pool is the fallback for a paid
+  step that refuses or a daily cap that is spent — never the other way round.
+- **The setting belongs on the language row**, beside the recordings prefix and the
+  voice, because what is known about answers is already per language: the directory
+  carries a measured verdict for each row, and the defects cluster in the rows it
+  calls unreliable. "Everything paid" is then every row set that way, which is the
+  operator's own scenario and needs no separate mode.
+- Nothing about the prompt changes. One change per measurement.
+
+### "The full entry" gets its own setting, and it is not the card's
+
+The deeper article and the card have opposite constraints. The card lives inside a
+deadline the reader did not choose; the deeper article is asked for deliberately by a
+reader who knows it costs a wait. One setting for both would let the card's latency
+bar decide what answers the deeper article, which is the wrong trade in both
+directions.
+
+So the deeper article and the rebuild keep their own model setting, screened on
+quality alone with no latency bar, and the card's tier is a separate choice.
+
+The deeper article's own open defect — the length nobody chose — is measured in the
+same run, because length is a property of the model *and* the instruction, and reading
+them apart would cost a second tier for nothing. That is the one exception here to one
+change per measurement, and it is an exception because the two are inseparable.
+
+### What is deliberately not built
+
+- **A heuristic that calls a word hard before the answer exists.** That is the
+  classification problem `decision-answer-shape.md` measured and rejected: surface
+  punctuation and length cannot solve it. This plan does not re-derive it.
+- **A step up to the paid tier because the payload looked wrong.** Production says
+  fourteen of fifteen rejected payloads carried an answer the reader would have
+  accepted, so the parse verdict has a precision near 1 in 15 as a trigger. The app
+  offers the paid answer as a button instead, and that stands.
+- **A per-word cost cap.** The daily cap already bounds the day, and it is the guard
+  that matters.
+
+---
+
+## What to measure, when the operator asks for it
+
+### Step 1 — screen on latency alone
+
+Latency is a property a handful of calls establishes; quality is not. Screen first and
+spend nothing on quality until a candidate can be fast.
 
 | alias | model | why it is a candidate |
 |---|---|---|
@@ -61,85 +128,69 @@ run takes its own from the catalog.
 | `grok` | `grok-4.6` | catalogued as fastest and most intelligent |
 | `deepseek-flash` | `deepseek-v4-flash` | the fast, high-volume sibling |
 
-## The decisive constraint on how to run this
+The list is what the catalog carried when this was written; the run takes its own from
+the catalog, which is readable programmatically.
 
-**A paid arm does not spend the free pool's daily quota.** The rule that governs
-every other experiment here — one change per tier, the quota does not fit two —
-does not apply. What a paid arm spends is money, and the operator's approval for
-that spend is the only gate.
-
-## The first arm
-
-`gpt-fast`'s latency is reasoning, not throughput: the answer is *shorter* than the
-pool's, and seven of ten seconds pass before the first character. Every paid
-measurement taken so far is therefore of one model's **default** effort, because
-the request carries the model, the messages, the tools and the streaming options
-and nothing else.
-
-Measuring `gpt-fast` at a low effort is the cheapest route to "fast and obeys" —
-that model's quality is already measured and accepted, so the only open variable is
-whether the thinking phase can be shortened without losing it. It is the first arm
-of step 1, not a side experiment, and the only one whose outcome could end the plan
-early in the good direction.
-
-It is runnable: llmbroker's direct client takes per-request parameters for a model
-reached by name, and its curated catalog is readable programmatically, so the arm
-list comes from the catalog rather than from this page.
-
-## Step 1 — screen on latency alone
-
-Latency is a property a handful of calls establishes; quality is not. So screen
-first and spend nothing on quality until the candidate can be fast.
-
-- One arm per alias above, plus `gpt-fast` as the incumbent to anchor the numbers.
+- One arm per alias, plus `gpt-fast` as the incumbent to anchor the numbers.
+- **Each arm twice: at the model's default effort and at its lowest.** `gpt-fast`'s
+  ten seconds are reasoning, not throughput — its answer is *shorter* than the pool's
+  — so the thinking phase is the variable. llmbroker's direct client now takes a
+  request parameter for a model reached by name, which is what this arm needed.
 - ~20 unit fixtures per arm, drawn from the registered set so the prompt is the
-  production one. About 120 calls in total.
-- Record: median and p90 whole answer, median time to first character, and any
-  refusal or empty answer.
+  production one. On the order of 240 calls.
+- Record: median and p90 whole answer, median time to first character, and any refusal
+  or empty answer.
 - **The bar, fixed before the run:** median whole answer ≤ 4 s *and* median first
-  character ≤ 1.5 s. That is the band where the change does not read as a
-  regression to a reader used to 2.2 s. An arm that misses it is out, whatever it
-  scores on quality.
-- **Re-take the pool's own numbers in the same run.** The 2.2 s baseline was
-  measured before a silent pool member was found able to hold a caller's whole
-  budget and send every request to the paid step; llmbroker's queue changes what
-  the pool does when that happens. A candidate compared against a stale baseline
-  is compared against nothing.
+  character ≤ 1.5 s. That is the band where the change does not read as a regression to
+  a reader used to 2.2 s. An arm that misses it is out of the card race whatever it
+  scores on quality — and may still be a candidate for the deeper article, which has no
+  such bar.
+- **Re-take the pool's own numbers in the same run.** The 2.2 s baseline predates
+  llmbroker's queued routing fix, and a candidate compared against a stale baseline is
+  compared against nothing.
 
-## Step 2 — a quality tier on the survivors only
+### Step 2 — a quality tier on the survivors only
 
-For each arm that cleared the bar, a full tier over the registered fixtures, with
-the same metrics the pool and `gpt-fast` were read on, so the three are comparable:
-contract validity, formatting, verdict correctness, target-language card sentences,
-and the payload-repair rate.
+For each arm that cleared the bar, a full tier over the registered fixtures, with the
+metrics the pool and `gpt-fast` were read on, so the three are comparable: contract
+validity, formatting, verdict correctness, target-language card sentences and the
+payload-repair rate. Read the card-level classes of `decision-llm-backend.md` as well
+— they are what the reader meets.
 
-Then the mandatory reading: a **fresh** agent, one that did not run the bench,
-reads every item of the review packet. A green screen is conformance, not quality.
+Then the mandatory reading: a **fresh** agent, one that did not run the bench, reads
+every item of the review packet. A green screen is conformance, not quality.
 
-## Step 3 — the configuration that follows
+### Step 3 — the configuration that follows
 
-- A survivor that matches `gpt-fast` on the defect classes and clears the latency
-  bar becomes the preferred model, **with the pool kept as the fallback**. No
-  metered API is ever required to run the app — that is a standing cost
-  requirement, not a preference — so this is a preference order, never a hard
-  dependency.
-- Whatever wins, re-read which repairs it makes dead weight. The letter test goes
-  only if its measured rate on the new tier is zero over a full tier, and only for
-  as long as that tier is the one answering; it stays in the code as long as the
-  pool can answer at all.
-- If nothing clears the bar, the choice is between `gpt-fast` at ten seconds and
-  the pool at two, and it is a product judgement about waiting rather than a
-  measurement. Put the numbers to the operator and let them choose.
+- A survivor that matches `gpt-fast` on the defect classes and clears the latency bar
+  becomes the model a language row may name, with the pool kept as the fallback.
+- The deeper article takes the best quality survivor, bar or no bar, together with
+  whatever bound the same run showed its length needs.
+- Whatever wins, re-read which deterministic repairs it makes dead weight. A repair
+  goes only if its measured rate on the new tier is zero over a full tier, and only for
+  as long as that tier answers; it stays while the pool can answer at all.
+- If nothing clears the bar, the choice is between ten seconds and two, and it is a
+  product judgement about waiting rather than a measurement. Put the numbers to the
+  operator.
+
+### What it costs
+
+A paid arm does not spend the free pool's daily quota, so the rule that governs every
+other experiment here — one change per tier, the quota does not fit two — does not
+apply. What it spends is money: step 1 is on the order of a dollar, each step 2 arm a
+few. In service, at the volume one reader produces — some twenty words a day, on the
+order of two million tokens a month — a model of this class costs single-digit dollars
+a month.
+
+**No arm starts without the operator's approval for that spend, and the estimate goes
+to them first.**
 
 ## What this plan must not do
 
-- **Do not fold the tier question into a prompt change.** One change per
-  measurement. A tier arm and a prompt revision in the same run measure neither.
-- **Do not treat a fast model as a fix for the coinage class.** Paid judgement is
-  worse there, measured; the vouching machinery survives whatever wins.
-- **Do not remove a deterministic repair on the strength of a single arm.** The
-  pool answers when the paid path is unavailable, and the repair has to hold then.
+- **Do not fold the tier question into a prompt change.** A tier arm and a prompt
+  revision in the same run measure neither.
+- **Do not treat a fast model as a fix for the coinage class.** Paid judgement is worse
+  there, measured.
+- **Do not remove a deterministic repair on the strength of a single arm.** The pool
+  answers when the paid path is unavailable, and the repair has to hold then.
 - **Do not spend on step 2 before step 1 has excluded the slow arms.**
-- **Do not start any paid arm without the operator's approval for that spend**,
-  and give them the estimate first: step 1 is on the order of a dollar, each step 2
-  arm a few.
