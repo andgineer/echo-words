@@ -46,10 +46,10 @@ one reader action counts twice against that provider and drives its cooldown lad
 at twice the rate a single call would.
 
 This is recorded here as the defect it is, and not scheduled: llmbroker's queue
-carries the routing fix that decides how much it still costs, and the measurement
-that would justify changing our call shape is described in
-[`two-prompts.md`](two-prompts.md), which is itself waiting. Revisit once the
-routing fix has shipped and the pool's behaviour has been re-measured.
+carries the routing fix that decides how much it still costs. Revisit once that
+fix has shipped and the pool's behaviour has been re-measured — the app's own
+call shape is not the cheaper end to change, since both calls are wanted and
+neither can be deferred behind the other.
 
 ## 3. A wrong grammatical form reaches a card, and nothing can see it
 

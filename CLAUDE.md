@@ -26,14 +26,14 @@ tool looks for.
 - `spec/plan/` — work that is started and not finished, one file each.
   **Read these first when picking work up**: each says where its work
   stands, what is already built, what its experiments established and
-  what is left. Three are open, and one of them is held.
+  what is left. Two are open.
   `model-tier.md` — whether any model is both fast enough for an
-  interactive tool and obedient enough to retire some of the
-  deterministic repairs in the answer path; the paid catalog's fast
-  aliases have never been called, and latency rather than money is the
-  constraint. Its first arm — the incumbent paid model at a low
-  reasoning effort — waits on llmbroker, which cannot yet send a
-  request parameter to a model reached by name.
+  interactive tool and better than the pool at what only a model can be
+  better at: eleven of the defects left unfixed are the model's own work,
+  and no deterministic guard can see any of them. The paid catalog's fast
+  aliases have never been called, latency rather than money is the
+  constraint, and the plan is runnable — llmbroker now takes a request
+  parameter for a model reached by name, which its first arm needed.
   `observed-defects.md` — seventeen faults left unfixed, each with its
   evidence, from three readings: five met while using the app, from a
   rebuilt bundle that can leave the reader on a white screen to an answer
@@ -42,10 +42,6 @@ tool looks for.
   found by auditing the recordings the deployed host had cached — the
   cards that carry none are waiting on `inv backfill-recordings`, which
   fills them once the operator runs it.
-  `two-prompts.md` — a cheap model call to
-  choose the branch for the submit box; **held** until `model-tier.md`
-  reports, because no observed defect stands behind it and it adds a
-  round trip to an app whose complaint is waiting.
   Writing a defect into a decision spec documents it; it does not accept
   it, and only the operator accepts a limitation of the product. Write
   a new plan only for work that needs one, and delete it once that work

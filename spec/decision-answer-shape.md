@@ -29,6 +29,13 @@ is open it belongs to the answer itself. Where it is not open the question
 never arises: a tapped chip and a one-word submission are units by the action
 that made them.
 
+Nor does a model call of its own decide it. A classifier ahead of the
+specialised prompt would put a third call in sequence on the one path whose
+complaint is waiting, and its mistakes are the expensive kind: an answer that
+branches wrongly is still an answer, while a prompt chosen wrongly for it has
+no other branch to fall back on — the unit prompt states no text contract at
+all.
+
 ## The one answer contract, asked by the prompt the request needs
 
 Every attempt ends with a bounded JSON object whose neutral `kind` is `unit`

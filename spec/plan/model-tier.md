@@ -2,17 +2,23 @@
 
 ## Why this is open
 
-Several deterministic repairs in the answer path exist because the tier the app
-runs on does not follow the prompt reliably: the card-sentence letter test, the
-JSON repair applied before parsing, the formatting sanitiser, the escalation of a
-declared misspelling to the paid model. Each is measured and each is honest about
-being a filter rather than a proof. None of them can be strengthened into one —
-`spec/decision-llm-backend.md` records why, and re-deriving that is not this
-plan's job.
+Most of what is left unfixed in `observed-defects.md` is the model's own work:
+invented origins, a wrong grammatical form on a card front, a false friend carded
+as a translation, a note built on the wrong language's word. Eleven of its
+seventeen items are that class, and no deterministic guard can see any of them —
+the backend tests a sentence's alphabet, never its grammar. The levers on that
+class are two: the prompt, and which model answers. This plan is the second one,
+and the paid catalog's fast aliases have never been called even once.
 
-The question this plan asks is the other one: **what would those repairs cost if
-the model obeyed?** The paid arm already answers part of it. Over 179 fixtures
-answered by both tiers under an identical prompt:
+The repairs the answer path carries — the card-sentence letter test, the JSON
+repair applied before parsing, the formatting sanitiser, the escalation of a
+declared misspelling — are a lesser prize than they look, and the measured table
+below says why: paying buys formatting and the wrong-language sentence outright,
+buys nothing at all on the JSON repair, and is worse on coinage judgement. A
+faster, more obedient tier is worth having for what the reader reads, not for the
+repairs it might retire.
+
+Over 179 fixtures answered by both tiers under an identical prompt:
 
 | | `gpt-fast` | pool primary |
 |---|---:|---:|
@@ -29,17 +35,23 @@ repair layer is identical on both tiers, and coinage judgement is measurably wor
 paid (`decision-llm-backend.md`, "What money buys"). The hypothesis under test is
 therefore narrow and must not be inflated into "a better model fixes everything".
 
-**The blocker is latency, not money.** The operator has stated that the cost of a
+**The constraint is latency, not money.** The operator has stated that the cost of a
 paid tier at this volume is not a constraint. Seven of `gpt-fast`'s ten seconds pass
 before the first character arrives, and the app streams, so that is the number a
-reader feels: 0.9 s of waiting becomes 7 s.
+reader feels: 0.9 s of waiting becomes 7 s. That is the whole reason a tier this
+good is not simply switched on, and it is why an arm is screened on latency before
+it is read on quality.
+
+What the reader waits for today is no longer the model in any case: the dead step at
+the head of the audio chain spent up to its whole ten-second budget inside a job the
+pool answered in 2.2 s, and it is gone. So this plan is not a rescue from a slow app;
+it is a bid to improve the answers of one that is fast enough.
 
 **And the survey that chose the tier was partial.** It measured `sonnet`, `gpt` and
 `gpt-fast`. llmbroker's curated paid catalog carries nine aliases, and the ones
-whose whole selling point is speed were never called even once. Reaching them no
-longer means reading preset files out of the installed package by path: llmbroker's
-queue carries programmatic catalog access, so the arm list below comes from the
-catalog itself once that lands.
+whose whole selling point is speed have never been called. The catalog is readable
+programmatically, so the list below is what it carried when this was written and the
+run takes its own from the catalog.
 
 | alias | model | why it is a candidate |
 |---|---|---|
@@ -56,7 +68,7 @@ every other experiment here — one change per tier, the quota does not fit two 
 does not apply. What a paid arm spends is money, and the operator's approval for
 that spend is the only gate.
 
-## The first arm, and what it waits on
+## The first arm
 
 `gpt-fast`'s latency is reasoning, not throughput: the answer is *shorter* than the
 pool's, and seven of ten seconds pass before the first character. Every paid
@@ -70,9 +82,9 @@ whether the thinking phase can be shortened without losing it. It is the first a
 of step 1, not a side experiment, and the only one whose outcome could end the plan
 early in the good direction.
 
-It waits on llmbroker: request parameters for a model reached by name are queued
-there, and until they ship this arm cannot be run at all. Nothing else in step 1
-depends on that, so the remaining arms proceed meanwhile.
+It is runnable: llmbroker's direct client takes per-request parameters for a model
+reached by name, and its curated catalog is readable programmatically, so the arm
+list comes from the catalog rather than from this page.
 
 ## Step 1 — screen on latency alone
 
