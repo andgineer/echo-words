@@ -54,18 +54,18 @@
             </div>
         </aside>
         <h2>
-            <span class="text">34 statements &nbsp;</span>
-            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">34<span class="text"> run</span></button>
+            <span class="text">43 statements &nbsp;</span>
+            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">43<span class="text"> run</span></button>
             <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">0<span class="text"> missing</span></button>
             <button type="button" class="exc show_exc button_toggle_exc" value="exc" data-shortcut="x" title="Toggle lines excluded">2<span class="text"> excluded</span></button>
         </h2>
         <p class="text">
-            <a id="prevFileLink" class="nav" href="z_7696b2d023042320_llm_backend_py.html">&#xab; prev</a> &nbsp; &nbsp;
+            <a id="prevFileLink" class="nav" href="z_7696b2d023042320_logs_py.html">&#xab; prev</a> &nbsp; &nbsp;
             <a id="indexLink" class="nav" href="index.html">&Hat; index</a> &nbsp; &nbsp;
             <a id="nextFileLink" class="nav" href="z_7696b2d023042320_pipeline_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.15.4">coverage.py v7.15.4</a>,
-            created at 2026-09-12 10:30 +0000
+            created at 2026-09-13 05:38 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -88,7 +88,7 @@
     <p class="run"><span class="n"><a id="t6" href="#t6">6</a></span><span class="t"><span class="key">import</span> <span class="nam">uvicorn</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t7" href="#t7">7</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t8" href="#t8">8</a></span><span class="t"><span class="key">from</span> <span class="nam">echo_words</span> <span class="key">import</span> <span class="nam">__version__</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t9" href="#t9">9</a></span><span class="t"><span class="key">from</span> <span class="nam">echo_words</span><span class="op">.</span><span class="nam">anki</span> <span class="key">import</span> <span class="nam">AnkiError</span><span class="op">,</span> <span class="nam">clear_sense_labels</span><span class="op">,</span> <span class="nam">rebuild_note_type</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t9" href="#t9">9</a></span><span class="t"><span class="key">from</span> <span class="nam">echo_words</span><span class="op">.</span><span class="nam">anki</span> <span class="key">import</span> <span class="nam">AnkiError</span><span class="op">,</span> <span class="nam">backfill_recordings</span><span class="op">,</span> <span class="nam">clear_sense_labels</span><span class="op">,</span> <span class="nam">rebuild_note_type</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t10" href="#t10">10</a></span><span class="t"><span class="key">from</span> <span class="nam">echo_words</span><span class="op">.</span><span class="nam">config</span> <span class="key">import</span> <span class="nam">Settings</span><span class="op">,</span> <span class="nam">settings</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t11" href="#t11">11</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t12" href="#t12">12</a></span><span class="t"><span class="nam">click</span><span class="op">.</span><span class="nam">rich_click</span><span class="op">.</span><span class="nam">USE_MARKDOWN</span> <span class="op">=</span> <span class="key">True</span>&nbsp;</span><span class="r"></span></p>
@@ -157,18 +157,43 @@
     <p class="run"><span class="n"><a id="t75" href="#t75">75</a></span><span class="t">        <span class="key">raise</span> <span class="nam">click</span><span class="op">.</span><span class="nam">ClickException</span><span class="op">(</span><span class="nam">str</span><span class="op">(</span><span class="nam">exc</span><span class="op">)</span><span class="op">)</span> <span class="key">from</span> <span class="nam">exc</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t76" href="#t76">76</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t77" href="#t77">77</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="exc show_exc"><span class="n"><a id="t78" href="#t78">78</a></span><span class="t"><span class="key">if</span> <span class="nam">__name__</span> <span class="op">==</span> <span class="str">&quot;__main__&quot;</span><span class="op">:</span>  <span class="com"># pragma: no cover</span>&nbsp;</span><span class="r"></span></p>
-    <p class="exc show_exc"><span class="n"><a id="t79" href="#t79">79</a></span><span class="t">    <span class="nam">echo_words</span><span class="op">(</span><span class="op">)</span>  <span class="com"># pylint: disable=no-value-for-parameter</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t78" href="#t78">78</a></span><span class="t"><span class="op">@</span><span class="nam">echo_words</span><span class="op">.</span><span class="nam">command</span><span class="op">(</span><span class="nam">name</span><span class="op">=</span><span class="str">&quot;backfill-recordings&quot;</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t79" href="#t79">79</a></span><span class="t"><span class="op">@</span><span class="nam">click</span><span class="op">.</span><span class="nam">option</span><span class="op">(</span><span class="str">&quot;--yes&quot;</span><span class="op">,</span> <span class="nam">is_flag</span><span class="op">=</span><span class="key">True</span><span class="op">,</span> <span class="nam">help</span><span class="op">=</span><span class="str">&quot;Attach them. Without it nothing is written.&quot;</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t80" href="#t80">80</a></span><span class="t"><span class="op">@</span><span class="nam">click</span><span class="op">.</span><span class="nam">option</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t81" href="#t81">81</a></span><span class="t">    <span class="str">&quot;--env-file&quot;</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t82" href="#t82">82</a></span><span class="t">    <span class="nam">type</span><span class="op">=</span><span class="nam">click</span><span class="op">.</span><span class="nam">Path</span><span class="op">(</span><span class="nam">exists</span><span class="op">=</span><span class="key">True</span><span class="op">,</span> <span class="nam">dir_okay</span><span class="op">=</span><span class="key">False</span><span class="op">,</span> <span class="nam">path_type</span><span class="op">=</span><span class="nam">Path</span><span class="op">)</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t83" href="#t83">83</a></span><span class="t">    <span class="nam">help</span><span class="op">=</span><span class="str">&quot;Read settings from this file, as the service reads its own.&quot;</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t84" href="#t84">84</a></span><span class="t"><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t85" href="#t85">85</a></span><span class="t"><span class="key">def</span> <span class="nam">backfill_recordings_command</span><span class="op">(</span><span class="nam">yes</span><span class="op">:</span> <span class="nam">bool</span><span class="op">,</span> <span class="nam">env_file</span><span class="op">:</span> <span class="nam">Path</span> <span class="op">|</span> <span class="key">None</span><span class="op">)</span> <span class="op">-&gt;</span> <span class="key">None</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t86" href="#t86">86</a></span><span class="t">    <span class="str">&quot;&quot;&quot;</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t87" href="#t87">87</a></span><span class="t"><span class="str">    Give every note written without audio the recording the chain would produce today.</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t88" href="#t88">88</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t89" href="#t89">89</a></span><span class="t"><span class="str">    A note keeps what it was made with, so one written while the head of the chain</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t90" href="#t90">90</a></span><span class="t"><span class="str">    was answering nothing stays silent until this fills it. Nothing else about a</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t91" href="#t91">91</a></span><span class="t"><span class="str">    note changes, and a word the chain still cannot speak is left as it is. It</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t92" href="#t92">92</a></span><span class="t"><span class="str">    syncs with AnkiWeb itself and says whether that worked, because the service</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t93" href="#t93">93</a></span><span class="t"><span class="str">    only syncs off its own adds. Stop the service first: the collection must not be</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t94" href="#t94">94</a></span><span class="t"><span class="str">    open elsewhere.</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t95" href="#t95">95</a></span><span class="t"><span class="str">    &quot;&quot;&quot;</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t96" href="#t96">96</a></span><span class="t">    <span class="nam">active</span> <span class="op">=</span> <span class="nam">Settings</span><span class="op">(</span><span class="nam">_env_file</span><span class="op">=</span><span class="nam">env_file</span><span class="op">)</span> <span class="key">if</span> <span class="nam">env_file</span> <span class="key">is</span> <span class="key">not</span> <span class="key">None</span> <span class="key">else</span> <span class="nam">settings</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t97" href="#t97">97</a></span><span class="t">    <span class="key">try</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t98" href="#t98">98</a></span><span class="t">        <span class="nam">click</span><span class="op">.</span><span class="nam">echo</span><span class="op">(</span><span class="nam">backfill_recordings</span><span class="op">(</span><span class="nam">active</span><span class="op">,</span> <span class="nam">confirmed</span><span class="op">=</span><span class="nam">yes</span><span class="op">)</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t99" href="#t99">99</a></span><span class="t">    <span class="key">except</span> <span class="nam">AnkiError</span> <span class="key">as</span> <span class="nam">exc</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t100" href="#t100">100</a></span><span class="t">        <span class="key">raise</span> <span class="nam">click</span><span class="op">.</span><span class="nam">ClickException</span><span class="op">(</span><span class="nam">str</span><span class="op">(</span><span class="nam">exc</span><span class="op">)</span><span class="op">)</span> <span class="key">from</span> <span class="nam">exc</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t101" href="#t101">101</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t102" href="#t102">102</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
+    <p class="exc show_exc"><span class="n"><a id="t103" href="#t103">103</a></span><span class="t"><span class="key">if</span> <span class="nam">__name__</span> <span class="op">==</span> <span class="str">&quot;__main__&quot;</span><span class="op">:</span>  <span class="com"># pragma: no cover</span>&nbsp;</span><span class="r"></span></p>
+    <p class="exc show_exc"><span class="n"><a id="t104" href="#t104">104</a></span><span class="t">    <span class="nam">echo_words</span><span class="op">(</span><span class="op">)</span>  <span class="com"># pylint: disable=no-value-for-parameter</span>&nbsp;</span><span class="r"></span></p>
 </main>
 <footer>
     <div class="content">
         <p>
-            <a class="nav" href="z_7696b2d023042320_llm_backend_py.html">&#xab; prev</a> &nbsp; &nbsp;
+            <a class="nav" href="z_7696b2d023042320_logs_py.html">&#xab; prev</a> &nbsp; &nbsp;
             <a class="nav" href="index.html">&Hat; index</a> &nbsp; &nbsp;
             <a class="nav" href="z_7696b2d023042320_pipeline_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.15.4">coverage.py v7.15.4</a>,
-            created at 2026-09-12 10:30 +0000
+            created at 2026-09-13 05:38 +0000
         </p>
     </div>
 </footer>
