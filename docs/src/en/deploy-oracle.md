@@ -64,8 +64,12 @@ in 10 minutes, escalating 1-day bans capped at 30 days). The jail uses the
 systemd backend and excludes Tailscale's `100.64.0.0/10` range, so tailnet
 administration cannot ban itself; public ssh — the deploy path, and whatever else
 reaches port 22 from the internet — is subject to it. Setup also disables
-rpcbind and bounds the system journal, by size (200 MB) and by age (three
-months). It leaves the host firewall as it finds it:
+rpcbind and bounds the system journal, by size (200 MB) and by age (one
+month). The image ships no `logrotate`, so setup installs it and the
+distribution's own rotation configs — the record of failed logins among them —
+stop growing for the life of the host; setup also turns on apt's periodic
+autoclean and empties the package cache. It leaves the host firewall as it finds
+it:
 the loopback and terminal-REJECT rules are re-asserted only when absent, and a
 rejected change is skipped instead of failing the pass. It deliberately leaves an
 existing checkout and running service untouched, and on a fresh host it does not
@@ -97,7 +101,8 @@ A deploy is finished only when its health poll passes. Confirm afterwards with
 
 `inv status` reports the main process's current `VmRSS` and lifetime `VmHWM`
 together, plus the service cgroup's `MemoryCurrent`, `MemoryHigh`, and
-`MemoryMax`. It reports cgroup `memory.peak` separately only on kernels that
+`MemoryMax`. It also prints the root filesystem, the size of the data directory
+and what the journal occupies, so disk growth is read from the same command. It reports cgroup `memory.peak` separately only on kernels that
 export that file; Ubuntu 22.04's 5.15 kernel may report it as unsupported. The
 command fails if the service or unit is absent rather than accidentally reading
 the root cgroup. The service's Tailscale readiness loop makes reboot startup

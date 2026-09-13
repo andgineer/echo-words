@@ -48,12 +48,21 @@ def test_host_prep_provisions_swap_hardening_and_bounded_journal():
     assert "fail2ban" in script
     assert "/etc/systemd/journald.conf.d/echo-words.conf" in script
     assert "SystemMaxUse=200M" in script
-    assert "MaxRetentionSec=3month" in script
+    assert "MaxRetentionSec=1month" in script
     assert "/etc/sysctl.d/99-echo-words.conf" in script
     assert "vm.swappiness=10" in script
     assert script.index("vm.swappiness=10") < script.index(
         "sudo sysctl -p /etc/sysctl.d/99-echo-words.conf",
     )
+
+
+def test_host_prep_keeps_the_unrotated_logs_and_the_package_cache_bounded():
+    script = tasks._host_prep_script()
+
+    assert "apt-get install -y fail2ban logrotate" in script
+    assert "/etc/apt/apt.conf.d/99-echo-words-autoclean" in script
+    assert 'APT::Periodic::AutocleanInterval "7";' in script
+    assert "sudo apt-get clean" in script
 
 
 def test_host_prep_never_fails_on_the_firewall_recheck():
@@ -361,6 +370,14 @@ def test_status_separates_process_and_cgroup_memory_measurements():
     assert "CGroupMemoryPeak=unsupported" in script
     assert "else main_pid=" not in script
     assert "tail -5 || true" not in script
+
+
+def test_status_reports_what_the_disk_holds():
+    script = tasks._status_script()
+
+    assert "df -h / | tail -1" in script
+    assert f"sudo du -sh {tasks.REMOTE_DATA} 2>/dev/null || true" in script
+    assert "sudo journalctl --disk-usage" in script
 
 
 def _rebuild_context(monkeypatch, tmp_path, answer: str):

@@ -373,7 +373,7 @@ def _host_prep_script() -> str:
     return f"""\
 set -euo pipefail
 sudo apt-get update
-sudo DEBIAN_FRONTEND=noninteractive apt-get install -y fail2ban
+sudo DEBIAN_FRONTEND=noninteractive apt-get install -y fail2ban logrotate
 sudo systemctl disable --now rpcbind rpcbind.socket 2>/dev/null || true
 # Re-asserting the image's own rules must never fail the pass: a host that
 # rejects one of them is left as it is rather than half-reconfigured.
@@ -407,9 +407,14 @@ sudo rm -f /etc/systemd/journald.conf.d/size.conf
 sudo tee /etc/systemd/journald.conf.d/echo-words.conf >/dev/null <<'ECHOWORDS_JOURNAL_EOF'
 [Journal]
 SystemMaxUse=200M
-MaxRetentionSec=3month
+MaxRetentionSec=1month
 ECHOWORDS_JOURNAL_EOF
 sudo systemctl restart systemd-journald
+sudo install -d /etc/apt/apt.conf.d
+sudo tee /etc/apt/apt.conf.d/99-echo-words-autoclean >/dev/null <<'ECHOWORDS_APT_EOF'
+APT::Periodic::AutocleanInterval "7";
+ECHOWORDS_APT_EOF
+sudo apt-get clean
 sudo install -d /etc/sysctl.d
 sudo tee /etc/sysctl.d/99-echo-words.conf >/dev/null <<'ECHOWORDS_SYSCTL_EOF'
 # Reclaim the page cache before the loaded Piper voices: at the kernel's default
@@ -492,6 +497,10 @@ def _status_script() -> str:
         "peak_file=/sys/fs/cgroup${control_group}/memory.peak; "
         "if sudo test -r \"$peak_file\"; then printf 'CGroupMemoryPeak='; "
         'sudo cat "$peak_file"; else echo CGroupMemoryPeak=unsupported; fi; '
+        "echo 'Disk:'; "
+        "df -h / | tail -1; "
+        f"sudo du -sh {REMOTE_DATA} 2>/dev/null || true; "
+        "sudo journalctl --disk-usage; "
         "echo 'Recent dinary replica files:'; "
         "if sudo test -d /var/lib/litestream; then "
         "sudo find /var/lib/litestream -type f -printf '%TY-%Tm-%Td %TH:%TM %p\\n' "
