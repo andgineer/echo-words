@@ -439,7 +439,9 @@ async def test_a_note_written_without_audio_is_named_then_given_one(tmp_path):
     await stored_with_audio(settings, make_note("receive"), ENGLISH_DECK, already)
     await stored(settings, (make_note("money"), ENGLISH_DECK))
 
+    before = collection_path(settings).read_bytes()
     named = await asyncio.to_thread(backfill_recordings, settings, confirmed=False)
+    assert collection_path(settings).read_bytes() == before
 
     assert "would fetch a recording for 1 of 2" in named
     assert "money" in named
@@ -506,9 +508,54 @@ async def test_a_silent_note_in_a_deck_no_language_claims_is_left_alone_and_coun
         fetch=spoken(tmp_path),
     )
 
-    assert "every one of 1 notes carries audio" in reported
+    assert "no note of 1 that a configured language claims is silent" in reported
+    assert "every one of 1 notes carries audio" not in reported
     assert "1 silent note(s) sit in a deck no configured language claims" in reported
     assert stored_audio(settings) == [""]
+
+
+async def test_the_fill_waits_for_the_media_upload_it_started(tmp_path):
+    """A collection sync returns with its media still going up in a background thread,
+    and a one-shot command would exit from under it."""
+    settings = with_language_table(synced_settings(tmp_path))
+    backend = FakeSyncBackend([SyncCollectionResponse.NORMAL_SYNC], media_active=2)
+    await stored(settings, (make_note("money"), ENGLISH_DECK))
+
+    reported = await asyncio.to_thread(
+        backfill_recordings,
+        settings,
+        confirmed=True,
+        sync_backend=backend,
+        fetch=spoken(tmp_path),
+    )
+
+    assert "synced to AnkiWeb" in reported
+    assert "still uploading" not in reported
+    assert backend.media_active == 0
+
+
+async def test_a_word_whose_media_cannot_be_stored_leaves_the_rest_attached(tmp_path):
+    """One word's failure must not strand the notes already written, unsynced, behind a
+    traceback."""
+    settings = with_language_table(local_settings(tmp_path))
+    await stored(settings, (make_note("money"), ENGLISH_DECK), (make_note("bread"), ENGLISH_DECK))
+
+    async def one_path_is_gone(word: str, _language: Language) -> Path | None:
+        path = tmp_path / f"fetched-{word}.mp3"
+        if word == "money":
+            return path
+        path.write_bytes(b"fetched mp3")
+        return path
+
+    reported = await asyncio.to_thread(
+        backfill_recordings,
+        settings,
+        confirmed=True,
+        fetch=one_path_is_gone,
+    )
+
+    assert "attached a recording to 1 of 2 notes, 1 still silent" in reported
+    assert [value.startswith("[sound:") for value in stored_audio(settings)] == [False, True]
 
 
 async def test_the_fill_delivers_what_it_attached_to_ankiweb(tmp_path):
@@ -1017,11 +1064,13 @@ class FakeSyncBackend:
         full_download_error: Exception | None = None,
         full_upload_error: Exception | None = None,
         status_required: int = SyncCollectionResponse.NO_CHANGES,
+        media_active: int = 0,
     ) -> None:
         self.required = deque(required)
         self.full_download_error = full_download_error
         self.full_upload_error = full_upload_error
         self.status_required = status_required
+        self.media_active = media_active
         self.login_calls: list[tuple[str, str, str | None]] = []
         self.auths: list[SyncAuth] = []
         self.full_downloads: list[tuple[str, int]] = []
@@ -1044,6 +1093,12 @@ class FakeSyncBackend:
             new_endpoint="https://shard/",
             server_media_usn=42,
         )
+
+    def media_sync_active(self, _collection):
+        if self.media_active:
+            self.media_active -= 1
+            return True
+        return False
 
     def sync_status(self, _collection, _auth):
         return SyncCollectionResponse(required=self.status_required)

@@ -128,34 +128,36 @@ the one deployment target — the 1 GB (+ swap) micro instance:
   languages at once than that pays the load when the turn comes back
   round, which is rare enough to accept.
 - **Human recordings from Wikimedia Commons head the chain** for every
-  language configured with a recording prefix; edge-tts stays the
-  last-resort fallback for every language, and is simultaneously
-  Serbian's primary. The recording is addressed without an API call —
-  the md5 of the file name gives the two directory levels Commons files
-  it under, and an mp3 transcode is published beside the ogg — so one
-  request fetches it. A word is uploaded as an `.ogg`, an `.oga` or a
-  `.wav`, and each is published under its own name, so a miss on the
-  first asks the other two at once: the words that answer first time pay
-  nothing, a miss costs one more round trip of about a fifth of a
-  second, and a throttle or a fault is never asked twice more. Measured 12 Sep 2026 against a real session's
-  German: 0.12–0.40 s per word and 16 of the 16 words carded that day
-  found, and a word Commons does not have answers in a quarter of a
-  second. The step is given 3 s of its own against that worst case, and
-  a miss, a throttle, a timeout or any other error falls through to the
-  next step silently, so the log is where a change in Commons' behaviour
-  shows. The service writes the app's own records from info upwards, and
-  `inv logs` carries a line for every word Commons did not have, at
-  warning level for the answers that are not an ordinary miss — a
-  throttle, a server error, a timeout. Only those are warnings, because
-  a word Commons holds no recording of is normal for most of the
-  configured languages and warning on it would bury the rest; but it is
-  written all the same, so a Commons that has stopped answering for
-  every word at once reads as every word missing instead of being
-  absorbed by the fall-through. Nothing is
-  remembered as a miss: the next step writes its own recording at the
-  same cache path, so a word that missed once never reaches Commons
-  again. The request names the app and its repository, which Wikimedia's
-  policy requires of a client.
+  language configured with a recording prefix; edge-tts stays the last-
+  resort fallback for every language, and is simultaneously Serbian's
+  primary. The recording is addressed without an API call — the md5 of
+  the file name gives the two directory levels Commons files it under,
+  and an mp3 transcode is published beside the ogg — so one request
+  fetches it. A word is uploaded as an `.ogg`, an `.oga` or a `.wav`,
+  and each is published under its own name, so a miss on the first asks
+  the other two at once: the words that answer first time pay nothing, a
+  miss costs one more round trip of about a fifth of a second, and a
+  throttle or a fault is never asked twice more. Measured 12 Sep 2026
+  against a real session's German: 0.12–0.40 s per word and 16 of the 16
+  words carded that day found, and a word Commons does not have answers
+  in a quarter of a second. Each request is given 3 s of its own against
+  that worst case, so a word found under the first name costs one of
+  them and a word found under none costs two rounds; a miss, a throttle,
+  a timeout or any other error falls through to the next step silently,
+  so the log is where a change in Commons' behaviour shows. The service
+  writes the app's own records from info upwards, and `inv logs` carries
+  a line for every word Commons did not have, at warning level for the
+  answers that are not an ordinary miss — a throttle, a server error, a
+  timeout. Only those are warnings, because a word Commons holds no
+  recording of is normal for most of the configured languages and
+  warning on it would bury the rest; but it is written all the same, so
+  a Commons that has stopped answering for every word at once reads as
+  every word missing instead of being absorbed by the fall-through.
+  Nothing is remembered as a miss: the next step writes its own
+  recording at the same cache path, so a word that missed once never
+  reaches Commons again. The request names the app and its repository,
+  which Wikimedia's policy requires of a client.
+
 - **The prefix is also the accent.** It is what the recordings of a
   language are filed under — `De`, `Ru`, `En-us`, `En-uk`, `Es-am-lat` —
   so the choice between the American and the British recordings of an
@@ -175,7 +177,7 @@ the one deployment target — the 1 GB (+ swap) micro instance:
   words in sixteen with none of them ahead of the rest. A thin prefix
   is still worth carrying — the
   words it does answer are spoken by a human, and the words it misses
-  cost one request of about a fifth of a second before the engines
+  cost two rounds of about a fifth of a second each before the engines
   speak. Where Commons answers for none of a language's
   ordinary words it carries no prefix rather than a plausible guess,
   because a prefix nothing is filed under costs a wasted round trip

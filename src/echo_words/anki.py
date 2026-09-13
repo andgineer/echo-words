@@ -203,6 +203,8 @@ class SyncBackend(Protocol):
         auth: SyncAuth,
     ) -> SyncStatusResponse: ...
 
+    def media_sync_active(self, collection: Collection) -> bool: ...
+
     def full_download(
         self,
         collection: Collection,
@@ -243,6 +245,9 @@ class PylibSyncBackend:
         auth: SyncAuth,
     ) -> SyncStatusResponse:
         return collection.sync_status(auth)
+
+    def media_sync_active(self, collection: Collection) -> bool:
+        return collection.media_sync_status().active
 
     def full_download(
         self,
@@ -385,6 +390,28 @@ def clear_sense_labels(
     return f"{_cleared(sweep)}; {delivered}"
 
 
+MEDIA_SYNC_POLL_SECONDS = 0.5
+MEDIA_SYNC_WAIT_SECONDS = 300
+
+
+def _await_media(collection: Collection, settings: Settings, backend: SyncBackend | None) -> str:
+    """A collection sync returns with its media still uploading in a background thread,
+    and a one-shot command would exit from under it."""
+    if not settings.anki_sync:
+        return ""
+    syncer = backend or PylibSyncBackend()
+    deadline = time.monotonic() + MEDIA_SYNC_WAIT_SECONDS
+    while time.monotonic() < deadline:
+        try:
+            if not syncer.media_sync_active(collection):
+                return ""
+        except Exception as exc:  # noqa: BLE001 - the notes are written; only the
+            # upload is in doubt, and the report is where that belongs.
+            return f", but its media did not reach AnkiWeb: {exc}"
+        time.sleep(MEDIA_SYNC_POLL_SECONDS)
+    return ", but its media was still uploading when this stopped waiting"
+
+
 def backfill_recordings(
     settings: Settings,
     *,
@@ -416,7 +443,11 @@ def backfill_recordings(
         attached = 0
         for item in sweep.silent:
             audio_path = recordings.get(item.note_id)
-            media_filename = _add_media(collection, item.word, audio_path)
+            try:
+                media_filename = _add_media(collection, item.word, audio_path)
+            except Exception as exc:  # noqa: BLE001 - one word must not strand the rest.
+                logger.warning("could not attach a recording for %r: %s", item.word, exc)
+                continue
             if media_filename is None:
                 continue
             note = collection.get_note(item.note_id)
@@ -424,6 +455,8 @@ def backfill_recordings(
             collection.update_note(note)
             attached += 1
         delivered = _deliver(collection, settings, sync_backend)
+        if attached:
+            delivered += _await_media(collection, settings, sync_backend)
     finally:
         collection.close()
     return f"{_attached(sweep, attached)}; {delivered}"
@@ -477,7 +510,7 @@ def _named_silent(silent: list[SilentNote], limit: int = 10) -> str:
 
 def _would_attach(sweep: _SilentSweep) -> str:
     if not sweep.silent:
-        return f"every one of {sweep.read} notes carries audio{_unclaimed_silent(sweep)}"
+        return f"{_no_note_to_fill(sweep)}{_unclaimed_silent(sweep)}"
     return (
         f"would fetch a recording for {len(sweep.silent)} of {sweep.read} notes: "
         f"{_named_silent(sweep.silent)}{_unclaimed_silent(sweep)}; nothing was changed — "
@@ -485,9 +518,15 @@ def _would_attach(sweep: _SilentSweep) -> str:
     )
 
 
+def _no_note_to_fill(sweep: _SilentSweep) -> str:
+    if sweep.unclaimed:
+        return f"no note of {sweep.read} that a configured language claims is silent"
+    return f"every one of {sweep.read} notes carries audio"
+
+
 def _attached(sweep: _SilentSweep, attached: int) -> str:
     if not sweep.silent:
-        return f"every one of {sweep.read} notes carries audio{_unclaimed_silent(sweep)}"
+        return f"{_no_note_to_fill(sweep)}{_unclaimed_silent(sweep)}"
     left = len(sweep.silent) - attached
     still = "" if not left else f", {left} still silent"
     return (

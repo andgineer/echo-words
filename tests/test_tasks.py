@@ -509,6 +509,47 @@ def test_rebuild_note_type_counts_before_it_deletes(monkeypatch, tmp_path):
     assert remote_scripts[-1] == "sudo systemctl start echo-words"
 
 
+@pytest.mark.parametrize("answer", ["", "no", "y", "YES", " yes please "])
+def test_the_backfill_fetches_nothing_without_a_typed_confirmation(monkeypatch, tmp_path, answer):
+    remote_scripts = _rebuild_context(monkeypatch, tmp_path, answer)
+
+    tasks.backfill_recordings.body(_Context([]))
+
+    assert not any("--yes" in script for script in remote_scripts)
+    assert remote_scripts[-1] == "sudo systemctl start echo-words"
+
+
+def test_the_backfill_restarts_the_service_when_the_fetch_fails(monkeypatch, tmp_path):
+    """The confirmation sits between the stop and the start: no path may leave it down."""
+    remote_scripts = _rebuild_context(monkeypatch, tmp_path, "yes")
+
+    def fail_the_fetch(_context, script):
+        remote_scripts.append(script)
+        if "--yes" in script:
+            raise RuntimeError("remote command exited 1")
+
+    monkeypatch.setattr(tasks, "_ssh", fail_the_fetch)
+
+    with pytest.raises(RuntimeError):
+        tasks.backfill_recordings.body(_Context([]))
+
+    assert remote_scripts[-1] == "sudo systemctl start echo-words"
+
+
+def test_the_backfill_restarts_the_service_when_the_operator_interrupts(monkeypatch, tmp_path):
+    remote_scripts = _rebuild_context(monkeypatch, tmp_path, "yes")
+
+    def interrupt(_prompt=""):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr("builtins.input", interrupt)
+
+    with pytest.raises(KeyboardInterrupt):
+        tasks.backfill_recordings.body(_Context([]))
+
+    assert remote_scripts[-1] == "sudo systemctl start echo-words"
+
+
 def test_rebuild_note_type_restarts_the_service_when_the_delete_fails(monkeypatch, tmp_path):
     """The confirmation sits between the stop and the start: no path may leave it down."""
     remote_scripts = _rebuild_context(monkeypatch, tmp_path, "yes")

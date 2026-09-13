@@ -227,7 +227,7 @@ async def _commons_content(
     word: str,
     lang: Language,
     client: httpx.AsyncClient,
-) -> tuple[bytes | None, dict[str, int]]:
+) -> tuple[bytes | None, dict[str, object]]:
     primary, *rest = _RECORDING_EXTENSIONS
     response = await _commons_get(word, lang, primary, client)
     statuses = {primary: response.status_code}
@@ -236,17 +236,23 @@ async def _commons_content(
     if response.status_code != httpx.codes.NOT_FOUND:
         # A throttle or a fault is the one answer not worth asking twice more.
         return None, statuses
+    # Gathered without raising: one name failing must not discard the other's answer,
+    # nor leave its request in flight when the caller closes a client it owns.
     others = await asyncio.gather(
         *(_commons_get(word, lang, extension, client) for extension in rest),
+        return_exceptions=True,
     )
-    statuses.update(zip(rest, (other.status_code for other in others), strict=True))
+    for extension, other in zip(rest, others, strict=True):
+        statuses[extension] = (
+            type(other).__name__ if isinstance(other, BaseException) else other.status_code
+        )
     for other in others:
-        if other.status_code == httpx.codes.OK:
+        if isinstance(other, httpx.Response) and other.status_code == httpx.codes.OK:
             return other.content, statuses
     return None, statuses
 
 
-def _log_commons_miss(word: str, lang: Language, statuses: dict[str, int]) -> None:
+def _log_commons_miss(word: str, lang: Language, statuses: dict[str, object]) -> None:
     # Commons having no recording of a word is ordinary and says nothing; the log is
     # watched for Commons answering differently, which every other status is.
     ordinary = all(status == httpx.codes.NOT_FOUND for status in statuses.values())

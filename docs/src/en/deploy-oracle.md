@@ -198,8 +198,10 @@ behind it is `echo-words backfill-recordings`, which writes nothing without
 
 As with the label sweep, a note is only filled where its deck belongs to a
 configured language, and the command syncs with AnkiWeb itself and says whether
-that succeeded. Media is carried by the ordinary merging sync, so this costs no
-card its scheduling.
+that succeeded. The sync leaves its media transfer running in the background, so
+the command waits for that to finish rather than exiting from under it — a run
+that reports a delivery has made it. Nothing but the audio field of a silent note
+changes, so this costs no card its scheduling.
 
 ## Releases
 
