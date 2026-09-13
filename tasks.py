@@ -407,7 +407,7 @@ sudo rm -f /etc/systemd/journald.conf.d/size.conf
 sudo tee /etc/systemd/journald.conf.d/echo-words.conf >/dev/null <<'ECHOWORDS_JOURNAL_EOF'
 [Journal]
 SystemMaxUse=200M
-MaxRetentionSec=1month
+MaxRetentionSec=3month
 ECHOWORDS_JOURNAL_EOF
 sudo systemctl restart systemd-journald
 sudo install -d /etc/apt/apt.conf.d

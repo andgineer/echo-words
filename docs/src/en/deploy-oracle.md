@@ -64,8 +64,8 @@ in 10 minutes, escalating 1-day bans capped at 30 days). The jail uses the
 systemd backend and excludes Tailscale's `100.64.0.0/10` range, so tailnet
 administration cannot ban itself; public ssh — the deploy path, and whatever else
 reaches port 22 from the internet — is subject to it. Setup also disables
-rpcbind and bounds the system journal, by size (200 MB) and by age (one
-month). The image ships no `logrotate`, so setup installs it and the
+rpcbind and bounds the system journal, by size (200 MB) and by age (three
+months). The image ships no `logrotate`, so setup installs it and the
 distribution's own rotation configs — the record of failed logins among them —
 stop growing for the life of the host; setup also turns on apt's periodic
 autoclean and empties the package cache. It leaves the host firewall as it finds

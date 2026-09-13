@@ -50,10 +50,9 @@ removes the memory constraints.)
   Anki pylib collection and a Piper inference peak coexist in 1 GB only
   with 1–2 GB of swap behind them, and with 41 GB free the insurance is
   cheap. The journal is bounded twice over on both VMs — by size
-  (`SystemMaxUse=200M`) and by age (`MaxRetentionSec=1month`). A month is
-  shorter than the ninety days llmbroker's own call journal keeps, so an
-  incident older than that is diagnosed from the recorded call alone,
-  without the service log around it.
+  (`SystemMaxUse=200M`) and by age (`MaxRetentionSec=3month`), so a quiet
+  box does not keep records past the horizon llmbroker's own call journal
+  holds itself to.
 - **Nothing else on the box grows without a bound.** The image ships no
   `logrotate` at all, which leaves every file the distribution's own
   rotation configs name — the record of failed logins above all — growing

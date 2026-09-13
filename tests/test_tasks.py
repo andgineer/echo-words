@@ -48,7 +48,7 @@ def test_host_prep_provisions_swap_hardening_and_bounded_journal():
     assert "fail2ban" in script
     assert "/etc/systemd/journald.conf.d/echo-words.conf" in script
     assert "SystemMaxUse=200M" in script
-    assert "MaxRetentionSec=1month" in script
+    assert "MaxRetentionSec=3month" in script
     assert "/etc/sysctl.d/99-echo-words.conf" in script
     assert "vm.swappiness=10" in script
     assert script.index("vm.swappiness=10") < script.index(
