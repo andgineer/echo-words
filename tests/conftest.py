@@ -35,6 +35,7 @@ _DEFAULT_BEHAVIOR_BY_FILE: dict[str, tuple[str, str, str | None]] = {
     "test_language_catalog.py": (_VOCABULARY, "Input and languages", "Language directory"),
     "test_languages.py": (_VOCABULARY, "Input and languages", None),
     "test_llm_backend.py": (_VOCABULARY, "LLM cascade", "Free pool attempt"),
+    "test_logs.py": (_PLATFORM, "Configuration and lifecycle", "Service log"),
     "test_one_note_bench.py": (
         _VOCABULARY,
         "Answer delivery",

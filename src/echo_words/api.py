@@ -51,6 +51,7 @@ from echo_words.languages import (
     validated_language,
 )
 from echo_words.lexicon import Wikipedia, Wiktionary
+from echo_words.logs import configure_logging
 from echo_words.pipeline import WordPipeline
 from echo_words.voices import installable_piper_voices
 
@@ -253,6 +254,7 @@ class LanguageConfig(BaseModel):
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:  # noqa: C901, PLR0915
+    configure_logging()
     settings = settings or default_settings
     app = FastAPI(title="echo-words", version=__version__, lifespan=_lifespan(settings))
     # Every write reads the whole table, changes one entry and writes it back, so two
