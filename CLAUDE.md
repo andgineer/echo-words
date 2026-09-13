@@ -26,7 +26,7 @@ tool looks for.
 - `spec/plan/` — work that is started and not finished, one file each.
   **Read these first when picking work up**: each says where its work
   stands, what is already built, what its experiments established and
-  what is left. Four are open, and one of them is held.
+  what is left. Three are open, and one of them is held.
   `model-tier.md` — whether any model is both fast enough for an
   interactive tool and obedient enough to retire some of the
   deterministic repairs in the answer path; the paid catalog's fast
@@ -34,21 +34,14 @@ tool looks for.
   constraint. Its first arm — the incumbent paid model at a low
   reasoning effort — waits on llmbroker, which cannot yet send a
   request parameter to a model reached by name.
-  `observed-defects.md` — sixteen faults left unfixed, each with its
-  evidence, from three readings: four met while using the app, from a
-  rebuilt bundle that can leave the reader on a white screen to a deeper
-  article nobody ever chose a length for, eleven read out of bench review
-  packets whose every automated screen was green, and one found by
-  auditing the recordings the deployed host had cached — the cards that
-  carry none are waiting on `inv backfill-recordings`, which fills them
-  once the operator runs it.
-  `answer-recovery.md` — what happens between a pool answer and a card
-  when the parser cannot read the payload: production says fourteen of
-  fifteen rejected payloads carried an answer the reader would have
-  accepted, so the parse verdict is a poor reason to clear the page and
-  buy a paid answer. The second pool answer has landed — a refused payload
-  asks the same call for another one before any paid step. Local repair
-  and two triggers instead of one are still open.
+  `observed-defects.md` — seventeen faults left unfixed, each with its
+  evidence, from three readings: five met while using the app, from a
+  rebuilt bundle that can leave the reader on a white screen to an answer
+  budget that bounds silence rather than the answer, eleven read out of
+  bench review packets whose every automated screen was green, and one
+  found by auditing the recordings the deployed host had cached — the
+  cards that carry none are waiting on `inv backfill-recordings`, which
+  fills them once the operator runs it.
   `two-prompts.md` — a cheap model call to
   choose the branch for the submit box; **held** until `model-tier.md`
   reports, because no observed defect stands behind it and it adds a

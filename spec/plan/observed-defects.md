@@ -1,9 +1,9 @@
 # Implementation plan — defects seen in use and in the bench, none of them fixed yet
 
-Sixteen items, from three readings.
+Seventeen items, from three readings.
 
-Items 1, 2, 12 and 13 were found while running the app against the real provider
-keys and reading what it did. Each was reproduced and has its evidence written
+Items 1, 2, 12, 13 and 17 were found while running the app against the real
+provider keys and reading what it did, or by tracing what it did in production. Each was reproduced and has its evidence written
 down; two sibling defects found in the same session — the player speaking a
 corrected misspelling, and sense chips that all carried the same word — are
 already fixed and are not repeated here.
@@ -298,6 +298,33 @@ names what it would fill, writes nothing until that is confirmed, fetches throug
 the chain as it stands, changes only the audio of a silent note, leaves a word the
 chain still cannot speak alone, and syncs. The defect stands until it is run,
 which is the operator's word.
+
+## 17. The answer budget bounds silence, not the answer
+
+`stream_api` passes `ANSWER_BUDGET_SECONDS` to `client.stream(prompt, timeout=…)`,
+llmbroker hands that number to httpx as a bare float, and httpx spreads a bare float
+across connect, read, write and pool separately. For a streaming response the one that
+governs is `read` — the gap between two chunks. So the constant bounds silence rather
+than the answer: a model that trickles for two minutes is never cut off, and one that
+thinks quietly for twenty-six seconds is, before it has written anything.
+
+`functional-description.md` calls that number the complete-answer budget of one model
+attempt and says plainly that time to the first token is deliberately not a
+requirement, because bounding it would prefer a model that trickles for a minute over
+one that thinks briefly and then answers at once. The implementation bounds exactly
+what the description refuses to bound.
+
+Two ways to close it.
+
+- **Fix the semantics**: an overall deadline around the stream plus a short connect
+  timeout, which is what the description asks for and what a bare float cannot
+  express.
+- **Wait for the next occurrence first.** The one call that may have hit it left no
+  record of whether it timed out or failed some other way; the step now logs its
+  first-token and total time, so the next one says which, and a number changed without
+  knowing which failure it caused is tuning blind.
+
+Waiting is the one worth taking, and it costs nothing but the wait.
 
 ## What is deliberately not here
 

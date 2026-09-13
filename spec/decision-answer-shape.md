@@ -498,6 +498,21 @@ Three of the four are the free pool's already-recorded Serbian and Ukrainian fai
 on the same fixtures, `неділя` among them — which stays recorded and not accepted, the
 fixture built to catch that false friend having failed it twice.
 
+## What a rejected payload is worth — measured in production
+
+Fifteen payloads were rejected between the service's first boot on 21 Aug 2026 and
+8 Sep 2026. Each was replayed through the parser with the language row and the target
+the app uses, and fourteen carried content a reader would have accepted: a copy of the
+context sentence that missed by a capital letter or a doubled space, a whole line
+wrapped in one bold span, one token marked of a two-token surface. The exception —
+examples written in the target language — is the only one a reader would have refused,
+and the paid answer bought on that occasion was unreadable too.
+
+So the verdict of the parser says little about the article behind it, which is why a
+payload the app cannot read does not buy a paid answer by itself, and why the repairs
+above address exactly those shapes. Ten of the fifteen were the letter-for-letter
+comparison of the context, which no longer exists.
+
 ## The chip is named by the answer — 2026-09-09
 
 Measured on the smoke tier after the change, with six click answers bought fresh
