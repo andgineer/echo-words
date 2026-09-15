@@ -1,0 +1,2 @@
+INFO echo_words.backend: the paid model takes over for sr: the pool missed the answer budget (NoLLMAvailableError: the wait budget ran out before any LLM produced a delta)
+INFO echo_words.backend: the paid model gpt-fast: first token after 0.0 s, ended after 0.0 s

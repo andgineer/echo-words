@@ -1,0 +1,5 @@
+INFO     echo_words.backend:backend.py:357 the paid model takes over for en: the pool missed the answer budget (NoLLMAvailableError: pool exhausted)
+INFO     echo_words.backend:backend.py:476 the paid model gpt-fast: first token after never, ended after 0.0 s
+WARNING  echo_words.backend:backend.py:125 no answer for en after 0.0 s from the paid model gpt-fast (trace none): the paid model 'gpt-fast' failed (LLMTimeoutError: direct stream timed out)
+INFO     echo_words.backend:backend.py:357 the paid model takes over for en: the pool missed the answer budget (NoLLMAvailableError: pool exhausted)
+INFO     echo_words.backend:backend.py:476 the paid model gpt-fast: first token after 0.0 s, ended after 0.0 s

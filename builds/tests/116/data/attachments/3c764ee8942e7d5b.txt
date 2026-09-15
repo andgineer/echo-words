@@ -1,0 +1,4 @@
+WARNING  llmbroker.broker:presets.py:147 preset freetier: nothing cached and nothing is fetched automatically — falling back to the bundled copy, frozen at this llmbroker release
+WARNING  llmbroker.broker:presets.py:147 preset paid-catalog: nothing cached and nothing is fetched automatically — falling back to the bundled copy, frozen at this llmbroker release
+WARNING  llmbroker.broker:presets.py:147 preset paid-catalog: nothing cached and nothing is fetched automatically — falling back to the bundled copy, frozen at this llmbroker release
+INFO     echo_words.backend:backend.py:241 the pool answer from google-gemini-3.5-flash-lite is unusable for sr; groq-gpt-oss-120b answers the same call instead

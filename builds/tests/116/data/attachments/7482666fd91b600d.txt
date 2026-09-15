@@ -1,0 +1,4 @@
+WARNING  llmbroker.broker:presets.py:147 preset freetier: nothing cached and nothing is fetched automatically — falling back to the bundled copy, frozen at this llmbroker release
+WARNING  llmbroker.broker:presets.py:147 preset paid-catalog: nothing cached and nothing is fetched automatically — falling back to the bundled copy, frozen at this llmbroker release
+WARNING  llmbroker.broker:presets.py:147 preset paid-catalog: nothing cached and nothing is fetched automatically — falling back to the bundled copy, frozen at this llmbroker release
+ERROR    llmbroker.broker:catalog.py:340 pool degraded, no failover left: 1 of 4 providers usable — no key for OPENROUTER_API_KEY, GEMINI_API_KEY, ZAI_API_KEY
