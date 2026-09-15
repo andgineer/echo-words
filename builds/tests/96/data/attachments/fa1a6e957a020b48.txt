@@ -1,0 +1,1 @@
+WARNING  echo_words.backend:backend.py:125 no answer for en after 0.0 s from the pool model pool-model (trace baf624c9484c40d3b8170dc43641df81): the pool missed the answer budget (LLMTimeoutError: the pool missed the answer budget); paid step unavailable: no paid model is configured

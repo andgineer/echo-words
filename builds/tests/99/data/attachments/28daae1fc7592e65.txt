@@ -1,0 +1,1 @@
+INFO     echo_words.anki:anki.py:1011 rewrote the EchoWords card templates to this version's wording

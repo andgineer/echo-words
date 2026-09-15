@@ -1,0 +1,2 @@
+INFO     echo_words.audio:audio.py:402 downloading Piper voice file configured.onnx
+INFO     echo_words.audio:audio.py:402 downloading Piper voice file configured.onnx.json

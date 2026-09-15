@@ -1,0 +1,1 @@
+WARNING  echo_words.backend:backend.py:275 the pool answer from pool-model stands for en — it is unusable and the paid step is unavailable: no paid model is configured

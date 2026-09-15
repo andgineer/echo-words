@@ -1,0 +1,1 @@
+WARNING  echo_words.languages:languages.py:457 target language 'Klingon' is not in the language directory, so a card sentence cannot be tested for its letters

@@ -1,0 +1,1 @@
+WARNING  echo_words.audio:audio.py:142 could not prepare Piper voice en_US-lessac-medium: download failed

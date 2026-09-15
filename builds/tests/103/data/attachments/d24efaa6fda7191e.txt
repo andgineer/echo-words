@@ -1,0 +1,1 @@
+WARNING  echo_words.backend:backend.py:372 the pool answer from pool-model stands for en — it is a declared misspelling and the paid step is unavailable: no paid model is configured
