@@ -539,7 +539,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "invoke", specifier = ">=2.2.0" },
     { name = "lameenc", specifier = ">=1.8.1" },
-    { name = "llmbroker", specifier = ">=1.9.0" },
+    { name = "llmbroker", specifier = ">=1.10.5" },
     { name = "piper-tts", specifier = ">=1.3.0" },
     { name = "pydantic-settings", specifier = ">=2.6.0" },
     { name = "python-dotenv", specifier = ">=1.2.3" },
@@ -953,16 +953,16 @@ wheels = [
 
 [[package]]
 name = "llmbroker"
-version = "1.9.0"
+version = "1.10.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "httpx" },
     { name = "pyyaml" },
     { name = "tomli-w" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/81/29/9bb2ab50fbf6a982cefb5392bbcf5e9433552aa6e8450d0dae5004c9a341/llmbroker-1.9.0.tar.gz", hash = "sha256:9e027487fcc9e932ebb2f389c9cacba9199d799ceef93ddaf2fff762811d4994", size = 615071, upload-time = "2026-09-09T09:57:12.46Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/43/25/e7955ef56ce85f4fb1f78d03cc5c5fa29d2ad6e462d9a20b349851819621/llmbroker-1.10.5.tar.gz", hash = "sha256:83a8fca847a536aeaab6b0dc25e1f91768a14da239f08fb8519849ab47d05f0c", size = 661082, upload-time = "2026-09-17T07:03:16.168Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c5/60/73b35539df5af82568c6515c5c9682aa721265fe66dcc74af2ea0fffb248/llmbroker-1.9.0-py3-none-any.whl", hash = "sha256:8731880fbfa63ff875f7e50051523209652e17e3482654b4672437fcfe23a7be", size = 137232, upload-time = "2026-09-09T09:57:11.141Z" },
+    { url = "https://files.pythonhosted.org/packages/bb/de/e1156110be607c2cb972ccb1475e1b53acaff456d1d16fe70559a47d5fa2/llmbroker-1.10.5-py3-none-any.whl", hash = "sha256:5bd8a0c580ec3405502e76b1330b4ac72ac1d50ce2a7a9a3b838f54c85ce3585", size = 141960, upload-time = "2026-09-17T07:03:14.963Z" },
 ]
 
 [[package]]

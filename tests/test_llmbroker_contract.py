@@ -337,42 +337,25 @@ async def test_a_pool_provider_that_never_answers_is_a_budget_miss(
             await ask_the_pool(adapter, broker, languages["sr"], settings)
 
 
-async def test_a_rate_limited_pool_asked_for_a_whole_answer_is_a_budget_miss_once_it_waited(
+@pytest.mark.parametrize("adapter", ["whole", "streamed"])
+async def test_a_rate_limited_pool_is_a_budget_miss_on_both_adapters(
     monkeypatch: pytest.MonkeyPatch,
     settings: Settings,
     languages: dict[str, Language],
     curated: Curated,
     wire: Wire,
     pay: Callable[..., None],
+    adapter: str,
 ):
-    # The whole-answer call waits for the cooling provider until the budget is gone; a
-    # short budget keeps that wait short without changing what it ends in.
+    # A budget miss is the step-up trigger, so both adapters have to reach it: the
+    # whole-answer call after waiting out a short budget, the stream without waiting.
     monkeypatch.setattr("echo_words.llm_backend.POOL_WAIT_SECONDS", 0.5)
     pool = curated.pool[0]
     pay(pool.api_key_ref)
     wire.reply(pool.model, Refusal(429, {"Retry-After": "3600"}))
     async with running(settings, languages) as broker:
         with pytest.raises(BudgetMissError):
-            await ask_the_pool("whole", broker, languages["sr"], settings)
-
-
-async def test_a_stream_every_pool_model_rate_limits_is_a_failure_and_not_a_budget_miss(
-    settings: Settings,
-    languages: dict[str, Language],
-    curated: Curated,
-    wire: Wire,
-    pay: Callable[..., None],
-):
-    # A stream does not wait for a lane it has already tried: llmbroker ends it at once
-    # as `excluded`, which echo-words reads as a fault rather than a missed budget.
-    pool = curated.pool[0]
-    pay(pool.api_key_ref)
-    wire.reply(pool.model, Refusal(429, {"Retry-After": "3600"}))
-    async with running(settings, languages) as broker:
-        with pytest.raises(BackendError, match="excluded") as failure:
-            await ask_the_pool("streamed", broker, languages["sr"], settings)
-
-    assert not isinstance(failure.value, BudgetMissError)
+            await ask_the_pool(adapter, broker, languages["sr"], settings)
 
 
 @pytest.mark.parametrize("adapter", ["whole", "streamed"])
