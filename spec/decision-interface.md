@@ -106,8 +106,9 @@ lists immediately. Stats and operational status remain live on their own screens
 
 The history has no network refresh schedule. It is populated by submissions and
 the live event stream and bounded to 50 entries, retaining unfinished work.
-Server restart still expires job controls and undo; it does not erase the
-device's history. No history file or application database is added to the server.
+Server restart still expires the controls that change a card, and undo; it does not
+erase the device's history, and the deeper article is asked for from what that
+history holds. No history file or application database is added to the server.
 
 ## The interface language is the client's, and so is every wording
 

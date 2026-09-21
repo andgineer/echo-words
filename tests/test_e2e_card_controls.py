@@ -2,14 +2,18 @@
 
 What is asserted here is what only a laid-out page can answer: where the row sits
 relative to the analysis it acts on, that no browser player is taking the room the
-row replaced, and that taking an entry off the rail really empties the rail.
+row replaced, that taking an entry off the rail really empties the rail, where the
+deeper article is when it starts to arrive, and what the controls of an entry the
+server has forgotten since do.
 """
 
+import time
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import pytest
-from e2e_app import WORD, answer, live_app, submit
-from fakes import FakeHandle
+from e2e_app import WORD, Gate, answer, live_app, submit
+from fakes import FakeDirectClient, FakeHandle
 from playwright.sync_api import Page, expect
 
 from echo_words.config import Settings
@@ -17,6 +21,8 @@ from echo_words.config import Settings
 pytestmark = pytest.mark.e2e
 
 ARTICLE = "<b>Schlüssel</b> — ключ"
+# Taller than the window, so the deeper article under it starts out of sight.
+LONG_ARTICLE = ARTICLE + "".join(f"<p>Beispiel {n}.</p>" for n in range(60))
 RAIL = '[role="tablist"][aria-label="Analysed words"] [role="tab"]'
 
 # The rail the PWA restores itself from, read out of the browser's own database.
@@ -138,3 +144,79 @@ def test_a_recording_speaks_when_it_arrives_and_never_again_from_history(
         # asked for. What has to hold is that nothing was written down to play from:
         # the restored entry carries no mark of having been fresh.
         assert "just_finished" not in page.evaluate(_STORED_KEYS)
+
+
+def _stored_once_finished(page: Page) -> None:
+    """Wait until the finished answer is in the browser's own database, which is all a
+    restart leaves the page. A read of what was written, not a sleep."""
+    deadline = time.monotonic() + 10
+    while "detail_word" not in page.evaluate(_STORED_KEYS):
+        if time.monotonic() > deadline:
+            raise TimeoutError("the finished answer never reached the browser's database")
+        page.wait_for_timeout(50)
+
+
+def test_in_depth_brings_its_article_into_view_while_it_is_still_arriving(
+    page: Page,
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The article is appended below an analysis that is often longer than the screen,
+    so the press takes the reader down to it and they watch it being written."""
+    gate = Gate()
+    with live_app(
+        settings,
+        monkeypatch,
+        handles=[FakeHandle([answer(LONG_ARTICLE)])],
+        client=FakeDirectClient(["<p>Die ersten Zeilen.</p>"], hold=gate.wait),
+    ) as app:
+        submit(page, app.url)
+        expect(page.locator(".delete-card")).to_be_visible()
+        block = page.locator(".entry-detail-block")
+
+        page.locator(".detail").click()
+
+        expect(block).to_be_in_viewport()
+        expect(block.locator(".entry-detail")).to_contain_text("Die ersten Zeilen.")
+        expect(block.locator(".working")).to_be_visible()
+
+        gate.open()
+        expect(block.locator(".working")).to_have_count(0)
+        expect(block).to_be_in_viewport()
+
+
+def test_after_a_restart_the_article_still_comes_and_the_card_says_what_expired(
+    page: Page,
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A deploy restarts the server and empties it, while the page keeps the entry. The
+    deeper article needs only what the page kept; deleting the card needs the note the
+    server has forgotten, and the reader is told so in their own words."""
+    with live_app(settings, monkeypatch, handles=[FakeHandle([answer(ARTICLE)])]) as first:
+        submit(page, first.url)
+        expect(page.locator(".delete-card")).to_be_visible()
+        _stored_once_finished(page)
+    port = urlsplit(first.url).port
+
+    with live_app(
+        settings,
+        monkeypatch,
+        port=port,
+        client=FakeDirectClient(["<p>Der ganze Artikel.</p>"]),
+    ) as second:
+        page.reload()
+        expect(page.locator(".entry-text")).to_contain_text("ключ")
+
+        page.locator(".detail").click()
+        expect(page.locator(".entry-detail")).to_contain_text("Der ganze Artikel.")
+        assert WORD in second.broker.client.calls[0]["prompt"]
+
+        page.locator(".delete-card").click()
+        page.locator(".confirm-yes").click()
+        expect(page.locator(".controls-expired")).to_have_text(
+            "The server restarted after this answer, so its card can no longer be changed "
+            "from here.",
+        )
+        expect(page.locator(".delete-card")).to_be_disabled()
+        expect(page.get_by_text("request expired")).to_have_count(0)

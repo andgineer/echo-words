@@ -114,9 +114,16 @@ def lost_the_race(text: str, *, winner: str, streamed: str) -> StreamReplacement
 class FakeDirectClient:
     """Stands in for llmbroker's ``AsyncDirectClient``: one named paid model."""
 
-    def __init__(self, deltas: Iterable[str] = ("paid ", "answer"), *, error=None) -> None:
+    def __init__(
+        self,
+        deltas: Iterable[str] = ("paid ", "answer"),
+        *,
+        error=None,
+        hold: "Callable[[], Awaitable[None]] | None" = None,
+    ) -> None:
         self.deltas = list(deltas)
         self.error = error
+        self.hold = hold
         self.closed = False
         self.calls: list[dict] = []
 
@@ -132,6 +139,8 @@ class FakeDirectClient:
         for delta in self.deltas:
             produced = True
             yield delta
+        if self.hold is not None:
+            await self.hold()
         if self.error is not None:
             raise self.error
         if not produced:

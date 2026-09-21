@@ -646,6 +646,41 @@ def test_the_control_endpoints_pass_the_interface_language_down(client: TestClie
     assert pipeline.request_detail.await_args.kwargs["locale"] == "ru"
 
 
+def test_the_detail_endpoint_hands_down_the_pages_copy_of_the_entry(client: TestClient):
+    pipeline = client.app.state.pipeline
+    pipeline.request_detail = AsyncMock(return_value={"entry_id": "e1", "queued": True})
+    languages = client.app.state.languages
+
+    client.post(
+        "/api/words/e1/detail",
+        json={"lang": "en", "word": "  house ", "context": "two\u202e houses"},
+    )
+    client.post("/api/words/e1/detail")
+
+    with_copy, without = pipeline.request_detail.await_args_list
+    restored = with_copy.kwargs["restored"]
+    assert restored.language == languages["en"]
+    assert restored.word == "house"
+    assert restored.context == "two houses"
+    assert without.kwargs["restored"] is None
+
+
+def test_the_pages_copy_names_a_language_the_server_still_has(client: TestClient):
+    response = client.post("/api/words/e1/detail", json={"lang": "fr", "word": "maison"})
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Unknown language “fr” — pick one from the list."
+
+
+def test_a_restarted_server_still_writes_the_article_for_the_pages_copy(client: TestClient):
+    response = client.post(
+        "/api/words/e1/detail",
+        json={"lang": "en", "word": "house", "context": ""},
+    )
+    assert response.json() == {"entry_id": "e1", "queued": True}
+    # A card control has nothing of the note behind it and still says so.
+    assert client.post("/api/words/e1/delete-card").status_code == 410
+
+
 def test_a_retried_request_id_with_a_different_shape_conflicts(client: TestClient):
     request_id = "a7237d5b-2b51-443d-bdb7-1b6e4259d10a"
     first = submit(client, word="не пада ми на памет", lang="sr", request_id=request_id)

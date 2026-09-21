@@ -89,9 +89,11 @@ def live_app(
     *,
     static_build: Path = BUILT_PWA,
     audio: object = None,
+    port: int = 0,
     **script: object,
 ) -> Iterator[LiveApp]:
-    """Serve the real app on a loopback port until the block ends."""
+    """Serve the real app on a loopback port until the block ends. A second block on
+    the first one's port is a restart: same origin, so the page keeps its storage."""
     if not (BUILT_PWA / "index.html").exists():
         pytest.fail(f"{BUILT_PWA}/index.html is missing — run `uv run inv build-static`")
     box: list[FakeBroker] = []
@@ -102,7 +104,7 @@ def live_app(
         uvicorn.Config(
             create_app(served),
             host="127.0.0.1",
-            port=0,
+            port=port,
             log_level="warning",
             # The browser holds the event stream open for as long as its page lives, and
             # a graceful shutdown would wait for it: the page outlives this block.

@@ -19,9 +19,10 @@ from echo_words.pipeline import (
     MISSPELLED_STATUS,
     TEXT_STATUS,
     UNATTESTED_STATUS,
+    DetailSubject,
     WordPipeline,
 )
-from echo_words.prompt import MAX_COMPLETE_ANSWER_CHARS
+from echo_words.prompt import MAX_COMPLETE_ANSWER_CHARS, build_extended_prompt
 
 POOL_MISSED = NoLLMAvailableError("pool exhausted", reason="timeout")
 
@@ -228,6 +229,7 @@ async def test_deltas_are_throttled_cut_sanitized_and_finished(languages):
                 "context_audio_url": None,
                 "model": None,
                 "detail_available": False,
+                "detail_word": None,
                 "paid_answer_available": True,
             },
         )
@@ -307,6 +309,7 @@ async def test_card_parse_quality_and_suggestion_are_published_after_completion(
                 "context_audio_url": None,
                 "model": None,
                 "detail_available": True,
+                "detail_word": "recieve",
                 "paid_answer_available": True,
             },
         )
@@ -358,6 +361,7 @@ async def test_card_without_examples_is_rated_as_a_failure_without_losing_analys
                 "context_audio_url": None,
                 "model": None,
                 "detail_available": False,
+                "detail_word": None,
                 "paid_answer_available": True,
             },
         )
@@ -2775,6 +2779,78 @@ async def test_queued_detail_refusal_reports_the_exact_reason_without_changing_e
                 "error": "the daily paid-call cap is spent",
             },
         )
+    finally:
+        await pipeline.close()
+
+
+async def test_a_restarted_server_writes_the_deeper_article_from_the_pages_copy(languages):
+    """The browser keeps its history through a restart and the process does not, so a
+    press on an entry the process never saw is answered from what the page sent."""
+    hub = EventHub()
+    cascade = ScriptedCascade([Completion(["<b>Deep</b>"])])
+    pipeline = WordPipeline(cascade, target_lang="Russian", events=hub)
+    subject = DetailSubject(languages["en"], "house", "two houses")
+    pipeline.start()
+    try:
+        async with hub.subscribe() as subscriber:
+            queued = await pipeline.request_detail("e1", restored=subject)
+            await pipeline.join()
+            events = [event for event in drain(subscriber) if event.name == "detail"]
+
+        assert queued == {"entry_id": "e1", "queued": True}
+        assert cascade.prompts == [
+            build_extended_prompt(languages["en"], "house", "Russian", context="two houses"),
+        ]
+        assert events[-1].data == {"entry_id": "e1", "text": "<b>Deep</b>", "model": None}
+        cached = await pipeline.request_detail("e1", restored=subject)
+        assert cached == {"entry_id": "e1", "detail_html": "<b>Deep</b>", "cached": True}
+        assert cascade.paid_calls == 1
+        # Nothing it carries could change a card: those controls still find nothing.
+        for control in (pipeline.request_switch, pipeline.request_rebuild, pipeline.delete_card):
+            with pytest.raises(KeyError, match="request expired"):
+                await control("e1")
+    finally:
+        await pipeline.close()
+
+
+async def test_the_pages_copy_never_outranks_what_the_process_holds(languages):
+    cascade = ScriptedCascade([Completion([valid_card("word")]), Completion(["<b>Deep</b>"])])
+    pipeline = WordPipeline(cascade, target_lang="Russian")
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(languages["en"], "word", False)
+        await pipeline.join()
+        await pipeline.request_detail(
+            entry.entry_id,
+            restored=DetailSubject(languages["de"], "Wort", "ein Wort"),
+        )
+        await pipeline.join()
+
+        assert cascade.prompts[-1] == build_extended_prompt(languages["en"], "word", "Russian")
+        assert entry.lang == "en"
+    finally:
+        await pipeline.close()
+
+
+async def test_a_press_without_the_pages_copy_still_expires_on_an_unknown_entry(languages):
+    pipeline = WordPipeline(ScriptedCascade([]), target_lang="Russian")
+    with pytest.raises(KeyError, match="request expired"):
+        await pipeline.request_detail("gone")
+
+
+async def test_a_finished_answer_tells_the_page_what_its_deeper_article_asks_about(languages):
+    hub = EventHub()
+    cascade = ScriptedCascade([Completion([valid_card("word")])])
+    pipeline = WordPipeline(cascade, target_lang="Russian", events=hub)
+    pipeline.start()
+    try:
+        async with hub.subscribe() as subscriber:
+            entry = await pipeline.enqueue(languages["en"], "word", False)
+            await pipeline.join()
+            done = next(event for event in drain(subscriber) if event.name == "done")
+
+        assert entry.detail_word == "word"
+        assert done.data["detail_word"] == "word"
     finally:
         await pipeline.close()
 

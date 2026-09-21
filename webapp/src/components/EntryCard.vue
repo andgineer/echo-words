@@ -57,17 +57,45 @@ const detailTitle = computed(() =>
   detailReady.value ? t("add.detailGoto") : t("add.detail"),
 );
 
+// The server answered that it no longer has this entry, so the controls that change
+// its card cannot act; the deeper article needs nothing the server forgot.
+const expired = computed(() => !!props.entry.controls_expired);
+
 const detailSection = ref(null);
+// Raised by a press and spent by the section that press opens: the article streams in
+// at the foot of a card that is often longer than the screen.
+let followDetail = false;
+
+function showDetail() {
+  detailSection.value?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+}
 
 // Once the deeper article exists the button stops buying a second one and becomes the
 // way down to it: it sits at the top of a card the article has made long.
 function hitDetail() {
   if (detailReady.value) {
-    detailSection.value?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+    showDetail();
     return;
   }
+  followDetail = true;
   emit("detail");
 }
+
+watch(
+  detailSection,
+  (section) => {
+    if (!section || !followDetail) return;
+    followDetail = false;
+    showDetail();
+  },
+  { flush: "post" },
+);
+watch(
+  () => props.entry.entry_id,
+  () => {
+    followDetail = false;
+  },
+);
 
 // Which of the three shapes the Anki control takes. A text entry never had a card to
 // speak of, so it gets no control rather than a permanently empty one.
@@ -328,7 +356,7 @@ function confirmDelete() {
     <div v-if="spellingNotice" class="entry-notice">
       <p class="notice-text">{{ spellingNotice }}</p>
       <button
-        v-if="entry.suggestion"
+        v-if="entry.suggestion && !expired"
         class="btn-inline correction"
         @click="emit('switch')"
       >
@@ -415,6 +443,7 @@ function confirmDelete() {
           v-if="ankiSlot === 'delete'"
           class="act act-anki delete-card"
           :title="ankiTitle"
+          :disabled="expired"
           @click="confirming = true"
         >
           <svg class="glyph" viewBox="0 0 24 24" aria-hidden="true">
@@ -477,12 +506,20 @@ function confirmDelete() {
 
     <div v-if="entry.text" class="entry-text" v-html="entry.text"></div>
 
-    <section v-if="entry.detail_html" ref="detailSection" class="entry-detail-block">
+    <section
+      v-if="entry.detail_html || entry.detail_pending"
+      ref="detailSection"
+      class="entry-detail-block"
+    >
       <div class="detail-head">
         <span class="detail-title">{{ t("add.detailSection") }}</span>
         <span v-if="entry.detail_model" class="entry-model">{{ entry.detail_model }}</span>
       </div>
-      <div class="entry-detail" v-html="entry.detail_html"></div>
+      <div v-if="entry.detail_html" class="entry-detail" v-html="entry.detail_html"></div>
+      <div v-if="entry.detail_pending" class="working">
+        <span class="spinner" aria-hidden="true"></span>
+        <span>{{ busyLabel }}</span>
+      </div>
     </section>
 
     <audio
@@ -522,7 +559,7 @@ function confirmDelete() {
     </div>
 
     <button
-      v-if="entry.paid_answer_available"
+      v-if="entry.paid_answer_available && !expired"
       class="btn-inline paid-answer"
       :disabled="busy"
       @click="emit('paid-answer')"
@@ -539,11 +576,7 @@ function confirmDelete() {
     <p v-if="entry.card_error" class="entry-error card-error">{{ entry.card_error }}</p>
     <p v-if="entry.detail_error" class="entry-error">{{ detailErrorText }}</p>
     <p v-if="entry.control_error" class="entry-error">{{ entry.control_error }}</p>
-
-    <div v-if="!isPending && working" class="working">
-      <span class="spinner" aria-hidden="true"></span>
-      <span>{{ busyLabel }}</span>
-    </div>
+    <p v-if="expired" class="entry-error controls-expired">{{ t("add.controlsExpired") }}</p>
   </article>
 </template>
 
@@ -880,6 +913,10 @@ function confirmDelete() {
 .entry-detail {
   line-height: 1.5;
   white-space: pre-wrap;
+}
+
+.detail-head + .working {
+  margin-top: 0;
 }
 
 /* Filled pills that look pressable; no caption above them. The reason stays: two

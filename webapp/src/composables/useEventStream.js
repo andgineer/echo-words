@@ -1,6 +1,15 @@
 import { apiRequest } from "../api/_request.js";
 import { entries, upsertEntry } from "./useEntries.js";
 
+function detailOf(entry) {
+  return {
+    entry_id: entry.entry_id,
+    detail_html: entry.detail_html,
+    detail_model: entry.detail_model ?? null,
+    detail_pending: !!entry.detail_pending,
+  };
+}
+
 function eventData(event) {
   try {
     return JSON.parse(event.data);
@@ -27,11 +36,17 @@ export function useEventStream({
         (entry) => entry.status === "pending" || entry.detail_pending,
       );
       const snapshot = await Promise.all(unfinished.map(async (entry) => {
+        const answered = entry.status !== "pending";
         try {
-          return await fetchEntry(entry.entry_id);
+          const fresh = await fetchEntry(entry.entry_id);
+          // A finished answer was waiting on its deeper article alone, and a server
+          // that restarted since knows nothing else about it.
+          return answered ? detailOf(fresh) : fresh;
         } catch (error) {
           if (error.status !== 410) throw error;
-          return { ...entry, status: "error", error: "analysis_failed", detail_pending: false };
+          return answered
+            ? { entry_id: entry.entry_id, detail_pending: false, detail_error: "detail_failed" }
+            : { ...entry, status: "error", error: "analysis_failed", detail_pending: false };
         }
       }));
       if (activeRefresh !== refreshState) return;
@@ -64,10 +79,11 @@ export function useEventStream({
         no_audio: false,
         no_card_audio: false,
         detail_pending: false,
+        controls_expired: false,
         ...(Object.hasOwn(data, "detail_html") ? { detail_html: data.detail_html } : {}),
       });
     } else if (name === "done") {
-      upsertEntry({ ...data, status: "done" });
+      upsertEntry({ ...data, status: "done", controls_expired: false });
     } else if (name === "detail") {
       upsertEntry({
         entry_id: data.entry_id,

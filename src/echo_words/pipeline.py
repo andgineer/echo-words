@@ -50,6 +50,8 @@ UNATTESTED_STATUS = "unattested"
 MISSPELLED_STATUS = "misspelled"
 DELETED_STATUS = "deleted"
 REQUEST_EXPIRED = "request expired"
+# An entry this process knows only because the page asked for its deeper article.
+RESTORED_ACTION = "restored"
 MAX_POST_GENERATION_AUDIO_WAIT_SECONDS = 10
 # How long the judgement may still take once the article is complete. It is one line
 # and normally lands long before; past this the answer stands unjudged rather than the
@@ -139,6 +141,16 @@ class DetailJob:
     context: str
 
 
+@dataclass(frozen=True)
+class DetailSubject:
+    """What a deeper article asks about. The page keeps it with the entry, because a
+    restart empties this process while the reader's history survives it."""
+
+    language: Language
+    word: str
+    context: str
+
+
 @dataclass
 class ControlState:
     input_word: str
@@ -203,6 +215,7 @@ class WordPipeline:
         self._latest_submissions: dict[str, str] = {}
         self._controls: dict[str, ControlState] = {}
         self._details_pending: set[str] = set()
+        self._restored_details: dict[str, DetailSubject] = {}
         self._worker: asyncio.Task[None] | None = None
 
     def start(self) -> None:
@@ -374,15 +387,16 @@ class WordPipeline:
         entry_id: str,
         *,
         locale: str = DEFAULT_LOCALE,
+        restored: DetailSubject | None = None,
     ) -> dict[str, object]:
-        entry, state = self._active_control(entry_id)
+        entry, subject = self._detail_target(entry_id, restored)
         if entry.shape != "unit":
             raise BackendError(message("text.no_detail", locale))
         if entry.detail_html:
             return {"entry_id": entry_id, "detail_html": entry.detail_html, "cached": True}
         if entry_id in self._details_pending:
             return {"entry_id": entry_id, "queued": True}
-        refusal = await self._paid_refusal_fresh(state.language, detail=True)
+        refusal = await self._paid_refusal_fresh(subject.language, detail=True)
         if refusal is not None:
             raise BackendError(refusal)
         self._details_pending.add(entry_id)
@@ -390,12 +404,45 @@ class WordPipeline:
             DetailJob(
                 entry_id,
                 self._detail_revisions[entry_id],
-                state.language,
-                state.carded_word or state.shown_spelling,
-                state.context,
+                subject.language,
+                subject.word,
+                subject.context,
             ),
         )
         return {"entry_id": entry_id, "queued": True}
+
+    def _detail_target(
+        self,
+        entry_id: str,
+        restored: DetailSubject | None,
+    ) -> tuple[Entry, DetailSubject]:
+        # What this process holds wins, being what the card was made from; the page's
+        # copy stands in only for an entry the process no longer has.
+        if entry_id in self._restored_details:
+            return self._entries[entry_id], self._restored_details[entry_id]
+        if restored is not None and entry_id not in self._entries:
+            return self._restore_for_detail(entry_id, restored), restored
+        entry, state = self._active_control(entry_id)
+        return entry, DetailSubject(state.language, _detail_word(state), state.context)
+
+    def _restore_for_detail(self, entry_id: str, subject: DetailSubject) -> Entry:
+        # It carries the article and nothing else: with no control state behind it,
+        # every control that would touch the card still answers that it expired.
+        entry = Entry(
+            entry_id=entry_id,
+            lang=subject.language.code,
+            word=subject.word,
+            action=RESTORED_ACTION,
+            context=subject.context,
+            language=subject.language.name,
+            shape="unit",
+        )
+        self.history.add(entry)
+        self._revisions[entry_id] = 0
+        self._detail_revisions[entry_id] = 0
+        self._restored_details[entry_id] = subject
+        self._drop_evicted_state()
+        return entry
 
     async def delete_card(self, entry_id: str, *, locale: str = DEFAULT_LOCALE) -> str:
         """Remove this entry's own note from Anki, leaving its analysis on the screen."""
@@ -707,6 +754,9 @@ class WordPipeline:
                 context_audio_path,
                 card_audio_path,
             )
+            entry.detail_word = (
+                _detail_word(self._controls[job.entry_id]) if entry.shape == "unit" else None
+            )
             await self._finish_entry(entry, raw, last_published, suggestion, stored)
         finally:
             for pending in (audio_task, context_audio_task):
@@ -1006,6 +1056,7 @@ class WordPipeline:
                 "context_audio_url": entry.context_audio_url,
                 "model": entry.model,
                 "detail_available": entry.detail_available,
+                "detail_word": entry.detail_word,
                 "paid_answer_available": entry.paid_answer_available,
             },
         )
@@ -1194,6 +1245,7 @@ class WordPipeline:
         entry.segment_kind = None
         entry.carded_sense = None
         entry.detail_available = False
+        entry.detail_word = None
         entry.detail_model = None
         entry.paid_answer_available = False
         entry.no_audio = False
@@ -1218,6 +1270,7 @@ class WordPipeline:
             self._detail_revisions.pop(entry_id, None)
             self._controls.pop(entry_id, None)
             self._details_pending.discard(entry_id)
+            self._restored_details.pop(entry_id, None)
 
     def _is_current(self, job: Job) -> bool:
         return self._revisions.get(job.entry_id) == job.revision
@@ -1235,6 +1288,10 @@ def visible_analysis(raw: str) -> str:
         if raw.endswith(CARD_DELIMITER[:length]):
             return raw[:-length]
     return raw
+
+
+def _detail_word(state: ControlState) -> str:
+    return state.carded_word or state.shown_spelling
 
 
 def _suggestion_from(parsed: ParsedAnswer | None) -> str | None:

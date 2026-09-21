@@ -179,6 +179,53 @@ it("ends a spinner when the server no longer has the pending entry", async () =>
   expect(entries.value[0]).toMatchObject({ status: "error", error: "analysis_failed" });
 });
 
+it("keeps a finished analysis when a restart lost only the article it was waiting on", async () => {
+  replaceEntries([
+    { entry_id: "read", status: "done", text: "the analysis", detail_pending: true },
+  ]);
+  const fetchEntry = vi.fn().mockRejectedValue(Object.assign(new Error("expired"), { status: 410 }));
+  await useEventStream({ fetchEntry }).refresh();
+  // The analysis was never in doubt; the article can simply be asked for again.
+  expect(entries.value[0]).toMatchObject({
+    status: "done",
+    text: "the analysis",
+    detail_pending: false,
+    detail_error: "detail_failed",
+  });
+  expect(entries.value[0].error).toBeUndefined();
+});
+
+it("takes only the article from a server that knows a finished entry by it alone", async () => {
+  replaceEntries([
+    { entry_id: "read", status: "done", text: "the analysis", card_status: "added", detail_pending: true },
+  ]);
+  const fetchEntry = vi.fn().mockResolvedValue({
+    entry_id: "read",
+    status: "done",
+    text: "",
+    card_status: null,
+    detail_html: "<p>deep</p>",
+    detail_model: "gpt",
+    detail_pending: false,
+  });
+  await useEventStream({ fetchEntry }).refresh();
+  expect(entries.value[0]).toMatchObject({
+    text: "the analysis",
+    card_status: "added",
+    detail_html: "<p>deep</p>",
+    detail_model: "gpt",
+    detail_pending: false,
+  });
+});
+
+it("stops calling the card expired once the server answers for the entry again", () => {
+  replaceEntries([{ entry_id: "one", status: "done", text: "kept", controls_expired: true }]);
+  const stream = useEventStream({ EventSourceClass: FakeEventSource });
+  stream.start();
+  FakeEventSource.instances[0].emit("done", { entry_id: "one", text: "kept" });
+  expect(entries.value[0].controls_expired).toBe(false);
+});
+
 it("keeps a cached answer on a network failure", async () => {
   replaceEntries([{ entry_id: "kept", status: "pending", text: "partial" }]);
   const fetchEntry = vi.fn().mockRejectedValue(new Error("offline"));

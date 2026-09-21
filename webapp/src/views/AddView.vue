@@ -187,7 +187,8 @@ async function entryAction(entry, action) {
   try {
     await apiRequest(`/api/words/${entry.entry_id}/${action}`, { method: "POST" });
   } catch (e) {
-    upsertEntry({ entry_id: entry.entry_id, control_error: e.message });
+    if (e.status === 410) upsertEntry({ entry_id: entry.entry_id, controls_expired: true });
+    else upsertEntry({ entry_id: entry.entry_id, control_error: e.message });
   }
 }
 
@@ -201,7 +202,16 @@ async function requestDetail(entry) {
     detail_pending: true,
   });
   try {
-    const result = await apiRequest(`/api/words/${entry.entry_id}/detail`, { method: "POST" });
+    // The server forgets its entries on restart and the browser does not, so the
+    // request carries what the article is about.
+    const result = await apiRequest(`/api/words/${entry.entry_id}/detail`, {
+      method: "POST",
+      body: {
+        lang: entry.lang,
+        word: entry.detail_word || entry.analysed_as || entry.word,
+        context: entry.context || "",
+      },
+    });
     if (result?.cached) {
       upsertEntry({
         entry_id: entry.entry_id,
@@ -210,7 +220,11 @@ async function requestDetail(entry) {
       });
     }
   } catch (e) {
-    upsertEntry({ entry_id: entry.entry_id, detail_pending: false, detail_error: e.message });
+    upsertEntry({
+      entry_id: entry.entry_id,
+      detail_pending: false,
+      ...(e.status === 410 ? { controls_expired: true } : { detail_error: e.message }),
+    });
   }
 }
 </script>

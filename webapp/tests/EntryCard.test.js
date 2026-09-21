@@ -840,6 +840,63 @@ describe("EntryCard", () => {
       expect(scrolled).toHaveBeenCalledTimes(1);
     });
 
+    it("opens the article's place at once and brings it into view to stream into", async () => {
+      await labelBehavior(EPIC.ANKI_CARDS, FEATURE.CORRECTION_AND_DETAIL, "Detail control");
+      const scrolled = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => {});
+      const entry = { ...senseEntry(), detail_available: true };
+      const wrapper = card(entry);
+
+      await wrapper.get(".detail").trigger("click");
+      expect(wrapper.emitted("detail")).toHaveLength(1);
+      await wrapper.setProps({ entry: { ...entry, detail_pending: true } });
+      await nextTick();
+
+      // The article lands below a card often longer than the screen; without the
+      // scroll the reader watches a spinner at the top and misses it arriving.
+      const block = wrapper.get(".entry-detail-block");
+      expect(block.get(".working").text()).toBe(
+        "Building the full entry — usually about 10 seconds",
+      );
+      expect(scrolled).toHaveBeenCalledTimes(1);
+      expect(scrolled.mock.instances[0]).toBe(block.element);
+
+      await wrapper.setProps({ entry: { ...entry, detail_html: "<p>half an art", detail_pending: true } });
+      expect(block.get(".entry-detail").html()).toContain("half an art");
+      expect(scrolled).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not pull the page down to an article another device asked for", async () => {
+      const scrolled = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => {});
+      const entry = { ...senseEntry(), detail_available: true };
+      const wrapper = card(entry);
+
+      await wrapper.setProps({ entry: { ...entry, detail_pending: true } });
+      await nextTick();
+
+      expect(wrapper.find(".entry-detail-block").exists()).toBe(true);
+      expect(scrolled).not.toHaveBeenCalled();
+    });
+
+    it("stops offering what would change the card once the server has forgotten it", () => {
+      locale.value = "ru";
+      const wrapper = card({
+        ...senseEntry(),
+        detail_available: true,
+        suggestion: "banks",
+        paid_answer_available: true,
+        controls_expired: true,
+      });
+
+      expect(wrapper.get(".controls-expired").text()).toBe(
+        "Сервер перезапустился после этого ответа, поэтому его карточку отсюда уже не изменить.",
+      );
+      expect(wrapper.get(".delete-card").element.disabled).toBe(true);
+      expect(wrapper.find(".correction").exists()).toBe(false);
+      expect(wrapper.find(".paid-answer").exists()).toBe(false);
+      // The deeper article needs nothing the server forgot, so it is still offered.
+      expect(wrapper.get(".detail").element.disabled).toBe(false);
+    });
+
     it("titles the deeper article as a section of its own, signed by its own model", () => {
       const wrapper = card({
         ...senseEntry(),

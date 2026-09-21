@@ -45,6 +45,8 @@ export default {
   "add.buildingEntry": "Building the full entry — usually about 10 seconds",
   "add.analysisFailed": "Could not get the analysis.",
   "add.detailFailed": "Could not finish the full entry.",
+  "add.controlsExpired":
+    "The server restarted after this answer, so its card can no longer be changed from here.",
   "add.retry": "Send “{word}” again",
   "add.speakWord": "Play",
   "add.speakText": "Play the whole text",

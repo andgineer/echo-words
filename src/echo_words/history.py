@@ -60,6 +60,9 @@ class Entry:
     error: str | None = None
     model: str | None = None
     detail_available: bool = False
+    # The wording the deeper article asks about, kept by the page so that it can still
+    # ask after a restart has emptied the server.
+    detail_word: str | None = None
     # The analysis reads and only the card behind it failed. Whether to spend a paid
     # call on a second opinion is the reader's decision, so the entry offers it.
     paid_answer_available: bool = False

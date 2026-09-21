@@ -510,6 +510,77 @@ describe("AddView", () => {
       expect(wrapper.find(".progress").exists()).toBe(false);
     });
 
+    it("sends the deeper article what the browser kept, which a restarted server lacks", async () => {
+      apiRequest.mockImplementation(async (path) => {
+        if (path === "/api/languages") return OPTIONS;
+        if (path === "/api/words/entry-1/detail") return { entry_id: "entry-1", queued: true };
+        throw new Error(`Unexpected request: ${path}`);
+      });
+      entries.value = [
+        unit("entry-1", "houses", "en", {
+          detail_available: true,
+          detail_word: "house",
+          context: "two houses",
+        }),
+      ];
+      const wrapper = mount(AddView);
+      await flushPromises();
+
+      await wrapper.get(".detail").trigger("click");
+      await flushPromises();
+
+      expect(apiRequest).toHaveBeenCalledWith("/api/words/entry-1/detail", {
+        method: "POST",
+        body: { lang: "en", word: "house", context: "two houses" },
+      });
+    });
+
+    it("asks about the submitted word for an entry saved before it kept the article's", async () => {
+      apiRequest.mockImplementation(async (path) => {
+        if (path === "/api/languages") return OPTIONS;
+        if (path === "/api/words/entry-1/detail") return { entry_id: "entry-1", queued: true };
+        throw new Error(`Unexpected request: ${path}`);
+      });
+      entries.value = [unit("entry-1", "house", "en", { detail_available: true })];
+      const wrapper = mount(AddView);
+      await flushPromises();
+
+      await wrapper.get(".detail").trigger("click");
+      await flushPromises();
+
+      expect(apiRequest.mock.calls.at(-1)[1].body).toEqual({
+        lang: "en",
+        word: "house",
+        context: "",
+      });
+    });
+
+    it("says in the reader's language, not the server's, that the card can no longer be changed", async () => {
+      await labelBehavior(EPIC.ANKI_CARDS, FEATURE.COLLECTION, "Card deletion");
+      locale.value = "ru";
+      entries.value = [unit("entry-1", "house")];
+      apiRequest.mockImplementation(async (path) => {
+        if (path === "/api/languages") return OPTIONS;
+        if (path === "/api/words/entry-1/delete-card") {
+          throw Object.assign(new Error("request expired"), { status: 410 });
+        }
+        throw new Error(`Unexpected request: ${path}`);
+      });
+      const wrapper = mount(AddView);
+      await flushPromises();
+
+      await wrapper.get(".delete-card").trigger("click");
+      await wrapper.get(".confirm-yes").trigger("click");
+      await flushPromises();
+
+      expect(wrapper.get(".controls-expired").text()).toBe(
+        "Сервер перезапустился после этого ответа, поэтому его карточку отсюда уже не изменить.",
+      );
+      expect(wrapper.text()).not.toContain("request expired");
+      expect(wrapper.get(".delete-card").element.disabled).toBe(true);
+      expect(entries.value[0].controls_expired).toBe(true);
+    });
+
     it("offers a failed entry back as a chip instead of asking for it to be retyped", async () => {
       entries.value = [
         {

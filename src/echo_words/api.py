@@ -52,7 +52,7 @@ from echo_words.languages import (
 )
 from echo_words.lexicon import Wikipedia, Wiktionary
 from echo_words.logs import configure_logging
-from echo_words.pipeline import WordPipeline
+from echo_words.pipeline import DetailSubject, WordPipeline
 from echo_words.voices import installable_piper_voices
 
 # Transport guards only, kept far above the real limits so that the short
@@ -219,6 +219,12 @@ class WordSubmission(BaseModel):
     shape: Literal["unit"] | None = None
     context: str = Field(default="", max_length=_MAX_CONTEXT_INPUT)
     request_id: UUID | None = None
+
+
+class DetailRequest(BaseModel):
+    lang: str = Field(max_length=_MAX_LANG_INPUT)
+    word: str = Field(max_length=_MAX_WORD_INPUT)
+    context: str = Field(default="", max_length=_MAX_CONTEXT_INPUT)
 
 
 class SubmissionAccepted(BaseModel):
@@ -398,10 +404,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:  # noqa: C901, PLR0
         return {"entry_id": entry.entry_id, "queued": True}
 
     @app.post("/api/words/{entry_id}/detail")
-    async def detail_word(request: Request, entry_id: str) -> dict[str, object]:
+    async def detail_word(
+        request: Request,
+        entry_id: str,
+        subject: DetailRequest | None = None,
+    ) -> dict[str, object]:
         locale = pick_locale(request.headers.get("accept-language"))
+        restored = None
+        if subject is not None and subject.word.strip():
+            restored = DetailSubject(
+                _resolve_language(request.app.state.languages, subject.lang, locale),
+                subject.word.strip(),
+                sanitize_context(subject.context),
+            )
         try:
-            return await request.app.state.pipeline.request_detail(entry_id, locale=locale)
+            return await request.app.state.pipeline.request_detail(
+                entry_id,
+                locale=locale,
+                restored=restored,
+            )
         except KeyError as exc:
             raise HTTPException(status_code=410, detail="request expired") from exc
         except BackendError as exc:

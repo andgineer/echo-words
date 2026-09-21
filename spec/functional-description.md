@@ -461,7 +461,13 @@ Behavior is fixed, not configurable:
   text, and lookup-only stays lookup-only.
 - A switch replaces the note and card audio it had, and a switch that stores
   nothing leaves the previous note and its media exactly as they were, and says so.
-- The controls act on their own in-memory history entry and expire on restart.
+- The controls that change the card — the switch, the offered paid answer and
+  the deletion — act on their own in-memory history entry and expire on restart. An
+  entry kept by the browser across a restart then says, in the interface
+  language, that its card can no longer be changed from there, and stops
+  offering those controls rather than answering them with a server error. The
+  deeper analysis is not one of them: it never touches the card, so the browser
+  sends what it asks about with the request, and it still works after a restart.
 
 ## Pronunciation audio
 
@@ -660,8 +666,10 @@ Kept minimal — everything beyond typing a word:
   It does not apply to running text, which has no single word to go
   deeper on. The article starts appearing within about a second and is
   complete in under ten; pressing it changes the card at once: a progress
-  strip, a line saying roughly how long it takes, and a live dot on that
-  word's chip in the rail.
+  strip, a live dot on that word's chip in the rail, and the article's own
+  section opened under the analysis with a line saying roughly how long it
+  takes. The page scrolls that section into view, so the reader watches the
+  article being written rather than a spinner at the top of a long card.
 - **Rebuild the card** — rewriting an existing note with the paid model. The
   pipeline path and its endpoint stand, but **no control offers it**: the
   reader never sees the note, and the plain translation a card needs is what
@@ -781,7 +789,8 @@ same prompt is not how a weak answer gets fixed.
   they still become cards. The collection is a local file: cards added
   while AnkiWeb sync was failing survive restarts and reach the devices
   on the next successful sync. Nothing else on the backend is durable
-  by design — a restart clears server-side job state, controls and counters.
+  by design — a restart clears server-side job state, the card controls and
+  counters.
   The PWA's saved history and reference data remain on the device and can be
   read while the backend is unreachable.
 - **Single instance, single user.** Tailnet membership is the only
