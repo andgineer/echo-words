@@ -566,8 +566,8 @@ async def test_the_page_is_not_cleared_for_a_paid_step_that_has_written_nothing(
             await super().__call__()
 
     class WatchingClient(FakeDirectClient):
-        async def stream(self, prompt, *, timeout=None):
-            async for delta in super().stream(prompt, timeout=timeout):
+        async def stream(self, prompt, *, timeout=None, params=None):
+            async for delta in super().stream(prompt, timeout=timeout, params=params):
                 order.append(f"paid:{delta}")
                 yield delta
 
@@ -908,7 +908,14 @@ async def test_without_a_paid_alias_a_pool_miss_is_a_failure(settings, languages
 async def test_without_a_paid_alias_a_deeper_analysis_is_refused(settings, languages):
     cascade = fake_cascade(settings.model_copy(update={"api_model": ""}))
     with pytest.raises(BackendError, match="no paid model"):
-        cascade.stream_paid("prompt", languages["en"])
+        cascade.stream_paid("prompt", languages["en"], detail=True)
+
+
+async def test_without_a_detail_model_only_the_deeper_analysis_is_refused(settings, languages):
+    cascade = fake_cascade(settings.model_copy(update={"detail_model": ""}))
+    with pytest.raises(BackendError, match="no paid model"):
+        cascade.stream_paid("prompt", languages["en"], detail=True)
+    assert cascade.paid_refusal(languages["en"]) is None
 
 
 async def test_direct_missing_key_refuses_explicit_paid_work_before_it_is_queued(
@@ -935,14 +942,57 @@ async def test_direct_missing_key_refuses_explicit_paid_work_before_it_is_queued
     assert refusal == "the paid model is missing PAID_KEY: configure it here"
 
 
-async def test_the_deeper_analysis_goes_straight_to_the_paid_model(settings, languages):
+async def test_a_missing_key_for_the_detail_model_refuses_only_the_deeper_analysis(
+    settings,
+    languages,
+):
+    cascade = fake_cascade(settings)
+    cascade.broker.snapshot_value = SimpleNamespace(
+        providers_usable=1,
+        providers_total=1,
+        degraded=False,
+        missing_keys=(),
+        direct_missing_keys=(
+            SimpleNamespace(api_key_ref="SOL_KEY", help="", entry_names=("gpt",)),
+        ),
+    )
+
+    assert await cascade.refresh_paid_availability(languages["en"], detail=True) == (
+        "the paid model is missing SOL_KEY"
+    )
+    assert await cascade.refresh_paid_availability(languages["en"]) is None
+
+
+async def test_the_deeper_analysis_goes_straight_to_its_own_model_with_its_parameters(
+    settings,
+    languages,
+):
     cascade = fake_cascade(settings, client=FakeDirectClient(["deep ", "brief"]))
-    completion = cascade.stream_paid("prompt", languages["sr"])
+    completion = cascade.stream_paid("prompt", languages["sr"], detail=True)
     assert await drain(completion) == ["deep ", "brief"]
-    assert cascade.broker.direct_calls == ["gpt-fast"]
+    assert cascade.broker.direct_calls == ["gpt"]
+    assert cascade.broker.client.calls[0]["params"] == settings.detail_params
     assert cascade.calls_today == 1
-    assert cascade.last_calls["sr"].llm_name == "gpt-fast"
+    assert cascade.last_calls["sr"].llm_name == "gpt"
     assert cascade.last_calls["sr"].paid is True
+
+
+async def test_a_card_rebuild_asks_the_languages_model_at_its_defaults(settings, languages):
+    cascade = fake_cascade(settings, client=FakeDirectClient(["rebuilt"]))
+    await drain(cascade.stream_paid("prompt", languages["sr"]))
+    assert cascade.broker.direct_calls == ["gpt-fast"]
+    assert cascade.broker.client.calls[0]["params"] is None
+
+
+async def test_a_step_up_asks_the_languages_model_at_its_defaults(settings, languages):
+    cascade = fake_cascade(
+        settings,
+        handles=[FakeHandle(error=POOL_MISSED)],
+        client=FakeDirectClient(),
+    )
+    await run(cascade, languages["en"])
+    assert cascade.broker.direct_calls == ["gpt-fast"]
+    assert cascade.broker.client.calls[0]["params"] is None
 
 
 async def test_a_step_up_spends_from_the_same_wallet_as_the_deeper_analysis(settings, languages):
@@ -955,7 +1005,7 @@ async def test_a_step_up_spends_from_the_same_wallet_as_the_deeper_analysis(sett
     await run(cascade, languages["en"])
     assert cascade.calls_today == 1
     with pytest.raises(BackendError, match="cap"):
-        cascade.stream_paid("prompt", languages["en"])
+        cascade.stream_paid("prompt", languages["en"], detail=True)
 
 
 async def test_a_pool_miss_past_the_cap_fails_instead_of_paying(settings, languages):

@@ -97,6 +97,8 @@ class ScriptedCascade:
         # tests are: the pool answers and its answer stands.
         self.paid_answers = list(paid)
         self.calls: list[str] = []
+        self.paid_jobs: list[str] = []
+        self.refreshed_for: list[str] = []
         self.prompts: list[str] = []
         self.trace_ids: list[str | None] = []
         self.active = 0
@@ -165,16 +167,18 @@ class ScriptedCascade:
             return True
         return hand_over is not None and hand_over(answer)
 
-    def stream_paid(self, prompt, language, *, trace_id=None):
+    def stream_paid(self, prompt, language, *, trace_id=None, detail=False):
         if self.refusal is not None:
             raise BackendError(self.refusal)
         self.paid_calls += 1
+        self.paid_jobs.append("detail" if detail else "rebuild")
         return self.stream_completion(prompt, language, trace_id=trace_id)
 
-    def paid_refusal(self, _language):
+    def paid_refusal(self, _language, *, detail=False):
         return self.refusal
 
-    async def refresh_paid_availability(self, _language):
+    async def refresh_paid_availability(self, _language, *, detail=False):
+        self.refreshed_for.append("detail" if detail else "card")
         return self.refusal
 
 
@@ -1021,6 +1025,8 @@ async def test_a_paid_rebuild_is_never_asked_for_an_attestation(languages):
 
         assert entry.card_status == ADDED_STATUS
         assert len(cascade.attested) == asked_once == 1
+        # A rebuild writes a card, so it keeps the card's paid model and not the article's.
+        assert cascade.paid_jobs == ["rebuild"]
     finally:
         await pipeline.close()
 
@@ -2603,7 +2609,7 @@ async def test_the_deeper_article_is_signed_by_the_model_that_wrote_it(settings,
         await pipeline.close()
 
     assert entry.detail_html == "<b>Deep</b>"
-    assert entry.detail_model == "gpt-fast"
+    assert entry.detail_model == "gpt"
     # The analysis above it was not written by the paid model and does not claim to be.
     assert entry.model == "pool-model"
 
@@ -2631,6 +2637,9 @@ async def test_detail_appends_is_cached_and_cuts_a_stray_card_block(languages):
         cached = await pipeline.request_detail(entry.entry_id)
         assert cached["cached"] is True
         assert cascade.paid_calls == 1
+        # The deeper article is its own job: its model and parameters, not the card's.
+        assert cascade.paid_jobs == ["detail"]
+        assert cascade.refreshed_for.count("detail") == 1
     finally:
         await pipeline.close()
 

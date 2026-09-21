@@ -211,10 +211,12 @@ it belongs with the qualitative model errors the backend does not adjudicate.
 ## 12. The deeper article has no length anyone chose
 
 Reported from ordinary use: "Подробнее" — the paid deeper article — comes back
-"безумно длинный". Nothing bounds it. The pool answer is asked for a stated shape
-and is cut at the 16,000-character complete-answer bound; the extended prompt asks
-for neither, and the reader gets whatever the paid model felt like writing, on a
-screen they opened for one word.
+"безумно длинный". The extended prompt now asks for around 2000 characters and never
+more than 4000, and nothing in the code enforces either. Measured on 2026-09-21 over
+171 deeper articles from nine configurations, none exceeded 4000 characters and the
+medians per configuration ran from 2080 to 2980; the configuration the app now asks
+wrote a median of 2740. The instruction holds as a ceiling and overshoots the target
+by a third to a half. Whether that is still too long for the reader is theirs to say.
 
 Length is the whole complaint, so it is the thing to decide: a reader who taps
 "the full entry" wants more than the article, not an essay. Whether that is a

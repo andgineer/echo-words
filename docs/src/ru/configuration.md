@@ -52,6 +52,8 @@ prompt_hints   = "for nouns give gender and plural, for verbs give aspect"
 | `ECHOWORDS_LLMBROKER_HOME` | где llmbroker хранит свой список моделей и журнал вызовов | `<data dir>/llmbroker` |
 | `ECHOWORDS_API_MODEL` | алиас платной модели, на которую переключается каскад; пустое значение полностью отключает платные вызовы | `gpt-fast` |
 | `ECHOWORDS_API_DAILY_CAP` | платных вызовов в сутки, `0` — без ограничения | `100` |
+| `ECHOWORDS_DETAIL_MODEL` | алиас платной модели для «Подробнее»; пустое значение отключает эту кнопку | `gpt` |
+| `ECHOWORDS_DETAIL_PARAMS` | параметры запроса для «Подробнее» — один JSON-объект в словаре самого провайдера | `{"reasoning_effort": "none", "service_tier": "priority"}` |
 | `ECHOWORDS_ANKI_SYNC` | синхронизировать коллекцию с AnkiWeb после добавления | `true` |
 | `ECHOWORDS_ANKIWEB_USER` / `_PASSWORD` | учётные данные AnkiWeb | обязательны при включённой синхронизации |
 | `ECHOWORDS_SYNC_ENDPOINT` | свой сервер синхронизации Anki вместо AnkiWeb | пусто |
@@ -76,9 +78,16 @@ prompt_hints   = "for nouns give gender and plural, for verbs give aspect"
 актуальный список для установленной версии llmbroker вместе со ссылками на
 регистрацию.
 
-Платному запасному варианту по умолчанию (`ECHOWORDS_API_MODEL=gpt-fast`)
-дополнительно нужен `OPENAI_API_KEY`. Укажите `ECHOWORDS_API_MODEL=`, чтобы
-работать только на бесплатном пуле.
+Платному запасному варианту по умолчанию (`ECHOWORDS_API_MODEL=gpt-fast`) и
+кнопке «Подробнее» по умолчанию (`ECHOWORDS_DETAIL_MODEL=gpt`) дополнительно нужен
+`OPENAI_API_KEY`. Укажите `ECHOWORDS_API_MODEL=`, чтобы работать только на
+бесплатном пуле.
+
+Модель для «Подробнее» и её параметры — один выбор. По умолчанию OpenAI просят
+не рассуждать и обработать запрос в приоритетной очереди — поэтому текст начинает
+появляться меньше чем через секунду. Если указать в `ECHOWORDS_DETAIL_MODEL`
+модель другого провайдера, в `ECHOWORDS_DETAIL_PARAMS` нужно записать параметры
+уже этого провайдера или `{}` для его значений по умолчанию.
 
 Экран **Состояние** показывает, каких ключей не хватает, сколько провайдеров
 пригодны и во сколько платных вызовов обошёлся день.

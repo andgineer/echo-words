@@ -46,6 +46,13 @@ class Settings(BaseSettings):
     llmbroker_operation: str = "vocab"
     api_model: str = "gpt-fast"
     api_daily_cap: int = 100
+    # The deeper article's model and the request parameters it is called with are one
+    # choice: the parameters are that provider's vocabulary, so changing one means
+    # checking the other.
+    detail_model: str = "gpt"
+    detail_params: dict[str, str | int | float | bool] = Field(
+        default_factory=lambda: {"reasoning_effort": "none", "service_tier": "priority"},
+    )
 
     ankiweb_user: str = ""
     ankiweb_password: str = ""

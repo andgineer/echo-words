@@ -27,15 +27,12 @@ tool looks for.
   **Read these first when picking work up**: each says where its work
   stands, what is already built, what its experiments established and
   what is left. Two are open.
-  `model-tier.md` — which paid model, for which job. The design is
-  settled and nothing is measured: the judgement stays in the pool, where
-  paying buys a worse answer; the card's article gets a tier setting on
-  the language row, defaulting to the pool because no metered API may be
-  required to run the app; and the deeper article keeps a setting of its
-  own, screened on quality with no latency bar. What is unmeasured is the
-  catalog's fast aliases — every card-level number there is was taken on
-  the cheapest paid model in it — and the run waits on the operator's
-  approval for the spend.
+  `model-tier.md` — a paid tier for the card. The deeper article is
+  settled and built (Sol, reasoning off, priority processing — see
+  `decision-llm-backend.md`); for the card one configuration survived the
+  latency screen, `gpt-fast` without reasoning on priority (3.6 s whole
+  answer against the pool's 2.1 s, under a dollar a month), and what is
+  left is its quality tier through the bench and the fresh reading.
   `observed-defects.md` — eighteen faults left unfixed, each with its
   evidence, from three readings: six met while using the app, from a
   rebuilt bundle that can leave the reader on a white screen to a word the

@@ -53,6 +53,7 @@ _DEFAULT_BEHAVIOR_BY_FILE: dict[str, tuple[str, str, str | None]] = {
     "test_segments.py": (_VOCABULARY, "Answer delivery", "Suggested units"),
     "test_swap_prep.py": (_PLATFORM, "Health and deployment", "Production deployment"),
     "test_tasks.py": (_PLATFORM, "Health and deployment", "Production deployment"),
+    "test_tier_screen.py": (_VOCABULARY, "LLM cascade", "Paid tier screen"),
 }
 
 _BEHAVIOR_BY_TEST: dict[tuple[str, str], tuple[str, str, str | None]] = {

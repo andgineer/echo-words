@@ -9,7 +9,7 @@ from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING
 
 from echo_words.api_backend import stream_api
-from echo_words.broker import BackendError, BudgetMissError, paid_alias
+from echo_words.broker import BackendError, BudgetMissError, detail_alias, paid_alias
 from echo_words.config import Settings
 from echo_words.languages import Language
 from echo_words.llm_backend import (
@@ -51,6 +51,9 @@ class CallRequest:
     # Whether `/api/status` reports this call as the language's last one. A judgement
     # asked beside the answer is not the answer, and settles after it as often as not.
     reported: bool = True
+    # The deeper article: its own paid model, called with its own request parameters,
+    # rather than the language's step-up model at that model's defaults.
+    detail: bool = False
 
 
 @dataclass(frozen=True)
@@ -451,14 +454,17 @@ class Completion:
         self._pool_answered = True
 
     async def _paid_deltas(self) -> AsyncIterator[str]:
-        alias = self._cascade.paid_alias(self._request.language)
+        language = self._request.language
+        detail = self._request.detail
+        alias = self._cascade.alias_for(language, detail=detail)
         self.paid = True
         self.llm_name = alias
         paid_stream = stream_api(
             self._cascade.broker,
             alias,
             self._request.prompt,
-            on_resolved=lambda: self._cascade.spend_paid_call(self._request.language),
+            params=self._cascade.settings.detail_params if detail else None,
+            on_resolved=lambda: self._cascade.spend_paid_call(language, detail=detail),
         )
         started = time.monotonic()
         first_token_at: float | None = None
@@ -527,20 +533,24 @@ class Cascade:
         language: Language,
         *,
         trace_id: str | None = None,
+        detail: bool = False,
     ) -> Completion:
         """The paid model asked for by name — the deeper analysis and the card rebuild."""
-        refusal = self.paid_refusal(language)
+        refusal = self.paid_refusal(language, detail=detail)
         if refusal is not None:
             raise BackendError(refusal)
-        request = CallRequest(prompt, language, trace_id=trace_id)
+        request = CallRequest(prompt, language, trace_id=trace_id, detail=detail)
         return Completion(self, request, paid_only=True)
 
     def paid_alias(self, language: Language) -> str:
         return paid_alias(language, self.settings)
 
-    def paid_refusal(self, language: Language) -> str | None:
+    def alias_for(self, language: Language, *, detail: bool = False) -> str:
+        return detail_alias(self.settings) if detail else self.paid_alias(language)
+
+    def paid_refusal(self, language: Language, *, detail: bool = False) -> str | None:
         """Why the paid step cannot happen, or ``None`` when it can."""
-        alias = self.paid_alias(language)
+        alias = self.alias_for(language, detail=detail)
         if not alias:
             return "no paid model is configured"
         if refusal := self._direct_refusals.get(alias):
@@ -551,7 +561,12 @@ class Cascade:
             return f"the daily paid-call cap ({cap}) is spent"
         return None
 
-    async def refresh_paid_availability(self, language: Language) -> str | None:
+    async def refresh_paid_availability(
+        self,
+        language: Language,
+        *,
+        detail: bool = False,
+    ) -> str | None:
         """Refresh local key diagnostics before accepting an explicit paid job."""
         try:
             snapshot = await self.broker.snapshot()
@@ -561,7 +576,7 @@ class Cascade:
             logging.getLogger(__name__).debug("paid availability snapshot failed: %s", exc)
         else:
             self.note_snapshot(snapshot)
-        return self.paid_refusal(language)
+        return self.paid_refusal(language, detail=detail)
 
     def note_snapshot(self, snapshot: object) -> None:
         """Cache direct-key refusals from llmbroker's local snapshot."""
@@ -576,8 +591,8 @@ class Cascade:
                 refusals[str(alias)] = reason
         self._direct_refusals = refusals
 
-    def spend_paid_call(self, language: Language) -> None:
-        refusal = self.paid_refusal(language)
+    def spend_paid_call(self, language: Language, *, detail: bool = False) -> None:
+        refusal = self.paid_refusal(language, detail=detail)
         if refusal is not None:
             raise BackendError(refusal)
         self._paid_calls += 1

@@ -44,13 +44,23 @@ def paid_alias(language: Language, settings: Settings) -> str:
     return language.api_model or settings.api_model
 
 
+def detail_alias(settings: Settings) -> str:
+    """The paid model the deeper article asks for, or empty when the paid step is switched off."""
+    if not settings.api_model:
+        return ""
+    return settings.detail_model
+
+
 def paid_aliases(languages: dict[str, Language], settings: Settings) -> list[str]:
-    """Every paid alias a language can reach; llmbroker takes them at construction."""
+    """Every paid alias the app can reach; llmbroker takes them at construction."""
     aliases: list[str] = []
     for language in languages.values():
         alias = paid_alias(language, settings)
         if alias and alias not in aliases:
             aliases.append(alias)
+    detail = detail_alias(settings)
+    if detail and detail not in aliases:
+        aliases.append(detail)
     return aliases
 
 

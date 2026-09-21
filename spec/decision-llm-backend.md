@@ -655,7 +655,9 @@ manifests, pacing and promotion procedure are recorded in
   morphology, which the language's own prompt hint is the right and
   cheaper place to attack. The paid tier stays one config line away
   for whoever wants it.
-- **The paid direct client still ships.** Preferred model:
+- **The deeper article asks `gpt` with reasoning off, on priority
+  processing** — the section above.
+- **The paid direct client still ships.** Preferred model for the step-up:
   `gpt-5.6-luna` — contract-perfect, near the quality ceiling, three
   times faster than `gpt` — named by the catalog alias `gpt-fast`. `gpt`
   remains the alias for the quality ceiling, with its latency
@@ -875,6 +877,93 @@ paid catalog and none of the ones sold as fast. `spec/plan/model-tier.md` sets o
 the experiment that would settle it. Until it is run and read, the tier stands and
 so does the test.
 
+
+## The deeper article: Sol, with reasoning off, on priority processing — 2026-09-21
+
+Status: **decided.** The deeper article asks `gpt-5.6-sol`, through the curated alias
+`gpt`, with reasoning switched off and priority processing. The model and those request
+parameters are configured together, as one choice for this one job: the parameters are
+the provider's own vocabulary and mean nothing to another one. The card's step-up and
+the card rebuild keep `gpt-fast` at its defaults, because no card-level answer has been
+measured at these settings.
+
+**What the reader had.** In production the deeper article asked `gpt-fast` at its default
+reasoning effort. Over the 11 timed calls of 2026-09-12..17 the first character arrived
+after 8.0–13.8 s, the article ended after 14.5–21.0 s, and 3 of the 11 produced nothing
+at all: the model was still reasoning when the 25-second budget ran out, twice on one
+word the reader asked for twice. The reader called the button unusable.
+
+**The wait was a request setting, not the model.** The production deeper-article prompt,
+12 words — four English, four German, four Serbian, chosen for polysemy, false friends,
+idioms, a rare word and Serbian morphology — one call at a time, 171 calls, none failed:
+
+| configuration | first character, median / p90 | whole article, median / p90 | per article |
+|---|---:|---:|---:|
+| `gpt-fast` at its defaults (what shipped) | 9.9 / 11.4 s | 15.3 / 18.0 s | $0.002 |
+| `gpt-fast`, no reasoning, priority | 0.62 / 1.29 s | 5.7 / 6.4 s | $0.002 |
+| `gpt-mini`, no reasoning, priority | 0.70 / 0.78 s | 8.6 / 9.0 s | $0.023 |
+| `gpt`, no reasoning, standard tier | 1.07 / 1.25 s | 22.7 / 25.5 s | $0.018 |
+| **`gpt`, no reasoning, priority** | **0.81 / 0.96 s** | **7.4 / 9.4 s** | **$0.035** |
+| `gpt`, low reasoning, priority | 5.9 / 11.4 s | 11.9 / 19.7 s | $0.049 |
+| `haiku` | 0.77 / 0.82 s | 8.5 / 10.1 s | $0.004 |
+| `sonnet`, no thinking | 1.17 / 1.46 s | 18.6 / 20.3 s | $0.011 |
+| `opus`, no thinking | 1.73 / 2.00 s | 26.9 / 29.8 s | $0.034 |
+
+Two separate levers, and the strong models need both. Reasoning decides the first
+character: with none, every OpenAI model starts inside about a second, and even `low`
+costs three to six seconds. Priority processing decides throughput: the same Sol article
+takes 22.7 s on the standard tier and 7.4 s on priority. Claude through the
+OpenAI-compatible endpoint starts quickly without thinking but streams at 60–70 tokens a
+second, and Opus at low effort thinks for 17 s before its first character.
+
+**The quality was read blind.** Seven configurations — the shipped call as the
+reference, the three OpenAI models without reasoning on priority, Haiku, and Sonnet and
+Opus without thinking — were read by a fresh reviewer per language, model names replaced
+by letters, every answer in full, each scored 1–5 with every error a learner would
+memorise marked serious:
+
+| configuration | English | German | Serbian | mean | serious errors |
+|---|---:|---:|---:|---:|---:|
+| **`gpt`, no reasoning, priority** | 4.75 | 4.50 | 4.00 | **4.42** | 2 |
+| `opus`, no thinking | 4.75 | 4.75 | 3.75 | 4.42 | 2 |
+| `gpt-mini`, no reasoning, priority | 4.00 | 3.50 | 3.50 | 3.67 | 3 |
+| `gpt-fast`, no reasoning, priority | 3.50 | 3.50 | 3.50 | 3.50 | 2 |
+| `gpt-fast` at its defaults (what shipped) | 3.25 | 2.75 | 4.25 | 3.42 | 2 |
+| `sonnet`, no thinking | 3.50 | 3.50 | 2.00 | 3.00 | 7 |
+| `haiku` | 2.50 | 2.00 | 1.25 | 1.92 | 16 |
+
+Sol without reasoning ties Opus at the top, and of the two it is the one that is fast.
+What separated the top from the shipped call in English and German was concreteness: the
+shipped answers describe near-synonyms by their Russian meaning without ever naming the
+source-language words, and carried a false "through French" origin for *reluctant*, a
+non-idiomatic `Ich bekomme ihn telefonisch nicht zu erreichen` and a concert that is
+`aufgehoben`. Haiku and Sonnet are out on content: Haiku writes Russian and Macedonian
+forms into Serbian and invents etymologies, and Sonnet breaks the formatting contract
+with Markdown and phonetic transcriptions and wrote a Serbian sentence in two alphabets.
+
+What this does not settle, and is recorded rather than accepted: Serbian is the one
+language where the shipped call, which reasons, read best, and both of Sol's serious
+errors are Serbian — the hail sense of `град` tied to the city one as a common root, and
+an invented construction `дати речју`. Four words per language are a hint, not a finding,
+and no per-language setting is built on it.
+
+**Length.** None of the 171 answers exceeded the 4000-character bound; the medians per
+configuration run from 2080 to 2980 characters against the roughly 2000 asked for.
+
+**Cost.** The production host served 17 deeper articles in the 30 days to 2026-09-21.
+At $0.035 an article that is about $0.60 a month, and the $3 a month set as the ceiling
+for paid use is reached at about 85 articles a month, some three a day.
+
+**The card was screened in the same run and stays on the pool.** Over eight card
+fixtures, only `gpt-fast` without reasoning on priority came near the pool: first
+character 0.61 s, whole answer 3.6 s median against the pool's 2.1 s in production since
+2026-09-06, at about $0.90 a month for the 462 answers a month production serves. Every
+parsed payload was usable. Whether its cards are better than the pool's is unmeasured —
+the paid-tier card findings above were taken with reasoning on — and that is the open
+work in `spec/plan/model-tier.md`.
+
+The harness is `experiments/tier_screen.py`, outside CI; it calls real models and spends
+real money.
 
 ## What would re-open this
 

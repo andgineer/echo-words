@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 from llmbroker import AsyncResult, SchemaVersionError
 
 from echo_words.api import create_app
-from echo_words.broker import BackendError, create_broker, llmbroker, paid_aliases
+from echo_words.broker import BackendError, create_broker, detail_alias, llmbroker, paid_aliases
 from echo_words.config import Settings
 
 
@@ -17,23 +17,30 @@ def test_the_installed_llmbroker_carries_the_completed_result_seam():
 
 def test_a_language_without_its_own_model_steps_up_to_the_configured_one(settings, languages):
     named = settings.model_copy(update={"api_model": "gpt-default"})
-    assert paid_aliases(languages, named) == ["gpt-default", "gpt-fast"]
+    assert paid_aliases(languages, named) == ["gpt-default", "gpt-fast", "gpt"]
 
 
 def test_one_alias_is_declared_once(settings: Settings, languages):
-    assert paid_aliases(languages, settings) == ["gpt-fast"]
+    same = settings.model_copy(update={"detail_model": "gpt-fast"})
+    assert paid_aliases(languages, same) == ["gpt-fast"]
+
+
+def test_the_deeper_article_declares_its_own_model(settings: Settings, languages):
+    assert detail_alias(settings) == "gpt"
+    assert paid_aliases(languages, settings) == ["gpt-fast", "gpt"]
 
 
 def test_no_configured_model_switches_the_paid_step_off_app_wide(settings, languages):
     paidless = settings.model_copy(update={"api_model": ""})
     assert languages["sr"].api_model == "gpt-fast"
     assert paid_aliases(languages, paidless) == []
+    assert detail_alias(paidless) == ""
 
 
 def test_the_broker_keeps_its_state_where_the_configuration_says(settings, languages):
     broker = create_broker(settings, languages)
     assert broker.home == settings.llmbroker_home
-    assert broker.direct_aliases == ["gpt-fast"]
+    assert broker.direct_aliases == ["gpt-fast", "gpt"]
 
 
 def test_the_broker_is_built_after_the_languages_and_closed_on_shutdown(

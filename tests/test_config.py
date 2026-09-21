@@ -16,6 +16,8 @@ def test_defaults_match_the_specification():
     assert settings.llmbroker_operation == "vocab"
     assert settings.api_model == "gpt-fast"
     assert settings.api_daily_cap == 100
+    assert settings.detail_model == "gpt"
+    assert settings.detail_params == {"reasoning_effort": "none", "service_tier": "priority"}
     assert settings.anki_sync is True
     assert settings.audio_timeout == 10
 
@@ -41,6 +43,14 @@ def test_the_data_dir_children_can_be_set_apart(tmp_path: Path):
     )
     assert settings.llmbroker_home == tmp_path / "broker"
     assert settings.languages_config == tmp_path / "elsewhere.toml"
+
+
+def test_the_deeper_articles_parameters_are_set_as_one_json_object(monkeypatch):
+    monkeypatch.setenv("ECHOWORDS_DETAIL_MODEL", "gpt-mini")
+    monkeypatch.setenv("ECHOWORDS_DETAIL_PARAMS", '{"reasoning_effort": "low"}')
+    settings = Settings(_env_file=None)
+    assert settings.detail_model == "gpt-mini"
+    assert settings.detail_params == {"reasoning_effort": "low"}
 
 
 def test_the_data_dir_env_var_alone_moves_its_children(monkeypatch, tmp_path: Path):

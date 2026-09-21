@@ -31,7 +31,16 @@ async def test_the_named_alias_is_the_model_asked_for():
     broker = FakeBroker(client=FakeDirectClient())
     await drain(stream_api(broker, "gpt-fast", "prompt"))
     assert broker.direct_calls == ["gpt-fast"]
-    assert broker.client.calls == [{"prompt": "prompt", "timeout": API_TIMEOUT_SECONDS}]
+    assert broker.client.calls == [
+        {"prompt": "prompt", "timeout": API_TIMEOUT_SECONDS, "params": None},
+    ]
+
+
+async def test_the_callers_request_parameters_reach_the_model_untouched():
+    broker = FakeBroker(client=FakeDirectClient())
+    params = {"reasoning_effort": "none", "service_tier": "priority"}
+    await drain(stream_api(broker, "gpt", "prompt", params=params))
+    assert broker.client.calls[0]["params"] == params
 
 
 def test_the_paid_attempt_gets_a_fresh_full_budget_equal_to_the_pool_attempt():

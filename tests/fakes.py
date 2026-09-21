@@ -1,6 +1,6 @@
 """Fakes for the LLM boundary: no pool, no provider, no network."""
 
-from collections.abc import AsyncIterator, Awaitable, Callable, Iterable
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterable, Mapping
 from types import SimpleNamespace
 
 from llmbroker import InvalidProviderResponseError, StreamReplacementError
@@ -120,8 +120,14 @@ class FakeDirectClient:
         self.closed = False
         self.calls: list[dict] = []
 
-    async def stream(self, prompt: str, *, timeout: float | None = None) -> AsyncIterator[str]:
-        self.calls.append({"prompt": prompt, "timeout": timeout})
+    async def stream(
+        self,
+        prompt: str,
+        *,
+        timeout: float | None = None,
+        params: Mapping[str, object] | None = None,
+    ) -> AsyncIterator[str]:
+        self.calls.append({"prompt": prompt, "timeout": timeout, "params": params})
         produced = False
         for delta in self.deltas:
             produced = True

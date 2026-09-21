@@ -382,7 +382,7 @@ class WordPipeline:
             return {"entry_id": entry_id, "detail_html": entry.detail_html, "cached": True}
         if entry_id in self._details_pending:
             return {"entry_id": entry_id, "queued": True}
-        refusal = await self._paid_refusal_fresh(state.language)
+        refusal = await self._paid_refusal_fresh(state.language, detail=True)
         if refusal is not None:
             raise BackendError(refusal)
         self._details_pending.add(entry_id)
@@ -798,6 +798,7 @@ class WordPipeline:
                 prompt,
                 job.language,
                 trace_id=f"{job.entry_id}-detail",
+                detail=True,
             )
             async with aclosing(completion):
                 async for delta in completion:
@@ -1155,12 +1156,17 @@ class WordPipeline:
         refusal = getattr(self.cascade, "paid_refusal", None)
         return refusal(language) if refusal is not None else None
 
-    async def _paid_refusal_fresh(self, language: Language) -> str | None:
+    async def _paid_refusal_fresh(
+        self,
+        language: Language,
+        *,
+        detail: bool = False,
+    ) -> str | None:
         if self.cascade is None:
             return "no paid model is configured"
         refresh = getattr(self.cascade, "refresh_paid_availability", None)
         if refresh is not None:
-            return await refresh(language)
+            return await refresh(language, detail=detail)
         return self._paid_refusal(language)
 
     @staticmethod

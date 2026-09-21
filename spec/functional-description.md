@@ -645,7 +645,8 @@ Kept minimal — everything beyond typing a word:
   to be last, and it is offered only where a note actually exists to delete. An entry whose note
   has already gone is told so rather than answered with silence.
 - **Deeper analysis** — on a finished word answer, a control that asks the
-  same word again from the paid model with a fuller brief: every sense
+  same word again from a paid model of its own, chosen for this job rather than
+  for the card's step-up, with a fuller brief: every sense
   the word has rather than the card-worthy few, a real etymology, more
   usage and register detail, more examples. **It never touches the
   card** — the note already added stands exactly as it was, and the
@@ -657,9 +658,10 @@ Kept minimal — everything beyond typing a word:
   configured or the daily cap is spent, the control says so instead of
   quietly answering from the pool: the user asked for the better model.
   It does not apply to running text, which has no single word to go
-  deeper on. The call takes about ten seconds, so pressing it changes the
-  card at once: a progress strip, a line saying roughly how long it takes,
-  and a live dot on that word's chip in the rail.
+  deeper on. The article starts appearing within about a second and is
+  complete in under ten; pressing it changes the card at once: a progress
+  strip, a line saying roughly how long it takes, and a live dot on that
+  word's chip in the rail.
 - **Rebuild the card** — rewriting an existing note with the paid model. The
   pipeline path and its endpoint stand, but **no control offers it**: the
   reader never sees the note, and the plain translation a card needs is what

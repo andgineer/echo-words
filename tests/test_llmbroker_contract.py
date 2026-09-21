@@ -26,7 +26,13 @@ from llmbroker import AsyncBroker, CuratedModel, LLMConfig
 from echo_words.api import create_app
 from echo_words.api_backend import stream_api
 from echo_words.backend import Cascade
-from echo_words.broker import BackendError, BudgetMissError, create_broker, paid_aliases
+from echo_words.broker import (
+    BackendError,
+    BudgetMissError,
+    create_broker,
+    paid_alias,
+    paid_aliases,
+)
 from echo_words.config import Settings
 from echo_words.languages import Language
 from echo_words.llm_backend import ask_pool, open_pool_stream
@@ -105,6 +111,7 @@ class Wire:
     def __init__(self) -> None:
         self.replies: dict[str, Reply] = {}
         self.sent: list[Sent] = []
+        self.bodies: list[dict] = []
         self.fetched: list[str] = []
         self.clients: list[httpx.AsyncClient] = []
 
@@ -117,6 +124,7 @@ class Wire:
     async def handle(self, request: httpx.Request) -> httpx.Response:
         assert request.url.path.endswith("/chat/completions"), request.url
         body = json.loads(request.content)
+        self.bodies.append(body)
         stream = bool(body.get("stream"))
         self.sent.append(
             Sent(request.url.host, body["model"], stream, request.headers["authorization"]),
@@ -161,7 +169,7 @@ def curated(settings: Settings, languages: dict[str, Language], tmp_path: Path) 
     home = tmp_path / "curated"
     pool = llmbroker.curated_pool(home=home).configs
     per_ref = Counter(entry.api_key_ref for entry in pool)
-    (alias,) = paid_aliases(languages, settings)
+    alias = paid_alias(languages["sr"], settings)
     paid = next(row for row in llmbroker.curated_paid(home=home) if row.alias == alias)
     providers = llmbroker.curated_providers(home=home)
     return Curated(
@@ -408,6 +416,24 @@ async def test_the_paid_alias_streams_from_its_catalog_model_on_its_own_key(
     ]
 
 
+async def test_the_deeper_articles_request_parameters_reach_the_provider(
+    settings: Settings,
+    languages: dict[str, Language],
+    curated: Curated,
+    wire: Wire,
+    pay: Callable[..., None],
+):
+    paid = curated.paid
+    pay(paid.provider.api_key_ref)
+    params = {"reasoning_effort": "none", "service_tier": "priority"}
+    async with running(settings, languages) as broker:
+        await drain(stream_api(broker, curated.alias, "prompt", params=params))
+
+    (body,) = [body for body in wire.bodies if body["model"] == paid.model]
+    assert body["reasoning_effort"] == "none"
+    assert body["service_tier"] == "priority"
+
+
 async def test_a_paid_alias_without_its_key_is_unreachable_and_named_missing_afterwards(
     settings: Settings,
     languages: dict[str, Language],
@@ -432,7 +458,13 @@ async def test_a_paid_alias_without_its_key_is_unreachable_and_named_missing_aft
     assert wire.sent == []
     assert [
         (key.api_key_ref, key.help, list(key.entry_names)) for key in snapshot.direct_missing_keys
-    ] == [(curated.paid.provider.api_key_ref, curated.paid.provider.key_help, [curated.alias])]
+    ] == [
+        (
+            curated.paid.provider.api_key_ref,
+            curated.paid.provider.key_help,
+            paid_aliases(languages, settings),
+        ),
+    ]
 
 
 @pytest.mark.parametrize(
@@ -646,6 +678,7 @@ async def test_a_stream_overtaken_by_a_whole_answer_gives_the_page_that_answer_a
 
 def test_the_app_runs_on_the_real_broker_reports_it_and_closes_it_on_shutdown(
     settings: Settings,
+    languages: dict[str, Language],
     curated: Curated,
     wire: Wire,
     pay: Callable[..., None],
@@ -679,7 +712,7 @@ def test_the_app_runs_on_the_real_broker_reports_it_and_closes_it_on_shutdown(
         {
             "api_key_ref": paid.provider.api_key_ref,
             "help": paid.provider.key_help,
-            "entry_names": [curated.alias],
+            "entry_names": paid_aliases(languages, settings),
         },
     ]
     serbian = body["languages"]["sr"]

@@ -91,6 +91,8 @@ documents them one by one; these are the ones you are likely to change.
 | `ECHOWORDS_LLMBROKER_HOME` | where llmbroker keeps its curated model list and call journal | `<data dir>/llmbroker` |
 | `ECHOWORDS_API_MODEL` | paid-catalog alias the cascade steps up to; empty disables paid calls entirely | `gpt-fast` |
 | `ECHOWORDS_API_DAILY_CAP` | paid calls per day, `0` for unlimited | `100` |
+| `ECHOWORDS_DETAIL_MODEL` | paid-catalog alias the deeper article asks; empty disables it | `gpt` |
+| `ECHOWORDS_DETAIL_PARAMS` | request parameters sent with the deeper article, as one JSON object in the provider's own vocabulary | `{"reasoning_effort": "none", "service_tier": "priority"}` |
 | `ECHOWORDS_ANKI_SYNC` | sync the collection to AnkiWeb after additions | `true` |
 | `ECHOWORDS_ANKIWEB_USER` / `_PASSWORD` | AnkiWeb credentials | required when sync is on |
 | `ECHOWORDS_SYNC_ENDPOINT` | self-hosted Anki sync server instead of AnkiWeb | empty |
@@ -114,8 +116,15 @@ The free pool needs at least one of `GROQ_API_KEY`, `OPENROUTER_API_KEY`,
 failover set. `python -m llmbroker env freetier` prints the authoritative list
 for the installed llmbroker release, with signup links.
 
-The default paid fallback, `ECHOWORDS_API_MODEL=gpt-fast`, additionally needs
-`OPENAI_API_KEY`. Set `ECHOWORDS_API_MODEL=` to run on the unmetered pool only.
+The default paid fallback, `ECHOWORDS_API_MODEL=gpt-fast`, and the default deeper
+article, `ECHOWORDS_DETAIL_MODEL=gpt`, additionally need `OPENAI_API_KEY`. Set
+`ECHOWORDS_API_MODEL=` to run on the unmetered pool only.
+
+The deeper article's model and its parameters are one choice. The defaults ask
+OpenAI for no reasoning and priority processing, which is what makes the article
+start within a second; pointing `ECHOWORDS_DETAIL_MODEL` at another provider means
+writing that provider's parameters into `ECHOWORDS_DETAIL_PARAMS`, or `{}` for
+its defaults.
 
 The **Status** screen shows which keys are missing, how many providers are
 usable, and how many paid calls the day has cost.
