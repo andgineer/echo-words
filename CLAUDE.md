@@ -26,13 +26,7 @@ tool looks for.
 - `spec/plan/` — work that is started and not finished, one file each.
   **Read these first when picking work up**: each says where its work
   stands, what is already built, what its experiments established and
-  what is left. Two are open.
-  `model-tier.md` — a paid tier for the card. The deeper article is
-  settled and built (Sol, reasoning off, priority processing — see
-  `decision-llm-backend.md`); for the card one configuration survived the
-  latency screen, `gpt-fast` without reasoning on priority (3.6 s whole
-  answer against the pool's 2.1 s, under a dollar a month), and what is
-  left is its quality tier through the bench and the fresh reading.
+  what is left. One is open.
   `observed-defects.md` — eighteen faults left unfixed, each with its
   evidence, from three readings: six met while using the app, from a
   rebuilt bundle that can leave the reader on a white screen to a word the

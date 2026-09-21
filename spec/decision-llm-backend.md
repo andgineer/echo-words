@@ -867,15 +867,14 @@ The cost of the test is its escalation rate, 1.9% of answers, and that is accept
 against roughly one submission in thirty carrying a target-language card front
 without it.
 
-**Where the real repair lives is the tier, and that is open.** The paid arm writes
-none of these sentences, and the same pairing — 179 fixtures answered by both tiers
-under an identical prompt — shows what money does and does not buy: formatting
-98.3% against 93.3%, target-language sentences 0% against 1.15%, and payload repair
-unchanged at 13.4% on both, with coinage judgement measurably worse when paid. The
-tier survey behind this document covered three of the nine aliases in the curated
-paid catalog and none of the ones sold as fast. `spec/plan/model-tier.md` sets out
-the experiment that would settle it. Until it is run and read, the tier stands and
-so does the test.
+**Where the real repair would live is the tier, and the card stays on the pool.** The
+paid arm writes none of these sentences, and the same pairing — 179 fixtures answered
+by both tiers under an identical prompt — shows what money does and does not buy:
+formatting 98.3% against 93.3%, target-language sentences 0% against 1.15%, and payload
+repair unchanged at 13.4% on both, with coinage judgement measurably worse when paid.
+That paid arm was `gpt-fast` reasoning at its default effort, which is also why it took
+ten seconds. The fast configurations were screened since, in the deeper-article section
+below, and the card stays on the pool; so the test stays too.
 
 
 ## The deeper article: Sol, with reasoning off, on priority processing — 2026-09-21
@@ -968,13 +967,51 @@ paid use is reached at about 84 articles a month, some three a day. Priority dou
 OpenAI's rate; on the standard tier the same article would cost half and take three times
 as long.
 
-**The card was screened in the same run and stays on the pool.** Over eight card
-fixtures, only `gpt-fast` without reasoning on priority came near the pool: first
-character 0.61 s, whole answer 3.6 s median against the pool's 2.1 s in production since
-2026-09-06, at about $0.90 a month for the 462 answers a month production serves. Every
-parsed payload was usable. Whether its cards are better than the pool's is unmeasured —
-the paid-tier card findings above were taken with reasoning on — and that is the open
-work in `spec/plan/model-tier.md`.
+**One setting for every language.** The measured best was checked language by language,
+as a paired difference against Sol without reasoning over the same eight words with a
+95% bootstrap interval, because Serbian reads weakest for every fast configuration:
+
+| language | configuration | quality | against Sol, none, priority | first character |
+|---|---|---:|---:|---:|
+| English | Sol, none, priority | 4.38 | — | 0.78 s |
+| English | Opus, no thinking | 4.38 | +0.00 [−0.50, +0.50] | 1.76 s |
+| English | `gpt-mini`, none, priority | 4.25 | −0.12 [−0.62, +0.38] | 0.68 s |
+| German | Opus, low effort | 4.62 | +0.38 [+0.12, +0.75] | 17.6 s |
+| German | Sol, none, priority | 4.25 | — | 0.78 s |
+| German | `gpt-fast`, low, priority | 3.25 | −1.00 [−1.50, −0.50] | 2.69 s |
+| Serbian | Opus, low effort | 4.25 | +0.75 [+0.12, +1.25] | 17.6 s |
+| Serbian | `gpt-fast`, low, priority | 3.62 | +0.12 [−0.62, +1.00] | 2.69 s |
+| Serbian | Sol, none, priority | 3.50 | — | 0.78 s |
+
+No fast configuration is distinguishable from Sol without reasoning in any language, and
+the one that looks marginally better on Serbian is clearly worse on German. The only
+configuration reliably better anywhere is Opus at low effort, on German and Serbian, and
+it starts at 17.6 s with a 29.6 s p90 — past the 25-second budget for one Serbian click in
+ten, which is the failure this decision set out to remove. So the deeper article carries
+one app-wide setting, and a language without measurements takes the configuration that
+won or tied in all three measured languages, two Germanic and one Cyrillic Slavic. A
+per-language setting earns its place when a configuration is both fast and clearly better
+for one language; none is today.
+
+**The card was screened in the same run and stays on the pool, by the operator's
+decision.** Over eight card fixtures, only `gpt-fast` without reasoning on priority came
+near the pool, and it was the only configuration to clear the bar fixed before the run
+(median whole answer ≤ 4 s, median first character ≤ 1.5 s):
+
+| configuration | first character | whole answer, median / p90 | usable payloads | a month at 462 answers |
+|---|---:|---:|---:|---:|
+| pool, production since 2026-09-06 | ~0.8 s | 2.1 / 2.6 s | — | free |
+| `gpt-fast`, none, standard | 0.63 s | 4.3 / 6.1 s | 8/8 | $0.45 |
+| `gpt-fast`, none, priority | 0.61 s | 3.6 / 4.5 s | 8/8 | $0.87 |
+| `gpt-fast`, low, priority | 3.00 s | 6.1 / 8.2 s | 8/8 | $1.26 |
+| `gpt-mini`, none, priority | 0.70 s | 5.0 / 7.0 s | 8/8 | $9.37 |
+| `haiku` | 0.66 s | 7.2 / 9.2 s | 7/8 | $2.42 |
+| `sonnet`, no thinking | 1.15 s | 11.5 / 13.8 s | 8/8 | $5.40 |
+
+Whether the survivor's cards are better than the pool's is unmeasured: every paid-tier
+card finding in this document was taken with reasoning on, and the deeper article shows
+that switching reasoning off changes what a model writes. The pool is fast and free, so
+that measurement is not being bought.
 
 The harness is `experiments/tier_screen.py`, outside CI; it calls real models and spends
 real money.
@@ -993,6 +1030,18 @@ real money.
   lever measured to reach the class neither tier reaches, and until one
   exists the choice between the tiers is a choice between kinds of
   defect rather than between fit and unfit for use.
+- For the card: a quality tier through `experiments/one_note_bench.py`
+  showing `gpt-fast` without reasoning on priority matching reasoning
+  `gpt-fast` on the defect classes above. It would become the card's
+  model where a language asks for it, the pool kept as the fallback and
+  the default, since no metered API may be required to run the app. The
+  judgement would stay on the pool whatever wins.
+- For the deeper article: the extended prompt's "entire answer in
+  Russian" sentence changed so a near-synonym may be named in the source
+  language, and measured. Reasoning configurations made the fewest false
+  statements in Serbian and lost only on that; with the conflict gone,
+  Sol at low effort, about six seconds to the first character, is the
+  candidate for a Serbian setting of its own.
 
 The harness is `experiments/backend_bench.py`; it is outside CI, calls
 real models, and its paid phase spends real money.
