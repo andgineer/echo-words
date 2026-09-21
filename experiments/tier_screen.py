@@ -83,13 +83,18 @@ ARMS = [
     Arm("luna-none", OPENAI, "gpt-5.6-luna", _effort("none")),
     Arm("luna-none-prio", OPENAI, "gpt-5.6-luna", _effort("none", priority=True)),
     Arm("luna-low-prio", OPENAI, "gpt-5.6-luna", _effort("low", priority=True)),
+    Arm("luna-medium-prio", OPENAI, "gpt-5.6-luna", _effort("medium", priority=True)),
     Arm("terra-none", OPENAI, "gpt-5.6-terra", _effort("none")),
     Arm("terra-none-prio", OPENAI, "gpt-5.6-terra", _effort("none", priority=True)),
     Arm("terra-low-prio", OPENAI, "gpt-5.6-terra", _effort("low", priority=True)),
+    Arm("terra-medium-prio", OPENAI, "gpt-5.6-terra", _effort("medium", priority=True)),
     Arm("sol-none", OPENAI, "gpt-5.6-sol", _effort("none")),
     Arm("sol-none-prio", OPENAI, "gpt-5.6-sol", _effort("none", priority=True)),
     Arm("sol-low-prio", OPENAI, "gpt-5.6-sol", _effort("low", priority=True)),
+    Arm("sol-medium-prio", OPENAI, "gpt-5.6-sol", _effort("medium", priority=True)),
     Arm("haiku", ANTHROPIC, "claude-haiku-4-5"),
+    # Haiku 4.5 takes a fixed thinking budget, 1024 tokens being its floor.
+    Arm("haiku-think", ANTHROPIC, "claude-haiku-4-5", {"thinking": {"type": "enabled", "budget_tokens": 1024}}),
     Arm("sonnet-default", ANTHROPIC, "claude-sonnet-5"),
     Arm("sonnet-nothink", ANTHROPIC, "claude-sonnet-5", {"thinking": {"type": "disabled"}}),
     Arm("opus-low", ANTHROPIC, "claude-opus-5", {"reasoning_effort": "low"}),
@@ -123,6 +128,18 @@ DETAIL_FIXTURES = [
     Fixture("sr-drzati-rec", "sr", "држати реч"),
     Fixture("sr-ipak", "sr", "ипак"),
     Fixture("sr-klupa", "sr", "клупа"),
+    Fixture("en-eventually", "en", "eventually"),
+    Fixture("en-bear", "en", "bear"),
+    Fixture("en-put-up-with", "en", "put up with"),
+    Fixture("en-gregarious", "en", "gregarious"),
+    Fixture("de-gift", "de", "Gift"),
+    Fixture("de-verlassen", "de", "sich verlassen auf"),
+    Fixture("de-doch", "de", "doch"),
+    Fixture("de-kater", "de", "Kater"),
+    Fixture("sr-pozoriste", "sr", "позориште"),
+    Fixture("sr-trebati", "sr", "требати"),
+    Fixture("sr-uzivati", "sr", "уживати"),
+    Fixture("sr-svejedno", "sr", "свеједно"),
 ]
 
 # Card fixtures: bare units, a selected unit in context, and running text.
@@ -196,21 +213,24 @@ async def call(http: httpx.AsyncClient, arm: Arm, prompt: str, timeout: float) -
     }
 
 
-def results_path(out: Path, job: str) -> Path:
-    return out / f"{job}.jsonl"
+def results_path(out: Path, job: str, tag: str = "") -> Path:
+    return out / (f"{job}-{tag}.jsonl" if tag else f"{job}.jsonl")
 
 
 def load_results(out: Path, job: str) -> list[dict]:
-    path = results_path(out, job)
-    if not path.exists():
-        return []
-    return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+    """Every record of the job, across the files parallel runs wrote under their tags."""
+    records: list[dict] = []
+    for path in sorted(out.glob(f"{job}*.jsonl")):
+        records += [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+    return records
 
 
 async def run(args: argparse.Namespace) -> None:
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     fixtures = DETAIL_FIXTURES if args.job == "detail" else CARD_FIXTURES
+    if args.fixture:
+        fixtures = [fixture for fixture in fixtures if fixture.id in args.fixture]
     labels = args.arm or ([arm.label for arm in ARMS] if args.job == "detail" else CARD_ARMS)
     done = {(r["arm"], r["fixture"]) for r in load_results(out, args.job) if "error" not in r}
     async with httpx.AsyncClient() as http:
@@ -223,7 +243,7 @@ async def run(args: argparse.Namespace) -> None:
                 arm = ARMS_BY_LABEL[label]
                 record = await call(http, arm, prompt_for(args.job, fixture), args.timeout)
                 record = {"arm": label, "model": arm.model, "fixture": fixture.id, **record}
-                with results_path(out, args.job).open("a") as fh:
+                with results_path(out, args.job, args.tag).open("a") as fh:
                     fh.write(json.dumps(record, ensure_ascii=False) + "\n")
                 status = record.get("error") or f"{len(record['text'])} chars"
                 print(
@@ -318,6 +338,8 @@ def main() -> None:
     parser.add_argument("phase", choices=["run", "report"])
     parser.add_argument("--job", choices=["detail", "card"], default="detail")
     parser.add_argument("--arm", nargs="+", default=[], choices=list(ARMS_BY_LABEL))
+    parser.add_argument("--fixture", nargs="+", default=[], help="fixture ids; default all")
+    parser.add_argument("--tag", default="", help="write to <job>-<tag>.jsonl, for parallel runs")
     parser.add_argument("--timeout", type=float, default=90.0)
     parser.add_argument("--pace", type=float, default=1.0)
     parser.add_argument("--out", default=str(Path(__file__).parent / ".bench-tier"))

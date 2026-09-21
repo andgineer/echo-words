@@ -893,66 +893,80 @@ after 8.0–13.8 s, the article ended after 14.5–21.0 s, and 3 of the 11 produ
 at all: the model was still reasoning when the 25-second budget ran out, twice on one
 word the reader asked for twice. The reader called the button unusable.
 
-**The wait was a request setting, not the model.** The production deeper-article prompt,
-12 words — four English, four German, four Serbian, chosen for polysemy, false friends,
-idioms, a rare word and Serbian morphology — one call at a time, 171 calls, none failed:
+**What was measured.** The production deeper-article prompt over 24 words — eight each
+of English, German and Serbian, chosen for polysemy, false friends (`eventually`, `Gift`,
+`позориште`, `уживати`), phrasal and reflexive units, particles (`doch`, `ипак`), a rare
+word, government (`требати`) and Serbian morphology — through 16 configurations: every
+OpenAI model at each reasoning effort from none to medium on priority processing, the
+shipped call, Haiku with and without a thinking budget, and Sonnet and Opus with and
+without thinking. 384 answers, none failed. Every answer was then read blind by a fresh
+reviewer — six reviewers, one per four words of one language, each scoring all sixteen
+answers to a word side by side under labels drawn afresh for every word, against fixed
+anchors (5 nothing false and genuinely useful; 2 a serious error in the core; 1 several),
+every error a learner would memorise quoted and checked:
 
-| configuration | first character, median / p90 | whole article, median / p90 | per article |
-|---|---:|---:|---:|
-| `gpt-fast` at its defaults (what shipped) | 9.9 / 11.4 s | 15.3 / 18.0 s | $0.002 |
-| `gpt-fast`, no reasoning, priority | 0.62 / 1.29 s | 5.7 / 6.4 s | $0.002 |
-| `gpt-mini`, no reasoning, priority | 0.70 / 0.78 s | 8.6 / 9.0 s | $0.023 |
-| `gpt`, no reasoning, standard tier | 1.07 / 1.25 s | 22.7 / 25.5 s | $0.018 |
-| **`gpt`, no reasoning, priority** | **0.81 / 0.96 s** | **7.4 / 9.4 s** | **$0.035** |
-| `gpt`, low reasoning, priority | 5.9 / 11.4 s | 11.9 / 19.7 s | $0.049 |
-| `haiku` | 0.77 / 0.82 s | 8.5 / 10.1 s | $0.004 |
-| `sonnet`, no thinking | 1.17 / 1.46 s | 18.6 / 20.3 s | $0.011 |
-| `opus`, no thinking | 1.73 / 2.00 s | 26.9 / 29.8 s | $0.034 |
+| configuration | quality /5 | en | de | sr | serious errors / 24 | first character, median / p90 | whole article, median / p90 | per article |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| `opus`, low effort | 4.38 | 4.25 | 4.62 | 4.25 | 3 | 17.6 / 29.6 s | 40.5 / 54.7 s | $0.058 |
+| `opus`, no thinking | 4.08 | 4.38 | 4.38 | 3.50 | 6 | 1.76 / 2.11 s | 27.2 / 31.9 s | $0.035 |
+| **`gpt`, no reasoning, priority** | **4.04** | 4.38 | 4.25 | 3.50 | **5** | **0.78 / 1.10 s** | **7.3 / 9.4 s** | $0.036 |
+| `gpt-fast`, low, priority | 3.67 | 4.12 | 3.25 | 3.62 | 8 | 2.69 / 3.83 s | 7.2 / 8.6 s | $0.003 |
+| `gpt-mini`, no reasoning, priority | 3.62 | 4.25 | 3.38 | 3.25 | 13 | 0.68 / 0.77 s | 8.4 / 9.6 s | $0.023 |
+| `gpt-fast`, medium, priority | 3.50 | 3.75 | 3.50 | 3.25 | 5 | 6.23 / 10.4 s | 10.0 / 14.3 s | $0.004 |
+| `gpt-mini`, low, priority | 3.38 | 3.62 | 3.25 | 3.25 | 1 | 4.98 / 6.80 s | 11.7 / 13.9 s | $0.028 |
+| `sonnet`, default | 3.38 | 3.88 | 3.75 | 2.50 | 17 | 8.10 / 14.2 s | 23.0 / 30.0 s | $0.016 |
+| `gpt-fast`, no reasoning, priority | 3.33 | 3.75 | 3.50 | 2.75 | 13 | 0.60 / 0.90 s | 5.4 / 6.0 s | $0.002 |
+| `gpt-mini`, medium, priority | 3.29 | 3.38 | 3.00 | 3.50 | 3 | 6.13 / 15.3 s | 13.0 / 20.5 s | $0.033 |
+| `gpt`, medium, priority | 3.21 | 3.12 | 3.38 | 3.12 | 0 | 13.9 / 23.0 s | 20.1 / 29.5 s | $0.085 |
+| `sonnet`, no thinking | 3.12 | 3.88 | 3.38 | 2.12 | 18 | 1.17 / 1.46 s | 18.4 / 20.3 s | $0.012 |
+| `gpt`, low, priority | 3.08 | 3.00 | 3.12 | 3.12 | 2 | 6.23 / 11.6 s | 12.4 / 19.7 s | $0.051 |
+| `gpt-fast` at its defaults (what shipped) | 3.08 | 3.00 | 2.88 | 3.38 | 7 | 8.44 / 12.1 s | 14.9 / 18.5 s | $0.002 |
+| `haiku` | 2.04 | 2.62 | 2.00 | 1.50 | 53 | 0.68 / 0.93 s | 8.8 / 10.8 s | $0.005 |
+| `haiku`, thinking budget 1024 | 2.00 | 2.62 | 2.12 | 1.25 | 47 | 2.74 / 3.81 s | 9.6 / 11.2 s | $0.005 |
 
-Two separate levers, and the strong models need both. Reasoning decides the first
-character: with none, every OpenAI model starts inside about a second, and even `low`
-costs three to six seconds. Priority processing decides throughput: the same Sol article
-takes 22.7 s on the standard tier and 7.4 s on priority. Claude through the
-OpenAI-compatible endpoint starts quickly without thinking but streams at 60–70 tokens a
-second, and Opus at low effort thinks for 17 s before its first character.
+**Why Sol without reasoning.** Of the configurations that put text in front of the reader
+within about a second, it reads best by a wide margin — 4.04 against 3.62 for `gpt-mini`
+and 3.33 for `gpt-fast` — and makes the fewest serious errors, 5 in 24 against 13 for
+each of those two. The only configurations that read better are Opus's: without thinking
+it matches Sol in quality but takes 27 s to finish, and with low effort it is the best
+answer measured and takes 17.6 s to start. Haiku is out on content whatever its speed:
+53 serious errors in 24 answers, Russian and Macedonian forms written into Serbian,
+invented senses and origins, and on `Gift` the word taught backwards.
 
-**The quality was read blind.** Seven configurations — the shipped call as the
-reference, the three OpenAI models without reasoning on priority, Haiku, and Sonnet and
-Opus without thinking — were read by a fresh reviewer per language, model names replaced
-by letters, every answer in full, each scored 1–5 with every error a learner would
-memorise marked serious:
+**Why no reasoning.** Two separate levers set the wait, and reasoning is the one that
+cannot be bought back. Reasoning decides the first character: at the lowest effort
+OpenAI offers, `low`, Sol starts at 6.2 s and `gpt-mini` at 5.0 s; only `gpt-fast` stays
+near 2.7 s, and it buys 3.67 for it — below Sol without reasoning. Priority processing
+decides throughput: the same Sol article takes 22.7 s on the standard tier and 7.3 s on
+priority, `gpt-mini` 16.3 s and 8.4 s.
 
-| configuration | English | German | Serbian | mean | serious errors |
-|---|---:|---:|---:|---:|---:|
-| **`gpt`, no reasoning, priority** | 4.75 | 4.50 | 4.00 | **4.42** | 2 |
-| `opus`, no thinking | 4.75 | 4.75 | 3.75 | 4.42 | 2 |
-| `gpt-mini`, no reasoning, priority | 4.00 | 3.50 | 3.50 | 3.67 | 3 |
-| `gpt-fast`, no reasoning, priority | 3.50 | 3.50 | 3.50 | 3.50 | 2 |
-| `gpt-fast` at its defaults (what shipped) | 3.25 | 2.75 | 4.25 | 3.42 | 2 |
-| `sonnet`, no thinking | 3.50 | 3.50 | 2.00 | 3.00 | 7 |
-| `haiku` | 2.50 | 2.00 | 1.25 | 1.92 | 16 |
+Reasoning does buy fewer false statements — Sol at medium made none in 24, at low two,
+`gpt-mini` at low one — and it scores lower anyway, for a reason that is the prompt's and
+not the models': the reasoning configurations obey "write your entire answer in Russian,
+only the headword and examples stay in the source language" to the letter and will not
+name a near-synonym, a collocation or a principal part in the source language. The
+reviewers flagged that on 29 of Sol-at-medium's answers, 24 of Sol-at-low's and 27 of the
+shipped call's, against one of Sol-without-reasoning's. The instruction to contrast
+near-synonyms and the instruction to write nothing but Russian conflict, and a model that
+thinks resolves the conflict against the learner. Under the chosen configuration the
+conflict barely shows; a reasoning configuration for this job would need that sentence
+changed first, and measured.
 
-Sol without reasoning ties Opus at the top, and of the two it is the one that is fast.
-What separated the top from the shipped call in English and German was concreteness: the
-shipped answers describe near-synonyms by their Russian meaning without ever naming the
-source-language words, and carried a false "through French" origin for *reluctant*, a
-non-idiomatic `Ich bekomme ihn telefonisch nicht zu erreichen` and a concert that is
-`aufgehoben`. Haiku and Sonnet are out on content: Haiku writes Russian and Macedonian
-forms into Serbian and invents etymologies, and Sonnet breaks the formatting contract
-with Markdown and phonetic transcriptions and wrote a Serbian sentence in two alphabets.
+**What Sol without reasoning still gets wrong**, recorded rather than accepted: Serbian is
+its weakest language (3.50), and four of its five serious errors are Serbian — the
+government of `требати` inverted twice (the needed thing is the subject, and `Требају ми
+књиге` is the norm), an invented construction `дати речју`, and the hail sense of `град`
+given the city's root. The fifth is an English example that means *give away*.
 
-What this does not settle, and is recorded rather than accepted: Serbian is the one
-language where the shipped call, which reasons, read best, and both of Sol's serious
-errors are Serbian — the hail sense of `град` tied to the city one as a common root, and
-an invented construction `дати речју`. Four words per language are a hint, not a finding,
-and no per-language setting is built on it.
+**Length.** None of the 384 answers exceeded the 4000-character bound, the longest being
+3719; the configurations' medians run from 1915 to 2960 characters against the roughly
+2000 asked for.
 
-**Length.** None of the 171 answers exceeded the 4000-character bound; the medians per
-configuration run from 2080 to 2980 characters against the roughly 2000 asked for.
-
-**Cost.** The production host served 17 deeper articles in the 30 days to 2026-09-21.
-At $0.035 an article that is about $0.60 a month, and the $3 a month set as the ceiling
-for paid use is reached at about 85 articles a month, some three a day.
+**Cost.** The production host served 17 deeper articles in the 30 days to 2026-09-21. At
+$0.036 an article that is about $0.60 a month, and the $3 a month set as the ceiling for
+paid use is reached at about 84 articles a month, some three a day. Priority doubles
+OpenAI's rate; on the standard tier the same article would cost half and take three times
+as long.
 
 **The card was screened in the same run and stays on the pool.** Over eight card
 fixtures, only `gpt-fast` without reasoning on priority came near the pool: first
