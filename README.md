@@ -9,10 +9,10 @@
 | src/echo\_words/api.py               |      345 |       21 |     94% |85, 130, 158, 168, 206, 385-387, 396-397, 407-408, 425-428, 494, 498-499, 517-518 |
 | src/echo\_words/api\_backend.py      |       17 |        0 |    100% |           |
 | src/echo\_words/audio.py             |      292 |       24 |     92% |95-97, 136, 140, 147-150, 160-161, 198-200, 221, 253-254, 456, 501-505, 511 |
-| src/echo\_words/backend.py           |      304 |        4 |     99% |404, 558-561, 582 |
-| src/echo\_words/broker.py            |       28 |        0 |    100% |           |
+| src/echo\_words/backend.py           |      309 |        4 |     99% |407, 573-576, 597 |
+| src/echo\_words/broker.py            |       35 |        0 |    100% |           |
 | src/echo\_words/card.py              |      269 |       17 |     94% |132-133, 190-191, 249-259, 264, 273, 278, 324, 330, 336, 346, 462, 577 |
-| src/echo\_words/config.py            |       42 |        0 |    100% |           |
+| src/echo\_words/config.py            |       44 |        0 |    100% |           |
 | src/echo\_words/events.py            |       34 |        0 |    100% |           |
 | src/echo\_words/history.py           |      109 |        0 |    100% |           |
 | src/echo\_words/i18n.py              |       23 |        0 |    100% |           |
@@ -22,12 +22,12 @@
 | src/echo\_words/llm\_backend.py      |       63 |        0 |    100% |           |
 | src/echo\_words/logs.py              |       14 |        0 |    100% |           |
 | src/echo\_words/main.py              |       44 |        0 |    100% |           |
-| src/echo\_words/pipeline.py          |      702 |       38 |     95% |109, 214, 355, 384, 443, 495, 505-506, 562, 598-599, 762, 780, 787-788, 830, 890-893, 1090, 1098, 1107, 1132, 1135, 1153-1156, 1160, 1164, 1250, 1344, 1356, 1397-1400 |
+| src/echo\_words/pipeline.py          |      702 |       38 |     95% |109, 214, 355, 384, 443, 495, 505-506, 562, 598-599, 762, 780, 787-788, 831, 891-894, 1091, 1099, 1108, 1133, 1136, 1154-1157, 1166, 1170, 1256, 1350, 1362, 1403-1406 |
 | src/echo\_words/prompt.py            |       73 |        2 |     97% |   323-324 |
 | src/echo\_words/sanitizer.py         |       25 |        1 |     96% |        37 |
 | src/echo\_words/segments.py          |      107 |        9 |     92% |44, 76, 106, 108, 112, 117, 135, 139, 207 |
 | src/echo\_words/voices.py            |        9 |        0 |    100% |           |
-| **TOTAL**                            | **3546** |  **158** | **96%** |           |
+| **TOTAL**                            | **3560** |  **158** | **96%** |           |
 
 
 ## Setup coverage badge
