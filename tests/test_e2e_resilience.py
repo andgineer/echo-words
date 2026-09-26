@@ -4,6 +4,10 @@ Both cases live only in the browser: one is the event stream dying mid-answer an
 page having to find out what it missed, the other is a word submitted with no network
 at all. Neither the Python suite nor the component suite can reach them, because
 neither has a browser whose connection can be taken away.
+
+Offline is reached by stopping the server, not by the browser's offline switch: in
+WebKit that switch refuses even what the service worker answers from its cache, and an
+unreachable server is what the phone meets when the tailnet or the host is down.
 """
 
 import re
@@ -49,10 +53,11 @@ def test_cached_startup_shows_languages_and_history_without_downloading_them(
 
 
 def test_an_expired_language_cache_stays_visible_when_refresh_fails(
-    page: Page,
+    each_engine_page: Page,
     settings: Settings,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    page = each_engine_page
     with live_app(settings, monkeypatch) as app:
         page.goto(app.url)
         expect(page.get_by_role("tab", name="English", exact=True)).to_be_visible()
@@ -70,28 +75,28 @@ def test_an_expired_language_cache_stays_visible_when_refresh_fails(
                 tx.onerror = () => reject(tx.error);
             };
         })""")
-        page.context.set_offline(True)
-        page.reload()
-        expect(page.get_by_role("tab", name="English", exact=True)).to_be_visible()
-        page.get_by_placeholder("a word or a phrase").fill("word")
-        expect(page.get_by_role("button", name="Analyse")).to_be_enabled()
-        requests = []
-        page.on(
-            "request",
-            lambda request: (
-                requests.append(request.url) if request.url.endswith("/api/languages") else None
-            ),
-        )
-        page.reload()
-        expect(page.get_by_role("tab", name="English", exact=True)).to_be_visible()
-        assert requests == []
+    page.reload()
+    expect(page.get_by_role("tab", name="English", exact=True)).to_be_visible()
+    page.get_by_placeholder("a word or a phrase").fill("word")
+    expect(page.get_by_role("button", name="Analyse")).to_be_enabled()
+    requests = []
+    page.on(
+        "request",
+        lambda request: (
+            requests.append(request.url) if request.url.endswith("/api/languages") else None
+        ),
+    )
+    page.reload()
+    expect(page.get_by_role("tab", name="English", exact=True)).to_be_visible()
+    assert requests == []
 
 
 def test_the_installed_pwa_starts_offline_with_its_history_and_all_directories(
-    page: Page,
+    each_engine_page: Page,
     settings: Settings,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    page = each_engine_page
     with live_app(settings, monkeypatch, handles=[FakeHandle([answer(ARTICLE)])]) as app:
         submit(page, app.url)
         expect(page.locator(".delete-card")).to_be_visible()
@@ -107,24 +112,24 @@ def test_the_installed_pwa_starts_offline_with_its_history_and_all_directories(
                 tx.oncomplete = () => { db.close(); resolve(get.result); };
             };
         })""")
-        page.context.set_offline(True)
-        page.reload()
-        expect(page.locator(".entry-text")).to_contain_text("the finished analysis")
-        expect(page.get_by_role("tab", name="English", exact=True)).to_be_visible()
-        page.locator('[data-testid="edit-languages"]').click()
-        expect(page.locator('[data-testid="row-en"]')).to_be_visible()
-        page.locator("#new-lang").fill("Spanish")
-        expect(page.locator('[data-testid="add-es"]')).to_be_visible()
-        page.locator('[data-testid="open-en"]').click()
-        expect(page.locator("#lang-deck")).not_to_have_value("")
+    page.reload()
+    expect(page.locator(".entry-text")).to_contain_text("the finished analysis")
+    expect(page.get_by_role("tab", name="English", exact=True)).to_be_visible()
+    page.locator('[data-testid="edit-languages"]').click()
+    expect(page.locator('[data-testid="row-en"]')).to_be_visible()
+    page.locator("#new-lang").fill("Spanish")
+    expect(page.locator('[data-testid="add-es"]')).to_be_visible()
+    page.locator('[data-testid="open-en"]').click()
+    expect(page.locator("#lang-deck")).not_to_have_value("")
 
 
 def test_a_new_service_worker_and_bundle_keep_the_browser_database(
-    page: Page,
+    each_engine_page: Page,
     settings: Settings,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    page = each_engine_page
     build = tmp_path / "pwa"
     shutil.copytree(BUILT_PWA, build)
     with live_app(
@@ -155,11 +160,10 @@ def test_a_new_service_worker_and_bundle_keep_the_browser_database(
             const registration = await navigator.serviceWorker.getRegistration();
             await registration.update();
         })""")
-        page.context.set_offline(True)
-        page.reload()
-        page.wait_for_function("globalThis.updatedPwaBuild === true")
-        expect(page.locator(".entry-text")).to_contain_text("the finished analysis")
-        expect(page.get_by_role("tab", name="English", exact=True)).to_be_visible()
+    page.reload()
+    page.wait_for_function("globalThis.updatedPwaBuild === true")
+    expect(page.locator(".entry-text")).to_contain_text("the finished analysis")
+    expect(page.get_by_role("tab", name="English", exact=True)).to_be_visible()
 
 
 def test_an_answer_finished_while_the_page_was_deaf_is_recovered_on_reconnect(

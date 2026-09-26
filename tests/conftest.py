@@ -7,6 +7,7 @@ import allure
 import pytest
 from fakes import FakeBroker
 from fastapi.testclient import TestClient
+from playwright.sync_api import Page, Playwright
 
 from echo_words import audio
 from echo_words.api import create_app
@@ -318,6 +319,20 @@ def _no_ambient_configuration(monkeypatch: pytest.MonkeyPatch) -> None:
     # The suite must not inherit the developer's or the deploy box's ECHOWORDS_*.
     for name in [name for name in os.environ if name.startswith("ECHOWORDS_")]:
         monkeypatch.delenv(name)
+
+
+@pytest.fixture(params=["chromium", "webkit"])
+def each_engine_page(request: pytest.FixtureRequest, playwright: Playwright) -> Iterator[Page]:
+    """The app is read in Safari, so a browser test whose outcome an engine can change
+    runs in WebKit as well as in Chromium."""
+    if request.param == "chromium":
+        yield request.getfixturevalue("page")
+        return
+    browser = playwright.webkit.launch()
+    try:
+        yield browser.new_page()
+    finally:
+        browser.close()
 
 
 @pytest.fixture

@@ -8,15 +8,15 @@ server has forgotten since do, and that the text can be selected on a card that
 also moves under a drag.
 """
 
+import re
 import time
-from collections.abc import Iterator
 from pathlib import Path
 from urllib.parse import urlsplit
 
 import pytest
 from e2e_app import WORD, Gate, answer, live_app, submit
 from fakes import FakeDirectClient, FakeHandle
-from playwright.sync_api import Page, Playwright, expect
+from playwright.sync_api import Page, expect
 
 from echo_words.config import Settings
 
@@ -224,49 +224,49 @@ def test_after_a_restart_the_article_still_comes_and_the_card_says_what_expired(
         expect(page.get_by_text("request expired")).to_have_count(0)
 
 
-@pytest.fixture(params=["chromium", "webkit"])
-def any_engine_page(request: pytest.FixtureRequest, playwright: Playwright) -> Iterator[Page]:
-    """The app is read in Safari, and selection is where the engines part ways: Safari
-    still needs the prefixed property, and WebKit starts a selection where Chromium does
-    not."""
-    if request.param == "chromium":
-        yield request.getfixturevalue("page")
-        return
-    browser = playwright.webkit.launch()
-    try:
-        yield browser.new_page()
-    finally:
-        browser.close()
-
-
 def _settled(page: Page) -> dict:
-    """Where the card stands once it has stopped moving: every switch slides it in from
-    the side, and a drag aimed while it slides lands off where it was aimed."""
+    """Where the card stands once it has stopped moving. A switch places it to one side
+    and slides it in a frame later, so a card with no animation yet may still be off."""
     deck = page.locator(".deck")
+    expect(deck).to_have_attribute("style", re.compile(r"translateX\(0px\)"))
     deck.evaluate("(el) => Promise.all(el.getAnimations().map((a) => a.finished))")
     return deck.bounding_box()
 
 
-def test_dragging_across_the_analysis_selects_it_and_the_margin_still_swipes(
-    any_engine_page: Page,
+# Where a piece of the analysis is drawn, found from its text rather than from the font
+# a machine happens to have.
+_DRAWN = """(el, piece) => {
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const at = node.data.indexOf(piece);
+    if (at < 0) continue;
+    const range = document.createRange();
+    range.setStart(node, at);
+    range.setEnd(node, at + piece.length);
+    const box = range.getBoundingClientRect();
+    return { x: box.x, y: box.y, width: box.width, height: box.height };
+  }
+  return null;
+}"""
+
+EXAMPLE = "Er steckt den Schlüssel ins Schloss und dreht ihn."
+
+
+def test_the_text_gives_up_a_word_and_only_the_margin_swipes(
+    each_engine_page: Page,
     settings: Settings,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A word from an example is copied into a new request by selecting it, and a mouse
-    selection is the same sideways drag as a swipe. Where each engine starts a selection
-    is decided only by a real browser, so the card is asked here to hold still under a
-    drag across its text and still to move under one along its margin."""
-    page = any_engine_page
+    selection is the same sideways drag as a swipe. So the card holds still under a drag
+    across its text, gives up a word to a double click, and still moves under a drag
+    along its margin."""
+    page = each_engine_page
     second = "Schloss"
     with live_app(
         settings,
         monkeypatch,
-        handles=[
-            FakeHandle([answer(ARTICLE)]),
-            FakeHandle(
-                [answer("<p>Er steckt den Schlüssel ins Schloss und dreht ihn.</p>", second)]
-            ),
-        ],
+        handles=[FakeHandle([answer(ARTICLE)]), FakeHandle([answer(EXAMPLE, second)])],
     ) as app:
         submit(page, app.url)
         expect(page.locator(".delete-card")).to_be_visible()
@@ -275,20 +275,25 @@ def test_dragging_across_the_analysis_selects_it_and_the_margin_still_swipes(
         title = page.locator(".entry-title")
         analysis = page.locator(".entry-text")
         expect(title).to_have_text(second)
-        expect(analysis).to_contain_text("dreht ihn")
+        expect(analysis).to_contain_text(EXAMPLE)
         _settled(page)
 
-        text = analysis.bounding_box()
-        page.mouse.move(text["x"] + text["width"] * 0.6, text["y"] + 8)
+        line = analysis.evaluate(_DRAWN, EXAMPLE)
+        across = line["y"] + line["height"] / 2
+        page.mouse.move(line["x"] + line["width"] - 3, across)
         page.mouse.down()
-        page.mouse.move(text["x"] + 2, text["y"] + 8, steps=12)
+        page.mouse.move(line["x"] + 3, across, steps=12)
+        expect(page.locator(".deck")).to_have_attribute("style", re.compile(r"translateX\(0px\)"))
         page.mouse.up()
-
-        selected = page.evaluate("() => getSelection().toString()").strip()
-        assert selected
-        assert selected in analysis.inner_text()
         expect(title).to_have_text(second)
 
+        word = analysis.evaluate(_DRAWN, "Schlüssel")
+        page.mouse.dblclick(word["x"] + word["width"] / 2, word["y"] + word["height"] / 2)
+        assert page.evaluate("() => getSelection().toString()").strip() == "Schlüssel"
+
+        # With text selected, WebKit may take a mouse drag from the margin for a drag of
+        # that selection, and the card never hears the release.
+        page.evaluate("() => getSelection().removeAllRanges()")
         deck = _settled(page)
         edge = deck["x"] + deck["width"] - 6
         middle = deck["y"] + deck["height"] / 2
