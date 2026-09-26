@@ -76,8 +76,9 @@ A bare `uv sync` is not enough to reach a green suite:
 2. `npm --prefix webapp ci` — `inv test` **skips** the frontend suite
    when `webapp/node_modules` is missing, and CI does not. A run without
    it is not a full run.
-3. `uv run playwright install chromium` — the browser the e2e suite
-   (`tests/test_e2e_*.py`) drives. Without it those tests error rather
+3. `uv run playwright install chromium webkit` — the browsers the e2e
+   suite (`tests/test_e2e_*.py`) drives: Chromium throughout, WebKit
+   where Safari parts ways with it. Without them those tests error rather
    than skip. They load the built PWA from a real server, so `inv test`
    builds `_static/` when it is missing.
 

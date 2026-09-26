@@ -1077,5 +1077,27 @@ describe("EntryCard", () => {
 
       expect(wrapper.emitted("swipe")).toBeUndefined();
     });
+
+    // Selecting a word to copy is a sideways drag too, with the mouse or after a long
+    // press, so a press on the text never moves the card.
+    it.each([
+      [".entry-title", senseEntry],
+      [".entry-text", senseEntry],
+      [".entry-source", textEntry],
+      [".segment-reason", textEntry],
+    ])(
+      "leaves a drag that starts on %s to the selection",
+      async (selector, entry) => {
+        const wrapper = card(entry());
+        const deck = wrapper.get(".deck");
+
+        await wrapper.get(selector).trigger("pointerdown", { clientX: 200 });
+        await deck.trigger("pointermove", { clientX: 100 });
+        await deck.trigger("pointerup");
+
+        expect(wrapper.emitted("swipe")).toBeUndefined();
+        expect(deck.attributes("style")).not.toContain("translateX(-100px)");
+      },
+    );
   });
 });

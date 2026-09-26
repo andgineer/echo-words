@@ -611,6 +611,9 @@ Kept minimal — everything beyond typing a word:
   whose entry is still being answered, or whose paid call is running, carries a
   live dot, so the reader can move away and still see the work continuing.
   There is no page counter and no arrows: position is which chip is centred.
+  The card's reading text can be selected and copied, so a word from an
+  example can be asked about in turn; a drag that starts on the text selects
+  it and never switches the card, which is swiped from its margins instead.
 - **Chips** — under a text answer, every source word plus one chip for each
   accepted combination, each combination standing before its first word; under a set
   expression, its component words; under a single word or any explicit card

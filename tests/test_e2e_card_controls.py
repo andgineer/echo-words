@@ -3,18 +3,20 @@
 What is asserted here is what only a laid-out page can answer: where the row sits
 relative to the analysis it acts on, that no browser player is taking the room the
 row replaced, that taking an entry off the rail really empties the rail, where the
-deeper article is when it starts to arrive, and what the controls of an entry the
-server has forgotten since do.
+deeper article is when it starts to arrive, what the controls of an entry the
+server has forgotten since do, and that the text can be selected on a card that
+also moves under a drag.
 """
 
 import time
+from collections.abc import Iterator
 from pathlib import Path
 from urllib.parse import urlsplit
 
 import pytest
 from e2e_app import WORD, Gate, answer, live_app, submit
 from fakes import FakeDirectClient, FakeHandle
-from playwright.sync_api import Page, expect
+from playwright.sync_api import Page, Playwright, expect
 
 from echo_words.config import Settings
 
@@ -220,3 +222,79 @@ def test_after_a_restart_the_article_still_comes_and_the_card_says_what_expired(
         )
         expect(page.locator(".delete-card")).to_be_disabled()
         expect(page.get_by_text("request expired")).to_have_count(0)
+
+
+@pytest.fixture(params=["chromium", "webkit"])
+def any_engine_page(request: pytest.FixtureRequest, playwright: Playwright) -> Iterator[Page]:
+    """The app is read in Safari, and selection is where the engines part ways: Safari
+    still needs the prefixed property, and WebKit starts a selection where Chromium does
+    not."""
+    if request.param == "chromium":
+        yield request.getfixturevalue("page")
+        return
+    browser = playwright.webkit.launch()
+    try:
+        yield browser.new_page()
+    finally:
+        browser.close()
+
+
+def _settled(page: Page) -> dict:
+    """Where the card stands once it has stopped moving: every switch slides it in from
+    the side, and a drag aimed while it slides lands off where it was aimed."""
+    deck = page.locator(".deck")
+    deck.evaluate("(el) => Promise.all(el.getAnimations().map((a) => a.finished))")
+    return deck.bounding_box()
+
+
+def test_dragging_across_the_analysis_selects_it_and_the_margin_still_swipes(
+    any_engine_page: Page,
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A word from an example is copied into a new request by selecting it, and a mouse
+    selection is the same sideways drag as a swipe. Where each engine starts a selection
+    is decided only by a real browser, so the card is asked here to hold still under a
+    drag across its text and still to move under one along its margin."""
+    page = any_engine_page
+    second = "Schloss"
+    with live_app(
+        settings,
+        monkeypatch,
+        handles=[
+            FakeHandle([answer(ARTICLE)]),
+            FakeHandle(
+                [answer("<p>Er steckt den Schlüssel ins Schloss und dreht ihn.</p>", second)]
+            ),
+        ],
+    ) as app:
+        submit(page, app.url)
+        expect(page.locator(".delete-card")).to_be_visible()
+        page.get_by_placeholder("a word or a phrase").fill(second)
+        page.get_by_role("button", name="Analyse").click()
+        title = page.locator(".entry-title")
+        analysis = page.locator(".entry-text")
+        expect(title).to_have_text(second)
+        expect(analysis).to_contain_text("dreht ihn")
+        _settled(page)
+
+        text = analysis.bounding_box()
+        page.mouse.move(text["x"] + text["width"] * 0.6, text["y"] + 8)
+        page.mouse.down()
+        page.mouse.move(text["x"] + 2, text["y"] + 8, steps=12)
+        page.mouse.up()
+
+        selected = page.evaluate("() => getSelection().toString()").strip()
+        assert selected
+        assert selected in analysis.inner_text()
+        expect(title).to_have_text(second)
+
+        deck = _settled(page)
+        edge = deck["x"] + deck["width"] - 6
+        middle = deck["y"] + deck["height"] / 2
+        page.mouse.move(edge, middle)
+        page.mouse.down()
+        page.mouse.move(edge - 160, middle, steps=12)
+        page.mouse.up()
+
+        expect(title).to_have_text(WORD)

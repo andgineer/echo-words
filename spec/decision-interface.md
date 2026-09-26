@@ -154,6 +154,18 @@ them. There is no page counter and no arrows: position is which chip is
 centred and highlighted, which says more than a number and does not duplicate
 the swipe.
 
+**Selecting text outranks the swipe.** A word met in an example is asked about
+by copying it into a new request, and the reader cannot do without that; the
+swipe is a convenience the rail already covers. On a card that moves under a
+drag the two collide, because selecting is a sideways drag too. Handing a press
+to the selection only once the browser reports one starting relies on engines
+agreeing, and they do not: WebKit starts a selection from a mouse drag that
+begins on the margin and crosses the text, Chromium does not, and whether iOS
+reports a long press to the page at all is not something the app can check. So
+the reading text — the word, the notices, the analysis, the deeper article, the
+notes under chips — is selectable, a press on it belongs to the selection
+outright, and the card is swiped from its margins and its row of controls.
+
 **Languages are buttons above the whole screen, not a dropdown inside the
 form.** There is rarely more than one studied language, so two clicks to
 change something that is usually fixed is wrong, and a `<select>` hides how

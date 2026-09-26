@@ -205,8 +205,10 @@ function arrive() {
 
 // `setPointerCapture` is deliberately not called: in Chrome it lands the click on
 // the capturing element and eats every tap on the buttons inside the card.
+// A press on the text belongs to selection, itself a sideways drag: no engine is
+// trusted to report when a long press turns into one.
 function onPointerDown(event) {
-  if (event.target.closest("button, a, audio, input, textarea, select")) return;
+  if (event.target.closest("button, a, audio, input, textarea, select, .selectable")) return;
   startX = event.clientX;
   held = true;
   dragging.value = true;
@@ -347,14 +349,14 @@ function confirmDelete() {
     <div v-if="working" class="progress"><div class="progress-bar"></div></div>
 
     <div class="entry-head">
-      <span class="entry-title" :class="isText ? 'kind' : 'word'">
+      <span class="entry-title" :class="isText ? 'kind' : 'word selectable'">
         {{ isText ? t("add.sentence") : entry.word }}
       </span>
       <span v-if="entry.model" class="entry-model">{{ entry.model }}</span>
     </div>
 
     <div v-if="spellingNotice" class="entry-notice">
-      <p class="notice-text">{{ spellingNotice }}</p>
+      <p class="notice-text selectable">{{ spellingNotice }}</p>
       <button
         v-if="entry.suggestion && !expired"
         class="btn-inline correction"
@@ -365,7 +367,7 @@ function confirmDelete() {
     </div>
 
     <div v-if="entry.not_in_references" class="entry-notice unverified">
-      <p class="notice-text">{{ t("add.notInReferences", { word: taughtWord }) }}</p>
+      <p class="notice-text selectable">{{ t("add.notInReferences", { word: taughtWord }) }}</p>
       <a
         v-if="entry.usage_search_url"
         class="btn-inline usage-search"
@@ -502,9 +504,9 @@ function confirmDelete() {
       <span>{{ busyLabel }}</span>
     </div>
 
-    <p v-if="isText && entry.text" class="entry-source">{{ entry.word }}</p>
+    <p v-if="isText && entry.text" class="entry-source selectable">{{ entry.word }}</p>
 
-    <div v-if="entry.text" class="entry-text" v-html="entry.text"></div>
+    <div v-if="entry.text" class="entry-text selectable" v-html="entry.text"></div>
 
     <section
       v-if="entry.detail_html || entry.detail_pending"
@@ -515,7 +517,7 @@ function confirmDelete() {
         <span class="detail-title">{{ t("add.detailSection") }}</span>
         <span v-if="entry.detail_model" class="entry-model">{{ entry.detail_model }}</span>
       </div>
-      <div v-if="entry.detail_html" class="entry-detail" v-html="entry.detail_html"></div>
+      <div v-if="entry.detail_html" class="entry-detail selectable" v-html="entry.detail_html"></div>
       <div v-if="entry.detail_pending" class="working">
         <span class="spinner" aria-hidden="true"></span>
         <span>{{ busyLabel }}</span>
@@ -554,7 +556,7 @@ function confirmDelete() {
         <button class="segment-label" :disabled="busy" @click="emit('segment', segment)">
           {{ chipLabel(segment) }}
         </button>
-        <p v-if="chipReason(segment)" class="segment-reason">{{ chipReason(segment) }}</p>
+        <p v-if="chipReason(segment)" class="segment-reason selectable">{{ chipReason(segment) }}</p>
       </div>
     </div>
 
@@ -589,6 +591,14 @@ function confirmDelete() {
   -webkit-user-select: none;
   cursor: grab;
   margin-bottom: 0;
+}
+
+/* A word from an example is copied into a new request, so the reading text is
+   selectable; the margins and the row of controls stay handles for the swipe. */
+.selectable {
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
 }
 
 .deck.settling {

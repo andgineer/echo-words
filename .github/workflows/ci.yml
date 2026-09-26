@@ -110,8 +110,8 @@ jobs:
     - name: Build the PWA
       run: npm --prefix webapp run build
 
-    - name: Install the browser the e2e tests drive
-      run: uv run playwright install --with-deps chromium
+    - name: Install the browsers the e2e tests drive
+      run: uv run playwright install --with-deps chromium webkit
 
     - name: Test with pytest and Allure report
       run: ${{ env.PYTEST_CMD }} --alluredir=./allure-results

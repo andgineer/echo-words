@@ -68,7 +68,7 @@ for changes to prompts or answer handling.
 ```bash
 uv sync
 npm --prefix webapp ci
-uv run playwright install chromium
+uv run playwright install chromium webkit
 uv run inv dev     # http://127.0.0.1:8080
 uv run inv pre     # lint, format, type-check, file hygiene
 uv run inv test    # Python + frontend suites
