@@ -1,1 +1,0 @@
-WARNING  echo_words.anki:anki.py:689 Anki sync failed: temporary outage
