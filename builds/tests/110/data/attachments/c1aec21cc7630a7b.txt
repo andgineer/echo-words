@@ -1,0 +1,6 @@
+INFO     echo_words.audio:audio.py:402 downloading Piper voice file first.onnx
+INFO     echo_words.audio:audio.py:402 downloading Piper voice file first.onnx.json
+INFO     echo_words.audio:audio.py:402 downloading Piper voice file second.onnx
+INFO     echo_words.audio:audio.py:402 downloading Piper voice file second.onnx.json
+INFO     echo_words.audio:audio.py:402 downloading Piper voice file third.onnx
+INFO     echo_words.audio:audio.py:402 downloading Piper voice file third.onnx.json

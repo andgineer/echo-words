@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+      <url>
+        <loc>https://andgineer.github.io/echo-words/</loc>
+      </url>
+      <url>
+        <loc>https://andgineer.github.io/echo-words/installation/</loc>
+      </url>
+      <url>
+        <loc>https://andgineer.github.io/echo-words/configuration/</loc>
+      </url>
+      <url>
+        <loc>https://andgineer.github.io/echo-words/pwa-install/</loc>
+      </url>
+      <url>
+        <loc>https://andgineer.github.io/echo-words/deploy-oracle/</loc>
+      </url>
+      <url>
+        <loc>https://andgineer.github.io/echo-words/operations/</loc>
+      </url>
+      <url>
+        <loc>https://andgineer.github.io/echo-words/development/</loc>
+      </url>
+</urlset>

@@ -1,0 +1,2 @@
+WARNING  echo_words.backend:backend.py:414 LLM answer exceeded the 16000-character complete-answer bound
+INFO     echo_words.backend:backend.py:267 the pool stream from free-slow was replaced by a complete answer from free-flash

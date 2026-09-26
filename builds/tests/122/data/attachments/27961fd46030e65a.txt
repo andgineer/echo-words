@@ -1,0 +1,2 @@
+INFO     echo_words.backend:backend.py:267 the pool stream from free-slow was replaced by a complete answer from free-flash
+INFO     echo_words.backend:backend.py:367 the pool answer from free-flash stands for en — the payload cannot be read and the pool has no other answer; the card is left failed

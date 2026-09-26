@@ -1,0 +1,2 @@
+INFO     echo_words.backend:backend.py:264 the pool stream from free-slow was replaced by a complete answer from free-flash
+INFO     echo_words.backend:backend.py:241 the pool answer from free-flash is unusable for en; free-slow answers the same call instead

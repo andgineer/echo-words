@@ -1,0 +1,2 @@
+INFO     echo_words.backend:backend.py:244 the pool answer from pool-model is unusable for en; pool-other answers the same call instead
+INFO     echo_words.backend:backend.py:244 the pool answer from pool-other is unusable for en; pool-other answers the same call instead

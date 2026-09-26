@@ -1,0 +1,2 @@
+WARNING  echo_words.backend:backend.py:414 LLM answer exceeded the 16000-character complete-answer bound
+INFO     echo_words.backend:backend.py:482 the paid model gpt-fast: first token after 0.0 s, ended after 0.0 s

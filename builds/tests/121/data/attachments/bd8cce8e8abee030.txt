@@ -1,0 +1,27 @@
+WARNING echo_words.audio: Commons recording failed for en/'partial': a test tried to resolve b'upload.wikimedia.org'
+WARNING echo_words.audio: Piper voice en_US-lessac-medium is not ready
+WARNING echo_words.prompt: no answer block for en/'partial': the answer never wrote the delimiter
+ERROR echo_words.pipeline: word processing failed unexpectedly
+Traceback (most recent call last):
+  File "/home/runner/work/echo-words/echo-words/src/echo_words/pipeline.py", line 459, in _work
+    await self.process_word(job)
+  File "/home/runner/work/echo-words/echo-words/src/echo_words/pipeline.py", line 560, in process_word
+    async for delta in completion:
+    ...<35 lines>...
+        )
+  File "/home/runner/work/echo-words/echo-words/src/echo_words/backend.py", line 121, in _recorded
+    async for delta in answer:
+        yield delta
+  File "/home/runner/work/echo-words/echo-words/src/echo_words/backend.py", line 164, in _answer
+    async for delta in pool:
+        yield delta
+  File "/home/runner/work/echo-words/echo-words/src/echo_words/backend.py", line 197, in _pool_answers
+    answer = await self._next_pool_answer(stream)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/work/echo-words/echo-words/src/echo_words/backend.py", line 226, in _next_pool_answer
+    return await stream.another()
+           ^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/work/echo-words/echo-words/src/echo_words/llm_backend.py", line 79, in another
+    return await self._handle.another()
+                 ^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'BlockingHandle' object has no attribute 'another'

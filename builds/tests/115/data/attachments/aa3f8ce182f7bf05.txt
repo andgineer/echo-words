@@ -1,0 +1,1 @@
+INFO     echo_words.backend:backend.py:264 the pool stream from free-slow was replaced by a complete answer from free-flash
