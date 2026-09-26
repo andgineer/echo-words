@@ -166,6 +166,12 @@ the reading text — the word, the notices, the analysis, the deeper article, th
 notes under chips — is selectable, a press on it belongs to the selection
 outright, and the card is swiped from its margins and its row of controls.
 
+Accepted by the operator on 2026-09-26 as a limitation: while text on the card
+is selected, WebKit may take a mouse drag from the margin for a drag of that
+selection, and the card does not switch. It touches only a mouse — a quick swipe
+of a finger starts no drag — and the rail switches cards regardless. It was seen
+in WebKit on Linux, intermittently, and not on macOS.
+
 **Languages are buttons above the whole screen, not a dropdown inside the
 form.** There is rarely more than one studied language, so two clicks to
 change something that is usually fixed is wrong, and a `<select>` hides how
