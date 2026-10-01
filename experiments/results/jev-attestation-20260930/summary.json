@@ -1,0 +1,344 @@
+{
+  "fingerprint": "ee967f80f56c61ec1575a549ad78307fee5b690e8cff7e86b0a2b17cb3efcc40",
+  "semantic_review_required": true,
+  "availability_complete": true,
+  "arms": {
+    "pool": {
+      "attempted_cases": 44,
+      "usable": 44,
+      "expected": 44,
+      "models": {
+        "openrouter-nemotron-3-ultra": 5,
+        "google-gemini-3.5-flash-lite": 17,
+        "openrouter-laguna-s-2.1": 1,
+        "groq-gpt-oss-120b": 21
+      },
+      "median_seconds": 0.9229916869999215,
+      "p90_seconds": 7.190435167000032,
+      "groups": {
+        "real": {
+          "usable": 32,
+          "expected": 32,
+          "approved": 31,
+          "legacy_label_disagreements": 1
+        },
+        "constructed": {
+          "usable": 6,
+          "expected": 6,
+          "approved": 2,
+          "legacy_label_disagreements": 2
+        },
+        "typo": {
+          "usable": 6,
+          "expected": 6,
+          "approved": 3,
+          "legacy_label_disagreements": 3
+        }
+      },
+      "verified_attested": {
+        "expected": 35,
+        "usable": 35,
+        "rejected": 2
+      }
+    },
+    "jev": {
+      "attempted_cases": 44,
+      "usable": 44,
+      "expected": 44,
+      "models": {
+        "jev-1.13.0": 44
+      },
+      "median_seconds": 0.28756452050038206,
+      "p90_seconds": 0.3833249590006744,
+      "groups": {
+        "real": {
+          "usable": 32,
+          "expected": 32,
+          "approved": 31,
+          "legacy_label_disagreements": 1
+        },
+        "constructed": {
+          "usable": 6,
+          "expected": 6,
+          "approved": 0,
+          "legacy_label_disagreements": 0
+        },
+        "typo": {
+          "usable": 6,
+          "expected": 6,
+          "approved": 4,
+          "legacy_label_disagreements": 4
+        }
+      },
+      "verified_attested": {
+        "expected": 35,
+        "usable": 35,
+        "rejected": 4
+      },
+      "exploratory_abstention": {
+        "retained": 26,
+        "abstained": 18,
+        "verified_attested_retained": 23,
+        "verified_attested_rejected": 0,
+        "legacy_label_disagreements": 2
+      }
+    }
+  },
+  "languages": {
+    "en": {
+      "pool": {
+        "attempted_cases": 17,
+        "usable": 17,
+        "expected": 17,
+        "models": {
+          "google-gemini-3.5-flash-lite": 6,
+          "openrouter-nemotron-3-ultra": 3,
+          "groq-gpt-oss-120b": 8
+        },
+        "median_seconds": 0.9624780829999509,
+        "p90_seconds": 7.190435167000032,
+        "groups": {
+          "real": {
+            "usable": 12,
+            "expected": 12,
+            "approved": 12,
+            "legacy_label_disagreements": 0
+          },
+          "constructed": {
+            "usable": 3,
+            "expected": 3,
+            "approved": 2,
+            "legacy_label_disagreements": 2
+          },
+          "typo": {
+            "usable": 2,
+            "expected": 2,
+            "approved": 2,
+            "legacy_label_disagreements": 2
+          }
+        },
+        "verified_attested": {
+          "expected": 14,
+          "usable": 14,
+          "rejected": 0
+        }
+      },
+      "jev": {
+        "attempted_cases": 17,
+        "usable": 17,
+        "expected": 17,
+        "models": {
+          "jev-1.13.0": 17
+        },
+        "median_seconds": 0.2911260000000766,
+        "p90_seconds": 0.4401440419987921,
+        "groups": {
+          "real": {
+            "usable": 12,
+            "expected": 12,
+            "approved": 12,
+            "legacy_label_disagreements": 0
+          },
+          "constructed": {
+            "usable": 3,
+            "expected": 3,
+            "approved": 0,
+            "legacy_label_disagreements": 0
+          },
+          "typo": {
+            "usable": 2,
+            "expected": 2,
+            "approved": 2,
+            "legacy_label_disagreements": 2
+          }
+        },
+        "verified_attested": {
+          "expected": 14,
+          "usable": 14,
+          "rejected": 2
+        },
+        "exploratory_abstention": {
+          "retained": 10,
+          "abstained": 7,
+          "verified_attested_retained": 9,
+          "verified_attested_rejected": 0,
+          "legacy_label_disagreements": 0
+        }
+      }
+    },
+    "de": {
+      "pool": {
+        "attempted_cases": 14,
+        "usable": 14,
+        "expected": 14,
+        "models": {
+          "openrouter-nemotron-3-ultra": 2,
+          "google-gemini-3.5-flash-lite": 5,
+          "groq-gpt-oss-120b": 7
+        },
+        "median_seconds": 0.9099089580004147,
+        "p90_seconds": 8.550636250000025,
+        "groups": {
+          "real": {
+            "usable": 10,
+            "expected": 10,
+            "approved": 10,
+            "legacy_label_disagreements": 0
+          },
+          "constructed": {
+            "usable": 2,
+            "expected": 2,
+            "approved": 0,
+            "legacy_label_disagreements": 0
+          },
+          "typo": {
+            "usable": 2,
+            "expected": 2,
+            "approved": 0,
+            "legacy_label_disagreements": 0
+          }
+        },
+        "verified_attested": {
+          "expected": 11,
+          "usable": 11,
+          "rejected": 1
+        }
+      },
+      "jev": {
+        "attempted_cases": 14,
+        "usable": 14,
+        "expected": 14,
+        "models": {
+          "jev-1.13.0": 14
+        },
+        "median_seconds": 0.2953583954995338,
+        "p90_seconds": 0.3833249590006744,
+        "groups": {
+          "real": {
+            "usable": 10,
+            "expected": 10,
+            "approved": 10,
+            "legacy_label_disagreements": 0
+          },
+          "constructed": {
+            "usable": 2,
+            "expected": 2,
+            "approved": 0,
+            "legacy_label_disagreements": 0
+          },
+          "typo": {
+            "usable": 2,
+            "expected": 2,
+            "approved": 1,
+            "legacy_label_disagreements": 1
+          }
+        },
+        "verified_attested": {
+          "expected": 11,
+          "usable": 11,
+          "rejected": 1
+        },
+        "exploratory_abstention": {
+          "retained": 8,
+          "abstained": 6,
+          "verified_attested_retained": 7,
+          "verified_attested_rejected": 0,
+          "legacy_label_disagreements": 1
+        }
+      }
+    },
+    "sr": {
+      "pool": {
+        "attempted_cases": 13,
+        "usable": 13,
+        "expected": 13,
+        "models": {
+          "google-gemini-3.5-flash-lite": 6,
+          "openrouter-laguna-s-2.1": 1,
+          "groq-gpt-oss-120b": 6
+        },
+        "median_seconds": 0.9148062080003001,
+        "p90_seconds": 2.5846219579998433,
+        "groups": {
+          "real": {
+            "usable": 10,
+            "expected": 10,
+            "approved": 9,
+            "legacy_label_disagreements": 1
+          },
+          "constructed": {
+            "usable": 1,
+            "expected": 1,
+            "approved": 0,
+            "legacy_label_disagreements": 0
+          },
+          "typo": {
+            "usable": 2,
+            "expected": 2,
+            "approved": 1,
+            "legacy_label_disagreements": 1
+          }
+        },
+        "verified_attested": {
+          "expected": 10,
+          "usable": 10,
+          "rejected": 1
+        }
+      },
+      "jev": {
+        "attempted_cases": 13,
+        "usable": 13,
+        "expected": 13,
+        "models": {
+          "jev-1.13.0": 13
+        },
+        "median_seconds": 0.28498133399989456,
+        "p90_seconds": 0.29759262500010664,
+        "groups": {
+          "real": {
+            "usable": 10,
+            "expected": 10,
+            "approved": 9,
+            "legacy_label_disagreements": 1
+          },
+          "constructed": {
+            "usable": 1,
+            "expected": 1,
+            "approved": 0,
+            "legacy_label_disagreements": 0
+          },
+          "typo": {
+            "usable": 2,
+            "expected": 2,
+            "approved": 1,
+            "legacy_label_disagreements": 1
+          }
+        },
+        "verified_attested": {
+          "expected": 10,
+          "usable": 10,
+          "rejected": 1
+        },
+        "exploratory_abstention": {
+          "retained": 8,
+          "abstained": 5,
+          "verified_attested_retained": 7,
+          "verified_attested_rejected": 0,
+          "legacy_label_disagreements": 1
+        }
+      }
+    }
+  },
+  "attempts": {
+    "jev": 44,
+    "pool": 44
+  },
+  "jev_input_tokens": 15764,
+  "pool_marginal_usd": 0,
+  "jev_estimated_usd": 0.0006620880000000001,
+  "paired_latency": {
+    "pairs": 44,
+    "median_pool_over_jev": 2.9421980521030253,
+    "jev_faster_pairs": 43
+  }
+}

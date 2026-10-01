@@ -6,6 +6,11 @@ ships as the opt-in quality tier it was designed to be, and web
 grounding is dropped from v0.1.** This document records the benchmark
 behind those defaults; its harness is `experiments/backend_bench.py`.
 
+Attestation measurements must be read with the
+[independent Jev experiment's label audit](decision-jev-attestation.md): three
+of the six supposed coinages have documented usage. Historical rejection counts
+below are agreement with those fixture labels, not factual hallucination rates.
+
 ## What was measured
 
 - 40–41 items per source language (English, German, Serbian), covering

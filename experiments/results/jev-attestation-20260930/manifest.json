@@ -1,0 +1,1209 @@
+{
+  "design": {
+    "tier": "attestation-44-v1",
+    "cases": [
+      {
+        "id": "ordinary-de-muerrisch",
+        "lang": "de",
+        "word": "mürrisch",
+        "group": "real",
+        "expected_used": true,
+        "attested_used": true,
+        "reference": "https://en.wiktionary.org/wiki/m%C3%BCrrisch",
+        "adjudication_source": "",
+        "label_basis": "Existing repository fixture; constructed and typo slices are policy challenges."
+      },
+      {
+        "id": "typo-de-strase",
+        "lang": "de",
+        "word": "Strase",
+        "group": "typo",
+        "expected_used": false,
+        "attested_used": null,
+        "reference": "",
+        "adjudication_source": "",
+        "label_basis": "Existing repository fixture; constructed and typo slices are policy challenges."
+      },
+      {
+        "id": "rare-de-verschlimmbessern",
+        "lang": "de",
+        "word": "verschlimmbessern",
+        "group": "real",
+        "expected_used": true,
+        "attested_used": true,
+        "reference": "https://en.wiktionary.org/wiki/verschlimmbessern",
+        "adjudication_source": "",
+        "label_basis": "Existing repository fixture; constructed and typo slices are policy challenges."
+      },
+      {
+        "id": "unused-en-bookshelfy",
+        "lang": "en",
+        "word": "bookshelfy",
+        "group": "constructed",
+        "expected_used": false,
+        "attested_used": true,
+        "reference": "",
+        "adjudication_source": "https://westernliving.ca/shopping/accessories/editors-picks-organizing-accessories-home/",
+        "label_basis": "Existing repository fixture; constructed and typo slices are policy challenges."
+      },
+      {
+        "id": "typo-en-definately",
+        "lang": "en",
+        "word": "definately",
+        "group": "typo",
+        "expected_used": false,
+        "attested_used": null,
+        "reference": "",
+        "adjudication_source": "",
+        "label_basis": "Existing repository fixture; constructed and typo slices are policy challenges."
+      },
+      {
+        "id": "rare-sr-докон",
+        "lang": "sr",
+        "word": "докон",
+        "group": "real",
+        "expected_used": true,
+        "attested_used": true,
+        "reference": "https://en.wiktionary.org/wiki/%D0%B4%D0%BE%D0%BA%D0%BE%D0%BD",
+        "adjudication_source": "",
+        "label_basis": "Existing repository fixture; constructed and typo slices are policy challenges."
+      },
+      {
+        "id": "typo-de-vieleicht",
+        "lang": "de",
+        "word": "vieleicht",
+        "group": "typo",
+        "expected_used": false,
+        "attested_used": null,
+        "reference": "",
+        "adjudication_source": "",
+        "label_basis": "Existing repository fixture; constructed and typo slices are policy challenges."
+      },
+      {
+        "id": "typo-en-recieve",
+        "lang": "en",
+        "word": "recieve",
+        "group": "typo",
+        "expected_used": false,
+        "attested_used": null,
+        "reference": "",
+        "adjudication_source": "",
+        "label_basis": "Existing repository fixture; constructed and typo slices are policy challenges."
+      },
+      {
+        "id": "unused-sr-zmrkalica",
+        "lang": "sr",
+        "word": "змркалица",
+        "group": "constructed",
+        "expected_used": false,
+        "attested_used": null,
+        "reference": "",
+        "adjudication_source": "",
+        "label_basis": "Existing repository fixture; constructed and typo slices are policy challenges."
+      },
+      {
+        "id": "corrected-typo-en-definately",
+        "lang": "en",
+        "word": "definitely",
+        "group": "real",
+        "expected_used": true,
+        "attested_used": true,
+        "reference": "https://en.wiktionary.org/wiki/definitely",
+        "adjudication_source": "",
+        "label_basis": "Existing repository fixture; constructed and typo slices are policy challenges."
+      },
+      {
+        "id": "rare-en-perfunctory",
+        "lang": "en",
+        "word": "perfunctory",
+        "group": "real",
+        "expected_used": true,
+        "attested_used": true,
+        "reference": "https://en.wiktionary.org/wiki/perfunctory",
+        "adjudication_source": "",
+        "label_basis": "Existing repository fixture; constructed and typo slices are policy challenges."
+      },
+      {
+        "id": "unused-de-fahrradsuppe",
+        "lang": "de",
+        "word": "Fahrradsuppe",
+        "group": "constructed",
+        "expected_used": false,
+        "attested_used": true,
+        "reference": "",
+        "adjudication_source": "https://radler-rast.com/radler-rast-kaffee",
+        "label_basis": "Existing repository fixture; constructed and typo slices are policy challenges."
+      },
+      {
+        "id": "unused-en-blorptium",
+        "lang": "en",
+        "word": "blorptium",
+        "group": "constructed",
+        "expected_used": false,
+        "attested_used": null,
+        "reference": "",
+        "adjudication_source": "",
+        "label_basis": "Existing repository fixture; constructed and typo slices are policy challenges."
+      },
+      {
+        "id": "attested-en-petrichor",
+        "lang": "en",
+        "word": "petrichor",
+        "group": "real",
+        "expected_used": true,
+        "attested_used": true,
+        "reference": "https://en.wiktionary.org/wiki/petrichor",
+        "adjudication_source": "",
+        "label_basis": "Existing repository fixture; constructed and typo slices are policy challenges."
+      },
+      {
+        "id": "rare-sr-sevdah",
+        "lang": "sr",
+        "word": "sevdah",
+        "group": "real",
+        "expected_used": true,
+        "attested_used": true,
+        "reference": "https://en.wiktionary.org/wiki/sevdah",
+        "adjudication_source": "",
+        "label_basis": "Existing repository fixture; constructed and typo slices are policy challenges."
+      },
+      {
+        "id": "unused-en-tablewards",
+        "lang": "en",
+        "word": "tablewards",
+        "group": "constructed",
+        "expected_used": false,
+        "attested_used": true,
+        "reference": "",
+        "adjudication_source": "https://kaikki.org/dictionary/English/meaning/t/ta/tablewards.html",
+        "label_basis": "Existing repository fixture; constructed and typo slices are policy challenges."
+      },
+      {
+        "id": "rare-en-defenestration",
+        "lang": "en",
+        "word": "defenestration",
+        "group": "real",
+        "expected_used": true,
+        "attested_used": true,
+        "reference": "https://en.wiktionary.org/wiki/defenestration",
+        "adjudication_source": "",
+        "label_basis": "Existing repository fixture; constructed and typo slices are policy challenges."
+      },
+      {
+        "id": "typo-sr-mozda",
+        "lang": "sr",
+        "word": "мозда",
+        "group": "typo",
+        "expected_used": false,
+        "attested_used": null,
+        "reference": "",
+        "adjudication_source": "",
+        "label_basis": "Existing repository fixture; constructed and typo slices are policy challenges."
+      },
+      {
+        "id": "corrected-typo-sr-mozda",
+        "lang": "sr",
+        "word": "можда",
+        "group": "real",
+        "expected_used": true,
+        "attested_used": true,
+        "reference": "https://en.wiktionary.org/wiki/%D0%BC%D0%BE%D0%B6%D0%B4%D0%B0",
+        "adjudication_source": "",
+        "label_basis": "Existing repository fixture; constructed and typo slices are policy challenges."
+      },
+      {
+        "id": "ordinary-en-ledge",
+        "lang": "en",
+        "word": "ledge",
+        "group": "real",
+        "expected_used": true,
+        "attested_used": true,
+        "reference": "https://en.wiktionary.org/wiki/ledge",
+        "adjudication_source": "",
+        "label_basis": "Existing repository fixture; constructed and typo slices are policy challenges."
+      },
+      {
+        "id": "ordinary-de-kuebel",
+        "lang": "de",
+        "word": "Kübel",
+        "group": "real",
+        "expected_used": true,
+        "attested_used": true,
+        "reference": "https://en.wiktionary.org/wiki/K%C3%BCbel",
+        "adjudication_source": "",
+        "label_basis": "Existing repository fixture; constructed and typo slices are policy challenges."
+      },
+      {
+        "id": "rare-en-quotidian",
+        "lang": "en",
+        "word": "quotidian",
+        "group": "real",
+        "expected_used": true,
+        "attested_used": true,
+        "reference": "https://en.wiktionary.org/wiki/quotidian",
+        "adjudication_source": "",
+        "label_basis": "Existing repository fixture; constructed and typo slices are policy challenges."
+      },
+      {
+        "id": "ordinary-en-scowl",
+        "lang": "en",
+        "word": "scowl",
+        "group": "real",
+        "expected_used": true,
+        "attested_used": true,
+        "reference": "https://en.wiktionary.org/wiki/scowl",
+        "adjudication_source": "",
+        "label_basis": "Existing repository fixture; constructed and typo slices are policy challenges."
+      },
+      {
+        "id": "rare-de-Fernweh",
+        "lang": "de",
+        "word": "Fernweh",
+        "group": "real",
+        "expected_used": true,
+        "attested_used": true,
+        "reference": "https://en.wiktionary.org/wiki/Fernweh",
+        "adjudication_source": "",
+        "label_basis": "Existing repository fixture; constructed and typo slices are policy challenges."
+      },
+      {
+        "id": "rare-sr-чежња",
+        "lang": "sr",
+        "word": "чежња",
+        "group": "real",
+        "expected_used": true,
+        "attested_used": true,
+        "reference": "https://en.wiktionary.org/wiki/%D1%87%D0%B5%D0%B6%D1%9A%D0%B0",
+        "adjudication_source": "",
+        "label_basis": "Existing repository fixture; constructed and typo slices are policy challenges."
+      },
+      {
+        "id": "unused-de-loeffelangst",
+        "lang": "de",
+        "word": "Löffelangst",
+        "group": "constructed",
+        "expected_used": false,
+        "attested_used": null,
+        "reference": "",
+        "adjudication_source": "",
+        "label_basis": "Existing repository fixture; constructed and typo slices are policy challenges."
+      },
+      {
+        "id": "attested-de-kummerspeck",
+        "lang": "de",
+        "word": "Kummerspeck",
+        "group": "real",
+        "expected_used": true,
+        "attested_used": true,
+        "reference": "https://en.wiktionary.org/wiki/Kummerspeck",
+        "adjudication_source": "",
+        "label_basis": "Existing repository fixture; constructed and typo slices are policy challenges."
+      },
+      {
+        "id": "rare-de-Sturheit",
+        "lang": "de",
+        "word": "Sturheit",
+        "group": "real",
+        "expected_used": true,
+        "attested_used": true,
+        "reference": "https://en.wiktionary.org/wiki/Sturheit",
+        "adjudication_source": "",
+        "label_basis": "Existing repository fixture; constructed and typo slices are policy challenges."
+      },
+      {
+        "id": "ordinary-sr-svraka",
+        "lang": "sr",
+        "word": "сврака",
+        "group": "real",
+        "expected_used": true,
+        "attested_used": true,
+        "reference": "https://en.wiktionary.org/wiki/%D1%81%D0%B2%D1%80%D0%B0%D0%BA%D0%B0",
+        "adjudication_source": "",
+        "label_basis": "Existing repository fixture; constructed and typo slices are policy challenges."
+      },
+      {
+        "id": "rare-en-pellucid",
+        "lang": "en",
+        "word": "pellucid",
+        "group": "real",
+        "expected_used": true,
+        "attested_used": true,
+        "reference": "https://en.wiktionary.org/wiki/pellucid",
+        "adjudication_source": "",
+        "label_basis": "Existing repository fixture; constructed and typo slices are policy challenges."
+      },
+      {
+        "id": "rare-de-Torschlusspanik",
+        "lang": "de",
+        "word": "Torschlusspanik",
+        "group": "real",
+        "expected_used": true,
+        "attested_used": true,
+        "reference": "https://en.wiktionary.org/wiki/Torschlusspanik",
+        "adjudication_source": "",
+        "label_basis": "Existing repository fixture; constructed and typo slices are policy challenges."
+      },
+      {
+        "id": "rare-de-Backpfeifengesicht",
+        "lang": "de",
+        "word": "Backpfeifengesicht",
+        "group": "real",
+        "expected_used": true,
+        "attested_used": true,
+        "reference": "https://en.wiktionary.org/wiki/Backpfeifengesicht",
+        "adjudication_source": "",
+        "label_basis": "Existing repository fixture; constructed and typo slices are policy challenges."
+      },
+      {
+        "id": "corrected-typo-sr-podrska",
+        "lang": "sr",
+        "word": "podrška",
+        "group": "real",
+        "expected_used": true,
+        "attested_used": true,
+        "reference": "https://en.wiktionary.org/wiki/podr%C5%A1ka",
+        "adjudication_source": "",
+        "label_basis": "Existing repository fixture; constructed and typo slices are policy challenges."
+      },
+      {
+        "id": "rare-sr-zlopamtilo",
+        "lang": "sr",
+        "word": "zlopamtilo",
+        "group": "real",
+        "expected_used": true,
+        "attested_used": true,
+        "reference": "https://en.wiktionary.org/wiki/zlopamtilo",
+        "adjudication_source": "",
+        "label_basis": "Existing repository fixture; constructed and typo slices are policy challenges."
+      },
+      {
+        "id": "corrected-typo-en-recieve",
+        "lang": "en",
+        "word": "receive",
+        "group": "real",
+        "expected_used": true,
+        "attested_used": true,
+        "reference": "https://en.wiktionary.org/wiki/receive",
+        "adjudication_source": "",
+        "label_basis": "Existing repository fixture; constructed and typo slices are policy challenges."
+      },
+      {
+        "id": "attested-sr-inat",
+        "lang": "sr",
+        "word": "инат",
+        "group": "real",
+        "expected_used": true,
+        "attested_used": true,
+        "reference": "https://en.wiktionary.org/wiki/%D0%B8%D0%BD%D0%B0%D1%82",
+        "adjudication_source": "",
+        "label_basis": "Existing repository fixture; constructed and typo slices are policy challenges."
+      },
+      {
+        "id": "attested-en-susurrus",
+        "lang": "en",
+        "word": "susurrus",
+        "group": "real",
+        "expected_used": true,
+        "attested_used": true,
+        "reference": "https://en.wiktionary.org/wiki/susurrus",
+        "adjudication_source": "",
+        "label_basis": "Existing repository fixture; constructed and typo slices are policy challenges."
+      },
+      {
+        "id": "typo-sr-podrska",
+        "lang": "sr",
+        "word": "podrska",
+        "group": "typo",
+        "expected_used": false,
+        "attested_used": null,
+        "reference": "",
+        "adjudication_source": "",
+        "label_basis": "Existing repository fixture; constructed and typo slices are policy challenges."
+      },
+      {
+        "id": "rare-en-obfuscate",
+        "lang": "en",
+        "word": "obfuscate",
+        "group": "real",
+        "expected_used": true,
+        "attested_used": true,
+        "reference": "https://en.wiktionary.org/wiki/obfuscate",
+        "adjudication_source": "",
+        "label_basis": "Existing repository fixture; constructed and typo slices are policy challenges."
+      },
+      {
+        "id": "corrected-typo-de-strase",
+        "lang": "de",
+        "word": "Straße",
+        "group": "real",
+        "expected_used": true,
+        "attested_used": true,
+        "reference": "https://en.wiktionary.org/wiki/Stra%C3%9Fe",
+        "adjudication_source": "",
+        "label_basis": "Existing repository fixture; constructed and typo slices are policy challenges."
+      },
+      {
+        "id": "ordinary-sr-klupa",
+        "lang": "sr",
+        "word": "клупа",
+        "group": "real",
+        "expected_used": true,
+        "attested_used": true,
+        "reference": "https://en.wiktionary.org/wiki/%D0%BA%D0%BB%D1%83%D0%BF%D0%B0",
+        "adjudication_source": "",
+        "label_basis": "Existing repository fixture; constructed and typo slices are policy challenges."
+      },
+      {
+        "id": "rare-sr-мерак",
+        "lang": "sr",
+        "word": "мерак",
+        "group": "real",
+        "expected_used": true,
+        "attested_used": true,
+        "reference": "https://en.wiktionary.org/wiki/%D0%BC%D0%B5%D1%80%D0%B0%D0%BA",
+        "adjudication_source": "",
+        "label_basis": "Existing repository fixture; constructed and typo slices are policy challenges."
+      },
+      {
+        "id": "corrected-typo-de-vieleicht",
+        "lang": "de",
+        "word": "vielleicht",
+        "group": "real",
+        "expected_used": true,
+        "attested_used": true,
+        "reference": "https://en.wiktionary.org/wiki/vielleicht",
+        "adjudication_source": "",
+        "label_basis": "Existing repository fixture; constructed and typo slices are policy challenges."
+      },
+      {
+        "id": "rare-en-recalcitrant",
+        "lang": "en",
+        "word": "recalcitrant",
+        "group": "real",
+        "expected_used": true,
+        "attested_used": true,
+        "reference": "https://en.wiktionary.org/wiki/recalcitrant",
+        "adjudication_source": "",
+        "label_basis": "Existing repository fixture; constructed and typo slices are policy challenges."
+      }
+    ],
+    "threshold": 0.5,
+    "abstention_band": [
+      0.1,
+      0.9
+    ],
+    "pace_seconds": 5,
+    "pool_wait_seconds": 60,
+    "pool_fastest_of": 2,
+    "requests": {
+      "ordinary-de-muerrisch": {
+        "jev": {
+          "model": "jev-1.13.0",
+          "state": {
+            "source_language": "Deutsch",
+            "wording": "mürrisch"
+          },
+          "questions": {
+            "used": {
+              "type": "noul",
+              "instructions": "Is the exact wording actually used by speakers of the specified source language? Rarity is no objection: wording real speakers use in any register, field, dialect or period is used, however uncommon. Wording that is merely well formed — a compound, derivation or coinage nobody actually says — is not used, however natural it looks."
+            }
+          }
+        },
+        "pool": "You judge whether a wording is actually used by speakers of Deutsch.\n\nWording: \"mürrisch\"\n\nAnswer with one line of JSON and nothing else:\n{\"used\": true or false, \"where\": \"<the register, field, dialect or period this exact\nwording is used in, in a few words; empty when used is false>\"}\n\nRarity is no objection: wording real speakers use in any register, field, dialect or\nperiod is used, however uncommon. Wording that is merely well formed — a compound,\nderivation or coinage nobody actually says — is not used, however natural it looks.\nDo not write an article, an explanation or anything else."
+      },
+      "typo-de-strase": {
+        "jev": {
+          "model": "jev-1.13.0",
+          "state": {
+            "source_language": "Deutsch",
+            "wording": "Strase"
+          },
+          "questions": {
+            "used": {
+              "type": "noul",
+              "instructions": "Is the exact wording actually used by speakers of the specified source language? Rarity is no objection: wording real speakers use in any register, field, dialect or period is used, however uncommon. Wording that is merely well formed — a compound, derivation or coinage nobody actually says — is not used, however natural it looks."
+            }
+          }
+        },
+        "pool": "You judge whether a wording is actually used by speakers of Deutsch.\n\nWording: \"Strase\"\n\nAnswer with one line of JSON and nothing else:\n{\"used\": true or false, \"where\": \"<the register, field, dialect or period this exact\nwording is used in, in a few words; empty when used is false>\"}\n\nRarity is no objection: wording real speakers use in any register, field, dialect or\nperiod is used, however uncommon. Wording that is merely well formed — a compound,\nderivation or coinage nobody actually says — is not used, however natural it looks.\nDo not write an article, an explanation or anything else."
+      },
+      "rare-de-verschlimmbessern": {
+        "jev": {
+          "model": "jev-1.13.0",
+          "state": {
+            "source_language": "Deutsch",
+            "wording": "verschlimmbessern"
+          },
+          "questions": {
+            "used": {
+              "type": "noul",
+              "instructions": "Is the exact wording actually used by speakers of the specified source language? Rarity is no objection: wording real speakers use in any register, field, dialect or period is used, however uncommon. Wording that is merely well formed — a compound, derivation or coinage nobody actually says — is not used, however natural it looks."
+            }
+          }
+        },
+        "pool": "You judge whether a wording is actually used by speakers of Deutsch.\n\nWording: \"verschlimmbessern\"\n\nAnswer with one line of JSON and nothing else:\n{\"used\": true or false, \"where\": \"<the register, field, dialect or period this exact\nwording is used in, in a few words; empty when used is false>\"}\n\nRarity is no objection: wording real speakers use in any register, field, dialect or\nperiod is used, however uncommon. Wording that is merely well formed — a compound,\nderivation or coinage nobody actually says — is not used, however natural it looks.\nDo not write an article, an explanation or anything else."
+      },
+      "unused-en-bookshelfy": {
+        "jev": {
+          "model": "jev-1.13.0",
+          "state": {
+            "source_language": "English",
+            "wording": "bookshelfy"
+          },
+          "questions": {
+            "used": {
+              "type": "noul",
+              "instructions": "Is the exact wording actually used by speakers of the specified source language? Rarity is no objection: wording real speakers use in any register, field, dialect or period is used, however uncommon. Wording that is merely well formed — a compound, derivation or coinage nobody actually says — is not used, however natural it looks."
+            }
+          }
+        },
+        "pool": "You judge whether a wording is actually used by speakers of English.\n\nWording: \"bookshelfy\"\n\nAnswer with one line of JSON and nothing else:\n{\"used\": true or false, \"where\": \"<the register, field, dialect or period this exact\nwording is used in, in a few words; empty when used is false>\"}\n\nRarity is no objection: wording real speakers use in any register, field, dialect or\nperiod is used, however uncommon. Wording that is merely well formed — a compound,\nderivation or coinage nobody actually says — is not used, however natural it looks.\nDo not write an article, an explanation or anything else."
+      },
+      "typo-en-definately": {
+        "jev": {
+          "model": "jev-1.13.0",
+          "state": {
+            "source_language": "English",
+            "wording": "definately"
+          },
+          "questions": {
+            "used": {
+              "type": "noul",
+              "instructions": "Is the exact wording actually used by speakers of the specified source language? Rarity is no objection: wording real speakers use in any register, field, dialect or period is used, however uncommon. Wording that is merely well formed — a compound, derivation or coinage nobody actually says — is not used, however natural it looks."
+            }
+          }
+        },
+        "pool": "You judge whether a wording is actually used by speakers of English.\n\nWording: \"definately\"\n\nAnswer with one line of JSON and nothing else:\n{\"used\": true or false, \"where\": \"<the register, field, dialect or period this exact\nwording is used in, in a few words; empty when used is false>\"}\n\nRarity is no objection: wording real speakers use in any register, field, dialect or\nperiod is used, however uncommon. Wording that is merely well formed — a compound,\nderivation or coinage nobody actually says — is not used, however natural it looks.\nDo not write an article, an explanation or anything else."
+      },
+      "rare-sr-докон": {
+        "jev": {
+          "model": "jev-1.13.0",
+          "state": {
+            "source_language": "Српски",
+            "wording": "докон"
+          },
+          "questions": {
+            "used": {
+              "type": "noul",
+              "instructions": "Is the exact wording actually used by speakers of the specified source language? Rarity is no objection: wording real speakers use in any register, field, dialect or period is used, however uncommon. Wording that is merely well formed — a compound, derivation or coinage nobody actually says — is not used, however natural it looks."
+            }
+          }
+        },
+        "pool": "You judge whether a wording is actually used by speakers of Српски.\n\nWording: \"докон\"\n\nAnswer with one line of JSON and nothing else:\n{\"used\": true or false, \"where\": \"<the register, field, dialect or period this exact\nwording is used in, in a few words; empty when used is false>\"}\n\nRarity is no objection: wording real speakers use in any register, field, dialect or\nperiod is used, however uncommon. Wording that is merely well formed — a compound,\nderivation or coinage nobody actually says — is not used, however natural it looks.\nDo not write an article, an explanation or anything else."
+      },
+      "typo-de-vieleicht": {
+        "jev": {
+          "model": "jev-1.13.0",
+          "state": {
+            "source_language": "Deutsch",
+            "wording": "vieleicht"
+          },
+          "questions": {
+            "used": {
+              "type": "noul",
+              "instructions": "Is the exact wording actually used by speakers of the specified source language? Rarity is no objection: wording real speakers use in any register, field, dialect or period is used, however uncommon. Wording that is merely well formed — a compound, derivation or coinage nobody actually says — is not used, however natural it looks."
+            }
+          }
+        },
+        "pool": "You judge whether a wording is actually used by speakers of Deutsch.\n\nWording: \"vieleicht\"\n\nAnswer with one line of JSON and nothing else:\n{\"used\": true or false, \"where\": \"<the register, field, dialect or period this exact\nwording is used in, in a few words; empty when used is false>\"}\n\nRarity is no objection: wording real speakers use in any register, field, dialect or\nperiod is used, however uncommon. Wording that is merely well formed — a compound,\nderivation or coinage nobody actually says — is not used, however natural it looks.\nDo not write an article, an explanation or anything else."
+      },
+      "typo-en-recieve": {
+        "jev": {
+          "model": "jev-1.13.0",
+          "state": {
+            "source_language": "English",
+            "wording": "recieve"
+          },
+          "questions": {
+            "used": {
+              "type": "noul",
+              "instructions": "Is the exact wording actually used by speakers of the specified source language? Rarity is no objection: wording real speakers use in any register, field, dialect or period is used, however uncommon. Wording that is merely well formed — a compound, derivation or coinage nobody actually says — is not used, however natural it looks."
+            }
+          }
+        },
+        "pool": "You judge whether a wording is actually used by speakers of English.\n\nWording: \"recieve\"\n\nAnswer with one line of JSON and nothing else:\n{\"used\": true or false, \"where\": \"<the register, field, dialect or period this exact\nwording is used in, in a few words; empty when used is false>\"}\n\nRarity is no objection: wording real speakers use in any register, field, dialect or\nperiod is used, however uncommon. Wording that is merely well formed — a compound,\nderivation or coinage nobody actually says — is not used, however natural it looks.\nDo not write an article, an explanation or anything else."
+      },
+      "unused-sr-zmrkalica": {
+        "jev": {
+          "model": "jev-1.13.0",
+          "state": {
+            "source_language": "Српски",
+            "wording": "змркалица"
+          },
+          "questions": {
+            "used": {
+              "type": "noul",
+              "instructions": "Is the exact wording actually used by speakers of the specified source language? Rarity is no objection: wording real speakers use in any register, field, dialect or period is used, however uncommon. Wording that is merely well formed — a compound, derivation or coinage nobody actually says — is not used, however natural it looks."
+            }
+          }
+        },
+        "pool": "You judge whether a wording is actually used by speakers of Српски.\n\nWording: \"змркалица\"\n\nAnswer with one line of JSON and nothing else:\n{\"used\": true or false, \"where\": \"<the register, field, dialect or period this exact\nwording is used in, in a few words; empty when used is false>\"}\n\nRarity is no objection: wording real speakers use in any register, field, dialect or\nperiod is used, however uncommon. Wording that is merely well formed — a compound,\nderivation or coinage nobody actually says — is not used, however natural it looks.\nDo not write an article, an explanation or anything else."
+      },
+      "corrected-typo-en-definately": {
+        "jev": {
+          "model": "jev-1.13.0",
+          "state": {
+            "source_language": "English",
+            "wording": "definitely"
+          },
+          "questions": {
+            "used": {
+              "type": "noul",
+              "instructions": "Is the exact wording actually used by speakers of the specified source language? Rarity is no objection: wording real speakers use in any register, field, dialect or period is used, however uncommon. Wording that is merely well formed — a compound, derivation or coinage nobody actually says — is not used, however natural it looks."
+            }
+          }
+        },
+        "pool": "You judge whether a wording is actually used by speakers of English.\n\nWording: \"definitely\"\n\nAnswer with one line of JSON and nothing else:\n{\"used\": true or false, \"where\": \"<the register, field, dialect or period this exact\nwording is used in, in a few words; empty when used is false>\"}\n\nRarity is no objection: wording real speakers use in any register, field, dialect or\nperiod is used, however uncommon. Wording that is merely well formed — a compound,\nderivation or coinage nobody actually says — is not used, however natural it looks.\nDo not write an article, an explanation or anything else."
+      },
+      "rare-en-perfunctory": {
+        "jev": {
+          "model": "jev-1.13.0",
+          "state": {
+            "source_language": "English",
+            "wording": "perfunctory"
+          },
+          "questions": {
+            "used": {
+              "type": "noul",
+              "instructions": "Is the exact wording actually used by speakers of the specified source language? Rarity is no objection: wording real speakers use in any register, field, dialect or period is used, however uncommon. Wording that is merely well formed — a compound, derivation or coinage nobody actually says — is not used, however natural it looks."
+            }
+          }
+        },
+        "pool": "You judge whether a wording is actually used by speakers of English.\n\nWording: \"perfunctory\"\n\nAnswer with one line of JSON and nothing else:\n{\"used\": true or false, \"where\": \"<the register, field, dialect or period this exact\nwording is used in, in a few words; empty when used is false>\"}\n\nRarity is no objection: wording real speakers use in any register, field, dialect or\nperiod is used, however uncommon. Wording that is merely well formed — a compound,\nderivation or coinage nobody actually says — is not used, however natural it looks.\nDo not write an article, an explanation or anything else."
+      },
+      "unused-de-fahrradsuppe": {
+        "jev": {
+          "model": "jev-1.13.0",
+          "state": {
+            "source_language": "Deutsch",
+            "wording": "Fahrradsuppe"
+          },
+          "questions": {
+            "used": {
+              "type": "noul",
+              "instructions": "Is the exact wording actually used by speakers of the specified source language? Rarity is no objection: wording real speakers use in any register, field, dialect or period is used, however uncommon. Wording that is merely well formed — a compound, derivation or coinage nobody actually says — is not used, however natural it looks."
+            }
+          }
+        },
+        "pool": "You judge whether a wording is actually used by speakers of Deutsch.\n\nWording: \"Fahrradsuppe\"\n\nAnswer with one line of JSON and nothing else:\n{\"used\": true or false, \"where\": \"<the register, field, dialect or period this exact\nwording is used in, in a few words; empty when used is false>\"}\n\nRarity is no objection: wording real speakers use in any register, field, dialect or\nperiod is used, however uncommon. Wording that is merely well formed — a compound,\nderivation or coinage nobody actually says — is not used, however natural it looks.\nDo not write an article, an explanation or anything else."
+      },
+      "unused-en-blorptium": {
+        "jev": {
+          "model": "jev-1.13.0",
+          "state": {
+            "source_language": "English",
+            "wording": "blorptium"
+          },
+          "questions": {
+            "used": {
+              "type": "noul",
+              "instructions": "Is the exact wording actually used by speakers of the specified source language? Rarity is no objection: wording real speakers use in any register, field, dialect or period is used, however uncommon. Wording that is merely well formed — a compound, derivation or coinage nobody actually says — is not used, however natural it looks."
+            }
+          }
+        },
+        "pool": "You judge whether a wording is actually used by speakers of English.\n\nWording: \"blorptium\"\n\nAnswer with one line of JSON and nothing else:\n{\"used\": true or false, \"where\": \"<the register, field, dialect or period this exact\nwording is used in, in a few words; empty when used is false>\"}\n\nRarity is no objection: wording real speakers use in any register, field, dialect or\nperiod is used, however uncommon. Wording that is merely well formed — a compound,\nderivation or coinage nobody actually says — is not used, however natural it looks.\nDo not write an article, an explanation or anything else."
+      },
+      "attested-en-petrichor": {
+        "jev": {
+          "model": "jev-1.13.0",
+          "state": {
+            "source_language": "English",
+            "wording": "petrichor"
+          },
+          "questions": {
+            "used": {
+              "type": "noul",
+              "instructions": "Is the exact wording actually used by speakers of the specified source language? Rarity is no objection: wording real speakers use in any register, field, dialect or period is used, however uncommon. Wording that is merely well formed — a compound, derivation or coinage nobody actually says — is not used, however natural it looks."
+            }
+          }
+        },
+        "pool": "You judge whether a wording is actually used by speakers of English.\n\nWording: \"petrichor\"\n\nAnswer with one line of JSON and nothing else:\n{\"used\": true or false, \"where\": \"<the register, field, dialect or period this exact\nwording is used in, in a few words; empty when used is false>\"}\n\nRarity is no objection: wording real speakers use in any register, field, dialect or\nperiod is used, however uncommon. Wording that is merely well formed — a compound,\nderivation or coinage nobody actually says — is not used, however natural it looks.\nDo not write an article, an explanation or anything else."
+      },
+      "rare-sr-sevdah": {
+        "jev": {
+          "model": "jev-1.13.0",
+          "state": {
+            "source_language": "Српски",
+            "wording": "sevdah"
+          },
+          "questions": {
+            "used": {
+              "type": "noul",
+              "instructions": "Is the exact wording actually used by speakers of the specified source language? Rarity is no objection: wording real speakers use in any register, field, dialect or period is used, however uncommon. Wording that is merely well formed — a compound, derivation or coinage nobody actually says — is not used, however natural it looks."
+            }
+          }
+        },
+        "pool": "You judge whether a wording is actually used by speakers of Српски.\n\nWording: \"sevdah\"\n\nAnswer with one line of JSON and nothing else:\n{\"used\": true or false, \"where\": \"<the register, field, dialect or period this exact\nwording is used in, in a few words; empty when used is false>\"}\n\nRarity is no objection: wording real speakers use in any register, field, dialect or\nperiod is used, however uncommon. Wording that is merely well formed — a compound,\nderivation or coinage nobody actually says — is not used, however natural it looks.\nDo not write an article, an explanation or anything else."
+      },
+      "unused-en-tablewards": {
+        "jev": {
+          "model": "jev-1.13.0",
+          "state": {
+            "source_language": "English",
+            "wording": "tablewards"
+          },
+          "questions": {
+            "used": {
+              "type": "noul",
+              "instructions": "Is the exact wording actually used by speakers of the specified source language? Rarity is no objection: wording real speakers use in any register, field, dialect or period is used, however uncommon. Wording that is merely well formed — a compound, derivation or coinage nobody actually says — is not used, however natural it looks."
+            }
+          }
+        },
+        "pool": "You judge whether a wording is actually used by speakers of English.\n\nWording: \"tablewards\"\n\nAnswer with one line of JSON and nothing else:\n{\"used\": true or false, \"where\": \"<the register, field, dialect or period this exact\nwording is used in, in a few words; empty when used is false>\"}\n\nRarity is no objection: wording real speakers use in any register, field, dialect or\nperiod is used, however uncommon. Wording that is merely well formed — a compound,\nderivation or coinage nobody actually says — is not used, however natural it looks.\nDo not write an article, an explanation or anything else."
+      },
+      "rare-en-defenestration": {
+        "jev": {
+          "model": "jev-1.13.0",
+          "state": {
+            "source_language": "English",
+            "wording": "defenestration"
+          },
+          "questions": {
+            "used": {
+              "type": "noul",
+              "instructions": "Is the exact wording actually used by speakers of the specified source language? Rarity is no objection: wording real speakers use in any register, field, dialect or period is used, however uncommon. Wording that is merely well formed — a compound, derivation or coinage nobody actually says — is not used, however natural it looks."
+            }
+          }
+        },
+        "pool": "You judge whether a wording is actually used by speakers of English.\n\nWording: \"defenestration\"\n\nAnswer with one line of JSON and nothing else:\n{\"used\": true or false, \"where\": \"<the register, field, dialect or period this exact\nwording is used in, in a few words; empty when used is false>\"}\n\nRarity is no objection: wording real speakers use in any register, field, dialect or\nperiod is used, however uncommon. Wording that is merely well formed — a compound,\nderivation or coinage nobody actually says — is not used, however natural it looks.\nDo not write an article, an explanation or anything else."
+      },
+      "typo-sr-mozda": {
+        "jev": {
+          "model": "jev-1.13.0",
+          "state": {
+            "source_language": "Српски",
+            "wording": "мозда"
+          },
+          "questions": {
+            "used": {
+              "type": "noul",
+              "instructions": "Is the exact wording actually used by speakers of the specified source language? Rarity is no objection: wording real speakers use in any register, field, dialect or period is used, however uncommon. Wording that is merely well formed — a compound, derivation or coinage nobody actually says — is not used, however natural it looks."
+            }
+          }
+        },
+        "pool": "You judge whether a wording is actually used by speakers of Српски.\n\nWording: \"мозда\"\n\nAnswer with one line of JSON and nothing else:\n{\"used\": true or false, \"where\": \"<the register, field, dialect or period this exact\nwording is used in, in a few words; empty when used is false>\"}\n\nRarity is no objection: wording real speakers use in any register, field, dialect or\nperiod is used, however uncommon. Wording that is merely well formed — a compound,\nderivation or coinage nobody actually says — is not used, however natural it looks.\nDo not write an article, an explanation or anything else."
+      },
+      "corrected-typo-sr-mozda": {
+        "jev": {
+          "model": "jev-1.13.0",
+          "state": {
+            "source_language": "Српски",
+            "wording": "можда"
+          },
+          "questions": {
+            "used": {
+              "type": "noul",
+              "instructions": "Is the exact wording actually used by speakers of the specified source language? Rarity is no objection: wording real speakers use in any register, field, dialect or period is used, however uncommon. Wording that is merely well formed — a compound, derivation or coinage nobody actually says — is not used, however natural it looks."
+            }
+          }
+        },
+        "pool": "You judge whether a wording is actually used by speakers of Српски.\n\nWording: \"можда\"\n\nAnswer with one line of JSON and nothing else:\n{\"used\": true or false, \"where\": \"<the register, field, dialect or period this exact\nwording is used in, in a few words; empty when used is false>\"}\n\nRarity is no objection: wording real speakers use in any register, field, dialect or\nperiod is used, however uncommon. Wording that is merely well formed — a compound,\nderivation or coinage nobody actually says — is not used, however natural it looks.\nDo not write an article, an explanation or anything else."
+      },
+      "ordinary-en-ledge": {
+        "jev": {
+          "model": "jev-1.13.0",
+          "state": {
+            "source_language": "English",
+            "wording": "ledge"
+          },
+          "questions": {
+            "used": {
+              "type": "noul",
+              "instructions": "Is the exact wording actually used by speakers of the specified source language? Rarity is no objection: wording real speakers use in any register, field, dialect or period is used, however uncommon. Wording that is merely well formed — a compound, derivation or coinage nobody actually says — is not used, however natural it looks."
+            }
+          }
+        },
+        "pool": "You judge whether a wording is actually used by speakers of English.\n\nWording: \"ledge\"\n\nAnswer with one line of JSON and nothing else:\n{\"used\": true or false, \"where\": \"<the register, field, dialect or period this exact\nwording is used in, in a few words; empty when used is false>\"}\n\nRarity is no objection: wording real speakers use in any register, field, dialect or\nperiod is used, however uncommon. Wording that is merely well formed — a compound,\nderivation or coinage nobody actually says — is not used, however natural it looks.\nDo not write an article, an explanation or anything else."
+      },
+      "ordinary-de-kuebel": {
+        "jev": {
+          "model": "jev-1.13.0",
+          "state": {
+            "source_language": "Deutsch",
+            "wording": "Kübel"
+          },
+          "questions": {
+            "used": {
+              "type": "noul",
+              "instructions": "Is the exact wording actually used by speakers of the specified source language? Rarity is no objection: wording real speakers use in any register, field, dialect or period is used, however uncommon. Wording that is merely well formed — a compound, derivation or coinage nobody actually says — is not used, however natural it looks."
+            }
+          }
+        },
+        "pool": "You judge whether a wording is actually used by speakers of Deutsch.\n\nWording: \"Kübel\"\n\nAnswer with one line of JSON and nothing else:\n{\"used\": true or false, \"where\": \"<the register, field, dialect or period this exact\nwording is used in, in a few words; empty when used is false>\"}\n\nRarity is no objection: wording real speakers use in any register, field, dialect or\nperiod is used, however uncommon. Wording that is merely well formed — a compound,\nderivation or coinage nobody actually says — is not used, however natural it looks.\nDo not write an article, an explanation or anything else."
+      },
+      "rare-en-quotidian": {
+        "jev": {
+          "model": "jev-1.13.0",
+          "state": {
+            "source_language": "English",
+            "wording": "quotidian"
+          },
+          "questions": {
+            "used": {
+              "type": "noul",
+              "instructions": "Is the exact wording actually used by speakers of the specified source language? Rarity is no objection: wording real speakers use in any register, field, dialect or period is used, however uncommon. Wording that is merely well formed — a compound, derivation or coinage nobody actually says — is not used, however natural it looks."
+            }
+          }
+        },
+        "pool": "You judge whether a wording is actually used by speakers of English.\n\nWording: \"quotidian\"\n\nAnswer with one line of JSON and nothing else:\n{\"used\": true or false, \"where\": \"<the register, field, dialect or period this exact\nwording is used in, in a few words; empty when used is false>\"}\n\nRarity is no objection: wording real speakers use in any register, field, dialect or\nperiod is used, however uncommon. Wording that is merely well formed — a compound,\nderivation or coinage nobody actually says — is not used, however natural it looks.\nDo not write an article, an explanation or anything else."
+      },
+      "ordinary-en-scowl": {
+        "jev": {
+          "model": "jev-1.13.0",
+          "state": {
+            "source_language": "English",
+            "wording": "scowl"
+          },
+          "questions": {
+            "used": {
+              "type": "noul",
+              "instructions": "Is the exact wording actually used by speakers of the specified source language? Rarity is no objection: wording real speakers use in any register, field, dialect or period is used, however uncommon. Wording that is merely well formed — a compound, derivation or coinage nobody actually says — is not used, however natural it looks."
+            }
+          }
+        },
+        "pool": "You judge whether a wording is actually used by speakers of English.\n\nWording: \"scowl\"\n\nAnswer with one line of JSON and nothing else:\n{\"used\": true or false, \"where\": \"<the register, field, dialect or period this exact\nwording is used in, in a few words; empty when used is false>\"}\n\nRarity is no objection: wording real speakers use in any register, field, dialect or\nperiod is used, however uncommon. Wording that is merely well formed — a compound,\nderivation or coinage nobody actually says — is not used, however natural it looks.\nDo not write an article, an explanation or anything else."
+      },
+      "rare-de-Fernweh": {
+        "jev": {
+          "model": "jev-1.13.0",
+          "state": {
+            "source_language": "Deutsch",
+            "wording": "Fernweh"
+          },
+          "questions": {
+            "used": {
+              "type": "noul",
+              "instructions": "Is the exact wording actually used by speakers of the specified source language? Rarity is no objection: wording real speakers use in any register, field, dialect or period is used, however uncommon. Wording that is merely well formed — a compound, derivation or coinage nobody actually says — is not used, however natural it looks."
+            }
+          }
+        },
+        "pool": "You judge whether a wording is actually used by speakers of Deutsch.\n\nWording: \"Fernweh\"\n\nAnswer with one line of JSON and nothing else:\n{\"used\": true or false, \"where\": \"<the register, field, dialect or period this exact\nwording is used in, in a few words; empty when used is false>\"}\n\nRarity is no objection: wording real speakers use in any register, field, dialect or\nperiod is used, however uncommon. Wording that is merely well formed — a compound,\nderivation or coinage nobody actually says — is not used, however natural it looks.\nDo not write an article, an explanation or anything else."
+      },
+      "rare-sr-чежња": {
+        "jev": {
+          "model": "jev-1.13.0",
+          "state": {
+            "source_language": "Српски",
+            "wording": "чежња"
+          },
+          "questions": {
+            "used": {
+              "type": "noul",
+              "instructions": "Is the exact wording actually used by speakers of the specified source language? Rarity is no objection: wording real speakers use in any register, field, dialect or period is used, however uncommon. Wording that is merely well formed — a compound, derivation or coinage nobody actually says — is not used, however natural it looks."
+            }
+          }
+        },
+        "pool": "You judge whether a wording is actually used by speakers of Српски.\n\nWording: \"чежња\"\n\nAnswer with one line of JSON and nothing else:\n{\"used\": true or false, \"where\": \"<the register, field, dialect or period this exact\nwording is used in, in a few words; empty when used is false>\"}\n\nRarity is no objection: wording real speakers use in any register, field, dialect or\nperiod is used, however uncommon. Wording that is merely well formed — a compound,\nderivation or coinage nobody actually says — is not used, however natural it looks.\nDo not write an article, an explanation or anything else."
+      },
+      "unused-de-loeffelangst": {
+        "jev": {
+          "model": "jev-1.13.0",
+          "state": {
+            "source_language": "Deutsch",
+            "wording": "Löffelangst"
+          },
+          "questions": {
+            "used": {
+              "type": "noul",
+              "instructions": "Is the exact wording actually used by speakers of the specified source language? Rarity is no objection: wording real speakers use in any register, field, dialect or period is used, however uncommon. Wording that is merely well formed — a compound, derivation or coinage nobody actually says — is not used, however natural it looks."
+            }
+          }
+        },
+        "pool": "You judge whether a wording is actually used by speakers of Deutsch.\n\nWording: \"Löffelangst\"\n\nAnswer with one line of JSON and nothing else:\n{\"used\": true or false, \"where\": \"<the register, field, dialect or period this exact\nwording is used in, in a few words; empty when used is false>\"}\n\nRarity is no objection: wording real speakers use in any register, field, dialect or\nperiod is used, however uncommon. Wording that is merely well formed — a compound,\nderivation or coinage nobody actually says — is not used, however natural it looks.\nDo not write an article, an explanation or anything else."
+      },
+      "attested-de-kummerspeck": {
+        "jev": {
+          "model": "jev-1.13.0",
+          "state": {
+            "source_language": "Deutsch",
+            "wording": "Kummerspeck"
+          },
+          "questions": {
+            "used": {
+              "type": "noul",
+              "instructions": "Is the exact wording actually used by speakers of the specified source language? Rarity is no objection: wording real speakers use in any register, field, dialect or period is used, however uncommon. Wording that is merely well formed — a compound, derivation or coinage nobody actually says — is not used, however natural it looks."
+            }
+          }
+        },
+        "pool": "You judge whether a wording is actually used by speakers of Deutsch.\n\nWording: \"Kummerspeck\"\n\nAnswer with one line of JSON and nothing else:\n{\"used\": true or false, \"where\": \"<the register, field, dialect or period this exact\nwording is used in, in a few words; empty when used is false>\"}\n\nRarity is no objection: wording real speakers use in any register, field, dialect or\nperiod is used, however uncommon. Wording that is merely well formed — a compound,\nderivation or coinage nobody actually says — is not used, however natural it looks.\nDo not write an article, an explanation or anything else."
+      },
+      "rare-de-Sturheit": {
+        "jev": {
+          "model": "jev-1.13.0",
+          "state": {
+            "source_language": "Deutsch",
+            "wording": "Sturheit"
+          },
+          "questions": {
+            "used": {
+              "type": "noul",
+              "instructions": "Is the exact wording actually used by speakers of the specified source language? Rarity is no objection: wording real speakers use in any register, field, dialect or period is used, however uncommon. Wording that is merely well formed — a compound, derivation or coinage nobody actually says — is not used, however natural it looks."
+            }
+          }
+        },
+        "pool": "You judge whether a wording is actually used by speakers of Deutsch.\n\nWording: \"Sturheit\"\n\nAnswer with one line of JSON and nothing else:\n{\"used\": true or false, \"where\": \"<the register, field, dialect or period this exact\nwording is used in, in a few words; empty when used is false>\"}\n\nRarity is no objection: wording real speakers use in any register, field, dialect or\nperiod is used, however uncommon. Wording that is merely well formed — a compound,\nderivation or coinage nobody actually says — is not used, however natural it looks.\nDo not write an article, an explanation or anything else."
+      },
+      "ordinary-sr-svraka": {
+        "jev": {
+          "model": "jev-1.13.0",
+          "state": {
+            "source_language": "Српски",
+            "wording": "сврака"
+          },
+          "questions": {
+            "used": {
+              "type": "noul",
+              "instructions": "Is the exact wording actually used by speakers of the specified source language? Rarity is no objection: wording real speakers use in any register, field, dialect or period is used, however uncommon. Wording that is merely well formed — a compound, derivation or coinage nobody actually says — is not used, however natural it looks."
+            }
+          }
+        },
+        "pool": "You judge whether a wording is actually used by speakers of Српски.\n\nWording: \"сврака\"\n\nAnswer with one line of JSON and nothing else:\n{\"used\": true or false, \"where\": \"<the register, field, dialect or period this exact\nwording is used in, in a few words; empty when used is false>\"}\n\nRarity is no objection: wording real speakers use in any register, field, dialect or\nperiod is used, however uncommon. Wording that is merely well formed — a compound,\nderivation or coinage nobody actually says — is not used, however natural it looks.\nDo not write an article, an explanation or anything else."
+      },
+      "rare-en-pellucid": {
+        "jev": {
+          "model": "jev-1.13.0",
+          "state": {
+            "source_language": "English",
+            "wording": "pellucid"
+          },
+          "questions": {
+            "used": {
+              "type": "noul",
+              "instructions": "Is the exact wording actually used by speakers of the specified source language? Rarity is no objection: wording real speakers use in any register, field, dialect or period is used, however uncommon. Wording that is merely well formed — a compound, derivation or coinage nobody actually says — is not used, however natural it looks."
+            }
+          }
+        },
+        "pool": "You judge whether a wording is actually used by speakers of English.\n\nWording: \"pellucid\"\n\nAnswer with one line of JSON and nothing else:\n{\"used\": true or false, \"where\": \"<the register, field, dialect or period this exact\nwording is used in, in a few words; empty when used is false>\"}\n\nRarity is no objection: wording real speakers use in any register, field, dialect or\nperiod is used, however uncommon. Wording that is merely well formed — a compound,\nderivation or coinage nobody actually says — is not used, however natural it looks.\nDo not write an article, an explanation or anything else."
+      },
+      "rare-de-Torschlusspanik": {
+        "jev": {
+          "model": "jev-1.13.0",
+          "state": {
+            "source_language": "Deutsch",
+            "wording": "Torschlusspanik"
+          },
+          "questions": {
+            "used": {
+              "type": "noul",
+              "instructions": "Is the exact wording actually used by speakers of the specified source language? Rarity is no objection: wording real speakers use in any register, field, dialect or period is used, however uncommon. Wording that is merely well formed — a compound, derivation or coinage nobody actually says — is not used, however natural it looks."
+            }
+          }
+        },
+        "pool": "You judge whether a wording is actually used by speakers of Deutsch.\n\nWording: \"Torschlusspanik\"\n\nAnswer with one line of JSON and nothing else:\n{\"used\": true or false, \"where\": \"<the register, field, dialect or period this exact\nwording is used in, in a few words; empty when used is false>\"}\n\nRarity is no objection: wording real speakers use in any register, field, dialect or\nperiod is used, however uncommon. Wording that is merely well formed — a compound,\nderivation or coinage nobody actually says — is not used, however natural it looks.\nDo not write an article, an explanation or anything else."
+      },
+      "rare-de-Backpfeifengesicht": {
+        "jev": {
+          "model": "jev-1.13.0",
+          "state": {
+            "source_language": "Deutsch",
+            "wording": "Backpfeifengesicht"
+          },
+          "questions": {
+            "used": {
+              "type": "noul",
+              "instructions": "Is the exact wording actually used by speakers of the specified source language? Rarity is no objection: wording real speakers use in any register, field, dialect or period is used, however uncommon. Wording that is merely well formed — a compound, derivation or coinage nobody actually says — is not used, however natural it looks."
+            }
+          }
+        },
+        "pool": "You judge whether a wording is actually used by speakers of Deutsch.\n\nWording: \"Backpfeifengesicht\"\n\nAnswer with one line of JSON and nothing else:\n{\"used\": true or false, \"where\": \"<the register, field, dialect or period this exact\nwording is used in, in a few words; empty when used is false>\"}\n\nRarity is no objection: wording real speakers use in any register, field, dialect or\nperiod is used, however uncommon. Wording that is merely well formed — a compound,\nderivation or coinage nobody actually says — is not used, however natural it looks.\nDo not write an article, an explanation or anything else."
+      },
+      "corrected-typo-sr-podrska": {
+        "jev": {
+          "model": "jev-1.13.0",
+          "state": {
+            "source_language": "Српски",
+            "wording": "podrška"
+          },
+          "questions": {
+            "used": {
+              "type": "noul",
+              "instructions": "Is the exact wording actually used by speakers of the specified source language? Rarity is no objection: wording real speakers use in any register, field, dialect or period is used, however uncommon. Wording that is merely well formed — a compound, derivation or coinage nobody actually says — is not used, however natural it looks."
+            }
+          }
+        },
+        "pool": "You judge whether a wording is actually used by speakers of Српски.\n\nWording: \"podrška\"\n\nAnswer with one line of JSON and nothing else:\n{\"used\": true or false, \"where\": \"<the register, field, dialect or period this exact\nwording is used in, in a few words; empty when used is false>\"}\n\nRarity is no objection: wording real speakers use in any register, field, dialect or\nperiod is used, however uncommon. Wording that is merely well formed — a compound,\nderivation or coinage nobody actually says — is not used, however natural it looks.\nDo not write an article, an explanation or anything else."
+      },
+      "rare-sr-zlopamtilo": {
+        "jev": {
+          "model": "jev-1.13.0",
+          "state": {
+            "source_language": "Српски",
+            "wording": "zlopamtilo"
+          },
+          "questions": {
+            "used": {
+              "type": "noul",
+              "instructions": "Is the exact wording actually used by speakers of the specified source language? Rarity is no objection: wording real speakers use in any register, field, dialect or period is used, however uncommon. Wording that is merely well formed — a compound, derivation or coinage nobody actually says — is not used, however natural it looks."
+            }
+          }
+        },
+        "pool": "You judge whether a wording is actually used by speakers of Српски.\n\nWording: \"zlopamtilo\"\n\nAnswer with one line of JSON and nothing else:\n{\"used\": true or false, \"where\": \"<the register, field, dialect or period this exact\nwording is used in, in a few words; empty when used is false>\"}\n\nRarity is no objection: wording real speakers use in any register, field, dialect or\nperiod is used, however uncommon. Wording that is merely well formed — a compound,\nderivation or coinage nobody actually says — is not used, however natural it looks.\nDo not write an article, an explanation or anything else."
+      },
+      "corrected-typo-en-recieve": {
+        "jev": {
+          "model": "jev-1.13.0",
+          "state": {
+            "source_language": "English",
+            "wording": "receive"
+          },
+          "questions": {
+            "used": {
+              "type": "noul",
+              "instructions": "Is the exact wording actually used by speakers of the specified source language? Rarity is no objection: wording real speakers use in any register, field, dialect or period is used, however uncommon. Wording that is merely well formed — a compound, derivation or coinage nobody actually says — is not used, however natural it looks."
+            }
+          }
+        },
+        "pool": "You judge whether a wording is actually used by speakers of English.\n\nWording: \"receive\"\n\nAnswer with one line of JSON and nothing else:\n{\"used\": true or false, \"where\": \"<the register, field, dialect or period this exact\nwording is used in, in a few words; empty when used is false>\"}\n\nRarity is no objection: wording real speakers use in any register, field, dialect or\nperiod is used, however uncommon. Wording that is merely well formed — a compound,\nderivation or coinage nobody actually says — is not used, however natural it looks.\nDo not write an article, an explanation or anything else."
+      },
+      "attested-sr-inat": {
+        "jev": {
+          "model": "jev-1.13.0",
+          "state": {
+            "source_language": "Српски",
+            "wording": "инат"
+          },
+          "questions": {
+            "used": {
+              "type": "noul",
+              "instructions": "Is the exact wording actually used by speakers of the specified source language? Rarity is no objection: wording real speakers use in any register, field, dialect or period is used, however uncommon. Wording that is merely well formed — a compound, derivation or coinage nobody actually says — is not used, however natural it looks."
+            }
+          }
+        },
+        "pool": "You judge whether a wording is actually used by speakers of Српски.\n\nWording: \"инат\"\n\nAnswer with one line of JSON and nothing else:\n{\"used\": true or false, \"where\": \"<the register, field, dialect or period this exact\nwording is used in, in a few words; empty when used is false>\"}\n\nRarity is no objection: wording real speakers use in any register, field, dialect or\nperiod is used, however uncommon. Wording that is merely well formed — a compound,\nderivation or coinage nobody actually says — is not used, however natural it looks.\nDo not write an article, an explanation or anything else."
+      },
+      "attested-en-susurrus": {
+        "jev": {
+          "model": "jev-1.13.0",
+          "state": {
+            "source_language": "English",
+            "wording": "susurrus"
+          },
+          "questions": {
+            "used": {
+              "type": "noul",
+              "instructions": "Is the exact wording actually used by speakers of the specified source language? Rarity is no objection: wording real speakers use in any register, field, dialect or period is used, however uncommon. Wording that is merely well formed — a compound, derivation or coinage nobody actually says — is not used, however natural it looks."
+            }
+          }
+        },
+        "pool": "You judge whether a wording is actually used by speakers of English.\n\nWording: \"susurrus\"\n\nAnswer with one line of JSON and nothing else:\n{\"used\": true or false, \"where\": \"<the register, field, dialect or period this exact\nwording is used in, in a few words; empty when used is false>\"}\n\nRarity is no objection: wording real speakers use in any register, field, dialect or\nperiod is used, however uncommon. Wording that is merely well formed — a compound,\nderivation or coinage nobody actually says — is not used, however natural it looks.\nDo not write an article, an explanation or anything else."
+      },
+      "typo-sr-podrska": {
+        "jev": {
+          "model": "jev-1.13.0",
+          "state": {
+            "source_language": "Српски",
+            "wording": "podrska"
+          },
+          "questions": {
+            "used": {
+              "type": "noul",
+              "instructions": "Is the exact wording actually used by speakers of the specified source language? Rarity is no objection: wording real speakers use in any register, field, dialect or period is used, however uncommon. Wording that is merely well formed — a compound, derivation or coinage nobody actually says — is not used, however natural it looks."
+            }
+          }
+        },
+        "pool": "You judge whether a wording is actually used by speakers of Српски.\n\nWording: \"podrska\"\n\nAnswer with one line of JSON and nothing else:\n{\"used\": true or false, \"where\": \"<the register, field, dialect or period this exact\nwording is used in, in a few words; empty when used is false>\"}\n\nRarity is no objection: wording real speakers use in any register, field, dialect or\nperiod is used, however uncommon. Wording that is merely well formed — a compound,\nderivation or coinage nobody actually says — is not used, however natural it looks.\nDo not write an article, an explanation or anything else."
+      },
+      "rare-en-obfuscate": {
+        "jev": {
+          "model": "jev-1.13.0",
+          "state": {
+            "source_language": "English",
+            "wording": "obfuscate"
+          },
+          "questions": {
+            "used": {
+              "type": "noul",
+              "instructions": "Is the exact wording actually used by speakers of the specified source language? Rarity is no objection: wording real speakers use in any register, field, dialect or period is used, however uncommon. Wording that is merely well formed — a compound, derivation or coinage nobody actually says — is not used, however natural it looks."
+            }
+          }
+        },
+        "pool": "You judge whether a wording is actually used by speakers of English.\n\nWording: \"obfuscate\"\n\nAnswer with one line of JSON and nothing else:\n{\"used\": true or false, \"where\": \"<the register, field, dialect or period this exact\nwording is used in, in a few words; empty when used is false>\"}\n\nRarity is no objection: wording real speakers use in any register, field, dialect or\nperiod is used, however uncommon. Wording that is merely well formed — a compound,\nderivation or coinage nobody actually says — is not used, however natural it looks.\nDo not write an article, an explanation or anything else."
+      },
+      "corrected-typo-de-strase": {
+        "jev": {
+          "model": "jev-1.13.0",
+          "state": {
+            "source_language": "Deutsch",
+            "wording": "Straße"
+          },
+          "questions": {
+            "used": {
+              "type": "noul",
+              "instructions": "Is the exact wording actually used by speakers of the specified source language? Rarity is no objection: wording real speakers use in any register, field, dialect or period is used, however uncommon. Wording that is merely well formed — a compound, derivation or coinage nobody actually says — is not used, however natural it looks."
+            }
+          }
+        },
+        "pool": "You judge whether a wording is actually used by speakers of Deutsch.\n\nWording: \"Straße\"\n\nAnswer with one line of JSON and nothing else:\n{\"used\": true or false, \"where\": \"<the register, field, dialect or period this exact\nwording is used in, in a few words; empty when used is false>\"}\n\nRarity is no objection: wording real speakers use in any register, field, dialect or\nperiod is used, however uncommon. Wording that is merely well formed — a compound,\nderivation or coinage nobody actually says — is not used, however natural it looks.\nDo not write an article, an explanation or anything else."
+      },
+      "ordinary-sr-klupa": {
+        "jev": {
+          "model": "jev-1.13.0",
+          "state": {
+            "source_language": "Српски",
+            "wording": "клупа"
+          },
+          "questions": {
+            "used": {
+              "type": "noul",
+              "instructions": "Is the exact wording actually used by speakers of the specified source language? Rarity is no objection: wording real speakers use in any register, field, dialect or period is used, however uncommon. Wording that is merely well formed — a compound, derivation or coinage nobody actually says — is not used, however natural it looks."
+            }
+          }
+        },
+        "pool": "You judge whether a wording is actually used by speakers of Српски.\n\nWording: \"клупа\"\n\nAnswer with one line of JSON and nothing else:\n{\"used\": true or false, \"where\": \"<the register, field, dialect or period this exact\nwording is used in, in a few words; empty when used is false>\"}\n\nRarity is no objection: wording real speakers use in any register, field, dialect or\nperiod is used, however uncommon. Wording that is merely well formed — a compound,\nderivation or coinage nobody actually says — is not used, however natural it looks.\nDo not write an article, an explanation or anything else."
+      },
+      "rare-sr-мерак": {
+        "jev": {
+          "model": "jev-1.13.0",
+          "state": {
+            "source_language": "Српски",
+            "wording": "мерак"
+          },
+          "questions": {
+            "used": {
+              "type": "noul",
+              "instructions": "Is the exact wording actually used by speakers of the specified source language? Rarity is no objection: wording real speakers use in any register, field, dialect or period is used, however uncommon. Wording that is merely well formed — a compound, derivation or coinage nobody actually says — is not used, however natural it looks."
+            }
+          }
+        },
+        "pool": "You judge whether a wording is actually used by speakers of Српски.\n\nWording: \"мерак\"\n\nAnswer with one line of JSON and nothing else:\n{\"used\": true or false, \"where\": \"<the register, field, dialect or period this exact\nwording is used in, in a few words; empty when used is false>\"}\n\nRarity is no objection: wording real speakers use in any register, field, dialect or\nperiod is used, however uncommon. Wording that is merely well formed — a compound,\nderivation or coinage nobody actually says — is not used, however natural it looks.\nDo not write an article, an explanation or anything else."
+      },
+      "corrected-typo-de-vieleicht": {
+        "jev": {
+          "model": "jev-1.13.0",
+          "state": {
+            "source_language": "Deutsch",
+            "wording": "vielleicht"
+          },
+          "questions": {
+            "used": {
+              "type": "noul",
+              "instructions": "Is the exact wording actually used by speakers of the specified source language? Rarity is no objection: wording real speakers use in any register, field, dialect or period is used, however uncommon. Wording that is merely well formed — a compound, derivation or coinage nobody actually says — is not used, however natural it looks."
+            }
+          }
+        },
+        "pool": "You judge whether a wording is actually used by speakers of Deutsch.\n\nWording: \"vielleicht\"\n\nAnswer with one line of JSON and nothing else:\n{\"used\": true or false, \"where\": \"<the register, field, dialect or period this exact\nwording is used in, in a few words; empty when used is false>\"}\n\nRarity is no objection: wording real speakers use in any register, field, dialect or\nperiod is used, however uncommon. Wording that is merely well formed — a compound,\nderivation or coinage nobody actually says — is not used, however natural it looks.\nDo not write an article, an explanation or anything else."
+      },
+      "rare-en-recalcitrant": {
+        "jev": {
+          "model": "jev-1.13.0",
+          "state": {
+            "source_language": "English",
+            "wording": "recalcitrant"
+          },
+          "questions": {
+            "used": {
+              "type": "noul",
+              "instructions": "Is the exact wording actually used by speakers of the specified source language? Rarity is no objection: wording real speakers use in any register, field, dialect or period is used, however uncommon. Wording that is merely well formed — a compound, derivation or coinage nobody actually says — is not used, however natural it looks."
+            }
+          }
+        },
+        "pool": "You judge whether a wording is actually used by speakers of English.\n\nWording: \"recalcitrant\"\n\nAnswer with one line of JSON and nothing else:\n{\"used\": true or false, \"where\": \"<the register, field, dialect or period this exact\nwording is used in, in a few words; empty when used is false>\"}\n\nRarity is no objection: wording real speakers use in any register, field, dialect or\nperiod is used, however uncommon. Wording that is merely well formed — a compound,\nderivation or coinage nobody actually says — is not used, however natural it looks.\nDo not write an article, an explanation or anything else."
+      }
+    }
+  },
+  "fingerprint": "ee967f80f56c61ec1575a549ad78307fee5b690e8cff7e86b0a2b17cb3efcc40",
+  "created_at": "2026-09-30T16:25:04Z",
+  "source_commit": "df67de165d6a51dc4ef29c07409b0b6b77326b52",
+  "harness_sha256": "533031516345b5a7887d09de2f8207b10607ff135cee11b3e04485a00d550cff"
+}
