@@ -162,6 +162,7 @@ class FakeBroker:
         home=None,
         direct: Iterable[str] = (),
         *,
+        secrets: object = None,
         handles: Iterable[FakeHandle] = (),
         client: FakeDirectClient | None = None,
         direct_error: Exception | None = None,

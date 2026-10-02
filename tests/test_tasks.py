@@ -150,6 +150,24 @@ class _Result:
         self.stdout = stdout
 
 
+@pytest.mark.parametrize(("sync", "env"), [(False, {"ECHOWORDS_ANKI_SYNC": "false"}), (True, {})])
+def test_dev_keeps_the_local_collection_off_ankiweb_unless_asked(monkeypatch, tmp_path, sync, env):
+    (tmp_path / "index.html").write_text("built")
+    monkeypatch.setattr(tasks, "STATIC_PATH", tmp_path)
+    monkeypatch.setattr(tasks, "_ensure_languages_config", lambda: None)
+    runs = []
+
+    class Recording:
+        def run(self, command, **kwargs):
+            runs.append((command, kwargs))
+
+    tasks.dev.body(Recording(), port=8097, sync=sync)
+
+    [(command, kwargs)] = runs
+    assert "uvicorn echo_words.api:app" in command
+    assert kwargs["env"] == env
+
+
 class _Context:
     def __init__(self, outputs):
         self.outputs = iter(outputs)

@@ -75,8 +75,8 @@ def _no_lookups(monkeypatch: pytest.MonkeyPatch, audio: object = None) -> None:
 
 def _wired_broker(script: dict, box: list[FakeBroker]) -> type[FakeBroker]:
     class ScriptedBroker(FakeBroker):
-        def __init__(self, home=None, direct=()) -> None:
-            super().__init__(home=home, direct=direct, **script)
+        def __init__(self, home=None, direct=(), *, secrets=None) -> None:
+            super().__init__(home=home, direct=direct, secrets=secrets, **script)
             box.append(self)
 
     return ScriptedBroker

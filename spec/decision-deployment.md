@@ -149,6 +149,13 @@ verdict holds even if the two ever land on one host:
 Provider API keys may hold the same values in both `.deploy/.env`
 files; that is fine, each process reads its own.
 
+Within echo-words, `.deploy/.env` is the one place for keys, on the
+server and on a dev box alike. systemd hands the whole file to the
+service; a local run gives llmbroker only the provider keys from it and
+never the rest, because its AnkiWeb login and the server's data dir
+would point a dev box at the production collection. For the same
+reason a local run keeps AnkiWeb sync off unless it is asked for.
+
 ## Deploy tooling: invoke tasks over ssh, not Ansible/Chef
 
 Deployment is `invoke` tasks in `tasks.py`, ported from dinary.

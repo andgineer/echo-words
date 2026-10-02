@@ -572,6 +572,32 @@ async def test_the_paid_step_and_the_pool_both_answer_whichever_is_asked_first(
     )
 
 
+async def test_keys_written_only_into_the_provider_keys_file_reach_the_broker(
+    settings: Settings,
+    languages: dict[str, Language],
+    curated: Curated,
+    wire: Wire,
+):
+    pool, paid = curated.pool[0], curated.paid
+    settings.provider_keys_file.write_text(
+        f"{pool.api_key_ref}={fake_key(pool.api_key_ref)}\n"
+        f"{paid.provider.api_key_ref}={fake_key(paid.provider.api_key_ref)}\n",
+    )
+    wire.reply(pool.model, Answer(("free ", "answer")))
+    async with running(settings, languages) as broker:
+        completion = Cascade(broker, settings).stream_completion(
+            "prompt",
+            languages["sr"],
+            trace_id="entry-1",
+        )
+        answer = "".join(await drain(completion))
+        snapshot = await broker.snapshot()
+
+    assert answer == "free answer"
+    assert snapshot.providers_usable == 1
+    assert list(snapshot.direct_missing_keys) == []
+
+
 async def test_an_answer_the_caller_cannot_read_is_rated_down_and_the_same_call_answers_again(
     settings: Settings,
     languages: dict[str, Language],

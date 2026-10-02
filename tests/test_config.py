@@ -28,6 +28,10 @@ def test_the_deployment_secrets_file_is_never_read_by_the_app():
     assert ENV_FILE == REPO_ROOT / ".env"
 
 
+def test_the_provider_keys_come_from_the_deployment_secrets_file():
+    assert Settings(_env_file=None).provider_keys_file == REPO_ROOT / ".deploy" / ".env"
+
+
 def test_the_data_dir_carries_its_children(tmp_path: Path):
     settings = Settings(_env_file=None, data_dir=tmp_path)
     assert settings.llmbroker_home == tmp_path / "llmbroker"

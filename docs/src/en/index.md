@@ -82,5 +82,5 @@ before you set that up.
 
 #### On your computer
 
-[Try it on your computer](try-locally.md): a free Gemini key in `.env`, then
-`uv run inv dev`.
+[Try it on your computer](try-locally.md): a free Gemini key in `.deploy/.env`,
+then `uv run inv dev`.

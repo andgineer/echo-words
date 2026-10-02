@@ -358,6 +358,7 @@ def settings(languages_file: Path, static_dir: Path, tmp_path: Path) -> Settings
         data_dir=tmp_path / "data",
         static_dir=static_dir,
         anki_sync=False,
+        provider_keys_file=tmp_path / "no-keys.env",
     )
 
 

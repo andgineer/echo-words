@@ -14,9 +14,8 @@ from echo_words.languages import DEFAULT_TARGET_LANGUAGE
 # copy overrides what it needs through the environment.
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
-# .deploy/.env is not loaded here because systemd hands it to the server process
-# as an EnvironmentFile. A local run may still source it for the provider keys —
-# with ECHOWORDS_ANKI_SYNC=false, or the dev box syncs the real AnkiWeb account.
+# Settings never read .deploy/.env: on a dev box its AnkiWeb login and server data
+# dir would sync the production account. llmbroker reads only the provider keys there.
 ENV_FILE = REPO_ROOT / ".env"
 
 _DEFAULT_EDGE_TTS_VOICE = {"us": "en-US-AriaNeural", "uk": "en-GB-SoniaNeural"}
@@ -43,6 +42,7 @@ class Settings(BaseSettings):
     static_dir: Path = REPO_ROOT / "_static"
 
     llmbroker_home: Path = Field(default=None, validate_default=True)
+    provider_keys_file: Path = REPO_ROOT / ".deploy" / ".env"
     llmbroker_operation: str = "vocab"
     api_model: str = "gpt-fast"
     api_daily_cap: int = 100

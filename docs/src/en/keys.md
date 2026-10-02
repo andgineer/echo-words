@@ -1,11 +1,15 @@
 # Your keys
 
-echo-words needs the same keys wherever its server runs, and you write them the
-same way, as `KEY=value` lines. Only the file differs:
+echo-words reads its keys from one file, `.deploy/.env` in your checkout,
+wherever its server runs. Create it from the template:
 
-- **On Oracle Cloud**, they go in `.deploy/.env` in your checkout. Create it with
-  `cp .deploy.example/.env .deploy/.env`. Every deploy copies it to the VM.
-- **On your computer**, they go in `.env` at the root of your checkout.
+```bash
+mkdir -p .deploy
+cp .deploy.example/.env .deploy/.env
+```
+
+On Oracle Cloud every deploy copies it to the VM; on your computer the app reads
+it where it is.
 
 ## Gemini: the one key you need
 
@@ -57,8 +61,8 @@ ECHOWORDS_ANKIWEB_PASSWORD=...
 ```
 
 The server needs your AnkiWeb login so that cards reach your decks; see
-[Configuration](configuration.md#ankiweb). A trial on your computer runs without
-it, with `ECHOWORDS_ANKI_SYNC=false` instead.
+[Configuration](configuration.md#ankiweb). `uv run inv dev` on your computer does
+not sync with AnkiWeb, so it does not use the login.
 
 ## Checking them
 

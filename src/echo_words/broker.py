@@ -65,7 +65,9 @@ def paid_aliases(languages: dict[str, Language], settings: Settings) -> list[str
 
 
 def create_broker(settings: Settings, languages: dict[str, Language]) -> "AsyncBroker":
-    return llmbroker().AsyncBroker(
+    module = llmbroker()
+    return module.AsyncBroker(
         home=settings.llmbroker_home,
         direct=paid_aliases(languages, settings),
+        secrets=module.Secrets(env_file=settings.provider_keys_file),
     )

@@ -699,9 +699,10 @@ def _ensure_languages_config():
     help={
         "port": "TCP port to listen on (default 8080).",
         "rebuild": "Rebuild _static/ from webapp/ before starting.",
+        "sync": "Sync the local collection with AnkiWeb (off by default).",
     },
 )
-def dev(c: Context, port=8080, rebuild=False):
+def dev(c: Context, port=8080, rebuild=False, sync=False):
     """Run the web app locally with uvicorn --reload (http://127.0.0.1:<port>).
 
     Serves the built bundle. For frontend work with hot reload run
@@ -711,10 +712,13 @@ def dev(c: Context, port=8080, rebuild=False):
     _ensure_languages_config()
     if rebuild or not (STATIC_PATH / "index.html").is_file():
         _run_build(c)
+    # A dev box syncing the account the server syncs would put its test cards in
+    # the real decks, so a local run keeps its collection to itself unless asked.
     c.run(
         f"uv run uvicorn echo_words.api:app --reload --reload-dir src "
         f"--host 127.0.0.1 --port {port}",
         pty=True,
+        env={} if sync else {"ECHOWORDS_ANKI_SYNC": "false"},
     )
 
 
