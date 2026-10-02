@@ -61,7 +61,7 @@ is putting the server somewhere, and there are two places it can run:
 tier, the private network is Tailscale's free Personal plan, and the answers come
 from a pool of free LLM models, led by Gemini. One free Gemini key is all the app
 needs. A paid OpenAI key is optional and adds the deeper article; on the author's
-own use it costs about $0.60 a month. The install is automated. Once you have
+own use it costs about half a dollar a month. The install is automated. Once you have
 created the VM and joined it to your Tailscale network, one command prepares the
 machine and one command builds and starts the app, and that second command is
 also how you update it. Run it on your own computer only to see what the app does

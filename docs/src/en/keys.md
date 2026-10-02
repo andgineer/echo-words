@@ -47,9 +47,10 @@ failed to answer. Without it, the deeper article says it is unavailable, and a
 card the pool failed shows the failure.
 
 It costs little. A deeper article costs about $0.036, so a dollar buys about 28 of
-them. On the author's own use, 17 deeper articles in 30 days, that came to about
-$0.60 a month. A card goes to the paid model only when the free pool fails to
-answer it. The app also stops after 100 paid calls a day, which
+them, and a paid card costs a fraction of a cent. A card goes to the paid model
+only when the free pool fails to answer it, or when you ask for the paid model
+on a failed card. On the author's own use over the 30 days to 2 October 2026, 14
+deeper articles and 12 paid cards came to about $0.53 in all. The app also stops after 100 paid calls a day, which
 `ECHOWORDS_API_DAILY_CAP` changes.
 `ECHOWORDS_API_MODEL=` switches paid calls off entirely, even with the key set.
 
