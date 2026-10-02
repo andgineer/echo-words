@@ -82,7 +82,6 @@ A bare `uv sync` is not enough to reach a green suite:
    than skip. They load the built PWA from a real server, so `inv test`
    builds `_static/` when it is missing.
 
-`espeak-ng` is needed only to *run* Piper voices, never by a test.
 `languages.toml` is needed only to run the app, and `inv dev` creates it
 from `languages.example.toml`. Never work around a missing dependency or
 binary by skipping tests — fix the environment.
@@ -182,7 +181,9 @@ like the finite shared resource it is.
 ## Tests
 
 - Every new module or function ships its tests in the same commit. Never
-  skip them, never defer them to a later milestone.
+  skip them, never defer them to a later milestone. `experiments/` is
+  outside the product and gets no tests in CI; the one exception is
+  `one_note_bench.py`, because every model change is gated on it.
 - **Behaviour that only exists in the browser gets a browser test.** The
   `e2e`-marked suite runs the real server, the real pipeline and the built
   PWA in Chromium, with only the LLM faked, and it is where what the reader
