@@ -10,9 +10,9 @@
 | src/echo\_words/api\_backend.py      |       17 |        0 |    100% |           |
 | src/echo\_words/audio.py             |      292 |       24 |     92% |95-97, 136, 140, 147-150, 160-161, 198-200, 221, 253-254, 456, 501-505, 511 |
 | src/echo\_words/backend.py           |      309 |        4 |     99% |407, 573-576, 597 |
-| src/echo\_words/broker.py            |       35 |        0 |    100% |           |
+| src/echo\_words/broker.py            |       36 |        0 |    100% |           |
 | src/echo\_words/card.py              |      269 |       17 |     94% |132-133, 190-191, 249-259, 264, 273, 278, 324, 330, 336, 346, 462, 577 |
-| src/echo\_words/config.py            |       44 |        0 |    100% |           |
+| src/echo\_words/config.py            |       45 |        0 |    100% |           |
 | src/echo\_words/events.py            |       34 |        0 |    100% |           |
 | src/echo\_words/history.py           |      110 |        0 |    100% |           |
 | src/echo\_words/i18n.py              |       23 |        0 |    100% |           |
@@ -27,7 +27,7 @@
 | src/echo\_words/sanitizer.py         |       25 |        1 |     96% |        37 |
 | src/echo\_words/segments.py          |      107 |        9 |     92% |44, 76, 106, 108, 112, 117, 135, 139, 207 |
 | src/echo\_words/voices.py            |        9 |        0 |    100% |           |
-| **TOTAL**                            | **3592** |  **158** | **96%** |           |
+| **TOTAL**                            | **3594** |  **158** | **96%** |           |
 
 
 ## Setup coverage badge
