@@ -55,24 +55,24 @@ is putting the server somewhere, and there are two places it can run:
 | Opens on | your phone and your computers, wherever you are | the browser on that one computer |
 | Cards | land in your Anki decks through AnkiWeb | stay in a trial collection no Anki app sees |
 | Costs | $0/month | $0 |
-| Your part | create the VM once; two commands do the rest | one free LLM key and a few commands |
+| Your part | create the VM once; two commands do the rest | a free Gemini key and a few commands |
 
 **Install it on Oracle Cloud.** It costs nothing: the VM is Oracle's Always Free
 tier, the private network is Tailscale's free Personal plan, and the answers come
-from a pool of free LLM providers. A paid OpenAI key is optional, and without one
-nothing is ever billed. The install is automated. Once you have created the VM
-and joined it to your Tailscale network, one command prepares the machine and
-one command builds and starts the app, and that second command is also how you
-update it. Run it on your own computer only to see what the app does before you
-set that up.
+from a pool of free LLM models, led by Gemini. One free Gemini key is all the app
+needs. A paid OpenAI key is optional and adds the deeper article; on the author's
+own use it costs about $0.60 a month. The install is automated. Once you have
+created the VM and joined it to your Tailscale network, one command prepares the
+machine and one command builds and starts the app, and that second command is
+also how you update it. Run it on your own computer only to see what the app does
+before you set that up.
 
 #### On Oracle Cloud
 
-1. [Create the free VM](deploy-oracle.md) and join it to your Tailscale network.
-2. Write the VM's address, at least one free LLM provider key and your AnkiWeb
-   login into the deploy settings on your computer, as
-   [Configuration](configuration.md) describes.
-3. Run `uv run inv setup-app --with-host-prep` once, then
+1. [Get your keys](keys.md): one free Gemini key is enough.
+2. [Create the free VM](deploy-oracle.md) and join it to your Tailscale network.
+3. Write the VM's address, your keys and your AnkiWeb login into `.deploy/.env`,
+   then run `uv run inv setup-app --with-host-prep` once and
    `uv run inv deploy --ref=main`, as [Install on Oracle Cloud](deploy-oracle.md)
    describes.
 4. [Install the app on your phone](pwa-install.md), and add the share-sheet
@@ -82,4 +82,5 @@ set that up.
 
 #### On your computer
 
-[Try it on your computer](try-locally.md): one free LLM key and `uv run inv dev`.
+[Try it on your computer](try-locally.md): a free Gemini key in `.env`, then
+`uv run inv dev`.

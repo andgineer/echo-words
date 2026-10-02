@@ -37,6 +37,7 @@ extra:
 
 nav:
   - index.md
+  - keys.md
   - deploy-oracle.md
   - configuration.md
   - pwa-install.md

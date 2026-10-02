@@ -12,8 +12,7 @@ prepares the machine and `inv deploy` installs the app. Every later update is
 - an [Oracle Cloud Free Tier](https://www.oracle.com/cloud/free/) account
 - a [Tailscale](https://tailscale.com/) account (its Personal plan is free), with
   the Tailscale app on your phone
-- one free LLM provider key, and your AnkiWeb login; [Configuration](configuration.md)
-  lists both
+- a free Gemini key and your AnkiWeb login, see [Your keys](keys.md)
 - on your computer: git, ssh, [uv](https://docs.astral.sh/uv/getting-started/installation/),
   and a checkout of this repository, because the deploy commands run from it:
 
@@ -66,9 +65,8 @@ name overrides it for a one-off target. The deploy resolves the host before
 building anything, so a missing or unedited value fails immediately rather than
 after a frontend build.
 
-Fill in the provider keys and AnkiWeb credentials as described in
-[Configuration](configuration.md). They never enter the repository, a test
-fixture, or a log line.
+Fill in your keys and AnkiWeb login as described in [Your keys](keys.md). They
+never enter the repository, a test fixture, or a log line.
 
 ## Set up and deploy
 

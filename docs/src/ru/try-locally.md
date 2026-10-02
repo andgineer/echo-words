@@ -12,17 +12,26 @@
 - [git](https://git-scm.com/) и [uv](https://docs.astral.sh/uv/getting-started/installation/)
 - [Node.js](https://nodejs.org/) 22, потому что первый запуск собирает страницы
   приложения
-- один бесплатный ключ LLM-провайдера: `GROQ_API_KEY`, `OPENROUTER_API_KEY`,
-  `GEMINI_API_KEY` или `ZAI_API_KEY`. Где взять каждый, написано в
-  [Настройке](configuration.md).
+- бесплатный ключ Gemini, см. [Ключи](keys.md)
 
 ## Запуск
 
 ```bash
 git clone https://github.com/andgineer/echo-words.git
 cd echo-words
-export GROQ_API_KEY=...            # или любой другой ключ бесплатного пула
-export ECHOWORDS_ANKI_SYNC=false   # пробные карточки не попадут в ваш AnkiWeb
+```
+
+Создайте в этой папке файл `.env` со своим ключом и с выключенной синхронизацией
+Anki, чтобы пробные карточки не попали в ваш AnkiWeb:
+
+```
+GEMINI_API_KEY=...
+ECHOWORDS_ANKI_SYNC=false
+```
+
+И запустите:
+
+```bash
 uv run inv dev
 ```
 

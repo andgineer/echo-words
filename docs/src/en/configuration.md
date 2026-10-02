@@ -109,25 +109,15 @@ The **interface language** of the PWA is not an environment variable. It is a
 per-device choice in the header (EN/RU), remembered in the browser, and it does
 not change `ECHOWORDS_TARGET_LANG` — the language your cards are written in.
 
-## LLM provider keys
+## LLM keys and the deeper article
 
-The free pool needs at least one of `GROQ_API_KEY`, `OPENROUTER_API_KEY`,
-`GEMINI_API_KEY`, or `ZAI_API_KEY`; filling all four gives the pool its full
-failover set. `python -m llmbroker env freetier` prints the authoritative list
-for the installed llmbroker release, with signup links.
-
-The default paid fallback, `ECHOWORDS_API_MODEL=gpt-fast`, and the default deeper
-article, `ECHOWORDS_DETAIL_MODEL=gpt`, additionally need `OPENAI_API_KEY`. Set
-`ECHOWORDS_API_MODEL=` to run on the unmetered pool only.
+Which keys to get, and where to write them, is on [Your keys](keys.md).
 
 The deeper article's model and its parameters are one choice. The defaults ask
 OpenAI for no reasoning and priority processing, which is what makes the article
 start within a second; pointing `ECHOWORDS_DETAIL_MODEL` at another provider means
 writing that provider's parameters into `ECHOWORDS_DETAIL_PARAMS`, or `{}` for
 its defaults.
-
-The **Status** screen shows which keys are missing, how many providers are
-usable, and how many paid calls the day has cost.
 
 ## AnkiWeb
 

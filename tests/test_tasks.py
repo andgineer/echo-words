@@ -1,6 +1,9 @@
+import importlib.resources
 import importlib.util
+import re
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -121,17 +124,25 @@ def test_host_prep_enables_an_explicit_systemd_sshd_jail_without_banning_tailnet
     )
 
 
-def test_example_env_documents_freetier_and_paid_provider_keys():
-    example = (Path(__file__).parents[1] / ".deploy.example" / ".env").read_text()
-
-    for key in (
-        "GROQ_API_KEY",
-        "OPENROUTER_API_KEY",
-        "GEMINI_API_KEY",
-        "ZAI_API_KEY",
-        "OPENAI_API_KEY",
-    ):
-        assert f"{key}=" in example
+def test_documented_keys_follow_the_installed_free_preset():
+    # `llmbroker env freetier` fetches the preset over the network, so the copy the
+    # locked llmbroker ships is what an upgrade that changes the pool is caught by.
+    preset = tomllib.loads(
+        (importlib.resources.files("llmbroker") / "presets" / "freetier.toml").read_text(),
+    )
+    expected = {llm["api_key_ref"] for llm in preset["llms"]} | {"OPENAI_API_KEY"}
+    signup_links = {
+        link
+        for key in preset["keys"].values()
+        for link in re.findall(r"https://[^\s)]+", key["help"])
+    }
+    root = Path(__file__).parents[1]
+    example = (root / ".deploy.example" / ".env").read_text()
+    assert set(re.findall(r"^(\w+_API_KEY)=", example, re.MULTILINE)) == expected
+    for page in ("docs/src/en/keys.md", "docs/src/ru/keys.md"):
+        text = (root / page).read_text()
+        assert set(re.findall(r"\b[A-Z][A-Z0-9_]*_API_KEY\b", text)) == expected, page
+        assert {link for link in signup_links if link not in text} == set(), page
 
 
 class _Result:

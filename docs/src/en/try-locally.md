@@ -10,17 +10,26 @@ collection that none of your Anki apps see. For real use,
 
 - [git](https://git-scm.com/) and [uv](https://docs.astral.sh/uv/getting-started/installation/)
 - [Node.js](https://nodejs.org/) 22, because the first start builds the app's pages
-- one free LLM provider key: `GROQ_API_KEY`, `OPENROUTER_API_KEY`,
-  `GEMINI_API_KEY` or `ZAI_API_KEY`. [Configuration](configuration.md) lists where
-  to get each one.
+- a free Gemini key, see [Your keys](keys.md)
 
 ## Run it
 
 ```bash
 git clone https://github.com/andgineer/echo-words.git
 cd echo-words
-export GROQ_API_KEY=...            # or any other free-pool key
-export ECHOWORDS_ANKI_SYNC=false   # keep the trial cards out of your AnkiWeb account
+```
+
+Create `.env` in that folder with your key, and with Anki sync off so the trial
+cards stay out of your AnkiWeb account:
+
+```
+GEMINI_API_KEY=...
+ECHOWORDS_ANKI_SYNC=false
+```
+
+Then start it:
+
+```bash
 uv run inv dev
 ```
 
