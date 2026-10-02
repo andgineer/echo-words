@@ -60,7 +60,6 @@ From the repository root with the existing project environment:
 ```bash
 uv run python experiments/jev_attestation_bench.py report \
   --out experiments/results/jev-attestation-20260930
-uv run pytest tests/test_jev_attestation_bench.py -q
 ```
 
 The reporter checks the frozen manifest against current prompts and fixtures;

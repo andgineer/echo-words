@@ -43,11 +43,6 @@ _DEFAULT_BEHAVIOR_BY_FILE: dict[str, tuple[str, str, str | None]] = {
         "Answer delivery",
         "Production prompt benchmark",
     ),
-    "test_jev_attestation_bench.py": (
-        _VOCABULARY,
-        "Attested wording",
-        "Decision model experiment",
-    ),
     "test_events.py": (_PLATFORM, "Answer delivery", "Event fan-out"),
     "test_history.py": (_PLATFORM, "Answer delivery", "History"),
     "test_pipeline.py": (_VOCABULARY, "Answer delivery", "Streaming pipeline"),
