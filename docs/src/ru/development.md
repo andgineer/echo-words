@@ -14,8 +14,7 @@ npm --prefix webapp ci   # без этого inv test пропустит фро�
 python-зависимости требует ещё и `uv lock`; CI ставит зависимости с `--frozen`.
 
 `languages.toml` нужен только чтобы запустить приложение, и `inv dev` создаёт
-его из `languages.example.toml`. `espeak-ng` нужен только для работы голосов
-Piper и никогда не требуется тестам.
+его из `languages.example.toml`.
 
 ## Команды
 

@@ -14,8 +14,7 @@ and CI does not — a run without `npm ci` is not a full run. Adding a Python
 dependency also means `uv lock`; CI installs with `--frozen`.
 
 `languages.toml` is needed only to run the app, and `inv dev` creates it from
-`languages.example.toml`. `espeak-ng` is needed only to run Piper voices, never
-by a test.
+`languages.example.toml`.
 
 ## Commands
 

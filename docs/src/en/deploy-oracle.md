@@ -1,17 +1,45 @@
-# Deploy to Oracle Cloud
+# Install on Oracle Cloud
 
-The supported target is an Oracle Always Free `VM.Standard.E2.1.Micro`: x86_64,
-1 GB RAM, $0/month. A 2 GB swap file is a hard requirement. The systemd unit also
-applies `MemoryHigh=600M` and `MemoryMax=700M`, so a runaway backend cannot take
-the VM down. An Arm `A1.Flex` shape, when a region has capacity, lifts these
-constraints but is not assumed.
+This is how echo-words is meant to run: on an Oracle Cloud Always Free VM. It
+costs $0/month and is always on, and your phone and computers reach it through
+your private Tailscale network, which is the only way in. You do two things by
+hand: create the VM and join it to the network. After that, `inv setup-app`
+prepares the machine and `inv deploy` installs the app. Every later update is
+`inv deploy` again.
+
+## What you need
+
+- an [Oracle Cloud Free Tier](https://www.oracle.com/cloud/free/) account
+- a [Tailscale](https://tailscale.com/) account (its Personal plan is free), with
+  the Tailscale app on your phone
+- one free LLM provider key, and your AnkiWeb login; [Configuration](configuration.md)
+  lists both
+- on your computer: git, ssh, [uv](https://docs.astral.sh/uv/getting-started/installation/),
+  and a checkout of this repository, because the deploy commands run from it:
+
+  ```bash
+  git clone https://github.com/andgineer/echo-words.git
+  cd echo-words
+  uv sync
+  ```
+
+## Create the VM
+
+In the Oracle Cloud console, create a compute instance of shape
+`VM.Standard.E2.1.Micro` from an Ubuntu 22.04 image, with your ssh public key.
+Note its public IP address: the deploy logs in as `ubuntu@<that address>`.
+
+The shape is x86_64 with 1 GB RAM, and a 2 GB swap file is a hard requirement,
+which setup creates. The systemd unit also applies `MemoryHigh=600M` and
+`MemoryMax=700M`, so a runaway backend cannot take the VM down. An Arm `A1.Flex`
+shape, when a region has capacity, lifts these constraints but is not assumed.
 
 Deployment is a set of `invoke` tasks run over ssh from your own machine.
 
 ## Join the tailnet first
 
 Tailscale is the only front door for the app. Join the VM to your tailnet before
-running setup:
+running setup, by running these on the VM over ssh:
 
 ```bash
 curl -fsSL https://tailscale.com/install.sh | sh
@@ -45,11 +73,15 @@ fixture, or a log line.
 ## Set up and deploy
 
 ```bash
-inv setup-app --with-host-prep   # one-time, idempotent
-inv deploy --ref=main
-inv status
-inv logs
+uv run inv setup-app --with-host-prep   # one-time, idempotent
+uv run inv deploy --ref=main
+uv run inv status
+uv run inv logs
 ```
+
+The app is then at `https://<node>.<tailnet>.ts.net/`;
+[Install on your phone](pwa-install.md) takes it from there. To update later,
+run `git pull` and `uv run inv deploy --ref=main` again.
 
 `setup-app` installs Node 22, uv, and Tailscale, clones the repository, installs
 and enables the service, provisions and activates a 2 GB

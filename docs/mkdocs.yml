@@ -37,9 +37,9 @@ extra:
 
 nav:
   - index.md
-  - installation.md
+  - deploy-oracle.md
   - configuration.md
   - pwa-install.md
-  - deploy-oracle.md
   - operations.md
+  - try-locally.md
   - development.md

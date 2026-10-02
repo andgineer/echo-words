@@ -45,9 +45,41 @@ It keeps **no database**: your Anki collection is the only thing it stores.
 
 ### Quick start
 
-1. [Install it](installation.md) and run it on your own machine.
-2. [Configure your languages](configuration.md) — one Anki deck and one voice per
-   source language, plus at least one free LLM provider key.
-3. [Deploy to Oracle Cloud](deploy-oracle.md) — $0/month forever, tailnet-only.
-4. [Install the PWA](pwa-install.md) on your phone and add the share-sheet
-   Shortcut.
+echo-words is not an app you download from a store. It is a small server of your
+own, and the app on your phone is the page that server serves. So the first step
+is putting the server somewhere, and there are two places it can run:
+
+| | **Oracle Cloud: for real use** | **Your computer: for a quick look** |
+|---|---|---|
+| Runs | always, on a free cloud VM | only while you keep it running |
+| Opens on | your phone and your computers, wherever you are | the browser on that one computer |
+| Cards | land in your Anki decks through AnkiWeb | stay in a trial collection no Anki app sees |
+| Costs | $0/month | $0 |
+| Your part | create the VM once; two commands do the rest | one free LLM key and a few commands |
+
+**Install it on Oracle Cloud.** It costs nothing: the VM is Oracle's Always Free
+tier, the private network is Tailscale's free Personal plan, and the answers come
+from a pool of free LLM providers. A paid OpenAI key is optional, and without one
+nothing is ever billed. The install is automated. Once you have created the VM
+and joined it to your Tailscale network, one command prepares the machine and
+one command builds and starts the app, and that second command is also how you
+update it. Run it on your own computer only to see what the app does before you
+set that up.
+
+#### On Oracle Cloud
+
+1. [Create the free VM](deploy-oracle.md) and join it to your Tailscale network.
+2. Write the VM's address, at least one free LLM provider key and your AnkiWeb
+   login into the deploy settings on your computer, as
+   [Configuration](configuration.md) describes.
+3. Run `uv run inv setup-app --with-host-prep` once, then
+   `uv run inv deploy --ref=main`, as [Install on Oracle Cloud](deploy-oracle.md)
+   describes.
+4. [Install the app on your phone](pwa-install.md), and add the share-sheet
+   Shortcut if you want it.
+5. Choose your languages in the app. It starts with English, German and Serbian,
+   each with its own Anki deck and voice.
+
+#### On your computer
+
+[Try it on your computer](try-locally.md): one free LLM key and `uv run inv dev`.
