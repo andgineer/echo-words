@@ -31,7 +31,7 @@ and a free Gemini key.
 === "With an AI agent"
 
     Have Claude Pro or Max, or ChatGPT Plus? Open the **Code** tab of the Claude
-    desktop app, or the **Codex** app, and paste:
+    desktop app, or **Codex** in the ChatGPT desktop app, and paste:
 
     ```text
     Install echo-words on Oracle Cloud for me, following

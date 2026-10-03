@@ -77,8 +77,9 @@ VM.
   user to install WSL: run `wsl --install` in PowerShell opened as administrator,
   restart, and finish the Ubuntu setup it opens. Then they start a new session of you
   inside WSL — in the Claude desktop app's Code tab, by choosing the WSL environment;
-  in the Codex app, with Settings → Agent environment → Windows Subsystem for Linux
-  and a restart of the app — and paste the same prompt again. Stop there.
+  in Codex in the ChatGPT desktop app, with Settings → Agent environment → Windows
+  Subsystem for Linux and a restart of the app — and paste the same prompt again.
+  Stop there.
 - You need network access, including outbound ssh, and you will write to
   `<checkout>` and `~/.ssh`. If your sandbox asks the user to approve those, tell
   them to expect it.
