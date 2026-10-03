@@ -1,11 +1,16 @@
 <script setup>
 import { onMounted, ref } from "vue";
 import { apiRequest } from "../api/_request.js";
+import ServerReachHelp from "../components/ServerReachHelp.vue";
+import { ServerUnreachable } from "../composables/useServerReach.js";
 import { useI18n } from "../i18n/index.js";
+
+const STATUS_TIMEOUT_MS = 10_000;
 
 const { t, locale } = useI18n();
 const status = ref(null);
 const error = ref("");
+const reachKind = ref("");
 
 // The help is llmbroker's wording, and it arrives as markdown: its own link is
 // where the reader gets the key, so it has to be followable rather than printed.
@@ -39,14 +44,16 @@ function paidAvailability(item) {
 
 onMounted(async () => {
   try {
-    status.value = await apiRequest("/api/status");
+    status.value = await apiRequest("/api/status", { timeoutMs: STATUS_TIMEOUT_MS });
   } catch (e) {
-    error.value = e.message;
+    if (e instanceof ServerUnreachable) reachKind.value = e.kind;
+    else error.value = e.message;
   }
 });
 </script>
 
 <template>
+  <ServerReachHelp v-if="reachKind" :kind="reachKind" />
   <p v-if="error" class="error">{{ error }}</p>
   <section v-if="status" class="card">
     <h2>{{ t("status.title") }}</h2>

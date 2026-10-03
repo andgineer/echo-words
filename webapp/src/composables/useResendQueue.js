@@ -1,8 +1,11 @@
 import { ref } from "vue";
 import { apiRequest } from "../api/_request.js";
 import { entries, upsertEntry } from "./useEntries.js";
+import { ServerUnreachable } from "./useServerReach.js";
 
 const STORAGE_KEY = "echo-words-resend-queue";
+// Submitting only registers the word; the answer arrives over the event stream.
+export const SUBMIT_TIMEOUT_MS = 15_000;
 
 export const queuedWords = ref([]);
 let inFlight = false;
@@ -51,7 +54,7 @@ export function enqueueWord(body) {
 }
 
 export function isRetryableWordError(error) {
-  return error instanceof TypeError || error?.status >= 500;
+  return error instanceof ServerUnreachable || error?.status >= 500;
 }
 
 export async function flushQueue() {
@@ -62,7 +65,11 @@ export async function flushQueue() {
     while (queuedWords.value.length) {
       const item = queuedWords.value[0];
       try {
-        const accepted = await apiRequest("/api/words", { method: "POST", body: item.body });
+        const accepted = await apiRequest("/api/words", {
+          method: "POST",
+          body: item.body,
+          timeoutMs: SUBMIT_TIMEOUT_MS,
+        });
         // The POST can finish before SSE connects. Keep its receipt so reconnect
         // can recover this one answer without downloading a server history.
         if (accepted?.entry_id) {

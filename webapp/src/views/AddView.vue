@@ -8,8 +8,10 @@ import { useI18n } from "../i18n/index.js";
 import {
   enqueueWord,
   isRetryableWordError,
+  SUBMIT_TIMEOUT_MS,
   withRequestId,
 } from "../composables/useResendQueue.js";
+import { ServerUnreachable } from "../composables/useServerReach.js";
 import EntryCard from "../components/EntryCard.vue";
 import LanguagePicker from "../components/LanguagePicker.vue";
 import WordRail from "../components/WordRail.vue";
@@ -22,6 +24,7 @@ const emit = defineEmits(["navigate"]);
 
 const word = ref("");
 const hint = ref("");
+const hintChecks = ref(false);
 const busy = ref(false);
 const helpOpen = ref(false);
 // Which entry each language is showing, so switching back to a language returns to
@@ -48,7 +51,19 @@ const selectedEntry = computed(
 
 watch([word, selected], () => {
   hint.value = "";
+  hintChecks.value = false;
 });
+
+const QUEUED_HINTS = {
+  offline: "add.queued",
+  unreachable: "add.queuedNoAnswer",
+  "no-answer": "add.queuedNoAnswer",
+  "app-down": "add.queuedAppDown",
+};
+
+function queuedHint(error) {
+  return error instanceof ServerUnreachable ? QUEUED_HINTS[error.kind] : "add.queuedServerError";
+}
 
 async function refreshLanguages() {
   try {
@@ -112,6 +127,7 @@ async function analyseSegment(entry, segment) {
 async function sendWord(submittedWord, context = "", shape = null, lang = selected.value) {
   busy.value = true;
   hint.value = "";
+  hintChecks.value = false;
   removedId.value = "";
   const body = withRequestId({
     word: submittedWord,
@@ -124,6 +140,7 @@ async function sendWord(submittedWord, context = "", shape = null, lang = select
     const accepted = await apiRequest("/api/words", {
       method: "POST",
       body,
+      timeoutMs: SUBMIT_TIMEOUT_MS,
     });
     // What the entry holds is the submission as the server read it — the `?` shortcut
     // stripped and the wording normalized. Guessing it here would put the reader's
@@ -151,7 +168,8 @@ async function sendWord(submittedWord, context = "", shape = null, lang = select
       enqueueWord(body);
       word.value = "";
       await nextTick();
-      hint.value = t("add.queued");
+      hint.value = t(queuedHint(e));
+      hintChecks.value = e instanceof ServerUnreachable && e.kind !== "offline";
     } else {
       hint.value = e.message;
     }
@@ -253,7 +271,17 @@ async function requestDetail(entry) {
       {{ t("add.submit") }}
     </button>
 
-    <p v-if="hint" class="hint">{{ hint }}</p>
+    <p v-if="hint" class="hint">
+      {{ hint }}
+      <button
+        v-if="hintChecks"
+        class="btn-inline what-to-check"
+        data-testid="what-to-check"
+        @click="emit('navigate', 'status')"
+      >
+        {{ t("add.whatToCheck") }}
+      </button>
+    </p>
   </section>
 
   <section class="switcher">
@@ -303,6 +331,13 @@ async function requestDetail(entry) {
   margin-top: 0.75rem;
   font-size: 0.85rem;
   color: var(--warning);
+}
+
+.what-to-check {
+  min-height: 32px;
+  margin-left: 0.25rem;
+  padding: 0 0.75rem;
+  font-size: 0.8rem;
 }
 
 .switcher {

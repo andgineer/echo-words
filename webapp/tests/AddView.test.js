@@ -5,6 +5,7 @@ vi.mock("../src/api/_request.js", () => ({ apiRequest: vi.fn() }));
 
 import { apiRequest } from "../src/api/_request.js";
 import { entries } from "../src/composables/useEntries.js";
+import { ServerUnreachable } from "../src/composables/useServerReach.js";
 import { languages, selected } from "../src/composables/useLanguage.js";
 import { locale } from "../src/i18n/index.js";
 import AddView from "../src/views/AddView.vue";
@@ -117,6 +118,7 @@ describe("AddView", () => {
 
     expect(apiRequest).toHaveBeenCalledWith("/api/words", {
       method: "POST",
+      timeoutMs: 15_000,
       body: {
         word: "Straße",
         lang: "de",
@@ -150,7 +152,7 @@ describe("AddView", () => {
   it("queues a word when its POST cannot reach the backend", async () => {
     apiRequest.mockImplementation(async (path) => {
       if (path === "/api/languages") return OPTIONS;
-      throw new TypeError("Failed to fetch");
+      throw new ServerUnreachable("offline");
     });
     const wrapper = mount(AddView);
     await flushPromises();
@@ -170,6 +172,45 @@ describe("AddView", () => {
     expect(saved[0].body.request_id).toBe(posted.request_id);
     expect(wrapper.get(".hint").text()).toContain("will be sent later");
     expect(wrapper.get("#word").element.value).toBe("");
+  });
+
+  it.each([
+    [new ServerUnreachable("offline"), "No connection", false],
+    [new ServerUnreachable("unreachable"), "The server isn't answering", true],
+    [new ServerUnreachable("no-answer"), "The server isn't answering", true],
+    [new ServerUnreachable("app-down"), "echo-words isn't running on the server", true],
+    [Object.assign(new Error("Internal Server Error"), { status: 500 }), "ran into an error", false],
+  ])("names what failed when a word is saved for later (%s)", async (error, text, checks) => {
+    apiRequest.mockImplementation(async (path) => {
+      if (path === "/api/languages") return OPTIONS;
+      throw error;
+    });
+    const wrapper = mount(AddView);
+    await flushPromises();
+    await wrapper.get("#word").setValue("word");
+
+    await wrapper.get(".submit").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.get(".hint").text()).toContain(text);
+    expect(wrapper.get(".hint").text()).toContain("the word is saved and will be sent later");
+    expect(wrapper.find('[data-testid="what-to-check"]').exists()).toBe(checks);
+  });
+
+  it("opens the status screen from the hint of a word the server did not take", async () => {
+    apiRequest.mockImplementation(async (path) => {
+      if (path === "/api/languages") return OPTIONS;
+      throw new ServerUnreachable("no-answer");
+    });
+    const wrapper = mount(AddView);
+    await flushPromises();
+    await wrapper.get("#word").setValue("word");
+    await wrapper.get(".submit").trigger("click");
+    await flushPromises();
+
+    await wrapper.get('[data-testid="what-to-check"]').trigger("click");
+
+    expect(wrapper.emitted("navigate")).toEqual([["status"]]);
   });
 
   it("passes punctuation on a direct single-word submission to server validation", async () => {
@@ -606,6 +647,7 @@ describe("AddView", () => {
 
       expect(apiRequest).toHaveBeenCalledWith("/api/words", {
         method: "POST",
+        timeoutMs: 15_000,
         body: {
           word: "Ampel",
           lang: "de",
@@ -636,6 +678,7 @@ describe("AddView", () => {
 
         expect(apiRequest).toHaveBeenCalledWith("/api/words", {
           method: "POST",
+          timeoutMs: 15_000,
           body: {
             word: "steht auf",
             lang: "de",

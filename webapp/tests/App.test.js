@@ -3,6 +3,7 @@ import { mount } from "@vue/test-utils";
 
 vi.mock("../src/composables/useResendQueue.js", () => ({ flushQueue: vi.fn() }));
 vi.mock("../src/composables/useLanguage.js", () => ({ refreshReferences: vi.fn() }));
+vi.mock("../src/api/_request.js", () => ({ apiRequest: vi.fn(async () => ({ status: "ok" })) }));
 vi.mock("../src/views/AddView.vue", () => ({
   default: {
     emits: ["navigate"],
@@ -25,12 +26,16 @@ vi.mock("../src/views/LanguageDetailView.vue", () => ({
   },
 }));
 
+import { nextTick } from "vue";
 import App from "../src/App.vue";
+import { apiRequest } from "../src/api/_request.js";
 import { flushQueue } from "../src/composables/useResendQueue.js";
+import { serverReach } from "../src/composables/useServerReach.js";
 import { EPIC, FEATURE, labelBehavior } from "./allure-taxonomy.js";
 
 afterEach(() => {
   vi.clearAllMocks();
+  serverReach.value = { answeredAt: null, failure: null };
 });
 
 describe("App", () => {
@@ -100,6 +105,48 @@ describe("App", () => {
     // a semver match proves that file was read rather than the "dev" fallback.
     expect(wrapper.get(".header-version").text()).toMatch(/^v\d+\.\d+\.\d+$/u);
 
+    wrapper.unmount();
+  });
+
+  it("asks the server nothing extra while no failure is on record", async () => {
+    await labelBehavior(EPIC.APPLICATION_PLATFORM, FEATURE.PWA_RESILIENCE, "Server not answering");
+    const wrapper = mount(App);
+
+    window.dispatchEvent(new Event("online"));
+
+    expect(apiRequest).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it("rechecks a server on record as not answering when the app opens or comes back", async () => {
+    await labelBehavior(EPIC.APPLICATION_PLATFORM, FEATURE.PWA_RESILIENCE, "Server not answering");
+    serverReach.value = { answeredAt: null, failure: { kind: "no-answer", at: 1 } };
+    const wrapper = mount(App);
+
+    expect(apiRequest).toHaveBeenCalledWith("/api/health", { timeoutMs: 10_000 });
+    document.dispatchEvent(new Event("visibilitychange"));
+    expect(apiRequest).toHaveBeenCalledTimes(2);
+    wrapper.unmount();
+  });
+
+  it.each([
+    ["no-answer", true],
+    ["unreachable", true],
+    ["app-down", true],
+    ["offline", false],
+  ])("marks the status tab while the server is on record as %s", async (kind, marked) => {
+    await labelBehavior(EPIC.APPLICATION_PLATFORM, FEATURE.PWA_RESILIENCE, "Server not answering");
+    serverReach.value = { answeredAt: null, failure: { kind, at: 1 } };
+    const wrapper = mount(App);
+    const status = wrapper.get('[data-testid="nav-status"]');
+
+    expect(status.find('[data-testid="status-alert"]').exists()).toBe(marked);
+    expect(status.attributes("aria-label") !== "Status").toBe(marked);
+
+    serverReach.value = { answeredAt: 2, failure: null };
+    await nextTick();
+    expect(status.find('[data-testid="status-alert"]').exists()).toBe(false);
+    expect(status.attributes("aria-label")).toBe("Status");
     wrapper.unmount();
   });
 });

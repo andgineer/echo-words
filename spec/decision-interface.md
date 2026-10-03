@@ -85,7 +85,16 @@ headless Anki integration, and the audio chain are interface-agnostic.
   no catch-up with history accumulated by other devices while closed.
 - **Backend down ⇒ new answers unavailable.** Saved history and directories
   still render. The local resend queue turns words submitted during an
-  outage into cards after connectivity returns.
+  outage into cards after connectivity returns. The browser cannot see why
+  the server is gone, but the ways it goes are distinguishable from the
+  page: with Tailscale off the server's name does not resolve and the
+  request fails at once; with Tailscale on and the VM stopped the request
+  is never answered (75 s measured against an offline tailnet machine
+  before the connection gave up); with the VM up and the app down Tailscale
+  serve answers 502, which the app never sends itself. The hint and the
+  status screen use that to order the checks they offer — the reader is
+  the only one who can open Tailscale's machine list or the Oracle console,
+  so the app's job is to point there rather than to diagnose.
 
 ## Durable browser cache and offline startup
 

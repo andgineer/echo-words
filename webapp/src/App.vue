@@ -1,7 +1,9 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useI18n } from "./i18n/index.js";
+import { apiRequest } from "./api/_request.js";
 import { flushQueue } from "./composables/useResendQueue.js";
+import { serverReach } from "./composables/useServerReach.js";
 import { refreshReferences } from "./composables/useLanguage.js";
 import HeaderNav from "./components/HeaderNav.vue";
 import AddView from "./views/AddView.vue";
@@ -13,6 +15,7 @@ import StatusView from "./views/StatusView.vue";
 const APP_VERSION = typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "dev";
 
 const TABS = ["add", "stats", "status"];
+const HEALTH_TIMEOUT_MS = 10_000;
 
 const { t, locale, locales } = useI18n();
 const view = ref("add");
@@ -27,13 +30,23 @@ function openLanguage(code) {
   view.value = "language";
 }
 
+// A recorded failure would otherwise outlive the outage until the next word is sent:
+// opening the app with nothing queued and a fresh cache asks the server nothing.
+function recheckServer() {
+  if (!serverReach.value.failure) return;
+  void apiRequest("/api/health", { timeoutMs: HEALTH_TIMEOUT_MS }).catch(() => {});
+}
+
 function retryQueuedWords() {
+  recheckServer();
   void flushQueue();
   void refreshReferences();
 }
 
 function refreshVisibleReferences() {
-  if (document.visibilityState === "visible") void refreshReferences();
+  if (document.visibilityState !== "visible") return;
+  recheckServer();
+  void refreshReferences();
 }
 
 onMounted(() => {

@@ -24,6 +24,19 @@ beforeEach(async () => {
 });
 
 describe("resend queue", () => {
+  it("resends under the same time limit as a fresh submission", async () => {
+    enqueueWord(first);
+    apiRequest.mockResolvedValue({ entry_id: "accepted" });
+
+    await flushQueue();
+
+    expect(apiRequest).toHaveBeenCalledWith("/api/words", {
+      method: "POST",
+      body: { ...first, request_id: expect.any(String) },
+      timeoutMs: 15_000,
+    });
+  });
+
   it("keeps a returned acceptance even if the stream has not connected", async () => {
     enqueueWord(first);
     apiRequest.mockResolvedValue({ entry_id: "accepted", word: "one", lookup_only: false });

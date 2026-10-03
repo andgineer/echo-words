@@ -796,6 +796,16 @@ same prompt is not how a weak answer gets fixed.
   counters.
   The PWA's saved history and reference data remain on the device and can be
   read while the backend is unreachable.
+  An unreachable backend is never reported as a generic lost connection. A
+  submission gives up after a bounded wait instead of the browser's own minute,
+  and the reader is told what the failure looked like — the device offline, the
+  server's name not reachable, the server silent, or the VM up with the app not
+  running — together with when the server last answered on this device and an
+  ordered list of what to check, the stopped VM's **Start** button among them.
+  The kind of failure decides which check comes first; the app never claims to
+  know the cause. While the server is on record as not answering, the status
+  tab carries a mark, and opening the app asks the server again so the mark
+  does not outlive the outage.
 - **Single instance, single user.** Tailnet membership is the only
   access control; the design assumes the owner is the only user. No
   horizontal scaling concerns.

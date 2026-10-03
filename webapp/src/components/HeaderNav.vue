@@ -1,5 +1,6 @@
 <script setup>
 import { Activity, BarChart3, Plus } from "lucide-vue-next";
+import { serverReach, serverUnanswered } from "../composables/useServerReach.js";
 import { useI18n } from "../i18n/index.js";
 
 const TABS = [
@@ -14,6 +15,15 @@ defineProps({
   view: { type: String, default: "add" },
 });
 const emit = defineEmits(["update:view"]);
+
+function alerted(tab) {
+  return tab.id === "status" && serverUnanswered.value;
+}
+
+function label(tab) {
+  if (!alerted(tab)) return t(tab.labelKey);
+  return `${t(tab.labelKey)} — ${t(`reach.${serverReach.value.failure.kind}`)}`;
+}
 </script>
 
 <template>
@@ -27,12 +37,13 @@ const emit = defineEmits(["update:view"]);
       :style="{ '--tab-color': tab.color }"
       role="tab"
       :aria-selected="view === tab.id"
-      :aria-label="t(tab.labelKey)"
-      :title="t(tab.labelKey)"
+      :aria-label="label(tab)"
+      :title="label(tab)"
       :data-testid="`nav-${tab.id}`"
       @click="emit('update:view', tab.id)"
     >
       <component :is="tab.icon" :size="20" aria-hidden="true" />
+      <span v-if="alerted(tab)" class="alert-dot" data-testid="status-alert" aria-hidden="true" />
     </button>
   </nav>
 </template>
@@ -49,6 +60,7 @@ const emit = defineEmits(["update:view"]);
 }
 
 .seg-btn {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -74,5 +86,16 @@ const emit = defineEmits(["update:view"]);
   background: var(--tab-color);
   color: #fff;
   box-shadow: 0 4px 12px color-mix(in srgb, var(--tab-color) 40%, transparent);
+}
+
+.alert-dot {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--error);
+  box-shadow: 0 0 0 2px var(--field-deep);
 }
 </style>

@@ -48,7 +48,7 @@ Before step 1, ask what they already have, and skip what is done:
   Read the host it names with `grep '^ECHOWORDS_DEPLOY_HOST=' .deploy/.env`, check
   with `ssh <host> true` whether that VM answers — if it does not, have the user
   look at it in the Oracle Cloud console → Compute → Instances: a **Stopped** VM
-  only needs **Start**, and keeps its address and data — and ask which of three
+  only needs **Start**, and keeps its address and data — and ask which of four
   cases this is:
     - **a session that stopped partway** — a usage limit, a closed app: continue
       from the first step not done. If `.deploy/old-vm/` exists, it was a move;
@@ -58,6 +58,15 @@ Before step 1, ask what they already have, and skip what is done:
     - **a move to a new VM**, because the old one is gone or being replaced: go
       through the steps, following their **Moving from an old VM** notes, with
       `<old-host>` the host the keys file names now
+    - **the app stopped answering**: if ssh is still silent with the VM
+      **Running**, have the user press **Reboot** in the console — it keeps the
+      data — and check again. Once ssh answers, run `uv run inv status` and
+      `uv run inv logs` in the checkout and read them. If
+      `ssh <host> tailscale status` says the VM is logged out, run step 5's
+      `tailscale up` with the name it had, have the user approve it and disable
+      its key expiry as step 5 describes; if the service is not active,
+      `uv run inv deploy --ref=main` starts it and waits for its health check.
+      Then step 8.
 
 Below, `<checkout>` is that checkout, or `~/echo-words` for a first install.
 
