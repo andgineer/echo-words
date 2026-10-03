@@ -25,7 +25,8 @@ prepares the machine and `inv deploy` installs the app. Every later update is
 ## Create the VM
 
 In the Oracle Cloud console, create a compute instance of shape
-`VM.Standard.E2.1.Micro` from an Ubuntu 22.04 image, with your ssh public key.
+`VM.Standard.E2.1.Micro` from the Canonical Ubuntu 22.04 Minimal image, with your
+ssh public key.
 Note its public IP address: the deploy logs in as `ubuntu@<that address>`.
 
 The shape is x86_64 with 1 GB RAM, and a 2 GB swap file is a hard requirement,

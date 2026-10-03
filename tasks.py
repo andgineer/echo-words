@@ -131,6 +131,9 @@ def docs_rendered(language: str):
     config = config.replace("SITE_DIR", str(site_dir))
 
     build_docs_path.mkdir(parents=True, exist_ok=True)
+    # zensical keys its page cache on the page's own source, so a page built from a
+    # pymdownx.snippets include would keep rendering the include's previous text.
+    shutil.rmtree(build_docs_path / ".cache", ignore_errors=True)
     build_config_path.write_text(config)
     shutil.rmtree(build_src_path, ignore_errors=True)
     shutil.copytree(src_path, build_src_path)

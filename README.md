@@ -25,7 +25,9 @@ echo-words explains; Anki makes you remember.
 * **Keep it in Anki.** Each selected sense becomes four cards covering recognition
   and production, with and without context, in its source-language deck.
 
-[Documentation](https://andgineer.github.io/echo-words/)
+[Documentation](https://andgineer.github.io/echo-words/) ·
+[Install it](https://andgineer.github.io/echo-words/#quick-start) by hand, or let
+Claude or ChatGPT do it for you.
 
 ## Under the hood
 

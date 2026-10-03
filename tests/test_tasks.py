@@ -294,6 +294,18 @@ def test_readme_screenshots_are_captured_by_one_task():
     assert context.commands == ["uv run python scripts/capture_readme_screenshots.py"]
 
 
+def test_a_docs_build_never_reuses_a_page_rendered_from_an_older_include(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "docs" / "src" / "en").mkdir(parents=True)
+    (tmp_path / "docs" / "mkdocs.yml").write_text("docs_dir: 'src/LANGUAGE'\n")
+    stale = tmp_path / "build" / "docs" / ".cache" / "page"
+    stale.parent.mkdir(parents=True)
+    stale.write_text("rendered from the previous include")
+
+    with tasks.docs_rendered("en"):
+        assert not stale.parent.exists()
+
+
 def test_remote_deploy_fails_closed_without_deleting_data_or_secrets():
     script = tasks._remote_deploy_script("a" * 40)
 

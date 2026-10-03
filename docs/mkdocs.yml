@@ -10,6 +10,10 @@ edit_uri: edit/master/docs
 docs_dir: 'src/LANGUAGE'
 site_dir: 'SITE_DIR'
 
+theme:
+  features:
+    - content.code.copy
+
 plugins:
   - awesome-pages
   - search:

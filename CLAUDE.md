@@ -8,6 +8,12 @@ no application database.
 `AGENTS.md` is a symlink to this file — one document, whichever name the
 tool looks for.
 
+**Asked to install, update or move echo-words, not to change it?** When the
+person you work for wants it installed on their own server — the Quick start's
+agent prompt — updated there, or moved to a new VM, follow
+`docs/includes/agent-install.md` instead. Everything below governs changes to
+the code and does not apply to those.
+
 ---
 
 ## Where the specification lives
