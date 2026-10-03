@@ -46,8 +46,10 @@ Before step 1, ask what they already have, and skip what is done:
   checkout instead of cloning another: its keys are already filled in. If
   `git status` there shows changes, or it is not on `main`, ask before you pull.
   Read the host it names with `grep '^ECHOWORDS_DEPLOY_HOST=' .deploy/.env`, check
-  with `ssh <host> true` whether that VM answers, and ask which of three cases this
-  is:
+  with `ssh <host> true` whether that VM answers — if it does not, have the user
+  look at it in the Oracle Cloud console → Compute → Instances: a **Stopped** VM
+  only needs **Start**, and keeps its address and data — and ask which of three
+  cases this is:
     - **a session that stopped partway** — a usage limit, a closed app: continue
       from the first step not done. If `.deploy/old-vm/` exists, it was a move;
       `.deploy/old-vm/host` holds the old VM's address.
@@ -137,6 +139,13 @@ can create it. Send them to <https://signup.oraclecloud.com/> and tell them:
   they should pick one near them
 
 Wait until they are signed in to the Oracle Cloud console.
+
+The first sign-in enrols their phone as the second sign-in factor. Have them generate
+a bypass code right away: Profile menu → **User settings** → **Security** →
+**Bypass codes** → **Generate**, and keep it off the phone — on paper or in a
+password manager, never in the chat. On their own account they are its only
+administrator, so if that phone is lost, the code is the way back in short of
+Oracle support. Each code works once and never expires.
 
 ## 4. The VM
 
@@ -411,14 +420,6 @@ Tell the user, briefly:
 
 - what now runs where, and the app's address
 - that their keys live in `<checkout>/.deploy/.env`
-- Oracle's Always Free rules let it stop a VM that stays idle for a week, and a
-  personal app is idle by that measure; the account itself is not closed. Oracle
-  warns by email a week before stopping, and the author's VM has met the measure
-  for over five months without being stopped. If the app stops answering, they open
-  the Oracle Cloud console → Compute → Instances → the VM → **Start**; the address
-  and the data are kept. Oracle's warning email says converting the account to Pay
-  As You Go prevents the stop, and it stays free while only Always Free resources
-  are used.
 - how to update later: paste the same prompt into an agent again and ask it to
   update; these instructions cover it
 - moving from an old VM that still exists: it can be terminated in Oracle's console
