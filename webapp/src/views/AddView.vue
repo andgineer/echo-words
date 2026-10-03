@@ -8,7 +8,7 @@ import { useI18n } from "../i18n/index.js";
 import {
   enqueueWord,
   isRetryableWordError,
-  SUBMIT_TIMEOUT_MS,
+  submitWord,
   withRequestId,
 } from "../composables/useResendQueue.js";
 import { ServerUnreachable } from "../composables/useServerReach.js";
@@ -137,30 +137,27 @@ async function sendWord(submittedWord, context = "", shape = null, lang = select
   if (context) body.context = context;
   if (shape) body.shape = shape;
   try {
-    const accepted = await apiRequest("/api/words", {
-      method: "POST",
-      body,
-      timeoutMs: SUBMIT_TIMEOUT_MS,
+    const accepted = await submitWord(body, (receipt) => {
+      // What the entry holds is the submission as the server read it — the `?` shortcut
+      // stripped and the wording normalized. Guessing it here would put the reader's
+      // own typing in the rail and leave it there: no later event carries the word.
+      const metadata = {
+        entry_id: receipt.entry_id,
+        word: receipt.word,
+        lang,
+        language: languages.value.find((item) => item.code === lang)?.name || "",
+        lookup_only: receipt.lookup_only,
+        context,
+        // Kept so a failed entry can be sent again as submitted: `shape` is what the
+        // answer turned out to be, which a failed entry never has.
+        requested_shape: shape,
+      };
+      const alreadyStreaming = entries.value.some((entry) => entry.entry_id === receipt.entry_id);
+      upsertEntry(
+        alreadyStreaming ? metadata : { ...metadata, status: "pending" },
+        { newest: true },
+      );
     });
-    // What the entry holds is the submission as the server read it — the `?` shortcut
-    // stripped and the wording normalized. Guessing it here would put the reader's
-    // own typing in the rail and leave it there: no later event carries the word.
-    const metadata = {
-      entry_id: accepted.entry_id,
-      word: accepted.word,
-      lang,
-      language: languages.value.find((item) => item.code === lang)?.name || "",
-      lookup_only: accepted.lookup_only,
-      context,
-      // Kept so a failed entry can be sent again as submitted: `shape` is what the
-      // answer turned out to be, which a failed entry never has.
-      requested_shape: shape,
-    };
-    const alreadyStreaming = entries.value.some((entry) => entry.entry_id === accepted.entry_id);
-    upsertEntry(
-      alreadyStreaming ? metadata : { ...metadata, status: "pending" },
-      { newest: true },
-    );
     selectNewest(lang, accepted.entry_id);
     word.value = "";
   } catch (e) {

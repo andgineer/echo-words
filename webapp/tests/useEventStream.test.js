@@ -5,6 +5,7 @@ vi.mock("../src/api/_request.js", () => ({ apiRequest: vi.fn() }));
 
 import { entries, replaceEntries } from "../src/composables/useEntries.js";
 import { useEventStream } from "../src/composables/useEventStream.js";
+import { submitWord } from "../src/composables/useResendQueue.js";
 import { EPIC, FEATURE, labelBehavior } from "./allure-taxonomy.js";
 
 class FakeEventSource {
@@ -170,6 +171,38 @@ it("recovers only known unfinished entries and replays newer live events", async
   expect(fetchEntry).toHaveBeenCalledWith("pending");
   expect(entries.value[0]).toMatchObject({ text: "finished live", status: "done" });
   expect(entries.value[1].text).toBe("kept");
+});
+
+it("waits for a receipt on its way before deciding what is unfinished", async () => {
+  // The stream opened after the server finished the answer and before the page read
+  // the receipt: the catch-up is the only place that answer can still come from.
+  let receive;
+  apiRequest.mockImplementation(() => new Promise((resolve) => { receive = resolve; }));
+  const fetchEntry = vi.fn(async () => ({ entry_id: "late", status: "done", text: "the answer" }));
+  const sending = submitWord({ word: "late", lang: "en" }, (receipt) => {
+    entries.value = [{ entry_id: receipt.entry_id, status: "pending" }];
+  });
+  const stream = useEventStream({ EventSourceClass: FakeEventSource, fetchEntry });
+  stream.start();
+
+  const refreshing = stream.refresh();
+  receive({ entry_id: "late" });
+  await sending;
+  await refreshing;
+
+  expect(fetchEntry).toHaveBeenCalledWith("late");
+  expect(entries.value[0]).toMatchObject({ status: "done", text: "the answer" });
+});
+
+it("does not wait on a receipt that never came", async () => {
+  apiRequest.mockRejectedValue(new TypeError("Load failed"));
+  const sending = submitWord({ word: "lost", lang: "en" }, () => {});
+  replaceEntries([{ entry_id: "pending", status: "pending" }]);
+  const fetchEntry = vi.fn(async () => ({ entry_id: "pending", status: "done", text: "done" }));
+
+  await Promise.all([sending.catch(() => {}), useEventStream({ fetchEntry }).refresh()]);
+
+  expect(fetchEntry).toHaveBeenCalledWith("pending");
 });
 
 it("ends a spinner when the server no longer has the pending entry", async () => {

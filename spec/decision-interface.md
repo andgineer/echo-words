@@ -81,8 +81,12 @@ headless Anki integration, and the audio chain are interface-agnostic.
 - **SSE drops when Safari backgrounds the tab.** Mitigated by the
   server's in-memory job state: on reconnect the client retrieves only its
   known unfinished entries, including accumulated text and deeper analysis.
-  Events arriving during recovery are replayed over the response. There is
-  no catch-up with history accumulated by other devices while closed.
+  Events arriving during recovery are replayed over the response. A word
+  whose submission is still on its way when the stream opens counts as
+  known: the catch-up waits for its receipt, because a stream that opened
+  after the server finished the answer has no other way to learn of it —
+  the queue resent on opening the app is the ordinary case. There is no
+  catch-up with history accumulated by other devices while closed.
 - **Backend down ⇒ new answers unavailable.** Saved history and directories
   still render. The local resend queue turns words submitted during an
   outage into cards after connectivity returns. The browser cannot see why

@@ -53,6 +53,27 @@ export function enqueueWord(body) {
   saveQueue();
 }
 
+// Receipts still on their way. A stream that opens meanwhile may have missed the whole
+// answer, and only the receipt names the entry its catch-up has to fetch.
+export const receiptsInFlight = new Set();
+
+export async function submitWord(body, onReceipt) {
+  const submission = apiRequest("/api/words", {
+    method: "POST",
+    body,
+    timeoutMs: SUBMIT_TIMEOUT_MS,
+  }).then((accepted) => {
+    onReceipt(accepted);
+    return accepted;
+  });
+  receiptsInFlight.add(submission);
+  try {
+    return await submission;
+  } finally {
+    receiptsInFlight.delete(submission);
+  }
+}
+
 export function isRetryableWordError(error) {
   return error instanceof ServerUnreachable || error?.status >= 500;
 }
@@ -65,14 +86,10 @@ export async function flushQueue() {
     while (queuedWords.value.length) {
       const item = queuedWords.value[0];
       try {
-        const accepted = await apiRequest("/api/words", {
-          method: "POST",
-          body: item.body,
-          timeoutMs: SUBMIT_TIMEOUT_MS,
-        });
-        // The POST can finish before SSE connects. Keep its receipt so reconnect
-        // can recover this one answer without downloading a server history.
-        if (accepted?.entry_id) {
+        await submitWord(item.body, (accepted) => {
+          // The POST can finish before SSE connects. Keep its receipt so reconnect
+          // can recover this one answer without downloading a server history.
+          if (!accepted?.entry_id) return;
           const streaming = entries.value.some((entry) => entry.entry_id === accepted.entry_id);
           upsertEntry({
             entry_id: accepted.entry_id,
@@ -83,7 +100,7 @@ export async function flushQueue() {
             requested_shape: item.body.shape ?? null,
             ...(streaming ? {} : { status: "pending" }),
           }, { newest: true });
-        }
+        });
         queuedWords.value.shift();
         saveQueue();
       } catch (error) {

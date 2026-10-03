@@ -1,5 +1,6 @@
 import { apiRequest } from "../api/_request.js";
 import { entries, upsertEntry } from "./useEntries.js";
+import { receiptsInFlight } from "./useResendQueue.js";
 
 function detailOf(entry) {
   return {
@@ -30,6 +31,7 @@ export function useEventStream({
     const refreshState = { events: [] };
     activeRefresh = refreshState;
     try {
+      if (receiptsInFlight.size) await Promise.allSettled([...receiptsInFlight]);
       // Recover only work this device already knows is unfinished. Other devices'
       // accumulated history is not a reason to download the whole rail again.
       const unfinished = entries.value.filter(
