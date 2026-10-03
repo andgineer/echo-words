@@ -411,11 +411,14 @@ Tell the user, briefly:
 
 - what now runs where, and the app's address
 - that their keys live in `<checkout>/.deploy/.env`
-- Oracle may stop a VM it considers idle, and a personal app is idle most of the
-  time. If the app stops answering, they open the Oracle Cloud
-  console → Compute → Instances → the VM → **Start**; the address and the data are
-  kept. Converting the account to Pay As You Go is reported to prevent the stop, and
-  stays free while only Always Free resources are used.
+- Oracle's Always Free rules let it stop a VM that stays idle for a week, and a
+  personal app is idle by that measure; the account itself is not closed. Oracle
+  warns by email a week before stopping, and the author's VM has met the measure
+  for over five months without being stopped. If the app stops answering, they open
+  the Oracle Cloud console → Compute → Instances → the VM → **Start**; the address
+  and the data are kept. Oracle's warning email says converting the account to Pay
+  As You Go prevents the stop, and it stays free while only Always Free resources
+  are used.
 - how to update later: paste the same prompt into an agent again and ask it to
   update; these instructions cover it
 - moving from an old VM that still exists: it can be terminated in Oracle's console
