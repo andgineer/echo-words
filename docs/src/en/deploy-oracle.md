@@ -9,7 +9,10 @@ prepares the machine and `inv deploy` installs the app. Every later update is
 
 ## What you need
 
-- an [Oracle Cloud Free Tier](https://www.oracle.com/cloud/free/) account
+- an [Oracle Cloud Free Tier](https://www.oracle.com/cloud/free/) account, with a
+  bypass code generated and kept off your phone: Profile menu → **User settings** →
+  **Security** → **Bypass codes** → **Generate**. If the phone you sign in with is
+  lost, the code gets you back in without Oracle support.
 - a [Tailscale](https://tailscale.com/) account (its Personal plan is free), with
   the Tailscale app on your phone
 - a free Gemini key and your AnkiWeb login, see [Your keys](keys.md)

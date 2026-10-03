@@ -10,6 +10,10 @@
 ## Что понадобится
 
 - учётная запись [Oracle Cloud Free Tier](https://www.oracle.com/cloud/free/)
+  и резервный код входа к ней, сгенерированный и сохранённый не в телефоне: меню
+  профиля → **User settings** → **Security** → **Bypass codes** → **Generate**.
+  Если телефон, с которым вы входите, потерян, код вернёт доступ без обращения в
+  поддержку Oracle.
 - учётная запись [Tailscale](https://tailscale.com/) (тариф Personal бесплатный)
   и приложение Tailscale на телефоне
 - бесплатный ключ Gemini и логин AnkiWeb, см. [Ключи](keys.md)
