@@ -202,4 +202,17 @@ describe("apiRequest when the server does not answer", () => {
     await expect(apiRequest("/api/status")).rejects.toBeInstanceOf(SyntaxError);
     expect(serverReach.value.failure).toBeNull();
   });
+
+  it("does not take a bug's TypeError after the answer for an unreachable server", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: true, status: 200, json: async () => ({}) })),
+    );
+
+    const failure = await apiRequest("/api/status").catch((error) => error);
+
+    expect(failure).toBeInstanceOf(TypeError);
+    expect(failure.name).toBe("TypeError");
+    expect(serverReach.value.failure).toBeNull();
+  });
 });
