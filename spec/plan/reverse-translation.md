@@ -1,7 +1,7 @@
 # Plan: reverse translation
 
-**Status (2026-10-08):** designed with the operator and checked against the code;
-nothing built. Next step is step 1 of "Order of work".
+**Status (2026-10-08):** designed with the operator, checked against the code and
+reviewed against it; nothing built. Next step is step 1 of "Order of work".
 
 ## What the reader gets
 
@@ -23,8 +23,9 @@ Notation: S = the selected language, T = the target language.
 1. **A leading `!` forces reverse translation, with no check of any kind** — no
    letter or script test, whatever T is: `!ねこ` with a Japanese target takes the same
    route as `!стол`, and the reverse call itself answers `not_a_word` for junk. Only
-   an empty input and rule 5's length bound are refused. It combines with `?` in
-   either order (`?!стол`, `!?стол` = reverse, no card).
+   an empty input and rule 5's length bound are refused, and on a tab in T itself it
+   is ignored (rule 8). It combines with `?` in either order (`?!стол`, `!?стол` =
+   reverse, no card).
 2. **Without `!`, letters decide where they prove it.** Letters come from
    `_BEYOND_LATIN` (`src/echo_words/languages.py:374`) through `_alphabet()`, the
    same rows the card-sentence test reads:
@@ -42,6 +43,19 @@ Notation: S = the selected language, T = the target language.
    case), and the existing attestation judgement **refused** the word in S. A word
    that exists in both languages (вода, рука, hotel) is accepted by the judgement and
    never reaches the helper.
+
+   It **takes the word over only when it reads the word as itself** — `verdict` is
+   `word` and `read_as` is the typed word. The reverse prompt is built to read through
+   misspellings (сотл → стол), and the judgement refuses misspellings, so every
+   misspelt S word with open letters reaches the helper: on the Serbian tab, any
+   Cyrillic one without ђ ј љ њ ћ џ, which by the table below is three Serbian words
+   in four. Today the S answer corrects such a word (a declared misspelling overrules
+   the refusal); a T reading of some *other* word must not overrule that. So a `word`
+   verdict for another reading leaves the S result standing and offers the reverse
+   lookup with one tap («Искать как русское слово»), which is also what an inflected T
+   form (города) gets. The one conflict left is a word that is a T word exactly as
+   typed and also an S misspelling (кашка, for кашика): the helper takes it, and
+   «Это сербское слово» is the way back.
 4. **A chip never triggers reverse or the helper** — its label comes from the app's
    own S answer. Chips are submissions with `shape="unit"`; so are the «Это сербское
    слово» resubmission and a retry after a reversal.
@@ -55,12 +69,18 @@ Notation: S = the selected language, T = the target language.
    input to reverse and the reverse path cannot card it — longer than
    `MAX_WORD_LENGTH`, a `sentence` or a `not_a_word` verdict — and S's own validation
    accepts the input, it is processed as an ordinary S submission, without the
-   helper. Only a tab whose script contains T's can reach this (Serbian, Ukrainian,
+   helper: the same text, normalised and shaped exactly as today's path would have
+   sent it. Only a tab whose script contains T's can reach this (Serbian, Ukrainian,
    Bulgarian… with a Russian target; Cyrillic fails English and German validation).
    The case it exists for: a Russian keyboard has no ј љ њ ћ ђ џ, so Serbian typed on
    one substitutes Russian-only letters (йош for још), and today such a word reaches
    the Serbian article, which can correct it. A `!` request has no floor: the reader
    asked for the target reading.
+8. **A tab in T itself has nothing to reverse.** Nothing stops a Russian tab beside
+   a Russian target. There a leading `!` is stripped and the word goes as an ordinary
+   S submission, letters prove nothing, and the helper never runs: it would only ask
+   the attestation's own question again, one pool call per refused word that cannot
+   change the outcome.
 
 ## Measurements behind the rules
 
@@ -81,6 +101,12 @@ from the app's own `_alphabet()`.
 Serbian Cyrillic lacks Russian й щ ъ ы ь э ю я ё; Ukrainian and Bulgarian
 separate from Russian on 11% of Russian words.
 
+The letter rule cannot see a loanword that keeps T's diacritics, so with a Latin T
+it reverses some S words. Measured on the first 20,000 words of the same lists: with
+a French or Spanish target, 6–8 English or German words would reverse, the only
+common ones café and fiancé, the rest names (josé, pokémon, andré). Negligible, and
+nothing at all with a Russian target.
+
 Timing references: attestation judgement on the pool, median 0.923 s, p90 7.190 s
 (`decision-jev-attestation.md`); whole article ~2.0 s median, 3.8 s p90
 (`decision-llm-backend.md`). The pool is measured fine at a couple of dozen requests
@@ -98,18 +124,29 @@ room): «Текст или !русское слово» 193, «!английск
   `parse_reverse(raw, language, target)` in `src/echo_words/prompt.py`, next to
   `build_attestation_prompt` / `parse_attestation` (`prompt.py:307`, `:316`).
 - Asks: "«word» is a word in T. Give the S words for it, one per meaning, commonest
-  meaning first, each with one S example sentence that uses it in that meaning. Say
-  which T word you read it as. If it is not a T word or expression, or is a sentence,
-  say so."
+  meaning first, each with one S example sentence that uses it in that meaning, and
+  the word as it stands in that sentence. Say which T word you read it as. If it is
+  not a T word or expression, or is a sentence, say so."
 - Answer JSON, strict:
   `{"verdict": "word" | "not_a_word" | "sentence", "read_as": str,
-  "equivalents": [{"word": str, "example": str}, ...]}`, at most 6 equivalents.
+  "equivalents": [{"word": str, "example": str, "form": str}, ...]}`, at most 6
+  equivalents. `form` is the equivalent as the example spells it (Stühle for Stuhl,
+  столу for сто, went for go).
 - Validation in `parse_reverse`: verdict known; for `word`, ≥1 equivalent; each
-  `word` passes `validate_word(word, S)`; each `example` passes `validate_text`,
-  contains the equivalent under `fold_for_match`, and passes
-  `sentence_is_source_language(example, S, T)` — the letter test the card applies to
-  its sentences. An example failing any of these is dropped and its equivalent stays
-  as a bare chip; the answer itself does not fail. Unusable → `None`.
+  `word` passes `validate_word(word, S)`; each `example` passes `validate_text`, is
+  at most `MAX_CONTEXT_LENGTH` (500) long, and carries its `form` by the card's own
+  test — `_context_sentence_forms(example, form, S, T)` (`card.py:454`), made public
+  for this, which also applies the letter test the card applies to its sentences
+  (`sentence_is_source_language`). An example failing any of these is dropped and
+  its equivalent stays as a bare chip; the answer itself does not fail. Unusable →
+  `None`.
+- Why the card's test and not a comparison with the equivalent: German and Serbian
+  examples inflect the word, so a whole-word match drops most verb and many noun
+  examples, and a substring match passes «сто» inside «место». The chip path does not
+  compare spellings either: `_with_context_example` (`card.py:385`) finds the unit by
+  the form the S answer names, and a sentence it cannot find the unit in fails the
+  *card*, not just the example. The bound is the one `_sense_sentence` applies to a
+  sense chip's sentence. `prompt.py` already imports from `card.py`, so no cycle.
 - The example is more than a sense selector. The first equivalent's example becomes
   the card's front sentence (`_with_context_example`, `card.py:385`) and is voiced as
   the entry's context audio (`_voiced_context`, `pipeline.py:1446`), exactly like the
@@ -136,7 +173,8 @@ room): «Текст или !русское слово» 193, «!английск
     when it fails); the helper is not, being a judgement beside the answer like the
     attestation.
 - The same prompt serves `!`, letters and the helper. The helper reads only
-  `verdict == "word"` as "this is a T word".
+  `verdict == "word"` with `read_as` equal to the typed word under NFC and casefold
+  as "this is a T word as typed" (rule 3).
 
 ## Backend changes
 
@@ -151,27 +189,41 @@ room): «Текст или !русское слово» 193, «!английск
 - `api.py` `submit_word` (`:334`):
   - Today's S normalisation and validation run as now, but their hint is held rather
     than raised until the reverse decision is made: on the English tab «стол» fails
-    S validation, and that must not stop it from reversing.
-  - `reverse = "forced"` for `!`; `"letters"` when `shape is None`, `reads_as_target`
-    and not `reads_as_source`; otherwise `None`.
-  - A reverse candidate gets no script or letter check (rule 1): `plain_unit` strips
-    the punctuation off its edges, and only emptiness and length are tested. Empty →
-    the existing `word.empty` hint. Within `MAX_WORD_LENGTH` → a reverse job. Longer,
-    from letters, with the held S hint `None` → the ordinary S job (rule 7).
+    S validation, and that must not stop it from reversing. The job's `word` and
+    `intent` are always that S normalisation (`plain_text`, then `plain_unit` and
+    `intent="unit"` for one word — `:338-347`), so the rule-7 floor continues the very
+    submission today's path would have made; the reverse call reads
+    `plain_unit(job.word)`.
+  - S is T (rule 8: T's directory code equals `language.code`) → `!` is dropped and
+    `reverse` is `None`. Otherwise `reverse = "forced"` for `!`; `"letters"` when
+    `shape is None`, `reads_as_target` and not `reads_as_source`; otherwise `None`.
+  - A reverse candidate gets no script or letter check (rule 1): its text is
+    `plain_unit` of the S normalisation, and only emptiness and length are tested.
+    Empty → the existing `word.empty` hint. Within `MAX_WORD_LENGTH` → a reverse job.
+    Longer, from letters, with the held S hint `None` → the ordinary S job (rule 7).
     Otherwise longer → 400 `reverse.words_only`.
   - Not a reverse candidate → the held S hint is raised as today.
-  - Pass `reverse` and `source_ok` (the held S hint was `None`) to
-    `pipeline.enqueue`. Add `reverse` to the fingerprint (`SubmissionFingerprint`,
-    `:69`) and to `SubmissionAccepted` (`:230`) as `"forced" | "letters" | None`: the
-    PWA shows the pending line for both, and retries with `!` only for `"forced"`
-    (a letters retry triggers again by itself).
+  - `may_ask_helper` = S is not T, `shape is None`, the S normalisation is one word,
+    and letters prove neither way (neither `reads_as_target` nor `reads_as_source`).
+    Computed here because the pipeline cannot recompute it: `:346-347` gives a typed
+    single word `intent="unit"`, exactly what a chip sends, so by the time a job is
+    queued a chip — and the «Это сербское слово» resubmission, which is one — looks
+    like a typed word. Without the flag that button resubmits «город», the Serbian
+    judgement refuses it again, and the helper reverses it again.
+  - Pass `reverse`, `source_ok` (the held S hint was `None`) and `may_ask_helper` to
+    `pipeline.enqueue`. Add `reverse` and `may_ask_helper` to the fingerprint
+    (`SubmissionFingerprint`, `:69`), and `reverse` to `SubmissionAccepted` (`:230`)
+    as `"forced" | "letters" | None`: the PWA shows the pending line for both, and
+    retries with `!` only for `"forced"` (a letters retry triggers again by itself).
   - New `GET /api/target` → `{"code": <T's directory code> | null, "name": <T as
     configured>}`. The PWA reads T's and S's names from `/api/languages/catalog`,
     which `App.vue` already fetches and caches at start (`refreshReferences`); a
     target outside the directory has only its configured name. `/api/languages`
     keeps its shape: it carries only the code and the endonym.
 - `pipeline.py`
-  - `Job.reverse: Literal["forced", "letters"] | None` and `Job.source_ok: bool`.
+  - `Job.reverse: Literal["forced", "letters"] | None`, `Job.source_ok: bool` and
+    `Job.may_ask_helper: bool`, all defaulting to "no" so rebuilds, switches and the
+    resolved chip job carry none of them.
   - `process_word` (`:516`) becomes a loop over one attempt:
     `while job is not None: job = await self._attempt(job)`. The helper path ends an
     S attempt (whose `finally` cancels that attempt's audio, attestation and helper)
@@ -201,21 +253,26 @@ room): «Текст или !русское слово» 193, «!английск
     sense chips stay. They are kept even when the attestation refuses the first
     equivalent, because each one is judged again when tapped.
   - Helper (rule 3):
-    - Eligible: kind `submit`, `reverse` is `None`, not a chip, a single word, letters
-      proved nothing (never the case for a target outside the directory, rule 2).
+    - Eligible: `job.may_ask_helper` (set by the API, above) and kind `submit`. Never
+      the case for a target outside the directory (rule 2) or on a tab in T (rule 8).
     - Started by a done-callback on the attestation task the moment a refusal lands
       (pool only, `reported=False`, trace `-helper`), so it starts whether the refusal
       arrives mid-stream or after the article has ended. Owned like `_Attestation`
       and cancelled in the attempt's `finally`.
-    - Mid-stream: each delta polls it. `word` → abandon the S attempt by leaving the
-      loop (`aclosing` closes the completion, and an abandoned stream is not rated)
-      and return the resolved job, with `reverse_by_helper` set, built from the
-      helper's answer — no second reverse call.
+    - It *takes over* when its answer is `word` with `read_as` equal to the typed
+      word (rule 3). Any other answer leaves the S attempt alone.
+    - Mid-stream: each delta polls it. Taking over → abandon the S attempt by leaving
+      the loop (`aclosing` closes the completion, and an abandoned stream is not
+      rated) and return the resolved job, with `reverse_by_helper` set, built from
+      the helper's answer — no second reverse call.
     - After the stream: `attestation.result()` as today, then the helper is waited for
-      up to `ATTESTATION_GRACE_SECONDS`. `word` → as mid-stream (the completed S answer
-      has already been rated as usable, which it was). Anything else, or no answer in
-      time → the ordinary S result; a refusal with the helper unanswered sets
-      `reverse_offered`.
+      up to `ATTESTATION_GRACE_SECONDS`. Taking over → as mid-stream (the completed S
+      answer has already been rated as usable, which it was). Anything else, or no
+      answer in time → the ordinary S result, the misspelling overrule
+      (`pipeline.py:678-684`) included. `reverse_offered` is set when the judgement
+      refused and the helper did not take over, unless it answered `not_a_word` or
+      `sentence`: unanswered in time, or a T reading of another word (сотл read as
+      стол, города as город).
   - Typo hand-over veto. A declared typo hands the pool answer to the paid model
     inside `_steps_up` (`backend.py:340`). Delaying that does not save the money: the
     request is frozen when the stream opens (`backend.py:518`), before any helper
@@ -225,12 +282,12 @@ room): «Текст или !русское слово» 193, «!английск
     awaited only on the hand-over branch: `False` → the pool answer stands and no paid
     call is made. The pipeline passes it for helper-eligible jobs. It waits for the
     attestation (up to the grace) and, when a helper has started, for its answer (up
-    to the grace), and returns `False` when the helper says `word`. That adds at most
+    to the grace), and returns `False` when the helper takes over. That adds at most
     twice the grace, only to a typo hand-over of a single open-letter word. A pool
     miss still steps up at once: the reader has already waited out the whole budget
     there.
   - The new fields reach the page on two events: the reversal on `reset`, and
-    `reverse_offered` on `done`, whose payload is an explicit dict (`:1035`), not
+    `reverse_offered` on `done`, whose payload is an explicit dict (`:1036`), not
     `entry.public()`.
 - `history.py`: `Entry` (`:15`) gains `typed_word`, `read_as`, `reverse_by_helper`,
   `reverse_offered`, all in `public()`. `SegmentKind` (`:11`) gains `"equivalents"`.
@@ -254,8 +311,20 @@ room): «Текст или !русское слово» 193, «!английск
   «{typed}»…".
 - The `reset` handler (`useEventStream.js:69`) applies `word`, `typed_word`,
   `read_as`, `context` and `reverse_by_helper` when present, as it already does
-  `detail_html`. It also sets `requested_shape: "unit"` and `requested_reverse: false`,
+  `detail_html`. It also sets `requested_shape: "unit"` and `requested_reverse: null`,
   so a retry after the reversal resends the equivalent as a chip.
+- Both receipt handlers — `sendWord`'s (`AddView.vue:144-154`) and the resend
+  queue's (`useResendQueue.js:93-101`) — record `requested_reverse` from the receipt
+  beside `requested_shape`. Without the queue's, a queued `!город` that fails retries
+  without its `!`, and its pending line is the ordinary one.
+- Neither receipt handler overwrites `word`, `context`, `requested_shape` or
+  `requested_reverse` once the entry carries `typed_word`. Today both merge them in
+  even into an entry that is already streaming, which is safe only because "no later
+  event carries the word" (`AddView.vue:143`); `reset` now does. A receipt read after
+  the reversal — rare, since the POST's answer leaves before the reverse call starts
+  and that call takes about a second at least, but nothing orders the two — would put
+  «стол» back on the rail, read «стол → стол» in the header, drop the example, and
+  make a retry resend «стол» as typed.
 - Retry (`AddView.vue:180`) restores the prefixes from the receipt: `!` when
   `requested_reverse` is `"forced"`, and `lookup_only`, which `sendWord` always posts
   as `false` today — so a failed `?word` currently retries as a card.
@@ -272,7 +341,8 @@ room): «Текст или !русское слово» 193, «!английск
 - `reverse_by_helper` → line ru «Принято за {adj T} слово», en "Read as a word in
   {Russian}", and button ru «Это {adj S} слово», en "It's a word in {Serbian}": deletes
   the entry's card when it has one (`card_status === "added"`), then submits
-  `typed_word` with `shape: "unit"`, which rule 4 keeps out of reverse.
+  `typed_word` with `shape: "unit"`, which rule 4 keeps out of reverse and out of the
+  helper (the API sets no `may_ask_helper` for a chip).
 - Remove the «Что это и как пользоваться» panel: `AddView.vue:309-319`, its
   `helpOpen` state and `.about*` CSS, the `add.about*` keys in `ru.js` and `en.js`,
   and any test that reads them. The panel is the only place a reader learns `?`, so
@@ -285,16 +355,24 @@ room): «Текст или !русское слово» 193, «!английск
   German}, Latin and Cyrillic Serbian; a word with both kinds of letter proves
   neither; `sentence_is_source_language` unchanged on its existing cases; a target
   outside the directory makes every letter S's own.
-- `tests/test_prompt.py`: prompt names S and T; `parse_reverse` accepts the three
-  verdicts; drops an example that does not contain its word or fails the letter test;
+- `tests/test_prompt.py`: prompt names S and T and asks for the form; `parse_reverse`
+  accepts the three verdicts; keeps an example that carries its word inflected
+  (`Stühle` for `Stuhl`); drops one whose `form` is not in it, one over 500
+  characters, and one failing the letter test, keeping its equivalent as a bare chip;
   rejects bad JSON, empty equivalents and equivalents failing S validation.
+- `tests/test_card.py`: the now-public `_context_sentence_forms` keeps its existing
+  cases.
 - `tests/test_api.py`: `!` on every tab; Cyrillic on English auto-reverses; a chip with
   Cyrillic does not; reverse over 50 chars → 400 `reverse.words_only`; on the Serbian
   tab, text over 50 chars with a Russian-only letter is accepted as Serbian text
   (rule 7); `!` takes anything non-empty within the bound with no script check —
   `!стoл` with a Latin o, digits, `!ねこ` with a target outside the directory; `!` alone → `word.empty`;
   the receipt carries `reverse`; `/api/target` for a directory target and for one
-  outside it.
+  outside it; `may_ask_helper` set for a typed open-letter single word and not for a
+  chip, two words, or a word letters prove either way; a two-word letters candidate
+  on the Serbian tab queues today's S normalisation (`plain_text`, no intent); on a
+  Russian tab with a Russian target `!стол` goes as Russian, with no reverse and no
+  helper (rule 8).
 - `tests/test_backend.py`: `before_hand_over` is awaited only on the hand-over branch;
   `False` → no paid stream opened and the pool answer stands; absent → today's
   behaviour; a pool miss steps up without awaiting it.
@@ -304,22 +382,29 @@ room): «Текст или !русское слово» 193, «!английск
   equivalent keeps the sense chips; the reverse call is rated; pool silent → paid
   inside the cascade; pool unusable → the pipeline's own `stream_paid`; paid refused →
   the entry fails; `not_a_word`; `sentence`; letters + `not_a_word` on Serbian →
-  continues as Serbian, no helper (rule 7); `!` + `not_a_word` on Serbian → stays not
+  continues as Serbian with the word and intent today's path gives it, no helper
+  (rule 7); `!` + `not_a_word` on Serbian → stays not
   a word; an equivalent the attestation refuses → refusal shown, chips kept;
   `typed_word` survives a switch.
 - `tests/test_attestation.py` (helper): it starts when a refusal lands mid-stream and
-  when one lands after the article ended; `word` mid-stream → S attempt abandoned
-  unrated, card for the equivalent; `word` after the stream; negative → S result;
-  late → `reverse_offered`; a declared typo with helper `word` → no paid call made; a
-  declared typo with a negative helper → paid hand-over as today.
+  when one lands after the article ended; it never starts for a job without
+  `may_ask_helper` (the «Это сербское слово» resubmission); taking over mid-stream →
+  S attempt abandoned unrated, card for the equivalent; taking over after the stream;
+  `word` read as another word → S result with the misspelling overrule intact, and
+  `reverse_offered`; negative → S result, no offer; late → `reverse_offered`; a
+  declared typo with the helper taking over → no paid call made; a declared typo with
+  a negative helper, or with `word` read as another word → paid hand-over as today.
 - `tests/test_history.py`: the new fields round-trip; the `"equivalents"` kind.
 - Webapp unit tests (`webapp/tests/`): placeholder for ru/en, declined and
   indeclinable names, and with no target; the pending line; `reset` applies the
-  reversal; retry restores `!` and `?`; header with and without `read_as`; both
-  outcome messages; both buttons; the delete is skipped when there is no card.
+  reversal; a receipt read after `reset` leaves the reversal standing, in both
+  receipt handlers; a queued `!` submission records `requested_reverse`; retry
+  restores `!` and `?`; header with and without `read_as`; both outcome messages;
+  both buttons; the delete is skipped when there is no card.
 - Browser (`tests/test_e2e_reverse.py`, Chromium, gate-held fake): the pending line
   while the reverse call is held; «стол → table»; chips; «Искать как русское слово»;
-  «Это сербское слово»; the failure message, and its retry keeping the `!`.
+  «Это сербское слово», whose resubmission is carded as Serbian and not reversed
+  again; the failure message, and its retry keeping the `!`.
 - `tests/test_one_note_bench.py`: the new bench action's scoring.
 
 ## Bench (Russian target, pool)
@@ -338,9 +423,9 @@ German and Serbian unless marked:
 | no direct equivalent | тоска, авось | a close word, not an invention |
 | misspelling | сотл | `read_as` «стол» |
 | not a word / sentence | фывапр / я иду домой | `not_a_word` / `sentence` |
-| helper, T words (sr only) | город, книга, девушка, собака | `word` |
-| helper, S typos (sr only) | прозр, сврка | not `word` |
-| helper, hard case (sr only) | кашка (typo of кашика, also Russian) | reported separately |
+| helper, T words (sr only) | город, книга, девушка, собака | `word`, `read_as` the typed word (takes over) |
+| helper, S typos (sr only) | прозр, сврка | does not take over: not `word`, or `word` read as another word |
+| helper, hard case (sr only) | кашка (typo of кашика, also Russian) | reported separately: the one conflict rule 3 leaves |
 | Russian-keyboard Serbian (sr only) | йош (још), моя (моја) | `not_a_word` for йош, which rule 7 then hands to Serbian; `word` → моја for моя |
 
 The helper only sees words the Serbian attestation refuses, so the same run also asks
@@ -348,6 +433,11 @@ the existing attestation prompt (the bench's `attestation` shot kind) about ever
 helper fixture in Serbian. A helper fixture the attestation accepts is reported as
 "helper not reached": that is a finding about the attestation, and it is not scored
 against the reverse call.
+
+Every `word` answer's examples are screened by `parse_reverse` itself, and the report
+counts the examples it drops, by language and by reason (form not in the example,
+too long, letter test): a dropped example costs the card its front sentence, so a
+high count in German or Serbian is a finding about the prompt's `form`, not noise.
 
 About 64 calls: 48 for the three-language rows, 9 reverse calls for the Serbian-only
 rows, 7 attestation calls. Also record the reverse call's median and p90 latency.
@@ -368,7 +458,7 @@ as an instance of its meaning. The decision goes into
 ## Specs and docs
 
 - `spec/functional-description.md` input section, item 2 ("The language is always
-  the user's explicit selection, never guessed…"): replace with rules 1–7 as
+  the user's explicit selection, never guessed…"): replace with rules 1–8 as
   behaviour; describe the reverse entry.
 - `spec/functional-description.md`, the paid step ("A payload that no answer of that
   request could carry does not buy a paid one by itself"): state the exception — a
@@ -379,9 +469,11 @@ as an instance of its meaning. The decision goes into
   is decided by its letters where they prove it, by `!`, or, for a single word the
   source language rejects, by a separate check that asks only that."
 - New `spec/decision-reverse-translation.md`: the measurements above, the reason for
-  rule 7, the dropped alternatives (model detection inside the article payload;
-  asking the helper on every open word; Wiktionary translation tables; a q/w/x/y
-  column), the bench result.
+  rule 7, why the helper takes over only a T word as typed (the prompt reads through
+  misspellings, and the S answer's correction of an S misspelling must win), why an
+  example is screened by the card's own test, the dropped alternatives (model
+  detection inside the article payload; asking the helper on every open word;
+  Wiktionary translation tables; a q/w/x/y column), the bench result.
 - `docs/src/{ru,en}/index.md` "Что умеет / What it does": one bullet for `!` and `?`.
 - `CLAUDE.md` already lists this plan among the open ones; set it back to "One is
   open" when the work lands.
@@ -393,15 +485,16 @@ as an instance of its meaning. The decision goes into
    `sentence_is_source_language` on top of them) + tests. Prefix
    parsing waits for step 4, so that `!` is never accepted and silently dropped
    before the pipeline can act on it.
-2. Reverse prompt + parser + tests.
-3. Bench action + fixtures + attestation shots + its test; run the bench, fresh
-   review, record. The prompt is the riskiest part, so it is measured before the
-   pipeline is built on it.
-4. Prefix parsing + API (`!`, letters, rule 7, `/api/target`) + pipeline reverse
-   resolution + history + tests.
-5. Helper + hand-over veto + tests.
-6. Frontend: placeholder, pending line, `reset` handling, retry, header, chips,
-   outcomes, buttons, panel removal + tests.
+2. Reverse prompt (with `form`) + parser (screening examples by the card's own,
+   now public, `_context_sentence_forms`) + tests.
+3. Bench action + fixtures + attestation shots + dropped-example counts + its test;
+   run the bench, fresh review, record. The prompt is the riskiest part, so it is
+   measured before the pipeline is built on it.
+4. Prefix parsing + API (`!`, letters, rule 7 on S's own normalisation, rule 8,
+   `may_ask_helper`, `/api/target`) + pipeline reverse resolution + history + tests.
+5. Helper (taking over only a T word as typed) + hand-over veto + tests.
+6. Frontend: placeholder, pending line, `reset` handling, both receipt handlers,
+   retry, header, chips, outcomes, buttons, panel removal + tests.
 7. Browser tests.
 8. Specs, docs, screenshots; delete this plan.
 
