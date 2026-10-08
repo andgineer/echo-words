@@ -9,9 +9,10 @@ beforeEach(async () => {
   localStorage.clear();
 });
 
-function fill(count, status = "done") {
+function fill(count, status = "done", lang = undefined) {
   for (let index = 0; index < count; index += 1) {
-    upsertEntry({ entry_id: `entry-${index}`, word: `word-${index}`, status }, { newest: true });
+    const entry = { entry_id: `${lang ?? "entry"}-${index}`, word: `word-${index}`, status };
+    upsertEntry(lang ? { ...entry, lang } : entry, { newest: true });
   }
 }
 
@@ -32,6 +33,21 @@ describe("useEntries", () => {
     expect(entries.value).toHaveLength(50);
     expect(entries.value[0].entry_id).toBe("entry-51");
     expect(entries.value.at(-1).entry_id).toBe("entry-2");
+  });
+
+  it("bounds each language on its own, so a busy one never empties another", () => {
+    fill(3, "done", "sr");
+    fill(60, "done", "en");
+
+    const langs = entries.value.map((entry) => entry.lang);
+    expect(langs.filter((lang) => lang === "en")).toHaveLength(50);
+    expect(entries.value.filter((entry) => entry.lang === "sr").map((entry) => entry.entry_id))
+      .toEqual(["sr-2", "sr-1", "sr-0"]);
+
+    fill(52, "done", "sr");
+    expect(entries.value.filter((entry) => entry.lang === "sr")).toHaveLength(50);
+    expect(entries.value.filter((entry) => entry.lang === "en")).toHaveLength(50);
+    expect(entries.value.find((entry) => entry.lang === "en").entry_id).toBe("en-59");
   });
 
   it("never evicts an entry still waiting for its answer", () => {

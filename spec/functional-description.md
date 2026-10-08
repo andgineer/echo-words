@@ -625,8 +625,9 @@ Kept minimal — everything beyond typing a word:
   accumulated so far. The PWA keeps history in the browser's IndexedDB and
   restores it on startup without contacting the backend. A fresh browser
   database starts with empty history; there is no initial or periodic download
-  of the server's recent entries. Both sides bound their entries to 50 and
-  neither evicts one still being answered. The backend retains only the
+  of the server's recent entries. Both sides bound each source language's
+  entries to 50 on its own, so a busy language never empties another's rail or
+  expires its controls, and neither evicts one still being answered. The backend retains only the
   in-memory state needed by current jobs and their controls, with no JSON
   persistence. On reconnect the PWA retrieves only locally known unfinished
   entries; an expired job becomes retryable. The existing live event broadcast

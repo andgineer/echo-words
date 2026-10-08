@@ -3,6 +3,7 @@
 from collections import Counter, deque
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
+from itertools import islice
 from typing import Literal
 
 from echo_words.card import AnswerKind
@@ -151,13 +152,12 @@ class History:
         return {"lookup_only": counter["lookup"]}
 
     def trim(self) -> None:
-        """Evict oldest terminal entries, never work the FIFO still needs."""
-        while len(self.order) > self.limit:
-            expired = next(
-                (entry_id for entry_id in self.order if self.entries[entry_id].action != "pending"),
-                None,
-            )
-            if expired is None:
-                return
-            self.order.remove(expired)
-            self.entries.pop(expired, None)
+        """Bound each language on its own, evicting its oldest terminal entries first."""
+        by_lang: dict[str, list[str]] = {}
+        for entry_id in self.order:
+            by_lang.setdefault(self.entries[entry_id].lang, []).append(entry_id)
+        for ids in by_lang.values():
+            terminal = (entry_id for entry_id in ids if self.entries[entry_id].action != "pending")
+            for expired in islice(terminal, max(len(ids) - self.limit, 0)):
+                self.order.remove(expired)
+                self.entries.pop(expired, None)

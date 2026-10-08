@@ -33,13 +33,17 @@ export function upsertEntry(entry, { newest = false } = {}) {
   writeCache(HISTORY_KEY, entries.value);
 }
 
+// Each language is bounded on its own, so a busy one never empties another's rail.
 // Oldest first, and never an entry still waiting on the pipeline: dropping one
 // would leave an answer with nowhere to land.
 function trim() {
-  let index = entries.value.length - 1;
-  while (index >= 0 && entries.value.length > MAX_ENTRIES) {
-    if (entries.value[index].status !== "pending") entries.value.splice(index, 1);
-    index -= 1;
+  const counts = new Map();
+  for (const { lang } of entries.value) counts.set(lang, (counts.get(lang) ?? 0) + 1);
+  for (let index = entries.value.length - 1; index >= 0; index -= 1) {
+    const { lang, status } = entries.value[index];
+    if (counts.get(lang) <= MAX_ENTRIES || status === "pending") continue;
+    entries.value.splice(index, 1);
+    counts.set(lang, counts.get(lang) - 1);
   }
 }
 
