@@ -32,7 +32,10 @@ the code and does not apply to those.
 - `spec/plan/` — work that is started and not finished, one file each.
   **Read these first when picking work up**: each says where its work
   stands, what is already built, what its experiments established and
-  what is left. One is open.
+  what is left. Two are open.
+  `reverse-translation.md` — a word typed in the target language (`!стол`,
+  or Cyrillic on a Latin-script tab) carded as its equivalent in the
+  selected language; designed, not built, its prompt to be benched first.
   `observed-defects.md` — eighteen faults left unfixed, each with its
   evidence, from three readings: six met while using the app, from a
   rebuilt bundle that can leave the reader on a white screen to a word the
