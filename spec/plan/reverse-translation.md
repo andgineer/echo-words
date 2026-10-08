@@ -23,9 +23,8 @@ Notation: S = the selected language, T = the target language.
 1. **A leading `!` forces reverse translation, with no check of any kind** — no
    letter or script test, whatever T is: `!ねこ` with a Japanese target takes the same
    route as `!стол`, and the reverse call itself answers `not_a_word` for junk. Only
-   an empty input and rule 5's length bound are refused, and on a tab in T itself it
-   is ignored (rule 8). It combines with `?` in either order (`?!стол`, `!?стол` =
-   reverse, no card).
+   an empty input and rule 5's length bound are refused. It combines with `?` in
+   either order (`?!стол`, `!?стол` = reverse, no card).
 2. **Without `!`, letters decide where they prove it.** Letters come from
    `_BEYOND_LATIN` (`src/echo_words/languages.py:374`) through `_alphabet()`, the
    same rows the card-sentence test reads:
@@ -76,11 +75,11 @@ Notation: S = the selected language, T = the target language.
    one substitutes Russian-only letters (йош for још), and today such a word reaches
    the Serbian article, which can correct it. A `!` request has no floor: the reader
    asked for the target reading.
-8. **A tab in T itself has nothing to reverse.** Nothing stops a Russian tab beside
-   a Russian target. There a leading `!` is stripped and the word goes as an ordinary
-   S submission, letters prove nothing, and the helper never runs: it would only ask
-   the attestation's own question again, one pool call per refused word that cannot
-   change the outcome.
+8. **No rule of its own for a tab in T itself.** Nothing stops a Russian tab beside
+   a Russian target. There `!` asks for the Russian equivalents of a Russian word, and
+   the helper asks every refused word the attestation's own question again, one pool
+   call that cannot change the outcome. Considered (ignore `!` and skip the helper
+   there) and dropped by the operator: no such tab exists.
 
 ## Measurements behind the rules
 
@@ -194,16 +193,15 @@ room): «Текст или !русское слово» 193, «!английск
     `intent="unit"` for one word — `:338-347`), so the rule-7 floor continues the very
     submission today's path would have made; the reverse call reads
     `plain_unit(job.word)`.
-  - S is T (rule 8: T's directory code equals `language.code`) → `!` is dropped and
-    `reverse` is `None`. Otherwise `reverse = "forced"` for `!`; `"letters"` when
-    `shape is None`, `reads_as_target` and not `reads_as_source`; otherwise `None`.
+  - `reverse = "forced"` for `!`; `"letters"` when `shape is None`, `reads_as_target`
+    and not `reads_as_source`; otherwise `None`.
   - A reverse candidate gets no script or letter check (rule 1): its text is
     `plain_unit` of the S normalisation, and only emptiness and length are tested.
     Empty → the existing `word.empty` hint. Within `MAX_WORD_LENGTH` → a reverse job.
     Longer, from letters, with the held S hint `None` → the ordinary S job (rule 7).
     Otherwise longer → 400 `reverse.words_only`.
   - Not a reverse candidate → the held S hint is raised as today.
-  - `may_ask_helper` = S is not T, `shape is None`, the S normalisation is one word,
+  - `may_ask_helper` = `shape is None`, the S normalisation is one word,
     and letters prove neither way (neither `reads_as_target` nor `reads_as_source`).
     Computed here because the pipeline cannot recompute it: `:346-347` gives a typed
     single word `intent="unit"`, exactly what a chip sends, so by the time a job is
@@ -254,7 +252,7 @@ room): «Текст или !русское слово» 193, «!английск
     equivalent, because each one is judged again when tapped.
   - Helper (rule 3):
     - Eligible: `job.may_ask_helper` (set by the API, above) and kind `submit`. Never
-      the case for a target outside the directory (rule 2) or on a tab in T (rule 8).
+      the case for a target outside the directory (rule 2).
     - Started by a done-callback on the attestation task the moment a refusal lands
       (pool only, `reported=False`, trace `-helper`), so it starts whether the refusal
       arrives mid-stream or after the article has ended. Owned like `_Attestation`
@@ -370,9 +368,7 @@ room): «Текст или !русское слово» 193, «!английск
   the receipt carries `reverse`; `/api/target` for a directory target and for one
   outside it; `may_ask_helper` set for a typed open-letter single word and not for a
   chip, two words, or a word letters prove either way; a two-word letters candidate
-  on the Serbian tab queues today's S normalisation (`plain_text`, no intent); on a
-  Russian tab with a Russian target `!стол` goes as Russian, with no reverse and no
-  helper (rule 8).
+  on the Serbian tab queues today's S normalisation (`plain_text`, no intent).
 - `tests/test_backend.py`: `before_hand_over` is awaited only on the hand-over branch;
   `False` → no paid stream opened and the pool answer stands; absent → today's
   behaviour; a pool miss steps up without awaiting it.
@@ -458,7 +454,7 @@ as an instance of its meaning. The decision goes into
 ## Specs and docs
 
 - `spec/functional-description.md` input section, item 2 ("The language is always
-  the user's explicit selection, never guessed…"): replace with rules 1–8 as
+  the user's explicit selection, never guessed…"): replace with rules 1–7 as
   behaviour; describe the reverse entry.
 - `spec/functional-description.md`, the paid step ("A payload that no answer of that
   request could carry does not buy a paid one by itself"): state the exception — a
@@ -473,7 +469,8 @@ as an instance of its meaning. The decision goes into
   misspellings, and the S answer's correction of an S misspelling must win), why an
   example is screened by the card's own test, the dropped alternatives (model
   detection inside the article payload; asking the helper on every open word;
-  Wiktionary translation tables; a q/w/x/y column), the bench result.
+  Wiktionary translation tables; a q/w/x/y column; a rule of its own for a tab in
+  T itself), the bench result.
 - `docs/src/{ru,en}/index.md` "Что умеет / What it does": one bullet for `!` and `?`.
 - `CLAUDE.md` already lists this plan among the open ones; set it back to "One is
   open" when the work lands.
@@ -490,7 +487,7 @@ as an instance of its meaning. The decision goes into
 3. Bench action + fixtures + attestation shots + dropped-example counts + its test;
    run the bench, fresh review, record. The prompt is the riskiest part, so it is
    measured before the pipeline is built on it.
-4. Prefix parsing + API (`!`, letters, rule 7 on S's own normalisation, rule 8,
+4. Prefix parsing + API (`!`, letters, rule 7 on S's own normalisation,
    `may_ask_helper`, `/api/target`) + pipeline reverse resolution + history + tests.
 5. Helper (taking over only a T word as typed) + hand-over veto + tests.
 6. Frontend: placeholder, pending line, `reset` handling, both receipt handlers,
