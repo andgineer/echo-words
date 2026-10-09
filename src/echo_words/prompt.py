@@ -36,6 +36,9 @@ MAX_COMPLETE_ANSWER_CHARS = 16_000
 # A reverse lookup is a handful of chips, and the first is the one carded.
 MAX_EQUIVALENTS = 6
 _WORD_TOKEN = re.compile(r"[^\W\d_]+", re.UNICODE)
+# A model can drop a string value's opening quote («"example": Potpisali su…"»), and
+# asked again it drops it again.
+_UNQUOTED_VALUE = re.compile(r'(":\s*)(?!true\b|false\b|null\b)(?=[^\W\d_])')
 # The deeper article is read on a phone, right after the short one. Asked for "every
 # sense, in depth" and given no bound, it came back as a dissertation; this is the
 # length a reader spends a couple of minutes on, and the prompt names it.
@@ -381,7 +384,7 @@ def build_attestation_prompt(language: Language, word: str) -> str:
 
 def parse_attestation(raw: str) -> Verdict | None:
     """Read the judgement, which is one bare JSON object and nothing else."""
-    value = _json_object(raw)
+    value = json_object(raw)
     used = value.get("used") if value is not None else None
     return Verdict(used) if isinstance(used, bool) else None
 
@@ -422,7 +425,7 @@ def parse_reverse(
     could not use is dropped from its equivalent: either costs a chip or a sentence,
     never the answer.
     """
-    value = _json_object(raw)
+    value = json_object(raw)
     verdict = value.get("verdict") if value is not None else None
     if value is None or verdict not in _REVERSE_VERDICTS:
         return None
@@ -564,15 +567,19 @@ def _plain(value: Any) -> str:
     return " ".join(unicodedata.normalize("NFC", value).split())
 
 
-def _json_object(raw: str) -> dict | None:
+def json_object(raw: str) -> dict | None:
+    """The JSON object the text opens with, read past a string value missing its opening quote."""
     start = raw.find("{")
     if start < 0:
         return None
-    try:
-        value, _consumed = json.JSONDecoder().raw_decode(raw[start:])
-    except ValueError:
-        return None
-    return value if isinstance(value, dict) else None
+    text = raw[start:]
+    for candidate in (text, _UNQUOTED_VALUE.sub(r'\1"', text)):
+        try:
+            value, _consumed = json.JSONDecoder().raw_decode(candidate)
+        except ValueError:
+            continue
+        return value if isinstance(value, dict) else None
+    return None
 
 
 def extract_answer(  # noqa: PLR0913 - the whole request the answer is read against.

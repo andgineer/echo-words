@@ -85,6 +85,7 @@ from echo_words.prompt import (  # noqa: E402
     build_prompt,
     build_reverse_prompt,
     extract_answer,
+    json_object,
     parse_attestation,
     parse_reverse,
     reverse_example_issue,
@@ -2209,17 +2210,6 @@ def _clean(value: object) -> str:
     return " ".join(unicodedata.normalize("NFC", value).split()) if isinstance(value, str) else ""
 
 
-def _json_object(text: str) -> dict:
-    start = text.find("{")
-    if start < 0:
-        return {}
-    try:
-        value, _consumed = json.JSONDecoder().raw_decode(text[start:])
-    except ValueError:
-        return {}
-    return value if isinstance(value, dict) else {}
-
-
 def _raw_equivalents(payload: dict) -> list[dict]:
     items = payload.get("equivalents")
     return [item for item in items if isinstance(item, dict)] if isinstance(items, list) else []
@@ -2265,7 +2255,7 @@ def _lowercased_headwords(payload: dict) -> list[str]:
 def score_reverse(shot: Shot) -> Shot:
     case: ReverseCase | None = REVERSE_BY_ID.get(shot.shot_id)
     parsed = parse_reverse(shot.text, LANGUAGES[shot.lang], TARGET_NAME)
-    shot.payload = _json_object(shot.text)
+    shot.payload = json_object(shot.text) or {}
     kept = {item.word: item.example for item in parsed.equivalents} if parsed else {}
     words = list(kept)
     read_as = parsed.read_as if parsed is not None else ""

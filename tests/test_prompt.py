@@ -11,10 +11,12 @@ from echo_words.prompt import (
     PAYLOAD_LOG_LIMIT,
     Equivalent,
     ReverseAnswer,
+    Verdict,
     build_extended_prompt,
     build_prompt,
     build_reverse_prompt,
     extract_answer,
+    parse_attestation,
     parse_reverse,
     reverse_example_issue,
 )
@@ -275,6 +277,26 @@ def test_the_reverse_prompt_names_both_languages_and_asks_for_the_form(languages
     assert "commonest" in prompt
     assert '"not_a_word"' in prompt
     assert '"sentence"' in prompt
+
+
+def test_a_string_value_missing_its_opening_quote_is_still_read(languages):
+    raw = (
+        '{"verdict": "word", "read_as": "мир", "equivalents": [{"word": "mir", '
+        '"example": Potpisali su mirovni sporazum i nastupio je mir.", "form": "mir"}]}'
+    )
+
+    answer = parse_reverse(raw, languages["sr"], "Russian")
+
+    assert answer == ReverseAnswer(
+        "word",
+        "мир",
+        (Equivalent("mir", "Potpisali su mirovni sporazum i nastupio je mir."),),
+    )
+
+
+def test_a_bare_literal_is_not_taken_for_a_missing_quote():
+    # Repairing the note must leave the literal before it alone.
+    assert parse_attestation('{"used": true, "note": rare but attested"}') == Verdict(True)
 
 
 def test_a_reverse_answer_carries_its_equivalents_and_the_reading(languages):
