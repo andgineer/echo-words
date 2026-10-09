@@ -7,6 +7,8 @@ branches and decides between them.
 
 import json
 import logging
+import os
+import re
 import unicodedata
 from dataclasses import dataclass
 from typing import Any, Literal
@@ -33,6 +35,7 @@ PAYLOAD_LOG_LIMIT = 2000
 MAX_COMPLETE_ANSWER_CHARS = 16_000
 # A reverse lookup is a handful of chips, and the first is the one carded.
 MAX_EQUIVALENTS = 6
+_WORD_TOKEN = re.compile(r"[^\W\d_]+", re.UNICODE)
 # The deeper article is read on a phone, right after the short one. Asked for "every
 # sense, in depth" and given no bound, it came back as a dissertation; this is the
 # length a reader spends a couple of minutes on, and the prompt names it.
@@ -235,15 +238,27 @@ _REVERSE_PROMPT = """You are a bilingual dictionary from {target_lang} into {sou
 
 Wording: "{word}"
 
-Read the wording as {target_lang}: a misspelled word as the word it was meant to be,
-an inflected one as its dictionary form. Give the {source_lang} words for it, one for
-each of its meanings that needs a different {source_lang} word, the commonest
-meaning first, at most six. Where {source_lang} has no exact equivalent, give the
-closest word or expression its speakers actually use, never a coinage or a
-word-for-word rendering; for an expression, give a {source_lang} expression or word
-with the same meaning. For each, write one short everyday sentence entirely in
-{source_lang} that uses it in that meaning, since it becomes the front of a
-flashcard, and copy the word exactly as that sentence spells it.
+Read the wording as {target_lang}. An inflected word is read as its dictionary form;
+a fixed expression is its own dictionary form and keeps its wording. A slip of one or
+two letters off a common {target_lang} word — letters swapped, missing, doubled or
+mistyped — is that word misspelled, and is read as the word it was meant to be.
+
+Give the {source_lang} words for it: one for each meaning a {target_lang} dictionary
+gives the wording that needs a different {source_lang} word — usually one to three,
+the commonest meaning first, never more than six. Every equivalent translates a
+meaning the {target_lang} wording itself has, so that a {target_lang} speaker reading
+its example would put the wording back: a further meaning of the {source_lang} word,
+a narrower kind of the same thing and a merely related word are not translations.
+Where {source_lang} has no exact equivalent, give the closest word or expression its
+speakers actually use, never a coinage or a word-for-word rendering; for an
+expression, give a {source_lang} expression or word with the same meaning. Each word
+is its bare dictionary form, as a {source_lang} dictionary heads its entry: no
+article, lower case unless {source_lang} spells it otherwise, a verb in its infinitive.
+
+For each, write one short, natural, everyday sentence entirely in {source_lang} that
+uses that very word in that meaning, since it becomes the front of a flashcard and is
+read aloud, and copy the word exactly as that sentence spells it. No sentence carries
+a swearword, an insult or a slur, and a meaning that is only one is left out.
 
 Answer with one line of JSON and nothing else, in this schematic shape;
 angle-bracketed values are placeholders, not strings to copy:
@@ -253,11 +268,14 @@ angle-bracketed values are placeholders, not strings to copy:
  "form": "<that word as the sentence spells it: its own words, in order>"}}]}}
 
 verdict is "not_a_word", with read_as empty and no equivalents, when no
-{target_lang} word or expression reads the wording: a word of another language, a
-random string. It is "sentence", with read_as empty and no equivalents, when the
-wording reports a particular situation rather than naming a word or expression; a
-clause with its own subject and finite verb does. Do not write an article, an
-explanation or anything else."""
+{target_lang} word or expression reads the wording: a random string, a word of another
+language, or a string only a rare, slang or euphemistic reading would make a word. A
+{source_lang} word typed in {target_lang} letters that is no {target_lang} word is
+not_a_word too, and is never read as a misspelled {target_lang} word. It is
+"sentence", with read_as empty and no equivalents, when the wording reports a
+particular situation rather than naming a word or expression; a clause with its own
+subject and finite verb does. Do not write an article, an explanation or anything
+else."""
 
 _CONTEXT_RULE = (
     'Include "context_sense": <zero-based index> naming the sense the unit carries in '
@@ -439,10 +457,49 @@ def reverse_example_issue(
         return "script"
     if not sentence_is_source_language(example, language, target):
         return "letters"
-    marked = context_sentence_forms(example, form or word, language, target)
-    if marked is None and form:
+    related = bool(form) and _spells_the_word(form, word, language)
+    marked = context_sentence_forms(example, form, language, target) if related else None
+    if marked is None:
         marked = context_sentence_forms(example, word, language, target)
-    return None if marked is not None else "form"
+    if marked is not None:
+        return None
+    return "unrelated" if form and not related else "form"
+
+
+def _spells_the_word(form: str, word: str, language: Language) -> bool:
+    """Whether every token of the form is a form of some token of the word.
+
+    A sentence written around another word would be marked at that word, so the form
+    has to share a stem with its word; only suppletive forms (went for go) fail this.
+    """
+    stems = [_stem_fold(token, language) for token in _WORD_TOKEN.findall(word)]
+    return bool(stems) and all(
+        any(_shares_a_stem(_stem_fold(token, language), stem) for stem in stems)
+        for token in _WORD_TOKEN.findall(form)
+    )
+
+
+def _stem_fold(token: str, language: Language) -> str:
+    decomposed = unicodedata.normalize("NFD", fold_for_match(token, language))
+    return "".join(char for char in decomposed if not unicodedata.combining(char))
+
+
+def _shares_a_stem(token: str, stem: str) -> bool:
+    # Compared from any point of the word's token, so a separated particle (stehe ...
+    # auf for aufstehen) matches; a vowel change of one letter (gave, give) passes too.
+    shorter = min(len(token), len(stem))
+    wanted = min(max(3, shorter - 2), shorter)
+    longest = max(len(os.path.commonprefix((token, stem[offset:]))) for offset in range(len(stem)))
+    return longest >= wanted or _within_one_edit(token, stem)
+
+
+def _within_one_edit(first: str, second: str) -> bool:
+    if abs(len(first) - len(second)) > 1:
+        return False
+    if len(first) == len(second):
+        return sum(a != b for a, b in zip(first, second, strict=True)) <= 1
+    longer, shorter = (first, second) if len(first) > len(second) else (second, first)
+    return any(longer[:index] + longer[index + 1 :] == shorter for index in range(len(longer)))
 
 
 def _equivalents(value: Any, language: Language, target: str) -> tuple[Equivalent, ...]:

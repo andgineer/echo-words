@@ -26,7 +26,7 @@ Run:
     uv run python experiments/one_note_bench.py report \
       --tier smoke --out experiments/.bench-one-note-post
 
-The reverse lookup is measured on its own, in its own `--out`: 50 reverse calls, the
+The reverse lookup is measured on its own, in its own `--out`: 59 reverse calls, the
 Serbian article and judgement for four Russian words, and the second judgements
 those answers happen to need. `report` screens whichever of the two a directory holds.
     uv run python experiments/one_note_bench.py run-reverse --resume \
@@ -193,9 +193,9 @@ OFFER_ARTICLE_KIND = "offer-article"
 OFFER_CORRECTION_KIND = "offer-correction"
 REVERSE_BENCH_KINDS = frozenset({REVERSE_KIND, OFFER_KIND, OFFER_ARTICLE_KIND, OFFER_CORRECTION_KIND})
 JUDGEMENT_KINDS = frozenset({"attestation", "correction", OFFER_KIND, OFFER_CORRECTION_KIND})
-REVERSE_FIXTURES = 50
+REVERSE_FIXTURES = 59
 OFFER_FIXTURES = 4
-MIN_REVERSE_USABLE = 45
+MIN_REVERSE_USABLE = 53
 # Of the usable answers: a word refused, or junk carded, leaves the reader nothing.
 MAX_REVERSE_VERDICT_MISSES = 0.1
 
@@ -2262,7 +2262,8 @@ def score_reverse(shot: Shot) -> Shot:
         "answered": bool(shot.text) and not shot.error,
         "usable": parsed is not None,
         "verdict": parsed.verdict if parsed is not None else _clean(shot.payload.get("verdict")),
-        "verdict_expected": parsed is not None and parsed.verdict == shot.expected_kind,
+        "verdict_expected": parsed is not None
+        and (parsed.verdict == shot.expected_kind or bool(case and parsed.verdict in case.also)),
         "read_as": read_as,
         "read_as_expected": normalize(read_as) in readings if readings else None,
         "equivalents": [{"word": word, "example": example} for word, example in kept.items()],
@@ -2334,7 +2335,7 @@ def reverse_review_packet(
     for expected_shot in reverse_shots():
         case = REVERSE_BY_ID[expected_shot.shot_id]
         expected: dict[str, object] = {
-            "verdict": case.verdict,
+            "verdict": [case.verdict, *case.also],
             "requirement": case.requirement,
             "must_hold": case.must_hold,
             "read_as": list(case.read_as),

@@ -14,6 +14,8 @@ class ReverseCase:
     requirement: str
     word: str
     verdict: str = "word"
+    # Another verdict that ends with the reader on the right word just the same.
+    also: tuple[str, ...] = ()
     langs: tuple[str, ...] = ("en", "de", "sr")
     # The readings the requirement accepts, where it is about the reading at all.
     read_as: tuple[str, ...] = ()
@@ -99,12 +101,14 @@ REVERSE_CASES = (
         "v-kontse-kontsov",
         "expression",
         "в конце концов",
+        read_as=("в конце концов",),
         must_hold="an equivalent expression (after all, in the end), not a word-for-word one",
     ),
     ReverseCase(
         "slomya-golovu",
         "expression",
         "сломя голову",
+        read_as=("сломя голову",),
         must_hold="an equivalent expression (headlong, at breakneck speed), not a word-for-word one",
     ),
     ReverseCase(
@@ -129,6 +133,22 @@ REVERSE_CASES = (
         read_as=("стол",),
         first=_TABLE,
         must_hold="read as стол and carded as its word",
+    ),
+    ReverseCase(
+        "sabaka",
+        "misspelling",
+        "сабака",
+        read_as=("собака",),
+        first={"en": ("dog",), "de": ("hund",), "sr": ("pas", "kuče")},
+        must_hold="read as собака and carded as its word",
+    ),
+    ReverseCase(
+        "klyuch-soft",
+        "misspelling",
+        "ключь",
+        read_as=("ключ",),
+        first=_KEY,
+        must_hold="read as ключ and carded as its word",
     ),
     ReverseCase(
         "fyvapr",
@@ -162,7 +182,36 @@ REVERSE_CASES = (
         langs=("sr",),
         read_as=("мой", "моя"),
         first={"sr": ("moja", "moj")},
-        must_hold="a Russian word, carded as its Serbian equivalent моја",
+        also=("not_a_word",),
+        must_hold=(
+            "either the Russian word carded as its Serbian equivalent мој or моја, or "
+            "not_a_word, which hands моја typed on a Russian keyboard to the Serbian "
+            "article: both leave the reader on the right word"
+        ),
+    ),
+    ReverseCase(
+        "yedan",
+        "Russian-keyboard Serbian",
+        "йедан",
+        verdict="not_a_word",
+        langs=("sr",),
+        must_hold="not_a_word: Serbian један typed on a Russian keyboard",
+    ),
+    ReverseCase(
+        "nyega",
+        "Russian-keyboard Serbian",
+        "ньега",
+        verdict="not_a_word",
+        langs=("sr",),
+        must_hold="not_a_word: Serbian њега typed on a Russian keyboard",
+    ),
+    ReverseCase(
+        "moye",
+        "Russian-keyboard Serbian",
+        "мойе",
+        verdict="not_a_word",
+        langs=("sr",),
+        must_hold="not_a_word: Serbian моје typed on a Russian keyboard",
     ),
 )
 

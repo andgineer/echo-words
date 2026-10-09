@@ -401,3 +401,42 @@ def test_the_equivalents_are_capped(languages):
 )
 def test_an_unusable_reverse_answer_is_none(languages, raw):
     assert parse_reverse(raw, languages["de"], "Russian") is None
+
+
+def test_a_sentence_written_around_another_word_is_no_example_of_it(languages):
+    german = languages["de"]
+    raw = _reverse(
+        _equivalent("Fenster", "Ich öffne das Fenster.", "Fenster"),
+        _equivalent("Schiebefenster", "Das Schalterfenster ist zu.", "Schalterfenster"),
+    )
+
+    answer = parse_reverse(raw, german, "Russian")
+
+    assert reverse_example_issue(
+        "Das Schalterfenster ist zu.", "Schalterfenster", "Schiebefenster", german
+    ) == ("unrelated")
+    assert answer is not None
+    assert answer.equivalents[1] == Equivalent("Schiebefenster", "")
+
+
+@pytest.mark.parametrize(
+    ("code", "example", "form", "word"),
+    [
+        ("de", "Ich freue mich sehr.", "freue mich", "sich freuen"),
+        ("en", "He gave up smoking.", "gave up", "give up"),
+        ("sr", "Надам се да ће доћи.", "Надам се", "надати се"),
+        ("sr", "За столом је седео пријатељ.", "столом", "сто"),
+        ("sr", "Za stolom je sedeo prijatelj.", "stolom", "сто"),
+    ],
+)
+def test_a_form_sharing_a_stem_with_its_word_marks_the_sentence(
+    languages, code, example, form, word
+):
+    assert reverse_example_issue(example, form, word, languages[code]) is None
+
+
+def test_a_suppletive_form_costs_the_sentence_unless_the_word_itself_is_in_it(languages):
+    english = languages["en"]
+
+    assert reverse_example_issue("She went home early.", "went", "go", english) == "unrelated"
+    assert reverse_example_issue("Let us go, she went on.", "went", "go", english) is None

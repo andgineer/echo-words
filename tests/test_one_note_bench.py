@@ -1449,3 +1449,13 @@ def test_a_directory_of_reverse_answers_is_screened_without_the_tier_screen(tmp_
     assert failure.startswith("benchmark failed — reverse lookup: usable reverse answers")
     packet = json.loads((out / "review-packet-reverse.json").read_text(encoding="utf-8"))
     assert any(item["fixture_id"] == shot.shot_id for item in packet["items"])
+
+
+def test_a_verdict_that_leaves_the_reader_on_the_right_word_counts_as_expected():
+    handed_over = _reverse_shot("reverse-sr-moya", _reverse_answer("", verdict="not_a_word"))
+    misread = _reverse_shot(
+        "reverse-sr-yedan", _reverse_answer("один", ("један", "Имам један ауто.", "један"))
+    )
+
+    assert handed_over.metrics["verdict_expected"] is True
+    assert misread.metrics["verdict_expected"] is False
