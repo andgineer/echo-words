@@ -249,6 +249,8 @@ the commonest meaning first, never more than six. Every equivalent translates a
 meaning the {target_lang} wording itself has, so that a {target_lang} speaker reading
 its example would put the wording back: a further meaning of the {source_lang} word,
 a narrower kind of the same thing and a merely related word are not translations.
+Translate from {target_lang} directly, never by way of English or another third
+language: a meaning only the go-between word has is no meaning of the wording.
 Where {source_lang} has no exact equivalent, give the closest word or expression its
 speakers actually use, never a coinage or a word-for-word rendering; for an
 expression, give a {source_lang} expression or word with the same meaning. Each word
@@ -466,6 +468,37 @@ def reverse_example_issue(
     return "unrelated" if form and not related else "form"
 
 
+def _headword_case(word: str, form: str, example: str) -> str:
+    """The headword in the letter case its own sentence writes it in, where that shows.
+
+    Asked for a word as a dictionary heads it, answers come back in dictionary
+    typography — all capitals, or every headword capitalised — and with German nouns
+    lowered; a single word standing mid-sentence shows the case the language gives it.
+    """
+    if word.isupper() and len(word) > 1:
+        word = word.lower()
+    if len(word.split()) > 1:
+        return word
+    tokens = [match.group() for match in _WORD_TOKEN.finditer(example)]
+    wanted = (form or word).casefold()
+    position = next(
+        (index for index, token in enumerate(tokens) if token.casefold() == wanted),
+        None,
+    )
+    if position is None:
+        return word
+    if position == 0:
+        # Opening the sentence hides the case. A form the answer copied in lower case
+        # shows it; one in capitals may only have copied the sentence's first letter.
+        lowered = form[:1].islower() and form.casefold() == word.casefold()
+        return form if lowered else word
+    spelled = tokens[position]
+    if spelled.casefold() == word.casefold():
+        return spelled
+    first = word[0].upper() if spelled[0].isupper() else word[0].lower()
+    return first + word[1:]
+
+
 def _spells_the_word(form: str, word: str, language: Language) -> bool:
     """Whether every token of the form is a form of some token of the word.
 
@@ -516,8 +549,10 @@ def _equivalents(value: Any, language: Language, target: str) -> tuple[Equivalen
             continue
         seen.add(folded)
         example, form = _plain(item.get("example")), _plain(item.get("form"))
-        issue = reverse_example_issue(example, form, word, language, target)
-        kept.append(Equivalent(word, example if issue is None else ""))
+        if reverse_example_issue(example, form, word, language, target) is None:
+            kept.append(Equivalent(_headword_case(word, form, example), example))
+        else:
+            kept.append(Equivalent(_headword_case(word, "", ""), ""))
         if len(kept) == MAX_EQUIVALENTS:
             break
     return tuple(kept)

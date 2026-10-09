@@ -440,3 +440,50 @@ def test_a_suppletive_form_costs_the_sentence_unless_the_word_itself_is_in_it(la
 
     assert reverse_example_issue("She went home early.", "went", "go", english) == "unrelated"
     assert reverse_example_issue("Let us go, she went on.", "went", "go", english) is None
+
+
+@pytest.mark.parametrize(
+    ("code", "word", "example", "form", "carded"),
+    [
+        # A German noun lowered, an English word and a Serbian one in dictionary capitals.
+        ("de", "tisch", "Das Buch liegt auf dem Tisch.", "Tisch", "Tisch"),
+        ("de", "stuhl", "Die Stühle stehen im Garten.", "Stühle", "Stuhl"),
+        ("en", "World", "She travelled around the world.", "world", "world"),
+        ("sr", "СВЕТ", "Цео свет то зна.", "свет", "свет"),
+        ("sr", "СТО", "Седели смо за столом.", "столом", "сто"),
+        # Opening the sentence hides the case, short of the form as the answer copied it.
+        ("en", "Peace", "Peace is essential for happiness.", "peace", "peace"),
+        ("sr", "Лук", "Лук сам купио на пијаци.", "Лук", "Лук"),
+        ("sr", "ЛУК", "Лук сам купио на пијаци.", "Лук", "лук"),
+        ("de", "vielleicht", "Vielleicht klappt es doch.", "Vielleicht", "vielleicht"),
+        # Several words are left as written: their pieces need not stand together.
+        (
+            "de",
+            "Hals über Kopf",
+            "Er rannte Hals über Kopf davon.",
+            "Hals über Kopf",
+            "Hals über Kopf",
+        ),
+    ],
+)
+def test_a_headword_takes_the_case_its_own_sentence_writes_it_in(
+    languages, code, word, example, form, carded
+):
+    raw = _reverse(_equivalent(word, example, form))
+
+    answer = parse_reverse(raw, languages[code], "Russian")
+
+    assert answer is not None
+    assert answer.equivalents[0] == Equivalent(carded, example)
+
+
+def test_a_bare_chip_in_capitals_is_lowered(languages):
+    raw = _reverse(
+        _equivalent("Hund", "Der Hund bellt.", "Hund"),
+        _equivalent("KÖTER", "", ""),
+    )
+
+    answer = parse_reverse(raw, languages["de"], "Russian")
+
+    assert answer is not None
+    assert answer.equivalents[1] == Equivalent("köter", "")

@@ -2249,10 +2249,12 @@ def _reverse_example_drops(shot: Shot, kept: dict[str, str]) -> list[dict[str, o
     return drops
 
 
-def _lowercased_headwords(equivalents: dict[str, str]) -> list[str]:
-    """Headwords written lower case where their own sentence capitalises them mid-sentence."""
+def _lowercased_headwords(payload: dict) -> list[str]:
+    """Headwords the answer wrote lower case where their own sentence capitalises them
+    mid-sentence — as the model wrote them, before the parser takes the sentence's case."""
     found = []
-    for word, example in equivalents.items():
+    for item in _raw_equivalents(payload):
+        word, example = plain_unit(_clean(item.get("word"))), _clean(item.get("example"))
         first = word.split()[0] if word.split() else ""
         later = [token.strip(".,;:!?«»\"'") for token in example.split()[1:]]
         if first[:1].islower() and first[:1].upper() + first[1:] in later:
@@ -2284,7 +2286,7 @@ def score_reverse(shot: Shot) -> Shot:
         "raw_equivalents": len(_raw_equivalents(shot.payload)),
         "examples_kept": sum(bool(example) for example in kept.values()),
         "example_drops": _reverse_example_drops(shot, kept),
-        "lowercased_headwords": _lowercased_headwords(kept),
+        "lowercased_headwords": _lowercased_headwords(shot.payload),
     }
     return shot
 
