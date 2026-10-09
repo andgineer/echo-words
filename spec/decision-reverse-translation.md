@@ -59,7 +59,9 @@ script, no letter only the target writes, the context bound, and the equivalent'
 words found whole in it, in order, by the form the answer says the sentence spells
 it in — provided that form shares a stem with the equivalent, else by the equivalent
 itself. A failing example costs its equivalent the sentence and leaves it a bare
-chip; neither costs the answer. A whole-word comparison with the equivalent would
+chip; neither costs the answer. Serbian is asked in Latin letters, and in a Serbian
+answer a Cyrillic letter refuses the equivalent or the sentence it stands in, so an
+answer written wholly in Cyrillic carries no word and is asked again. A whole-word comparison with the equivalent would
 refuse most inflected German and Serbian examples, and a substring one passes «сто»
 inside «место»; the stem condition exists because an answer can name another word as
 the form and write its sentence around that word, and it costs only a suppletive form
@@ -214,14 +216,15 @@ budget.
 
 ### Serbian in Latin letters
 
-Serbian is asked without naming a script, and the models answer in Cyrillic. Asking for
-Latin was measured because Cyrillic Serbian shares its letters with Russian, so a
-Russian word or sentence passes for Serbian, while in a Latin answer any Cyrillic letter
-is foreign and can be refused outright. The 23 Serbian lookups were asked three times
-with one sentence asking for Latin, and three times with a fuller one that also asked
-for the ekavian standard of Serbia, a dictionary word for every equivalent and an
-expression kept in its own words. A fresh reviewer graded all six samples and the three
-Cyrillic runs on one scale; on the workhorse's answers:
+Serbian is asked in Latin letters, the script its reader reads it in and the one nearly
+everyone in Serbia types. To that reader Croatian, Bosnian and ijekavian forms (svjež,
+napokon) are the same language and no fault. Cyrillic Serbian also shares its letters
+with Russian, so there a Russian word passes for Serbian, where in Latin any Cyrillic
+letter is foreign. The 23 Serbian lookups were asked three times with the one sentence
+the prompt carries, and three times with a fuller one that also asked for the ekavian
+standard of Serbia, a dictionary word for every equivalent and an expression kept in its
+own words. A fresh reviewer graded all six samples and the three Cyrillic runs on one
+scale; on the workhorse's answers:
 
 | | Cyrillic, 3 runs | Latin, 3 samples | Fuller Latin, 3 samples |
 |---|---|---|---|
@@ -231,18 +234,26 @@ Cyrillic runs on one scale; on the workhorse's answers:
 | Ijekavian or Croatian forms | 0 | 5 | 0 |
 | Unreadable answers | 0 | 0 | 2 |
 
-Latin makes the chips cleaner and the card no better. Every Latin answer for сломя голову
-fused the idiom into a word no dictionary lists (glavobezobzirovno, glavobezobzirno,
-glavobezobziro, glavobezobzirom), five of five, the fuller wording forbidding exactly that,
-where every Cyrillic answer gave главом без обзира. Asked only for Latin, the window card
-read «svjež vazduh», the Croatian and Bosnian spelling, in all three samples; asking for
-ekavian fixed that, and brought in answers that dropped both quotes around their
-sentences (тоска, two of three), «kučka» offered for a dog (two of three) and a broken
-front sentence in each sample. The false friend коса, carded as hair, survived both
-scripts, and авось was carded as valjda, the closest word, in every Latin sample. Only
-two of 138 Latin answers carried Cyrillic, both from a fallback model, so refusing
-Cyrillic would catch little. The reverse prompt therefore leaves Serbian's script to the
-model.
+In Latin the card is as good and the chips are as clean as English's. авось is carded as
+valjda, the closest word, in every Latin sample. The false friend коса, carded as hair,
+survives both scripts. Every Latin answer for сломя голову fused the idiom into a word no
+dictionary lists (glavobezobzirovno, glavobezobzirno, glavobezobziro, glavobezobzirom),
+five of five, the fuller wording forbidding exactly that, where every Cyrillic answer gave
+главом без обзира. The fuller wording is not used: it removed only forms the reader
+counts as Serbian, and brought in answers that dropped both quotes around their sentences
+(тоска, two of three), «kučka» offered for a dog (two of three) and a broken front
+sentence in each sample.
+
+A fused idiom does not reach a card under its own spelling. The first equivalent goes
+through the Serbian judgement like any typed word, and asked once about each of the four
+spellings it refused all four. Two entries then ended refused, one as a misspelling whose
+article names glavom bez obzira, and one corrected to glavom bez obzirom, a wrong case of
+the idiom that the second judgement accepted and that is carded.
+
+Two of the 138 Latin answers came back in Cyrillic, both from fallback models; refusing
+Cyrillic in a Serbian answer, re-read over the Latin samples, changed exactly the one of
+them the prompt carries an answer for, from a card for the Russian word стол to a second
+try.
 
 ### The offer on the Serbian tab
 
@@ -260,10 +271,7 @@ attestation judgement on Russian input, not about the reverse prompt.
 ## Decision
 
 The reverse prompt and its parser are what the reverse lookup is built on for every
-source language: English and German carry it as measured. Serbian is asked in the
-script the model chooses, which is Cyrillic: in Latin its chips are cleaner, but its
-cards are no better and an idiom is carded as an invented word. Serbian's first cards
-carry faults of the kind its ordinary article already ships with, and its chips carry
-more of them, non-words among them. Whether the Serbian tab shows those chips is the
-operator's to decide; that decision, and acceptance of the faults listed above, are
-open, and nothing here accepts them.
+source language: English and German carry it as measured, and Serbian in Latin
+letters with its chips, which the operator chose on 2026-10-09 over the first card
+only and over Cyrillic. Acceptance of the faults listed above is open, and nothing here
+accepts them.

@@ -349,22 +349,34 @@ def test_an_example_the_card_could_not_use_leaves_a_bare_chip(languages, example
     assert answer.equivalents[1].example == "Er sitzt auf einem Hocker."
 
 
-def test_a_target_language_sentence_is_no_example_where_the_scripts_are_shared(languages):
-    """Serbian writes Cyrillic, so only the letters Russian alone writes give it away."""
+def test_the_reverse_prompt_asks_a_two_script_language_for_latin_only(languages):
+    serbian = build_reverse_prompt(languages["sr"], "стол", "Russian")
+    german = build_reverse_prompt(languages["de"], "стол", "Russian")
+
+    assert "latinica, and never in Cyrillic" in serbian
+    assert "Cyrillic" not in german
+
+
+def test_a_serbian_answer_counts_only_in_latin_letters(languages):
+    """Asked for Latin, any Cyrillic gives a Russian sentence or a disobeying answer away."""
     serbian = languages["sr"]
-    raw = _reverse(_equivalent("књига", "Я читаю эту книгу.", "книгу"), read_as="книга")
+    russian_example = _reverse(
+        _equivalent("knjiga", "Я читаю эту книгу.", "книгу"), read_as="книга"
+    )
+    cyrillic_answer = _reverse(_equivalent("књига", "Читам ову књигу.", "књигу"), read_as="книга")
 
-    answer = parse_reverse(raw, serbian, "Russian")
-
-    assert reverse_example_issue("Я читаю эту книгу.", "книгу", "књига", serbian) == "letters"
-    assert answer == ReverseAnswer("word", "книга", (Equivalent("књига", ""),))
+    assert reverse_example_issue("Читам ову књигу.", "књигу", "књига", serbian) == "script"
+    assert parse_reverse(russian_example, serbian, "Russian") == ReverseAnswer(
+        "word", "книга", (Equivalent("knjiga", ""),)
+    )
+    assert parse_reverse(cyrillic_answer, serbian, "Russian") is None
 
 
 def test_a_number_is_never_found_inside_a_longer_word(languages):
     serbian = languages["sr"]
 
-    assert reverse_example_issue("Ово место је слободно.", "сто", "сто", serbian) == "form"
-    assert reverse_example_issue("Сто људи је дошло.", "сто", "сто", serbian) is None
+    assert reverse_example_issue("Ovo mesto je slobodno.", "sto", "sto", serbian) == "form"
+    assert reverse_example_issue("Sto ljudi je došlo.", "sto", "sto", serbian) is None
 
 
 def test_a_missing_or_wrong_form_falls_back_to_the_word_itself(languages):
@@ -446,9 +458,8 @@ def test_a_sentence_written_around_another_word_is_no_example_of_it(languages):
     [
         ("de", "Ich freue mich sehr.", "freue mich", "sich freuen"),
         ("en", "He gave up smoking.", "gave up", "give up"),
-        ("sr", "Надам се да ће доћи.", "Надам се", "надати се"),
-        ("sr", "За столом је седео пријатељ.", "столом", "сто"),
-        ("sr", "Za stolom je sedeo prijatelj.", "stolom", "сто"),
+        ("sr", "Nadam se da će doći.", "Nadam se", "nadati se"),
+        ("sr", "Za stolom je sedeo prijatelj.", "stolom", "sto"),
     ],
 )
 def test_a_form_sharing_a_stem_with_its_word_marks_the_sentence(
@@ -471,12 +482,12 @@ def test_a_suppletive_form_costs_the_sentence_unless_the_word_itself_is_in_it(la
         ("de", "tisch", "Das Buch liegt auf dem Tisch.", "Tisch", "Tisch"),
         ("de", "stuhl", "Die Stühle stehen im Garten.", "Stühle", "Stuhl"),
         ("en", "World", "She travelled around the world.", "world", "world"),
-        ("sr", "СВЕТ", "Цео свет то зна.", "свет", "свет"),
-        ("sr", "СТО", "Седели смо за столом.", "столом", "сто"),
+        ("sr", "SVET", "Ceo svet to zna.", "svet", "svet"),
+        ("sr", "STO", "Sedeli smo za stolom.", "stolom", "sto"),
         # Opening the sentence hides the case, short of the form as the answer copied it.
         ("en", "Peace", "Peace is essential for happiness.", "peace", "peace"),
-        ("sr", "Лук", "Лук сам купио на пијаци.", "Лук", "Лук"),
-        ("sr", "ЛУК", "Лук сам купио на пијаци.", "Лук", "лук"),
+        ("sr", "Luk", "Luk sam kupio na pijaci.", "Luk", "Luk"),
+        ("sr", "LUK", "Luk sam kupio na pijaci.", "Luk", "luk"),
         ("de", "vielleicht", "Vielleicht klappt es doch.", "Vielleicht", "vielleicht"),
         # Several words are left as written: their pieces need not stand together.
         (

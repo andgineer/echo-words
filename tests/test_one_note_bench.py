@@ -1303,14 +1303,19 @@ def test_a_reverse_answer_is_scored_by_what_the_card_gets():
     ]
 
 
-def test_a_serbian_equivalent_counts_in_either_script():
-    shot = _reverse_shot(
+def test_a_serbian_equivalent_counts_only_in_latin():
+    latin = _reverse_shot(
+        "reverse-sr-okno",
+        _reverse_answer("окно", ("prozor", "Otvori prozor, molim te.", "prozor")),
+    )
+    cyrillic = _reverse_shot(
         "reverse-sr-okno",
         _reverse_answer("окно", ("прозор", "Отвори прозор, молим те.", "прозор")),
     )
 
-    assert shot.metrics["first_expected"] is True
-    assert shot.metrics["read_as_expected"] is None
+    assert latin.metrics["first_expected"] is True
+    assert latin.metrics["read_as_expected"] is None
+    assert cyrillic.metrics["usable"] is False
 
 
 def test_a_wrong_reading_and_a_wrong_verdict_are_reported():
@@ -1454,7 +1459,7 @@ def test_a_directory_of_reverse_answers_is_screened_without_the_tier_screen(tmp_
 def test_a_verdict_that_leaves_the_reader_on_the_right_word_counts_as_expected():
     handed_over = _reverse_shot("reverse-sr-moya", _reverse_answer("", verdict="not_a_word"))
     misread = _reverse_shot(
-        "reverse-sr-yedan", _reverse_answer("один", ("један", "Имам један ауто.", "један"))
+        "reverse-sr-yedan", _reverse_answer("один", ("jedan", "Imam jedan auto.", "jedan"))
     )
 
     assert handed_over.metrics["verdict_expected"] is True

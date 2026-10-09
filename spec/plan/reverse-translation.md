@@ -4,12 +4,10 @@
 its parser are in the code and asked by nothing yet; the prompt was benched four
 times on the pool and reviewed by a fresh agent each time, and the result is in
 `spec/decision-reverse-translation.md`: English and German carry it as measured.
-Serbian was then asked in Latin letters, six samples on two wordings, and stays in
-the script the model chooses: Latin cleaned the chips but not the cards (the decision
-spec has the numbers); the parser now reads a string value missing its opening quote.
-Open with the operator: whether the Serbian tab shows the equivalents as chips (every
-review since the fourth recommends the first card only there), and acceptance of the
-faults the decision spec lists. Next is step 4, which those two answers shape.
+Serbian is asked in Latin letters, with its chips, as the operator chose after six
+Latin samples (the decision spec has the numbers); the parser refuses Cyrillic in a
+Serbian answer and reads a string value missing its opening quote. Open with the
+operator: acceptance of the faults the decision spec lists. Next is step 4.
 
 ## What the reader gets
 
@@ -114,12 +112,13 @@ whether an open word is a T word: asked of every open word that is a third call 
   sentence per equivalent using that very word, with no swearword, and the word as
   that sentence spells it. `not_a_word` for a random string, a word of another
   language, a reading only slang or euphemism makes a word, and an S word typed in T
-  letters that is no T word; `sentence` for a clause.
+  letters that is no T word; `sentence` for a clause. A language written in two
+  alphabets (Serbian) is asked for Latin only (`_LATIN_ONLY_RULE`).
 - Answer JSON, strict:
   `{"verdict": "word" | "not_a_word" | "sentence", "read_as": str,
   "equivalents": [{"word": str, "example": str, "form": str}, ...]}`, at most 6
   equivalents. `form` is the equivalent as the example spells it (Stühle for Stuhl,
-  столу for сто, went for go).
+  stolu for sto, went for go).
 - Validation in `parse_reverse` (built): verdict known; for `word`, ≥1 equivalent
   survives. An equivalent whose `word` (after `plain_unit`) fails
   `validate_word(word, S)`, or repeats an earlier one, is dropped; at most
@@ -132,7 +131,10 @@ whether an open word is a T word: asked of every open word that is a third call 
   `missing`, `too_long`, `script`, `letters`, `unrelated` (the form is another word's),
   `form`. A failing example is dropped and its equivalent stays as a bare chip; the
   answer itself does not fail. Unusable → `None`. A one-word headword then takes the
-  letter case its own sentence writes it in mid-sentence (`_headword_case`).
+  letter case its own sentence writes it in mid-sentence (`_headword_case`). Both
+  screens see a two-alphabet language as Latin only (`_as_answered`), so Cyrillic in a
+  Serbian word or sentence fails `validate_word` / `validate_text`. The answer is read
+  by `json_object`, which also reads a string value missing its opening quote.
 - Why the card's test and not a comparison with the equivalent: German and Serbian
   examples inflect the word, so a whole-word match drops most verb and many noun
   examples, and a substring match passes «сто» inside «место». The stem check only
@@ -418,9 +420,7 @@ Results, reviews and the decision are in `spec/decision-reverse-translation.md`.
    4–6 are checked against its result before they are built.
 4. Prefix parsing + API (`!`, letters, rule 7 on S's own normalisation,
    `offers_reverse`, `/api/target`) + pipeline reverse resolution (equivalents kept
-   across rebuild and switch) + the offer + history + tests. If the operator takes
-   the first card only for Serbian, the pipeline carries no equivalents there, and the
-   article's own sense chips stay as with a single equivalent.
+   across rebuild and switch) + the offer + history + tests.
 5. Frontend: placeholder, pending line, `reset` handling, both receipt handlers,
    `sendWord`'s `lookup_only`, retry, header, chips, outcomes, offer button, panel
    removal + tests.

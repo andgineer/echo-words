@@ -10,7 +10,7 @@ import logging
 import os
 import re
 import unicodedata
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Literal
 
 from echo_words.card import (
@@ -258,7 +258,7 @@ Where {source_lang} has no exact equivalent, give the closest word or expression
 speakers actually use, never a coinage or a word-for-word rendering; for an
 expression, give a {source_lang} expression or word with the same meaning. Each word
 is its bare dictionary form, spelled and capitalised exactly as a {source_lang}
-dictionary heads its entry, with no article and a verb in its infinitive.
+dictionary heads its entry, with no article and a verb in its infinitive.{script_rule}
 
 For each, write one short, natural, everyday sentence entirely in {source_lang} that
 uses that very word in that meaning, since it becomes the front of a flashcard and is
@@ -281,6 +281,13 @@ not_a_word too, and is never read as a misspelled {target_lang} word. It is
 particular situation rather than naming a word or expression; a clause with its own
 subject and finite verb does. Do not write an article, an explanation or anything
 else."""
+
+# Serbian is read in Latin letters, and its Cyrillic shares its letters with Russian, which
+# leaks into the answers.
+_LATIN_ONLY_RULE = (
+    " {source_lang} is written in two alphabets: write every word, form and sentence in"
+    " its Latin one, latinica, and never in Cyrillic."
+)
 
 _CONTEXT_RULE = (
     'Include "context_sense": <zero-based index> naming the sense the unit carries in '
@@ -411,7 +418,18 @@ class ReverseAnswer:
 
 def build_reverse_prompt(language: Language, word: str, target: str) -> str:
     """Build the question that turns a target-language wording into source-language words."""
-    return _REVERSE_PROMPT.format(source_lang=language.name, target_lang=target, word=word)
+    latin_only = _as_answered(language) is not language
+    return _REVERSE_PROMPT.format(
+        source_lang=language.name,
+        target_lang=target,
+        word=word,
+        script_rule=_LATIN_ONLY_RULE.format(source_lang=language.name) if latin_only else "",
+    )
+
+
+def _as_answered(language: Language) -> Language:
+    """The language as a reverse answer writes it: one written in two alphabets, in Latin only."""
+    return replace(language, script="latin") if language.script == "latin+cyrillic" else language
 
 
 def parse_reverse(
@@ -431,7 +449,7 @@ def parse_reverse(
         return None
     if verdict != "word":
         return ReverseAnswer(verdict, "", ())
-    equivalents = _equivalents(value.get("equivalents"), language, target)
+    equivalents = _equivalents(value.get("equivalents"), _as_answered(language), target)
     if not equivalents:
         return None
     read_as = value.get("read_as")
@@ -454,6 +472,7 @@ def reverse_example_issue(
     It is the card's own test: a sentence the card cannot mark the word in would fail
     the card later, and a whole-word comparison would refuse every inflected example.
     """
+    language = _as_answered(language)
     if not example:
         return "missing"
     if len(example) > MAX_CONTEXT_LENGTH:
