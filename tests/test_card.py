@@ -7,6 +7,7 @@ from echo_words.card import (
     Example,
     ParsedText,
     ParsedUnit,
+    context_sentence_forms,
     parse_answer_payload,
 )
 from echo_words.languages import Language
@@ -1029,3 +1030,25 @@ def test_the_card_front_is_tested_against_the_configured_target_language():
             unit_intent=True,
             target="English",
         )
+
+
+def test_a_sentence_is_marked_at_the_form_it_spells_the_word_in():
+    german = Language(code="de", name="Deutsch", deck="d", script="latin")
+
+    assert context_sentence_forms("Die Stühle sind neu.", "Stühle", german) == (
+        "Die <b>Stühle</b> sind neu.",
+        "Die ___ sind neu.",
+    )
+    assert context_sentence_forms("Ich stehe früh auf.", "stehe … auf", german) == (
+        "Ich <b>stehe</b> früh <b>auf</b>.",
+        "Ich ___ früh ___.",
+    )
+
+
+def test_a_sentence_is_not_marked_inside_a_longer_word_or_in_the_target_language():
+    serbian = Language(code="sr", name="Српски", deck="d", script="latin+cyrillic")
+    german = Language(code="de", name="Deutsch", deck="d", script="latin")
+
+    assert context_sentence_forms("Ово место је слободно.", "сто", serbian) is None
+    assert context_sentence_forms("Он liest книгу.", "liest", german) is None
+    assert context_sentence_forms("Stühle", "Stühle", german) is None

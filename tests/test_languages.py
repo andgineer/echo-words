@@ -15,6 +15,8 @@ from echo_words.languages import (
     normalize_submission,
     plain_text,
     plain_unit,
+    reads_as_source,
+    reads_as_target,
     reflexive_forms,
     reflexive_markers,
     sanitize_context,
@@ -705,3 +707,66 @@ def test_a_target_language_outside_the_directory_leaves_the_sentence_untested():
     german = Language(code="de", name="Deutsch", deck="d", script="latin")
 
     assert sentence_is_source_language("Он liest книгу.", german, "Klingon") is True
+
+
+@pytest.mark.parametrize(
+    ("code", "target", "word", "as_target", "as_source"),
+    [
+        ("en", "Russian", "стол", True, False),
+        ("en", "Russian", "table", False, True),
+        ("de", "Russian", "стул", True, False),
+        ("de", "Russian", "Stühle", False, True),
+        # Serbian Cyrillic writes most Russian letters, so most words prove nothing.
+        ("sr", "Russian", "град", False, False),
+        ("sr", "Russian", "још", False, True),
+        ("sr", "Russian", "йош", True, False),
+        ("sr", "Russian", "щука", True, False),
+        ("sr", "Russian", "grad", False, True),
+        ("sr", "Russian", "čaša", False, True),
+        # Two Latin languages are told apart only by the letters they do not share.
+        ("de", "English", "table", False, False),
+        ("de", "English", "Stühle", False, True),
+        ("en", "German", "Stühle", True, False),
+        ("en", "German", "table", False, False),
+        ("sr", "English", "grad", False, False),
+        ("sr", "English", "град", False, True),
+        ("sr", "English", "čaša", False, True),
+        ("sr", "German", "Bäume", True, False),
+        # ß casefolds to ss, a letter both write.
+        ("sr", "German", "Straße", False, False),
+    ],
+)
+def test_a_word_reads_as_the_language_whose_letters_prove_it(
+    languages,
+    code: str,
+    target: str,
+    word: str,
+    as_target: bool,
+    as_source: bool,
+):
+    language = languages[code]
+
+    assert reads_as_target(word, language, target) is as_target
+    assert reads_as_source(word, language, target) is as_source
+
+
+def test_a_word_with_letters_of_both_languages_reads_as_both(languages):
+    """Neither reading wins, so letters prove nothing about it."""
+    assert reads_as_target("йој", languages["sr"], "Russian") is True
+    assert reads_as_source("йој", languages["sr"], "Russian") is True
+
+
+def test_a_target_outside_the_directory_leaves_every_letter_the_source_s(languages):
+    english, serbian = languages["en"], languages["sr"]
+
+    assert reads_as_target("стол", english, "Klingon") is False
+    assert reads_as_target("щука", serbian, "Klingon") is False
+    assert reads_as_source("table", english, "Klingon") is True
+    assert reads_as_source("град", serbian, "Klingon") is True
+
+
+def test_the_letter_tests_read_composed_and_case_folded_letters(languages):
+    decomposed = "Stu\u0308hle"
+
+    assert reads_as_target(decomposed, languages["en"], "German") is True
+    assert reads_as_target("СТОЛ", languages["en"], "Russian") is True

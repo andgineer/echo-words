@@ -7,14 +7,32 @@ branches and decides between them.
 
 import json
 import logging
+import unicodedata
 from dataclasses import dataclass
+from typing import Any, Literal
 
-from echo_words.card import CardParseError, ParsedAnswer, parse_answer_payload
-from echo_words.languages import DEFAULT_TARGET_LANGUAGE, Language
+from echo_words.card import (
+    CardParseError,
+    ParsedAnswer,
+    context_sentence_forms,
+    parse_answer_payload,
+)
+from echo_words.languages import (
+    DEFAULT_TARGET_LANGUAGE,
+    MAX_CONTEXT_LENGTH,
+    Language,
+    fold_for_match,
+    plain_unit,
+    sentence_is_source_language,
+    validate_text,
+    validate_word,
+)
 
 CARD_DELIMITER = "===CARD==="
 PAYLOAD_LOG_LIMIT = 2000
 MAX_COMPLETE_ANSWER_CHARS = 16_000
+# A reverse lookup is a handful of chips, and the first is the one carded.
+MAX_EQUIVALENTS = 6
 # The deeper article is read on a phone, right after the short one. Asked for "every
 # sense, in depth" and given no bound, it came back as a dissertation; this is the
 # length a reader spends a couple of minutes on, and the prompt names it.
@@ -213,6 +231,34 @@ period is used, however uncommon. Wording that is merely well formed — a compo
 derivation or coinage nobody actually says — is not used, however natural it looks.
 Do not write an article, an explanation or anything else."""
 
+_REVERSE_PROMPT = """You are a bilingual dictionary from {target_lang} into {source_lang}.
+
+Wording: "{word}"
+
+Read the wording as {target_lang}: a misspelled word as the word it was meant to be,
+an inflected one as its dictionary form. Give the {source_lang} words for it, one for
+each of its meanings that needs a different {source_lang} word, the commonest
+meaning first, at most six. Where {source_lang} has no exact equivalent, give the
+closest word or expression its speakers actually use, never a coinage or a
+word-for-word rendering; for an expression, give a {source_lang} expression or word
+with the same meaning. For each, write one short everyday sentence entirely in
+{source_lang} that uses it in that meaning, since it becomes the front of a
+flashcard, and copy the word exactly as that sentence spells it.
+
+Answer with one line of JSON and nothing else, in this schematic shape;
+angle-bracketed values are placeholders, not strings to copy:
+{{"verdict": "word", "read_as": "<the {target_lang} dictionary form you read it as>",
+ "equivalents": [{{"word": "<{source_lang} dictionary form>",
+ "example": "<short {source_lang} sentence using it in this meaning>",
+ "form": "<that word as the sentence spells it: its own words, in order>"}}]}}
+
+verdict is "not_a_word", with read_as empty and no equivalents, when no
+{target_lang} word or expression reads the wording: a word of another language, a
+random string. It is "sentence", with read_as empty and no equivalents, when the
+wording reports a particular situation rather than naming a word or expression; a
+clause with its own subject and finite verb does. Do not write an article, an
+explanation or anything else."""
+
 _CONTEXT_RULE = (
     'Include "context_sense": <zero-based index> naming the sense the unit carries in '
     'the supplied context, "context_translation": the target-language translation of '
@@ -315,6 +361,118 @@ def build_attestation_prompt(language: Language, word: str) -> str:
 
 def parse_attestation(raw: str) -> Verdict | None:
     """Read the judgement, which is one bare JSON object and nothing else."""
+    value = _json_object(raw)
+    used = value.get("used") if value is not None else None
+    return Verdict(used) if isinstance(used, bool) else None
+
+
+type ReverseVerdict = Literal["word", "not_a_word", "sentence"]
+_REVERSE_VERDICTS = frozenset({"word", "not_a_word", "sentence"})
+
+
+@dataclass(frozen=True)
+class Equivalent:
+    """A source-language word for the target-language wording, and the sentence
+    using it in its meaning — empty where the card could not have used that sentence."""
+
+    word: str
+    example: str
+
+
+@dataclass(frozen=True)
+class ReverseAnswer:
+    verdict: ReverseVerdict
+    read_as: str
+    equivalents: tuple[Equivalent, ...]
+
+
+def build_reverse_prompt(language: Language, word: str, target: str) -> str:
+    """Build the question that turns a target-language wording into source-language words."""
+    return _REVERSE_PROMPT.format(source_lang=language.name, target_lang=target, word=word)
+
+
+def parse_reverse(
+    raw: str,
+    language: Language,
+    target: str = DEFAULT_TARGET_LANGUAGE,
+) -> ReverseAnswer | None:
+    """Read the reverse lookup, or None when it carries no verdict or no usable word.
+
+    An equivalent the source language would refuse is dropped, and an example the card
+    could not use is dropped from its equivalent: either costs a chip or a sentence,
+    never the answer.
+    """
+    value = _json_object(raw)
+    verdict = value.get("verdict") if value is not None else None
+    if value is None or verdict not in _REVERSE_VERDICTS:
+        return None
+    if verdict != "word":
+        return ReverseAnswer(verdict, "", ())
+    equivalents = _equivalents(value.get("equivalents"), language, target)
+    if not equivalents:
+        return None
+    read_as = value.get("read_as")
+    return ReverseAnswer(
+        "word",
+        _plain(read_as) if isinstance(read_as, str) else "",
+        equivalents,
+    )
+
+
+def reverse_example_issue(
+    example: str,
+    form: str,
+    word: str,
+    language: Language,
+    target: str = DEFAULT_TARGET_LANGUAGE,
+) -> str | None:
+    """Why the card could not use this sentence as its front, or None when it could.
+
+    It is the card's own test: a sentence the card cannot mark the word in would fail
+    the card later, and a whole-word comparison would refuse every inflected example.
+    """
+    if not example:
+        return "missing"
+    if len(example) > MAX_CONTEXT_LENGTH:
+        return "too_long"
+    if validate_text(example, language) is not None:
+        return "script"
+    if not sentence_is_source_language(example, language, target):
+        return "letters"
+    marked = context_sentence_forms(example, form or word, language, target)
+    if marked is None and form:
+        marked = context_sentence_forms(example, word, language, target)
+    return None if marked is not None else "form"
+
+
+def _equivalents(value: Any, language: Language, target: str) -> tuple[Equivalent, ...]:
+    if not isinstance(value, list):
+        return ()
+    kept: list[Equivalent] = []
+    seen: set[str] = set()
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        word = plain_unit(_plain(item.get("word")))
+        folded = fold_for_match(word, language)
+        if validate_word(word, language) is not None or folded in seen:
+            continue
+        seen.add(folded)
+        example, form = _plain(item.get("example")), _plain(item.get("form"))
+        issue = reverse_example_issue(example, form, word, language, target)
+        kept.append(Equivalent(word, example if issue is None else ""))
+        if len(kept) == MAX_EQUIVALENTS:
+            break
+    return tuple(kept)
+
+
+def _plain(value: Any) -> str:
+    if not isinstance(value, str):
+        return ""
+    return " ".join(unicodedata.normalize("NFC", value).split())
+
+
+def _json_object(raw: str) -> dict | None:
     start = raw.find("{")
     if start < 0:
         return None
@@ -322,8 +480,7 @@ def parse_attestation(raw: str) -> Verdict | None:
         value, _consumed = json.JSONDecoder().raw_decode(raw[start:])
     except ValueError:
         return None
-    used = value.get("used") if isinstance(value, dict) else None
-    return Verdict(used) if isinstance(used, bool) else None
+    return value if isinstance(value, dict) else None
 
 
 def extract_answer(  # noqa: PLR0913 - the whole request the answer is read against.

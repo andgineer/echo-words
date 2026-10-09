@@ -457,8 +457,32 @@ def sentence_is_source_language(
     A card example is the front of a card, so a target-language sentence with the
     source word wedged into it teaches nothing and is rejected outright.
     """
-    letters = {char for char in unicodedata.normalize("NFC", text).casefold() if char.isalpha()}
-    return not (letters & (_target_letters(target) - _letters_spelled(language)))
+    return not reads_as_target(text, language, target)
+
+
+def reads_as_target(
+    text: str,
+    language: Language,
+    target: str = DEFAULT_TARGET_LANGUAGE,
+) -> bool:
+    """Whether the text carries a letter the target language writes and the source does not."""
+    return bool(_letters_in(text) & (_target_letters(target) - _letters_spelled(language)))
+
+
+def reads_as_source(
+    text: str,
+    language: Language,
+    target: str = DEFAULT_TARGET_LANGUAGE,
+) -> bool:
+    """Whether the text carries a letter the source language writes and the target does not.
+
+    A target outside the directory has no known letters, so every letter is the source's.
+    """
+    return bool(_letters_in(text) & (_letters_spelled(language) - _target_letters(target)))
+
+
+def _letters_in(text: str) -> set[str]:
+    return {char for char in unicodedata.normalize("NFC", text).casefold() if char.isalpha()}
 
 
 @lru_cache(maxsize=8)

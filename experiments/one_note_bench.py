@@ -25,6 +25,13 @@ Run:
       --resume --out experiments/.bench-one-note-post
     uv run python experiments/one_note_bench.py report \
       --tier smoke --out experiments/.bench-one-note-post
+
+The reverse lookup is measured on its own, in its own `--out`: 50 reverse calls, the
+Serbian article and judgement for four Russian words, and the second judgements
+those answers happen to need. `report` screens whichever of the two a directory holds.
+    uv run python experiments/one_note_bench.py run-reverse --resume \
+      --wait 180 --pace 2 --concurrency 1 --out experiments/.bench-reverse
+    uv run python experiments/one_note_bench.py report --out experiments/.bench-reverse
 """
 
 import argparse
@@ -63,6 +70,9 @@ from echo_words.languages import (  # noqa: E402
     Language,
     fold_for_match,
     load_languages,
+    plain_unit,
+    reads_as_source,
+    reads_as_target,
     sentence_is_source_language,
     split_words,
     validate_word,
@@ -73,13 +83,17 @@ from echo_words.prompt import (  # noqa: E402
     MAX_COMPLETE_ANSWER_CHARS,
     build_attestation_prompt,
     build_prompt,
+    build_reverse_prompt,
     extract_answer,
     parse_attestation,
+    parse_reverse,
+    reverse_example_issue,
 )
 from echo_words.sanitizer import sanitize_html  # noqa: E402
 from echo_words.segments import fill_text_segments  # noqa: E402
 from llmbroker import AsyncBroker, StreamReplacementError  # noqa: E402
 from llmbroker.direct import AsyncDirectClient  # noqa: E402
+from reverse_items import OFFER_WORDS, REVERSE_CASES, ReverseCase  # noqa: E402
 from unit_verdict_bench import FIXTURES as VERDICT_FIXTURES  # noqa: E402
 
 TARGET_CODE = "ru"
@@ -171,6 +185,19 @@ MAX_BOUNDARY_DRIFT = 1
 MIN_CLICK_SUCCESS = 5
 MIN_EXPRESSION_SUCCESS = 2
 TIER_NAMES = ("smoke", "confirmation", "full")
+REVERSE_KIND = "reverse"
+# The Serbian tab's own answer to a Russian word letters leave open: the judgement, the
+# article beside it, and the second judgement of a correction the article puts in.
+OFFER_KIND = "offer"
+OFFER_ARTICLE_KIND = "offer-article"
+OFFER_CORRECTION_KIND = "offer-correction"
+REVERSE_BENCH_KINDS = frozenset({REVERSE_KIND, OFFER_KIND, OFFER_ARTICLE_KIND, OFFER_CORRECTION_KIND})
+JUDGEMENT_KINDS = frozenset({"attestation", "correction", OFFER_KIND, OFFER_CORRECTION_KIND})
+REVERSE_FIXTURES = 50
+OFFER_FIXTURES = 4
+MIN_REVERSE_USABLE = 45
+# Of the usable answers: a word refused, or junk carded, leaves the reader nothing.
+MAX_REVERSE_VERDICT_MISSES = 0.1
 
 _UNIT_BRANCH_FIELDS = frozenset(
     {"word", "word_relation", "suggestion", "meanings", "context_sense", "segments"},
@@ -630,8 +657,10 @@ def _unit_intent(shot: Shot) -> bool:
 
 
 def prompt_for(shot: Shot) -> str:
-    if shot.kind in {"attestation", "correction"}:
+    if shot.kind in JUDGEMENT_KINDS:
         return build_attestation_prompt(LANGUAGES[shot.lang], shot.source)
+    if shot.kind == REVERSE_KIND:
+        return build_reverse_prompt(LANGUAGES[shot.lang], shot.source, TARGET_NAME)
     return build_prompt(
         LANGUAGES[shot.lang],
         shot.source,
@@ -1717,6 +1746,8 @@ def _wordlist_chips(shot: Shot, parsed: ParsedAnswer | None) -> int:
 
 
 def score(shot: Shot) -> Shot:
+    if shot.kind == REVERSE_KIND:
+        return score_reverse(shot)
     if shot.shot_id in EXPECTED_UNIT_OVERRIDES:
         shot.expected_kind = "unit"
     analysis, _raw = split_answer(shot.text)
@@ -1981,8 +2012,10 @@ def complete(shot: Shot) -> bool:
     # A standalone judgement answers with neither branch, so completeness for it is a
     # readable judgement. Judging it by the branch keys made every resume re-ask all of
     # them, and kept the last attempt where every other kind keeps the first.
-    if shot.kind in {"attestation", "correction"}:
+    if shot.kind in JUDGEMENT_KINDS:
         return parse_attestation(shot.text) is not None
+    if shot.kind == REVERSE_KIND:
+        return parse_reverse(shot.text, LANGUAGES[shot.lang], TARGET_NAME) is not None
     return bool(
         shot.metrics.get("answered")
         and (
@@ -2076,6 +2109,376 @@ async def run_corrections(args, out: Path) -> None:
         await run_batch(args, out, broker, todo)
     finally:
         await broker.aclose()
+
+
+def reverse_id(lang: str, case_id: str) -> str:
+    return f"reverse-{lang}-{case_id}"
+
+
+def offer_id(slug: str) -> str:
+    return f"offer-sr-{slug}"
+
+
+def offer_article_id(slug: str) -> str:
+    return f"offer-article-sr-{slug}"
+
+
+def offer_correction_id(slug: str) -> str:
+    return f"offer-correction-sr-{slug}"
+
+
+REVERSE_BY_ID = {
+    reverse_id(lang, case.case_id): case for case in REVERSE_CASES for lang in case.langs
+}
+
+
+def reverse_shots() -> list[Shot]:
+    return [
+        Shot(reverse_id(lang, case.case_id), REVERSE_KIND, lang, case.word, expected_kind=case.verdict)
+        for case in REVERSE_CASES
+        for lang in case.langs
+    ]
+
+
+def offer_shots() -> list[Shot]:
+    """What the Serbian tab does with a typed Russian word its letters leave open.
+
+    The offer follows only an entry that ends refused, and the article answering beside
+    the judgement can overrule a refusal by correcting the word, so both are asked.
+    """
+    serbian = LANGUAGES["sr"]
+    proved = [
+        word
+        for _slug, word in OFFER_WORDS
+        if reads_as_target(word, serbian, TARGET_NAME) or reads_as_source(word, serbian, TARGET_NAME)
+    ]
+    if proved:
+        raise RuntimeError("letters already decide these offer words: " + ", ".join(proved))
+    rows: list[Shot] = []
+    for slug, word in OFFER_WORDS:
+        rows.append(Shot(offer_id(slug), OFFER_KIND, "sr", word))
+        rows.append(Shot(offer_article_id(slug), OFFER_ARTICLE_KIND, "sr", word, expected_kind="unit"))
+    return rows
+
+
+def offer_correction_shots(recorded: dict[str, Shot]) -> list[Shot]:
+    """The second judgement production asks where the article corrected a refused word."""
+    rows = []
+    for slug, _word in OFFER_WORDS:
+        if not judgement_refused(recorded.get(offer_id(slug))):
+            continue
+        article = recorded.get(offer_article_id(slug))
+        corrected = _correction_wording(article) if article is not None else ""
+        if corrected:
+            rows.append(Shot(offer_correction_id(slug), OFFER_CORRECTION_KIND, "sr", corrected))
+    return rows
+
+
+def read_reverse(out: Path, attempts: list[Shot] | None = None) -> dict[str, Shot]:
+    recorded = attempts if attempts is not None else read_attempts(out)
+    jobs = {shot.shot_id: shot for shot in (*reverse_shots(), *offer_shots())}
+    rows = _select_canonical(recorded, jobs)
+    corrections = {shot.shot_id: shot for shot in offer_correction_shots(rows)}
+    rows.update(_select_canonical(recorded, corrections))
+    return rows
+
+
+def offer_outcome(rows: dict[str, Shot], slug: str) -> str:
+    """Where the Serbian entry ends, decided exactly as production decides it.
+
+    `offered` is a refusal that stands; `accepted` and `corrected` end carded, the
+    second as the article's correction; `misspelling` declared a typo and kept the word.
+    """
+    judgement = rows.get(offer_id(slug))
+    if judgement is None or parse_attestation(judgement.text) is None:
+        return "unmeasured"
+    if not judgement_refused(judgement):
+        return "accepted"
+    article = rows.get(offer_article_id(slug))
+    if article is None or article.metrics.get("word_relation") != "typo":
+        return "offered"
+    if not _correction_wording(article):
+        return "misspelling"
+    second = rows.get(offer_correction_id(slug))
+    if second is None or parse_attestation(second.text) is None:
+        return "unmeasured"
+    return "offered" if judgement_refused(second) else "corrected"
+
+
+def _clean(value: object) -> str:
+    return " ".join(unicodedata.normalize("NFC", value).split()) if isinstance(value, str) else ""
+
+
+def _json_object(text: str) -> dict:
+    start = text.find("{")
+    if start < 0:
+        return {}
+    try:
+        value, _consumed = json.JSONDecoder().raw_decode(text[start:])
+    except ValueError:
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def _raw_equivalents(payload: dict) -> list[dict]:
+    items = payload.get("equivalents")
+    return [item for item in items if isinstance(item, dict)] if isinstance(items, list) else []
+
+
+def _reverse_example_drops(shot: Shot, kept: dict[str, str]) -> list[dict[str, object]]:
+    """Every example `parse_reverse` dropped from an equivalent it kept, and why."""
+    language = LANGUAGES[shot.lang]
+    drops: list[dict[str, object]] = []
+    seen: set[str] = set()
+    for item in _raw_equivalents(shot.payload):
+        word = plain_unit(_clean(item.get("word")))
+        if word not in kept or word in seen:
+            continue
+        seen.add(word)
+        if kept[word]:
+            continue
+        example, form = _clean(item.get("example")), _clean(item.get("form"))
+        drops.append(
+            {
+                "word": word,
+                "example": example,
+                "form": form,
+                "reason": reverse_example_issue(example, form, word, language, TARGET_NAME),
+            },
+        )
+    return drops
+
+
+def score_reverse(shot: Shot) -> Shot:
+    case: ReverseCase | None = REVERSE_BY_ID.get(shot.shot_id)
+    parsed = parse_reverse(shot.text, LANGUAGES[shot.lang], TARGET_NAME)
+    shot.payload = _json_object(shot.text)
+    kept = {item.word: item.example for item in parsed.equivalents} if parsed else {}
+    words = list(kept)
+    read_as = parsed.read_as if parsed is not None else ""
+    readings = {normalize(value) for value in case.read_as} if case else set()
+    accepted = {normalize(value, shot.lang) for value in case.first.get(shot.lang, ())} if case else set()
+    shot.metrics = {
+        "answered": bool(shot.text) and not shot.error,
+        "usable": parsed is not None,
+        "verdict": parsed.verdict if parsed is not None else _clean(shot.payload.get("verdict")),
+        "verdict_expected": parsed is not None and parsed.verdict == shot.expected_kind,
+        "read_as": read_as,
+        "read_as_expected": normalize(read_as) in readings if readings else None,
+        "equivalents": [{"word": word, "example": example} for word, example in kept.items()],
+        "first_expected": (bool(words) and normalize(words[0], shot.lang) in accepted)
+        if accepted
+        else None,
+        "raw_equivalents": len(_raw_equivalents(shot.payload)),
+        "examples_kept": sum(bool(example) for example in kept.values()),
+        "example_drops": _reverse_example_drops(shot, kept),
+    }
+    return shot
+
+
+async def run_reverse(args, out: Path) -> None:
+    assert_no_prompt_drift()
+    os.environ.update(load_keys())
+    broker = AsyncBroker(home=out / "llmbroker")
+    try:
+        jobs = [*reverse_shots(), *offer_shots()]
+        if args.shot:
+            requested = set(args.shot)
+            missing = requested - {shot.shot_id for shot in jobs}
+            if missing:
+                raise SystemExit("unknown reverse ids: " + ", ".join(sorted(missing)))
+            jobs = [shot for shot in jobs if shot.shot_id in requested]
+        todo = pending(jobs, read_reverse(out), args.resume)
+        log(f"reverse: {len(todo)} calls")
+        await run_batch(args, out, broker, todo)
+        recorded = read_reverse(out)
+        corrections = pending(offer_correction_shots(recorded), recorded, args.resume)
+        log(f"offer corrections: {len(corrections)} calls")
+        await run_batch(args, out, broker, corrections)
+    finally:
+        await broker.aclose()
+
+
+def reverse_counts(rows: dict[str, Shot]) -> dict[str, int]:
+    reverse = [row for row in rows.values() if row.kind == REVERSE_KIND]
+    usable = [row for row in reverse if row.metrics.get("usable")]
+    return {
+        "recorded": len(reverse),
+        "answered": sum(bool(row.metrics.get("answered")) for row in reverse),
+        "usable": len(usable),
+        "verdict_expected": sum(bool(row.metrics.get("verdict_expected")) for row in usable),
+        "read_as_expected": sum(row.metrics.get("read_as_expected") is True for row in usable),
+        "read_as_judged": sum(row.metrics.get("read_as_expected") is not None for row in usable),
+        "first_expected": sum(row.metrics.get("first_expected") is True for row in usable),
+        "first_judged": sum(row.metrics.get("first_expected") is not None for row in usable),
+        "examples_kept": sum(int(row.metrics.get("examples_kept", 0)) for row in usable),
+        "examples_dropped": sum(len(row.metrics.get("example_drops", [])) for row in usable),
+    }
+
+
+def reverse_gates(counts: dict[str, int]) -> dict[str, bool]:
+    misses = counts["usable"] - counts["verdict_expected"]
+    return {
+        f"usable reverse answers >= {MIN_REVERSE_USABLE}/{REVERSE_FIXTURES}": counts["usable"]
+        >= MIN_REVERSE_USABLE,
+        "verdict misses <= 10% of usable answers": counts["usable"] > 0
+        and misses <= MAX_REVERSE_VERDICT_MISSES * counts["usable"],
+    }
+
+
+def reverse_review_packet(
+    rows: dict[str, Shot],
+    screen: dict[str, object] | None = None,
+) -> dict[str, object]:
+    items = []
+    for expected_shot in reverse_shots():
+        case = REVERSE_BY_ID[expected_shot.shot_id]
+        expected: dict[str, object] = {
+            "verdict": case.verdict,
+            "requirement": case.requirement,
+            "must_hold": case.must_hold,
+            "read_as": list(case.read_as),
+            "first_equivalent": list(case.first.get(expected_shot.lang, ())),
+            "read_every_example": (
+                "each kept example becomes the front of the card and is voiced as its "
+                "context: judge it as that, not only as an instance of its meaning"
+            ),
+        }
+        shot = rows.get(expected_shot.shot_id)
+        if shot is None:
+            items.append(
+                _review_item(expected_shot, {"provider_miss"}, expected=expected, actual={"attempt": "missing"}),
+            )
+            continue
+        categories = {REVERSE_KIND}
+        if not shot.metrics.get("answered"):
+            categories.add("provider_miss")
+        elif not shot.metrics.get("usable"):
+            categories.add("unusable")
+        elif not shot.metrics.get("verdict_expected"):
+            categories.add("verdict_miss")
+        if shot.metrics.get("example_drops"):
+            categories.add("example_dropped")
+        actual = {
+            "provider": shot.answered_by,
+            "verdict": shot.metrics.get("verdict"),
+            "read_as": shot.metrics.get("read_as"),
+            "equivalents": shot.metrics.get("equivalents"),
+            "example_drops": shot.metrics.get("example_drops"),
+            "first_expected": shot.metrics.get("first_expected"),
+            "read_as_expected": shot.metrics.get("read_as_expected"),
+        }
+        items.append(_review_item(shot, categories, expected=expected, actual=actual))
+    for slug, word in OFFER_WORDS:
+        judgement = rows.get(offer_id(slug))
+        article = rows.get(offer_article_id(slug))
+        second = rows.get(offer_correction_id(slug))
+        verdict = parse_attestation(judgement.text) if judgement is not None else None
+        second_verdict = parse_attestation(second.text) if second is not None else None
+        items.append(
+            {
+                "fixture_id": offer_id(slug),
+                "categories": ["offer"],
+                "input": {"language": "sr", "submitted": word, "context": ""},
+                "expected": {
+                    "offer": (
+                        "a Russian word on the Serbian tab, typed without !: the reverse "
+                        "lookup is offered only where the entry ends refused"
+                    ),
+                },
+                "actual": {
+                    "outcome": offer_outcome(rows, slug),
+                    "used": None if verdict is None else verdict.used,
+                    "article_headword": article.payload.get("word") if article else None,
+                    "article_relation": article.metrics.get("word_relation") if article else None,
+                    "correction": second.source if second else None,
+                    "correction_used": None if second_verdict is None else second_verdict.used,
+                },
+                "raw_evidence": {
+                    "judgement": judgement.text if judgement else None,
+                    "article": article.text if article else None,
+                    "correction": second.text if second else None,
+                },
+            },
+        )
+    return {
+        "screen": screen if screen is not None else {},
+        "tier": "reverse",
+        "prompt_status": (
+            "pending_semantic_review"
+            if all(shot.shot_id in rows for shot in reverse_shots())
+            else "unmeasured"
+        ),
+        "semantic_review_required": True,
+        "acceptance_instruction": (
+            "A fresh agent must semantically review every concrete item and record "
+            "the prompt-bound decision in a checked-in decision spec before acceptance."
+        ),
+        "items": items,
+    }
+
+
+def report_reverse(out: Path, attempts: list[Shot]) -> list[str]:
+    rows = read_reverse(out, attempts)
+    reverse = [row for row in rows.values() if row.kind == REVERSE_KIND]
+    usable = [row for row in reverse if row.metrics.get("usable")]
+    counts = reverse_counts(rows)
+    gates = reverse_gates(counts)
+    print("REVERSE LOOKUP — AUTOMATED SCREEN, RUSSIAN TARGET")
+    print("Fresh-agent semantic review of the concrete review packet is mandatory before acceptance.\n")
+    calls = [row for row in rows.values() if row.kind in REVERSE_BENCH_KINDS]
+    tally = Counter(row.answered_by or "none" for row in calls if row.metrics.get("answered", bool(row.text)))
+    print("AVAILABILITY")
+    print(f"  recorded reverse calls        {counts['recorded']}/{REVERSE_FIXTURES}")
+    print(f"  provider answers              {counts['answered']}/{REVERSE_FIXTURES}")
+    print("  answered by                   " + ", ".join(f"{name} {n}" for name, n in tally.most_common()))
+    print()
+    for name, passed in gates.items():
+        print(f"  {'PASS' if passed else 'FAIL':4}  {name}")
+    print(f"  usable answers                {counts['usable']}/{counts['recorded']}")
+    print(f"  verdict as expected           {counts['verdict_expected']}/{counts['usable']}")
+    misses = [row for row in usable if not row.metrics.get("verdict_expected")]
+    for row in misses:
+        print(f"    {row.shot_id}: expected {row.expected_kind}, got {row.metrics.get('verdict')}")
+    print(f"  read as expected              {counts['read_as_expected']}/{counts['read_as_judged']}")
+    print(f"  first equivalent as expected  {counts['first_expected']}/{counts['first_judged']}")
+    for row in usable:
+        if row.metrics.get("first_expected") is False or row.metrics.get("read_as_expected") is False:
+            first = (row.metrics.get("equivalents") or [{}])[0].get("word")
+            print(f"    {row.shot_id}: read as {row.metrics.get('read_as')!r}, first {first!r}")
+    print()
+    print("EXAMPLES — a dropped one costs the card its front sentence")
+    for lang in ("en", "de", "sr"):
+        subset = [row for row in usable if row.lang == lang]
+        drops = [drop for row in subset for drop in row.metrics.get("example_drops", [])]
+        kept = sum(int(row.metrics.get("examples_kept", 0)) for row in subset)
+        reasons = Counter(str(drop["reason"]) for drop in drops)
+        detail = ", ".join(f"{reason} {n}" for reason, n in reasons.most_common()) or "none"
+        print(f"  {lang}  kept {kept}  dropped {len(drops)}: {detail}")
+    words = [row for row in usable if row.metrics.get("verdict") == "word"]
+    if words:
+        sizes = [len(row.metrics.get("equivalents", [])) for row in words]
+        raw = sum(int(row.metrics.get("raw_equivalents", 0)) for row in words)
+        print(f"  equivalents per word answer   mean {sum(sizes) / len(sizes):.1f}, max {max(sizes)}")
+        print(f"  equivalents offered / kept    {raw}/{sum(sizes)}")
+    times = [row.t_total for row in reverse if row.t_total is not None and not row.error]
+    if times:
+        print(f"\nREVERSE CALL LATENCY over {len(times)} answers")
+        print(f"  p50 {percentile(times, 50):.2f}s  p90 {percentile(times, 90):.2f}s  max {max(times):.2f}s")
+    print("\nOFFER — the Serbian tab's answer to a Russian word its letters leave open")
+    for slug, word in OFFER_WORDS:
+        article = rows.get(offer_article_id(slug))
+        headword = article.payload.get("word") if article else None
+        relation = article.metrics.get("word_relation") if article else None
+        print(f"  {word:<10} {offer_outcome(rows, slug):<11} article: {headword!r} ({relation})")
+    path = out / "review-packet-reverse.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    packet = reverse_review_packet(rows, {"counts": counts, "quality_thresholds": gates})
+    path.write_text(json.dumps(packet, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    print(f"\nreview packet: {path}")
+    print("AUTOMATED SCREEN ONLY — semantic acceptance is not auto-proven.\n")
+    failed = [name for name, passed in gates.items() if not passed]
+    return ["reverse lookup: " + ", ".join(failed)] if failed else []
 
 
 def ratio(rows: list[Shot], key: str) -> str:
@@ -2684,6 +3087,16 @@ def report(out: Path, tier: str) -> None:
     attempts = read_attempts(out)
     if not attempts:
         raise SystemExit(f"no answers in {output_path(out)}")
+    reverse = [row for row in attempts if row.kind in REVERSE_BENCH_KINDS]
+    tiered = [row for row in attempts if row.kind not in REVERSE_BENCH_KINDS]
+    failures = report_reverse(out, reverse) if reverse else []
+    if tiered:
+        failures += report_tier(out, tier, tiered)
+    if failures:
+        raise SystemExit("benchmark failed — " + "; ".join(failures))
+
+
+def report_tier(out: Path, tier: str, attempts: list[Shot]) -> list[str]:
     arms = read_arms(out, attempts)
     initial_jobs = initial_shots()
     canonical_jobs = {shot.shot_id: shot for shot in initial_jobs}
@@ -3030,17 +3443,17 @@ def report(out: Path, tier: str) -> None:
 
     failed_hard = [name for name, passed in hard.items() if not passed]
     failed_quality = [name for name, passed in quality.items() if not passed]
-    if failed_hard or failed_quality:
-        failures = []
-        if failed_hard:
-            failures.append("deterministic contracts: " + ", ".join(failed_hard))
-        if failed_quality:
-            failures.append("quality thresholds: " + ", ".join(failed_quality))
-        raise SystemExit("benchmark failed — " + "; ".join(failures))
+    failures = []
+    if failed_hard:
+        failures.append("deterministic contracts: " + ", ".join(failed_hard))
+    if failed_quality:
+        failures.append("quality thresholds: " + ", ".join(failed_quality))
+    return failures
 
 
 def show(out: Path, shot_ids: list[str]) -> None:
-    rows = read(out)
+    attempts = read_attempts(out)
+    rows = {**read(out, attempts), **read_reverse(out, attempts)}
     for shot_id in shot_ids or sorted(rows):
         shot = rows.get(shot_id)
         if shot is None:
@@ -3054,7 +3467,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "action",
-        choices=["run", "run-clicks", "run-corrections", "report", "show"],
+        choices=["run", "run-clicks", "run-corrections", "run-reverse", "report", "show"],
     )
     parser.add_argument("--tier", choices=TIER_NAMES, default="smoke")
     parser.add_argument("--resume", action="store_true")
@@ -3076,6 +3489,8 @@ def main() -> None:
         asyncio.run(run_clicks(args, out))
     elif args.action == "run-corrections":
         asyncio.run(run_corrections(args, out))
+    elif args.action == "run-reverse":
+        asyncio.run(run_reverse(args, out))
     elif args.action == "report":
         report(out, args.tier)
     else:

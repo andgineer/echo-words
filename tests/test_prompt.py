@@ -1,14 +1,22 @@
 import json
 import logging
 
+import pytest
+
 from echo_words.card import ParsedText, ParsedUnit
 from echo_words.prompt import (
     MAX_COMPLETE_ANSWER_CHARS,
     MAX_DETAIL_CHARS,
+    MAX_EQUIVALENTS,
     PAYLOAD_LOG_LIMIT,
+    Equivalent,
+    ReverseAnswer,
     build_extended_prompt,
     build_prompt,
+    build_reverse_prompt,
     extract_answer,
+    parse_reverse,
+    reverse_example_issue,
 )
 
 
@@ -245,3 +253,151 @@ def test_extended_prompt_has_no_compact_contract(languages):
     assert "lexicographer" in prompt
     assert "the bank" in prompt
     assert "===CARD===" not in prompt
+
+
+def _reverse(*equivalents: dict, verdict: str = "word", read_as: str = "стул") -> str:
+    return json.dumps(
+        {"verdict": verdict, "read_as": read_as, "equivalents": list(equivalents)},
+        ensure_ascii=False,
+    )
+
+
+def _equivalent(word: str, example: str, form: str) -> dict:
+    return {"word": word, "example": example, "form": form}
+
+
+def test_the_reverse_prompt_names_both_languages_and_asks_for_the_form(languages):
+    prompt = build_reverse_prompt(languages["de"], "стул", "Russian")
+
+    assert '"стул"' in prompt
+    assert "from Russian into Deutsch" in prompt
+    assert '"form"' in prompt
+    assert "commonest" in prompt
+    assert '"not_a_word"' in prompt
+    assert '"sentence"' in prompt
+
+
+def test_a_reverse_answer_carries_its_equivalents_and_the_reading(languages):
+    raw = _reverse(
+        _equivalent("Stuhl", "Die Stühle stehen im Garten.", "Stühle"),
+        _equivalent("Hocker", "Er sitzt auf einem Hocker.", "Hocker"),
+        read_as="стул",
+    )
+
+    answer = parse_reverse("```json\n" + raw + "\n```", languages["de"], "Russian")
+
+    # The inflected example is kept: the card marks the word by the form it is spelled in.
+    assert answer == ReverseAnswer(
+        "word",
+        "стул",
+        (
+            Equivalent("Stuhl", "Die Stühle stehen im Garten."),
+            Equivalent("Hocker", "Er sitzt auf einem Hocker."),
+        ),
+    )
+
+
+@pytest.mark.parametrize("verdict", ["not_a_word", "sentence"])
+def test_a_reverse_refusal_carries_no_equivalents(languages, verdict):
+    raw = _reverse(_equivalent("Stuhl", "Der Stuhl ist neu.", "Stuhl"), verdict=verdict)
+
+    assert parse_reverse(raw, languages["de"], "Russian") == ReverseAnswer(verdict, "", ())
+
+
+@pytest.mark.parametrize(
+    ("example", "form", "issue"),
+    [
+        ("Er kauft einen Tisch.", "Stuhl", "form"),
+        ("Der Stuhl ist " + "sehr " * 100 + "alt.", "Stuhl", "too_long"),
+        ("Он купил новый Stuhl.", "Stuhl", "script"),
+        ("", "Stuhl", "missing"),
+    ],
+)
+def test_an_example_the_card_could_not_use_leaves_a_bare_chip(languages, example, form, issue):
+    raw = _reverse(
+        _equivalent("Stuhl", example, form),
+        _equivalent("Hocker", "Er sitzt auf einem Hocker.", "Hocker"),
+    )
+
+    answer = parse_reverse(raw, languages["de"], "Russian")
+
+    assert reverse_example_issue(example, form, "Stuhl", languages["de"], "Russian") == issue
+    assert answer is not None
+    assert answer.equivalents[0] == Equivalent("Stuhl", "")
+    assert answer.equivalents[1].example == "Er sitzt auf einem Hocker."
+
+
+def test_a_target_language_sentence_is_no_example_where_the_scripts_are_shared(languages):
+    """Serbian writes Cyrillic, so only the letters Russian alone writes give it away."""
+    serbian = languages["sr"]
+    raw = _reverse(_equivalent("књига", "Я читаю эту книгу.", "книгу"), read_as="книга")
+
+    answer = parse_reverse(raw, serbian, "Russian")
+
+    assert reverse_example_issue("Я читаю эту книгу.", "книгу", "књига", serbian) == "letters"
+    assert answer == ReverseAnswer("word", "книга", (Equivalent("књига", ""),))
+
+
+def test_a_number_is_never_found_inside_a_longer_word(languages):
+    serbian = languages["sr"]
+
+    assert reverse_example_issue("Ово место је слободно.", "сто", "сто", serbian) == "form"
+    assert reverse_example_issue("Сто људи је дошло.", "сто", "сто", serbian) is None
+
+
+def test_a_missing_or_wrong_form_falls_back_to_the_word_itself(languages):
+    german = languages["de"]
+
+    assert reverse_example_issue("Der Stuhl ist neu.", "", "Stuhl", german) is None
+    assert reverse_example_issue("Der Stuhl ist neu.", "Stühle", "Stuhl", german) is None
+
+
+def test_a_separated_expression_is_found_piece_by_piece(languages):
+    german = languages["de"]
+
+    assert (
+        reverse_example_issue("Ich stehe um sieben auf.", "stehe … auf", "aufstehen", german)
+        is None
+    )
+
+
+def test_an_equivalent_the_source_language_refuses_is_dropped(languages):
+    raw = _reverse(
+        _equivalent("стул", "Der Stuhl ist neu.", "Stuhl"),
+        _equivalent("Stuhl", "Der Stuhl ist neu.", "Stuhl"),
+        _equivalent("Stuhl.", "Der Stuhl ist alt.", "Stuhl"),
+    )
+
+    answer = parse_reverse(raw, languages["de"], "Russian")
+
+    # The Cyrillic word is no German word, and the trailing stop is punctuation off
+    # the edge of a repeat.
+    assert answer == ReverseAnswer("word", "стул", (Equivalent("Stuhl", "Der Stuhl ist neu."),))
+
+
+def test_the_equivalents_are_capped(languages):
+    words = ["Stuhl", "Hocker", "Sessel", "Sitz", "Bank", "Thron", "Schemel"]
+    raw = _reverse(*(_equivalent(word, f"Das ist ein {word}.", word) for word in words))
+
+    answer = parse_reverse(raw, languages["de"], "Russian")
+
+    assert answer is not None
+    assert [item.word for item in answer.equivalents] == words[:MAX_EQUIVALENTS]
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "",
+        "not json",
+        '{"verdict": "word", "read_as": "стул", "equivalents": [',
+        '["word"]',
+        '{"verdict": "maybe", "read_as": "", "equivalents": []}',
+        '{"verdict": "word", "read_as": "стул", "equivalents": []}',
+        '{"verdict": "word", "read_as": "стул"}',
+        '{"verdict": "word", "read_as": "стул", "equivalents": [{"word": "стул"}]}',
+        '{"verdict": "word", "read_as": "стул", "equivalents": ["Stuhl"]}',
+    ],
+)
+def test_an_unusable_reverse_answer_is_none(languages, raw):
+    assert parse_reverse(raw, languages["de"], "Russian") is None

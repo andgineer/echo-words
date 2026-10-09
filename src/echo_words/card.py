@@ -374,7 +374,7 @@ def _example_forms(text: str, marked: str, request: "_Request") -> tuple[str, st
         )
     ):
         return sentence_forms
-    return _context_sentence_forms(
+    return context_sentence_forms(
         text,
         request.selected_surface,
         request.language,
@@ -396,12 +396,12 @@ def _with_context_example(
     `aufstehen` stands in the sentence as `steht … auf`, and no rule the backend can
     write will find that. So nothing is copied and nothing is compared.
     """
-    forms = _context_sentence_forms(
+    forms = context_sentence_forms(
         request.context,
         _plain(surface) or request.selected_surface,
         request.language,
         request.target,
-    ) or _context_sentence_forms(
+    ) or context_sentence_forms(
         request.context,
         request.selected_surface,
         request.language,
@@ -451,12 +451,16 @@ def _marked_sentence_usable(
     )
 
 
-def _context_sentence_forms(
+def context_sentence_forms(
     context: str,
     selected_surface: str,
     language: Language | None = None,
     target: str = DEFAULT_TARGET_LANGUAGE,
 ) -> tuple[str, str] | None:
+    """The sentence marked and gapped at the surface's whole tokens, in order, or None.
+
+    Whole tokens, so «сто» is never found inside «место».
+    """
     wanted = [_fold(match.group()) for match in _SOURCE_TOKEN.finditer(selected_surface)]
     if not wanted:
         return None

@@ -1245,3 +1245,207 @@ def test_a_cyrillic_shot_cards_its_own_sentence_and_reports_the_target_language_
     # The card front is the Bulgarian sentence; the Russian one never reaches a card.
     assert "Той седна" in " ".join(scored.metrics["card_fronts"])
     assert [item["example"] for item in scored.metrics["examples_with_foreign_letters"]] == [1]
+
+
+def _reverse_answer(read_as: str, *equivalents: tuple[str, str, str], verdict: str = "word") -> str:
+    return json.dumps(
+        {
+            "verdict": verdict,
+            "read_as": read_as,
+            "equivalents": [
+                {"word": word, "example": example, "form": form}
+                for word, example, form in equivalents
+            ],
+        },
+        ensure_ascii=False,
+    )
+
+
+def _reverse_shot(shot_id: str, text: str) -> bench.Shot:
+    shot = next(shot for shot in bench.reverse_shots() if shot.shot_id == shot_id)
+    return bench.score(replace(shot, text=text, answered_by="provider", t_total=1.0))
+
+
+def test_the_reverse_manifest_is_frozen_and_asks_the_production_prompts():
+    reverse = bench.reverse_shots()
+    offers = bench.offer_shots()
+
+    assert len(reverse) == bench.REVERSE_FIXTURES
+    assert len(offers) == 2 * bench.OFFER_FIXTURES
+    assert len({shot.shot_id for shot in (*reverse, *offers)}) == len(reverse) + len(offers)
+    stol = next(shot for shot in reverse if shot.shot_id == "reverse-de-stol")
+    assert bench.prompt_for(stol).startswith(
+        "You are a bilingual dictionary from Russian into Deutsch"
+    )
+    judgement, article = offers[:2]
+    assert '"used": true or false' in bench.prompt_for(judgement)
+    # What the submit box sends for one typed word: the selected-unit article.
+    assert "Make a card for this selected unit" in bench.prompt_for(article)
+
+
+def test_a_reverse_answer_is_scored_by_what_the_card_gets():
+    shot = _reverse_shot(
+        "reverse-de-stoly",
+        _reverse_answer(
+            "стол",
+            ("Tisch", "Die Tische sind neu.", "Tische"),
+            ("Tafel", "Er kauft einen Tisch.", "Tafel"),
+        ),
+    )
+
+    assert shot.metrics["usable"] is True
+    assert shot.metrics["verdict_expected"] is True
+    assert shot.metrics["read_as_expected"] is True
+    assert shot.metrics["first_expected"] is True
+    assert shot.metrics["examples_kept"] == 1
+    assert shot.metrics["example_drops"] == [
+        {"word": "Tafel", "example": "Er kauft einen Tisch.", "form": "Tafel", "reason": "form"},
+    ]
+
+
+def test_a_serbian_equivalent_counts_in_either_script():
+    shot = _reverse_shot(
+        "reverse-sr-okno",
+        _reverse_answer("окно", ("прозор", "Отвори прозор, молим те.", "прозор")),
+    )
+
+    assert shot.metrics["first_expected"] is True
+    assert shot.metrics["read_as_expected"] is None
+
+
+def test_a_wrong_reading_and_a_wrong_verdict_are_reported():
+    misread = _reverse_shot("reverse-en-sotl", _reverse_answer("сот", ("honeycomb", "", "")))
+    refused = _reverse_shot("reverse-en-stol", _reverse_answer("", verdict="not_a_word"))
+
+    assert misread.metrics["read_as_expected"] is False
+    assert misread.metrics["first_expected"] is False
+    assert misread.metrics["example_drops"][0]["reason"] == "missing"
+    assert refused.metrics["usable"] is True
+    assert refused.metrics["verdict_expected"] is False
+
+
+def test_a_refusal_completes_and_an_answer_with_no_usable_word_is_asked_again():
+    refused = _reverse_shot("reverse-en-fyvapr", _reverse_answer("", verdict="not_a_word"))
+    empty = _reverse_shot("reverse-en-stol", _reverse_answer("стол", ("стол", "", "")))
+
+    assert bench.complete(refused) is True
+    assert bench.complete(empty) is False
+    assert empty.metrics["usable"] is False
+
+
+def _offer_rows(
+    *, used: bool, headword: str = "", relation: str = "same", second: bool | None = None
+):
+    rows: dict[str, bench.Shot] = {}
+    judgement = bench.Shot(bench.offer_id("gorod"), bench.OFFER_KIND, "sr", "город")
+    judgement.text = json.dumps({"used": used, "where": ""})
+    rows[judgement.shot_id] = bench.score(judgement)
+    if headword:
+        payload = {
+            "kind": "unit",
+            "word": headword,
+            "word_relation": relation,
+            "suggestion": "",
+            "meanings": [
+                {
+                    "label": "",
+                    "translations": ["город"],
+                    "examples": [
+                        {
+                            "highlighted": f"Овај <b>{headword}</b> је велик.",
+                            "translation": "Этот город большой.",
+                        },
+                    ],
+                },
+            ],
+            "segments": [],
+        }
+        article = bench.Shot(
+            bench.offer_article_id("gorod"),
+            bench.OFFER_ARTICLE_KIND,
+            "sr",
+            "город",
+            expected_kind="unit",
+        )
+        article.text = f"<b>{headword}</b>===CARD===" + json.dumps(payload, ensure_ascii=False)
+        rows[article.shot_id] = bench.score(article)
+    if second is not None:
+        correction = bench.Shot(
+            bench.offer_correction_id("gorod"), bench.OFFER_CORRECTION_KIND, "sr", headword
+        )
+        correction.text = json.dumps({"used": second, "where": ""})
+        rows[correction.shot_id] = bench.score(correction)
+    return rows
+
+
+def test_the_offer_follows_only_a_refusal_that_stands_as_production_decides_it():
+    assert bench.offer_outcome({}, "gorod") == "unmeasured"
+    assert bench.offer_outcome(_offer_rows(used=True), "gorod") == "accepted"
+    assert bench.offer_outcome(_offer_rows(used=False), "gorod") == "offered"
+    assert bench.offer_outcome(
+        _offer_rows(used=False, headword="град", relation="typo"), "gorod"
+    ) == ("unmeasured")
+    corrected = _offer_rows(used=False, headword="град", relation="typo", second=True)
+    assert bench.offer_outcome(corrected, "gorod") == "corrected"
+    still_refused = _offer_rows(used=False, headword="град", relation="typo", second=False)
+    assert bench.offer_outcome(still_refused, "gorod") == "offered"
+
+
+def test_the_second_judgement_is_asked_only_of_a_correction_to_a_refused_word():
+    corrected = _offer_rows(used=False, headword="град", relation="typo")
+    accepted = _offer_rows(used=True, headword="град", relation="typo")
+
+    shots = bench.offer_correction_shots(corrected)
+
+    assert [(shot.shot_id, shot.source) for shot in shots] == [
+        (bench.offer_correction_id("gorod"), "град"),
+    ]
+    assert bench.prompt_for(shots[0]).count('"град"') == 1
+    assert bench.offer_correction_shots(accepted) == []
+
+
+def test_the_reverse_packet_carries_every_fixture_and_every_offer():
+    shot = _reverse_shot(
+        "reverse-en-stol",
+        _reverse_answer("стол", ("table", "The table is round.", "table"), ("desk", "", "")),
+    )
+
+    packet = bench.reverse_review_packet({shot.shot_id: shot})
+
+    assert packet["prompt_status"] == "unmeasured"
+    assert packet["semantic_review_required"] is True
+    assert len(packet["items"]) == bench.REVERSE_FIXTURES + bench.OFFER_FIXTURES
+    item = next(item for item in packet["items"] if item["fixture_id"] == shot.shot_id)
+    assert item["categories"] == ["example_dropped", "reverse"]
+    assert item["actual"]["equivalents"] == [
+        {"word": "table", "example": "The table is round."},
+        {"word": "desk", "example": ""},
+    ]
+    assert item["expected"]["must_hold"]
+    missing = next(item for item in packet["items"] if item["fixture_id"] == "reverse-de-stol")
+    assert missing["categories"] == ["provider_miss"]
+    offer = next(item for item in packet["items"] if item["fixture_id"] == bench.offer_id("gorod"))
+    assert offer["actual"]["outcome"] == "unmeasured"
+
+
+def test_a_directory_of_reverse_answers_is_screened_without_the_tier_screen(tmp_path, capsys):
+    out = tmp_path / "bench"
+    shot = _reverse_shot(
+        "reverse-en-stol", _reverse_answer("стол", ("table", "The table is round.", "table"))
+    )
+    shot.prompt_hash = bench.prompt_fingerprint(shot)
+    bench.append(out, shot)
+
+    try:
+        bench.report(out, "smoke")
+    except SystemExit as exc:
+        failure = str(exc)
+    else:
+        failure = ""
+
+    printed = capsys.readouterr().out
+    assert "REVERSE LOOKUP" in printed
+    assert "TIER" not in printed
+    assert failure.startswith("benchmark failed — reverse lookup: usable reverse answers")
+    packet = json.loads((out / "review-packet-reverse.json").read_text(encoding="utf-8"))
+    assert any(item["fixture_id"] == shot.shot_id for item in packet["items"])
