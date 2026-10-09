@@ -1,7 +1,7 @@
 # Decision: reverse translation
 
-Status: **the reverse prompt is measured and reviewed four times; nothing in the app
-asks it yet.** The
+Status: **the reverse prompt is measured and reviewed four times, and Serbian asked in
+Latin letters six times more; nothing in the app asks it yet.** The
 feature is designed in `spec/plan/reverse-translation.md`, and what it will do for
 the reader is described there until it lands.
 
@@ -66,6 +66,12 @@ the form and write its sentence around that word, and it costs only a suppletive
 (went for go) its sentence. A one-word headword takes the letter case its own sentence
 writes it in mid-sentence: the models return headwords in dictionary typography, or
 with German nouns lowered, depending on how the case is asked for.
+
+An answer is read past a string value that lacks its opening quote. The workhorse drops
+that quote repeatably on some answers, so asking again buys the same break; re-reading
+every recorded reverse answer and 4,840 recorded answers of other benches with the
+tolerance changed only the broken ones, each to its right reading. The same break was
+found once in a recorded article answer, which the article's own reader still refuses.
 
 ## Measured on the free pool, Russian target
 
@@ -206,6 +212,38 @@ pool's 25-second budget (median 2.40 s, p90 4.01 s); four waited behind provider
 cooldowns, and production would have stepped those up to the paid model at the
 budget.
 
+### Serbian in Latin letters
+
+Serbian is asked without naming a script, and the models answer in Cyrillic. Asking for
+Latin was measured because Cyrillic Serbian shares its letters with Russian, so a
+Russian word or sentence passes for Serbian, while in a Latin answer any Cyrillic letter
+is foreign and can be refused outright. The 23 Serbian lookups were asked three times
+with one sentence asking for Latin, and three times with a fuller one that also asked
+for the ekavian standard of Serbia, a dictionary word for every equivalent and an
+expression kept in its own words. A fresh reviewer graded all six samples and the three
+Cyrillic runs on one scale; on the workhorse's answers:
+
+| | Cyrillic, 3 runs | Latin, 3 samples | Fuller Latin, 3 samples |
+|---|---|---|---|
+| First card right | 37 of 44 | 40 of 47 | 36 of 47 |
+| Wrong chips | 14 of 36 | 6 of 38 | 5 of 35 |
+| Invented headwords | 3, all chips | 2, both first cards | 3, all first cards |
+| Ijekavian or Croatian forms | 0 | 5 | 0 |
+| Unreadable answers | 0 | 0 | 2 |
+
+Latin makes the chips cleaner and the card no better. Every Latin answer for сломя голову
+fused the idiom into a word no dictionary lists (glavobezobzirovno, glavobezobzirno,
+glavobezobziro, glavobezobzirom), five of five, the fuller wording forbidding exactly that,
+where every Cyrillic answer gave главом без обзира. Asked only for Latin, the window card
+read «svjež vazduh», the Croatian and Bosnian spelling, in all three samples; asking for
+ekavian fixed that, and brought in answers that dropped both quotes around their
+sentences (тоска, two of three), «kučka» offered for a dog (two of three) and a broken
+front sentence in each sample. The false friend коса, carded as hair, survived both
+scripts, and авось was carded as valjda, the closest word, in every Latin sample. Only
+two of 138 Latin answers carried Cyrillic, both from a fallback model, so refusing
+Cyrillic would catch little. The reverse prompt therefore leaves Serbian's script to the
+model.
+
 ### The offer on the Serbian tab
 
 The Serbian judgement accepted город ("archaic, Church Slavonic"), девушка ("a
@@ -222,7 +260,9 @@ attestation judgement on Russian input, not about the reverse prompt.
 ## Decision
 
 The reverse prompt and its parser are what the reverse lookup is built on for every
-source language: English and German carry it as measured. Serbian's first cards
+source language: English and German carry it as measured. Serbian is asked in the
+script the model chooses, which is Cyrillic: in Latin its chips are cleaner, but its
+cards are no better and an idiom is carded as an invented word. Serbian's first cards
 carry faults of the kind its ordinary article already ships with, and its chips carry
 more of them, non-words among them. Whether the Serbian tab shows those chips is the
 operator's to decide; that decision, and acceptance of the faults listed above, are

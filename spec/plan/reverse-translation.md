@@ -4,9 +4,12 @@
 its parser are in the code and asked by nothing yet; the prompt was benched four
 times on the pool and reviewed by a fresh agent each time, and the result is in
 `spec/decision-reverse-translation.md`: English and German carry it as measured.
-Open with the operator: whether the Serbian tab shows the equivalents as chips (the
-fourth review recommends the first card only there), and acceptance of the faults
-the decision spec lists. Next is step 4, which those two answers shape.
+Serbian was then asked in Latin letters, six samples on two wordings, and stays in
+the script the model chooses: Latin cleaned the chips but not the cards (the decision
+spec has the numbers); the parser now reads a string value missing its opening quote.
+Open with the operator: whether the Serbian tab shows the equivalents as chips (every
+review since the fourth recommends the first card only there), and acceptance of the
+faults the decision spec lists. Next is step 4, which those two answers shape.
 
 ## What the reader gets
 
