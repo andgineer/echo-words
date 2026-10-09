@@ -179,7 +179,11 @@ not.
 
 `bare-sr-grad` carded `Живим у красивом старом граду.` — `красивом` is Russian;
 Serbian is `лепом`. `cyrillic-uk-rozmovlyaty` printed the Russian ending in its
-forms table, `ти розмовляешь` for `розмовляєш`.
+forms table, `ти розмовляешь` for `розмовляєш`. The reverse-translation bench
+(2026-10-09) met it again where Russian is the input: the Serbian article for a
+typed `собака` carded `пас` with the example `В моем дворе живет велики пас.`,
+three Russian words of five, and its article for `книга` wrote «Моя сестра обожает
+читать хорошую књигу пред спавање.».
 
 The guard that exists is `sentence_is_source_language`, and it works by letters:
 it holds a sentence to the alphabet the source language spells with. Against

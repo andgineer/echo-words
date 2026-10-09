@@ -25,7 +25,9 @@ the code and does not apply to those.
   (`decision-interface.md`, `decision-chat-interface.md`), the two input
   shapes (`decision-phrases-and-sentences.md`), what an answer contains
   and in what order (`decision-answer-shape.md`), which cards one note
-  produces (`decision-card-shapes.md`), spaced repetition, TTS,
+  produces (`decision-card-shapes.md`), what letters prove about a typed
+  word's language and the reverse lookup's prompt
+  (`decision-reverse-translation.md`), spaced repetition, TTS,
   the LLM backend, and the deployment host, its rules and its tooling
   (`decision-deployment.md`). They hold the reasoning
   and the measurements behind the choices. Do not re-open them.
@@ -35,7 +37,7 @@ the code and does not apply to those.
   what is left. Two are open.
   `reverse-translation.md` — a word typed in the target language (`!стол`,
   or Cyrillic on a Latin-script tab) carded as its equivalent in the
-  selected language; designed, not built, its prompt to be benched first.
+  selected language; its prompt built and benched, the app around it not yet.
   `observed-defects.md` — eighteen faults left unfixed, each with its
   evidence, from three readings: six met while using the app, from a
   rebuilt bundle that can leave the reader on a white screen to a word the

@@ -1,7 +1,12 @@
 # Plan: reverse translation
 
-**Status (2026-10-08):** designed with the operator, checked against the code and
-reviewed against it; nothing built. Next step is step 1 of "Order of work".
+**Status (2026-10-09):** steps 1–3 built. The letter tests, the reverse prompt and
+its parser are in the code and asked by nothing yet; the prompt was benched four
+times on the pool and reviewed by a fresh agent each time, and the result is in
+`spec/decision-reverse-translation.md`: English and German carry it as measured.
+Open with the operator: whether the Serbian tab shows the equivalents as chips (the
+fourth review recommends the first card only there), and acceptance of the faults
+the decision spec lists. Next is step 4, which those two answers shape.
 
 ## What the reader gets
 
@@ -83,30 +88,8 @@ Notation: S = the selected language, T = the target language.
 
 ## Measurements behind the rules
 
-Moved into `spec/decision-reverse-translation.md` when the work lands. Method:
-wordfreq top lists, words of 3+ letters, first 2,000 per language; Serbian taken
-from wordfreq's `sh` list (Latin) and transliterated for the Cyrillic row; letters
-from the app's own `_alphabet()`.
-
-| S → T | T words proved by letters | S words left open by letters |
-|---|---|---|
-| English / German → Russian | 100% | 0% |
-| Serbian → Russian | 43% | 0% in Latin, 73% in Cyrillic |
-| German → English | 0% | 89% |
-| Serbian → English | 0% | 83% |
-| English → German | 11% | 100% |
-| Serbian → German | 11% | 83% |
-
-Serbian Cyrillic lacks Russian й щ ъ ы ь э ю я ё; Ukrainian and Bulgarian
-separate from Russian on 11% of Russian words. So with a Russian target the offer
-(rule 3) can only appear on the Serbian tab in Cyrillic, for the 57% of Russian words
-letters leave open (город, книга, стол).
-
-The letter rule cannot see a loanword that keeps T's diacritics, so with a Latin T
-it reverses some S words. Measured on the first 20,000 words of the same lists: with
-a French or Spanish target, 6–8 English or German words would reverse, the only
-common ones café and fiancé, the rest names (josé, pokémon, andré). Negligible, and
-nothing at all with a Russian target.
+The letter measurements, the loanword limit and the placeholder widths are in
+`spec/decision-reverse-translation.md`, and so is the reverse prompt's bench result.
 
 Timing references: attestation judgement on the pool, median 0.923 s, p90 7.190 s
 (`decision-jev-attestation.md`); whole article ~2.0 s median, 3.8 s p90
@@ -115,35 +98,44 @@ a day; past that its fallbacks are 20–60× slower — which is why no model is
 whether an open word is a T word: asked of every open word that is a third call on
 83–100% of words when T is English or German.
 
-Placeholder widths (built CSS, Chromium and WebKit, 360 px viewport → 294 px of text
-room): «Текст или !русское слово» 193, «!английское» 219, «!азербайджанское» 269
-(longest in the directory), «Текст или !слово на суахили» 215.
-
 ## The new call (reverse prompt)
 
 - `build_reverse_prompt(language, word, target)` and
   `parse_reverse(raw, language, target)` in `src/echo_words/prompt.py`, next to
   `build_attestation_prompt` / `parse_attestation` (`prompt.py:307`, `:316`).
-- Asks: "«word» is a word in T. Give the S words for it, one per meaning, commonest
-  meaning first, each with one S example sentence that uses it in that meaning, and
-  the word as it stands in that sentence. Say which T word you read it as. If it is
-  not a T word or expression, or is a sentence, say so."
+- Asks (built, `_REVERSE_PROMPT`): read the wording as T — an inflected word as its
+  dictionary form, a fixed expression as itself, a slip of one or two letters as the
+  word meant; the S words for the meanings a T dictionary gives it, usually one to
+  three, commonest first, each translating a meaning the T wording itself has and
+  never reached by way of English; a bare dictionary form; one short everyday S
+  sentence per equivalent using that very word, with no swearword, and the word as
+  that sentence spells it. `not_a_word` for a random string, a word of another
+  language, a reading only slang or euphemism makes a word, and an S word typed in T
+  letters that is no T word; `sentence` for a clause.
 - Answer JSON, strict:
   `{"verdict": "word" | "not_a_word" | "sentence", "read_as": str,
   "equivalents": [{"word": str, "example": str, "form": str}, ...]}`, at most 6
   equivalents. `form` is the equivalent as the example spells it (Stühle for Stuhl,
   столу for сто, went for go).
-- Validation in `parse_reverse`: verdict known; for `word`, ≥1 equivalent; each
-  `word` passes `validate_word(word, S)`; each `example` passes `validate_text`, is
-  at most `MAX_CONTEXT_LENGTH` (500) long, and carries its `form` by the card's own
-  test — `_context_sentence_forms(example, form, S, T)` (`card.py:454`), made public
-  for this, which also applies the letter test the card applies to its sentences
-  (`sentence_is_source_language`). An example failing any of these is dropped and
-  its equivalent stays as a bare chip; the answer itself does not fail. Unusable →
-  `None`.
+- Validation in `parse_reverse` (built): verdict known; for `word`, ≥1 equivalent
+  survives. An equivalent whose `word` (after `plain_unit`) fails
+  `validate_word(word, S)`, or repeats an earlier one, is dropped; at most
+  `MAX_EQUIVALENTS` (6) are kept. Each example is screened by
+  `reverse_example_issue(example, form, word, S, T)`, which the bench reads too: it
+  passes `validate_text`, is at most `MAX_CONTEXT_LENGTH` (500) long, passes
+  `sentence_is_source_language`, and is marked by the card's own test —
+  `context_sentence_forms` (`card.py`, now public) — at the `form` when the form
+  shares a stem with the word (`_spells_the_word`), else at the word itself. Reasons:
+  `missing`, `too_long`, `script`, `letters`, `unrelated` (the form is another word's),
+  `form`. A failing example is dropped and its equivalent stays as a bare chip; the
+  answer itself does not fail. Unusable → `None`. A one-word headword then takes the
+  letter case its own sentence writes it in mid-sentence (`_headword_case`).
 - Why the card's test and not a comparison with the equivalent: German and Serbian
   examples inflect the word, so a whole-word match drops most verb and many noun
-  examples, and a substring match passes «сто» inside «место». The chip path does not
+  examples, and a substring match passes «сто» inside «место». The stem check only
+  refuses a form sharing no stem with its word (the first bench run kept
+  «Schalterfenster» as the example of «Schiebefenster»); a suppletive form (went for
+  go) costs its sentence unless the word itself is in it. The chip path does not
   compare spellings either: `_with_context_example` (`card.py:385`) finds the unit by
   the form the S answer names, and a sentence it cannot find the unit in fails the
   *card*, not just the example. The bound is the one `_sense_sentence` applies to a
@@ -364,51 +356,25 @@ room): «Текст или !русское слово» 193, «!английск
   entry; the failure message, and its retry keeping the `!`.
 - `tests/test_one_note_bench.py`: the new bench action's scoring.
 
-## Bench (Russian target, pool)
+## Bench (Russian target, pool) — built
 
-New `run-reverse` action in `experiments/one_note_bench.py` (next to
-`run-corrections`, `:2067`), fixtures in `experiments/reverse_items.py`, a report
-section and review-packet items. Fixtures fixed before the run, each into English,
-German and Serbian unless marked:
-
-| Requirement | Words | Must hold |
-|---|---|---|
-| one clear meaning | стол, окно, собака | correct equivalent |
-| several meanings | ключ, коса, лук, мир | commonest first; each example in its own meaning |
-| inflected form | столы, ключей | `read_as` the dictionary form |
-| expression | в конце концов, сломя голову | an equivalent expression |
-| no direct equivalent | тоска, авось | a close word, not an invention |
-| misspelling | сотл | `read_as` «стол» |
-| not a word / sentence | фывапр / я иду домой | `not_a_word` / `sentence` |
-| Russian-keyboard Serbian (sr only) | йош (још), моя (моја) | `not_a_word` for йош, which rule 7 then hands to Serbian; `word` → моја for моя |
-
-The offer appears only where the Serbian attestation refuses a Russian word, so the
-same run asks the existing attestation prompt (the bench's `attestation` shot kind)
-in Serbian about four Russian words letters leave open: город, книга, девушка,
-собака. One the attestation accepts is reported as "offer not reached": a finding
-about the attestation, recorded in the decision spec, not scored against the reverse
-call.
-
-Every `word` answer's examples are screened by `parse_reverse` itself, and the report
-counts the examples it drops, by language and by reason (form not in the example,
-too long, letter test): a dropped example costs the card its front sentence, so a
-high count in German or Serbian is a finding about the prompt's `form`, not noise.
-
-About 54 calls: 48 for the three-language rows, 2 reverse calls for the Serbian-only
-row, 4 attestation calls. Also record the reverse call's median and p90 latency.
+`run-reverse` in `experiments/one_note_bench.py`, fixtures in
+`experiments/reverse_items.py`; `report` screens a directory holding reverse rows
+with its own section and writes `review-packet-reverse.json`. 59 reverse calls — the
+plan's 16 wordings into en/de/sr, its two Serbian-only ones, plus сабака and ключь
+(misspellings) into all three and йедан, ньега, мойе (keyboard Serbian) into Serbian,
+added after the first review asked for more of both. The offer words get both the
+Serbian judgement and the Serbian article (production asks both for a typed single
+word, and the article can overrule a refusal by correcting the word), plus the second
+judgement wherever the article corrects a refused one: 8 calls and up to 4.
 
 ```
 uv run python experiments/one_note_bench.py run-reverse --resume \
-  --wait 180 --pace 2 --concurrency 1 --out experiments/.bench-reverse
+  --wait 180 --pace 3 --concurrency 1 --out experiments/.bench-reverse
 uv run python experiments/one_note_bench.py report --out experiments/.bench-reverse
 ```
 
-Read availability before results (workhorse model present, answers not far below
-the previous run); an exhausted pool voids the run — resume, never restart. Then a
-fresh agent that did not run it reviews every item of `review-packet-*.json`, in the
-same turn, judging each example as the card's front sentence it becomes and not only
-as an instance of its meaning. The decision goes into
-`spec/decision-reverse-translation.md`.
+Results, reviews and the decision are in `spec/decision-reverse-translation.md`.
 
 ## Specs and docs
 
@@ -438,19 +404,20 @@ as an instance of its meaning. The decision goes into
 
 ## Order of work
 
-1. Letter functions (`reads_as_target`, `reads_as_source`,
-   `sentence_is_source_language` on top of them) + tests. Prefix
-   parsing waits for step 4, so that `!` is never accepted and silently dropped
-   before the pipeline can act on it.
-2. Reverse prompt (with `form`) + parser (screening examples by the card's own,
-   now public, `_context_sentence_forms`) + tests.
-3. Bench action + fixtures + attestation shots + dropped-example counts + its test;
-   run the bench, fresh review, record. The prompt is the riskiest part, so it is
-   measured before the pipeline is built on it, and steps 4–6 are checked against its
-   result before they are built.
+1. **Done.** Letter functions (`reads_as_target`, `reads_as_source`,
+   `sentence_is_source_language` on top of them) + tests. Prefix parsing waits for
+   step 4, so that `!` is never accepted and silently dropped before the pipeline can
+   act on it.
+2. **Done.** Reverse prompt (with `form`) + parser (screening examples by the card's
+   own, now public, `context_sentence_forms`) + tests.
+3. **Done.** Bench action + fixtures + attestation shots + dropped-example counts +
+   its test; run, fresh review, revision, re-run, second fresh review, recorded. Steps
+   4–6 are checked against its result before they are built.
 4. Prefix parsing + API (`!`, letters, rule 7 on S's own normalisation,
    `offers_reverse`, `/api/target`) + pipeline reverse resolution (equivalents kept
-   across rebuild and switch) + the offer + history + tests.
+   across rebuild and switch) + the offer + history + tests. If the operator takes
+   the first card only for Serbian, the pipeline carries no equivalents there, and the
+   article's own sense chips stay as with a single equivalent.
 5. Frontend: placeholder, pending line, `reset` handling, both receipt handlers,
    `sendWord`'s `lookup_only`, retry, header, chips, outcomes, offer button, panel
    removal + tests.
