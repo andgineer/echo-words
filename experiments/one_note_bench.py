@@ -2249,6 +2249,17 @@ def _reverse_example_drops(shot: Shot, kept: dict[str, str]) -> list[dict[str, o
     return drops
 
 
+def _lowercased_headwords(equivalents: dict[str, str]) -> list[str]:
+    """Headwords written lower case where their own sentence capitalises them mid-sentence."""
+    found = []
+    for word, example in equivalents.items():
+        first = word.split()[0] if word.split() else ""
+        later = [token.strip(".,;:!?«»\"'") for token in example.split()[1:]]
+        if first[:1].islower() and first[:1].upper() + first[1:] in later:
+            found.append(word)
+    return found
+
+
 def score_reverse(shot: Shot) -> Shot:
     case: ReverseCase | None = REVERSE_BY_ID.get(shot.shot_id)
     parsed = parse_reverse(shot.text, LANGUAGES[shot.lang], TARGET_NAME)
@@ -2273,6 +2284,7 @@ def score_reverse(shot: Shot) -> Shot:
         "raw_equivalents": len(_raw_equivalents(shot.payload)),
         "examples_kept": sum(bool(example) for example in kept.values()),
         "example_drops": _reverse_example_drops(shot, kept),
+        "lowercased_headwords": _lowercased_headwords(kept),
     }
     return shot
 
@@ -2314,6 +2326,9 @@ def reverse_counts(rows: dict[str, Shot]) -> dict[str, int]:
         "first_judged": sum(row.metrics.get("first_expected") is not None for row in usable),
         "examples_kept": sum(int(row.metrics.get("examples_kept", 0)) for row in usable),
         "examples_dropped": sum(len(row.metrics.get("example_drops", [])) for row in usable),
+        "lowercased_headwords": sum(
+            len(row.metrics.get("lowercased_headwords", [])) for row in usable
+        ),
     }
 
 
@@ -2443,6 +2458,10 @@ def report_reverse(out: Path, attempts: list[Shot]) -> list[str]:
         print(f"    {row.shot_id}: expected {row.expected_kind}, got {row.metrics.get('verdict')}")
     print(f"  read as expected              {counts['read_as_expected']}/{counts['read_as_judged']}")
     print(f"  first equivalent as expected  {counts['first_expected']}/{counts['first_judged']}")
+    print(
+        f"  headwords lower case where their sentence capitalises them "
+        f"{counts['lowercased_headwords']}  (diagnostic)",
+    )
     for row in usable:
         if row.metrics.get("first_expected") is False or row.metrics.get("read_as_expected") is False:
             first = (row.metrics.get("equivalents") or [{}])[0].get("word")

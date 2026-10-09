@@ -1459,3 +1459,17 @@ def test_a_verdict_that_leaves_the_reader_on_the_right_word_counts_as_expected()
 
     assert handed_over.metrics["verdict_expected"] is True
     assert misread.metrics["verdict_expected"] is False
+
+
+def test_a_noun_headword_its_own_sentence_capitalises_is_reported():
+    lowered = _reverse_shot(
+        "reverse-de-stol",
+        _reverse_answer("стол", ("tisch", "Das Buch liegt auf dem Tisch.", "Tisch")),
+    )
+    sentence_start = _reverse_shot(
+        "reverse-en-stol",
+        _reverse_answer("стол", ("table", "Table manners matter.", "Table")),
+    )
+
+    assert lowered.metrics["lowercased_headwords"] == ["tisch"]
+    assert sentence_start.metrics["lowercased_headwords"] == []

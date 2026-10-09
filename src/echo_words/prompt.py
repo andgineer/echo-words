@@ -252,8 +252,8 @@ a narrower kind of the same thing and a merely related word are not translations
 Where {source_lang} has no exact equivalent, give the closest word or expression its
 speakers actually use, never a coinage or a word-for-word rendering; for an
 expression, give a {source_lang} expression or word with the same meaning. Each word
-is its bare dictionary form, as a {source_lang} dictionary heads its entry: no
-article, lower case unless {source_lang} spells it otherwise, a verb in its infinitive.
+is its bare dictionary form, spelled and capitalised exactly as a {source_lang}
+dictionary heads its entry, with no article and a verb in its infinitive.
 
 For each, write one short, natural, everyday sentence entirely in {source_lang} that
 uses that very word in that meaning, since it becomes the front of a flashcard and is
