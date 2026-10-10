@@ -55,10 +55,12 @@ Notation: S = the selected language, T = the target language.
    the last resort.** A typed word or expression in the shared script is asked the
    reading question (`build_reading_prompt`) beside the S article and judgement: is it
    S wording — a word, any form of one, however rare or inflected — S wording
-   misspelled, or T wording typed here without its `!`? Only a plain T reading, one
-   that names no S wording, and that the judgement confirms by finding the exact typed
-   wording unused in S, reverses; then the S answer is dropped and the reverse call
-   runs. Everything else is the ordinary S
+   misspelled, or T wording typed here without its `!`? For a single word, only a
+   plain T reading, one that names no S wording, and that the judgement confirms by
+   finding the exact typed word unused in S, reverses. For more than one word the
+   reading alone decides: the app asks the judgement of a single word only, and a
+   phrase or a sentence carries more of its language to read. Then the S answer is
+   dropped and the reverse call runs. Everything else is the ordinary S
    path, and a refusal there still offers the reverse lookup with one tap («Искать как
    русское слово»): the tap is a new `!` submission of the typed word, keeping the
    entry's `?`. A missed reverse costs the reader that tap or a retyped `!`; a wrong
@@ -66,19 +68,25 @@ Notation: S = the selected language, T = the target language.
 4. **A chip never triggers reverse or the offer** — its label comes from the app's
    own S answer. Chips are submissions with `shape="unit"`; so is a retry after a
    reversal.
-5. **Size:** a reverse request is a word or expression within `MAX_WORD_LENGTH`
-   (50). Longer → immediate hint, no model call. Shorter but a sentence → the new
-   call says so → the same message. Both subject to rule 6.
+5. **A reverse request takes the shapes the S path takes, and the reverse call tells
+   them apart as the S answer does.** A word or a fixed expression gets the S
+   equivalents: the first is carded, the others are chips. Running text gets one
+   translation into S, and that S text goes down the ordinary text path: translated
+   back and explained, no note of its own, a lookup chip for each unit in it, each
+   chip a card with the translated text as its context. Text needs no list of
+   equivalents, because its own context picks the meaning. The bound is the S path's
+   text bound, `MAX_TEXT_LENGTH`; longer → the existing hint, no model call. So on
+   the Serbian tab «!не опаздываем ли мы на поезд» is headed «не опаздываем ли мы на
+   поезд → <its Serbian translation>», explained, with a chip for each unit.
 6. **For a model's reading, today's outcome is the floor.** When the reading (not `!`,
-   and not a script T alone writes) sent the input to reverse and the reverse path
-   cannot card it — longer than `MAX_WORD_LENGTH`, a `sentence` or a `not_a_word`
-   verdict — the input is processed as the ordinary S submission it would have been.
+   and not a script T alone writes) sent the input to reverse and the reverse call
+   answers `not_a_word`, the input is processed as the ordinary S submission it would
+   have been.
    A `!` request has no floor: the reader asked for the target reading. Cyrillic on the
    English tab has none either: S's own validation refuses it.
 7. **The empty field says what it takes.** On a tab whose script T does not share,
-   the hint names both languages and needs no `!`: «Английский текст или русское
-   слово». Where the scripts overlap it keeps the `!`: «Текст или !русское слово».
-   Russian takes words and expressions only (rule 5), hence «слово».
+   the hint names both languages and needs no `!`: «Введите русский или английский
+   текст». Where the scripts overlap it keeps the `!`: «Текст или !русский текст».
 8. **No rule of its own for a tab in T itself.** Nothing stops a Russian tab beside
    a Russian target. There `!` asks for the Russian equivalents of a Russian word, and
    every refused word is offered that lookup. Considered (ignore `!` and the offer
@@ -111,6 +119,11 @@ typed on the Serbian tab; with a Latin-script target, every word typed on a Lati
   language, a reading only slang or euphemism makes a word, and an S word typed in T
   letters that is no T word; `sentence` for a clause. A language written in two
   alphabets (Serbian) is asked for Latin only (`_LATIN_ONLY_RULE`).
+- To build and bench (rule 5): for `sentence`, the answer also carries
+  `"translation"`, the clause in natural S, so one call still tells the shapes apart;
+  `parse_reverse` returns it, and a `sentence` without one is unusable. Benched on
+  Russian sentences into English, German and Serbian, graded by a fresh reviewer, as
+  the word half was.
 - Answer JSON, strict:
   `{"verdict": "word" | "not_a_word" | "sentence", "read_as": str,
   "equivalents": [{"word": str, "example": str, "form": str}, ...]}`, at most 6
@@ -177,17 +190,19 @@ typed on the Serbian tab; with a Latin-script target, every word typed on a Lati
 - Asked of the pool beside the attestation, only for a typed word or expression in a
   script both S and T write (rule 2).
 - Measured (decision spec): alone it still reverses врач and pas in every sample, so
-  the reverse waits for two models to agree. It is taken only when the reading says
-  `target` with `as_source` empty **and** the attestation the app already asks beside
-  it says the exact typed wording is not used in S. Anything else, or no answer from
-  either, → the S path continues untouched. This adds no call; it costs the wait for
-  the slower of the two when the reading says `target`.
+  a single word's reverse waits for two models to agree. It is taken only when the
+  reading says `target` with `as_source` empty **and** the attestation the app already
+  asks of a single word says it is not used in S. More than one word reverses on the
+  reading's `target` alone. Anything else, or no answer, → the S path continues
+  untouched. This adds no call; it costs the wait for the slower of the two when the
+  reading says `target`.
 - Next measurement, on the pool's fresh quota: resume the reading's third sample
-  (`experiments/.bench-reading-v3-c`, `run` resumes), and ask the attestation about
-  all 80 reading cases (the 72, plus eight of the врач/pas kind fixed before the run:
-  булка, чета, жир, диван on the Serbian tab, baba, dan, sir, brat on the English tab
-  with a Serbian target), three samples, then score the two together and give every
-  item to a fresh reviewer. If the pair still reverses the tab's own wording, the
+  (`experiments/.bench-reading-v3-c`, `run` resumes), ask the reading about the 15
+  cases added since (eight of the врач/pas kind — булка, чета, жир, диван on the
+  Serbian tab, baba, dan, sir, brat on the English tab with a Serbian target — and
+  seven sentences), and ask the attestation about every single-word case, three
+  samples each; then score the two together and give every item to a fresh
+  reviewer. If the pair still reverses the tab's own wording, the
   fallback is to reverse nothing on its own and keep only the offer.
 - The S article and judgement start at once, as today, so a word that stays S waits
   for nothing; a T reading costs the reader the S answer already streaming, which is
@@ -215,8 +230,8 @@ typed on the Serbian tab; with a Latin-script target, every word typed on a Lati
     `script_route` says `shared`.
   - A reverse candidate gets no script or letter check (rule 1): its text is
     `plain_unit` of the S normalisation, and only emptiness and length are tested.
-    Empty → the existing `word.empty` hint. Within `MAX_WORD_LENGTH` → a reverse job.
-    Otherwise longer → 400 `reverse.words_only`.
+    Empty → the existing `word.empty` hint. Within `MAX_TEXT_LENGTH` → a reverse job.
+    Longer → the existing `text.too_long` hint.
   - Not a reverse candidate → the held S hint is raised as today.
   - `offers_reverse` = `asks_reading` and the S normalisation is one word. Computed
     here because the pipeline cannot recompute it: `:346-347` gives a typed single
@@ -251,11 +266,14 @@ typed on the Serbian tab; with a Latin-script target, every word typed on a Lati
       rail, the dictionary link (`EntryCard.vue:290`) and the unattested, misspelling,
       delete and retry messages (`EntryCard.vue:258-283`, `:491`, `:575`) naming
       «стол».
-    - `not_a_word` / `sentence` → if `reverse == "reading"`, continue as the ordinary
-      S job with `reverse=None` (rule 6). Otherwise finish the entry
-      with `card_status` `reverse_not_a_word` / `reverse_sentence` (and the same code
-      as its action, so neither counters nor undo treat it as stored), no card, no
-      audio.
+    - `sentence` → set `entry.word = translation`, `entry.typed_word = job.word`,
+      publish `reset`, and continue as the ordinary S text job:
+      `replace(job, word=translation, intent=None, reverse=None, offers_reverse=False)`
+      — the S answer then decides the branch as it does for any typed text (rule 5).
+    - `not_a_word` → if `reverse == "reading"`, continue as the ordinary S job with
+      `reverse=None` (rule 6). Otherwise finish the entry with `card_status`
+      `reverse_not_a_word` (and the same code as its action, so neither counters nor
+      undo treat it as stored), no card, no audio.
     - No usable answer from pool or paid → `_fail`.
   - The reading (rule 3): when `asks_reading`, the reading question is asked beside
     the attestation. `target` → cancel the S article and attestation, set
@@ -283,7 +301,7 @@ typed on the Serbian tab; with a Latin-script target, every word typed on a Lati
 - `history.py`: `Entry` (`:15`) gains `typed_word`, `read_as`, `reverse_offered`, all
   in `public()`. `SegmentKind` (`:11`) gains `"equivalents"`. `_reset_reused_entry`
   keeps the first two across a switch or a rebuild and clears `reverse_offered`.
-- `i18n.py`: the one new 400 hint, `reverse.words_only`, ru + en. Finished entries
+- `i18n.py`: no new hint; a reverse request over the text bound gets `text.too_long`. Finished entries
   carry codes, and their wording is the client's (`pipeline.py:41`).
 
 ## Frontend changes
@@ -327,10 +345,8 @@ typed on the Serbian tab; with a Latin-script target, every word typed on a Lati
   `read_as` differs from it.
 - Equivalent chips render like sense chips; tapping one submits `{word, shape: "unit",
   context}` as chips do today.
-- Outcomes: `reverse_not_a_word` → ru «Модель не считает «{word}» словом — проверьте
-  написание.», en "The model does not take «{word}» for a word — check the spelling.";
-  `reverse_sentence` → ru «Обратный перевод — только для слов и выражений.», en
-  "Reverse translation takes words and expressions only."
+- Outcome: `reverse_not_a_word` → ru «Модель не считает «{word}» словом — проверьте
+  написание.», en "The model does not take «{word}» for a word — check the spelling."
 - `reverse_offered` → button ru «Искать как {adj T} слово», en "Look it up as a word in
   {Russian}": submits `!` + `entry.word` as a new submission with the entry's
   `lookup_only`, so a refused `?город` stays a lookup.
@@ -355,7 +371,7 @@ typed on the Serbian tab; with a Latin-script target, every word typed on a Lati
 - `tests/test_card.py`: the now-public `_context_sentence_forms` keeps its existing
   cases.
 - `tests/test_api.py`: `!` on every tab; Cyrillic on English auto-reverses; a chip with
-  Cyrillic does not; reverse over 50 chars → 400 `reverse.words_only`; Cyrillic on the
+  Cyrillic does not; reverse over the text bound → 400 `text.too_long`; Cyrillic on the
   Serbian tab asks the reading and Latin there does not; `!` takes anything non-empty within the bound with no script check —
   `!стoл` with a Latin o, digits, `!ねこ` with a target outside the directory; `!` alone → `word.empty`;
   the receipt carries `reverse`; `/api/target` for a directory target and for one

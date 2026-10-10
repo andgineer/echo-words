@@ -1,9 +1,10 @@
 """Input typed without "!": does the learner mean a reverse lookup?
 
 Every reading fixture is asked of the free pool with the production reading prompt and
-the attestation the app asks beside it, and of Jev as one yes/no question. The app
-reverses only when the reading says target with no source wording named and the
-attestation finds the typed wording unused in the tab's language. `run` always
+the attestation the app asks beside it of a single word, and of Jev as one yes/no
+question. The app reverses a single word only when the reading says target with no
+source wording named and the attestation finds it unused in the tab's language, and
+more than one word on the reading alone. `run` always
 resumes; `report` writes the review packet. The pool arm spends pool quota, the Jev arm
 Jev's own money.
 
@@ -57,9 +58,11 @@ def jev_request(shot: bench.Shot) -> dict:
 
 
 def attestation_shots() -> list[bench.Shot]:
+    # Production asks the judgement of a single typed word only.
     return [
         bench.Shot(f"attestation-{shot.shot_id}", "attestation", shot.lang, shot.source)
         for shot in bench.reading_shots()
+        if len(bench.split_words(shot.source)) == 1
     ]
 
 
@@ -71,11 +74,16 @@ def pool_answers(out: Path) -> dict[str, bench.Shot]:
 def reverses(pool: dict[str, bench.Shot], shot_id: str) -> bool | None:
     """Whether the app would reverse: the reading and the attestation agree, or None unasked."""
     reading = pool.get(shot_id)
+    if reading is None or not reading.metrics.get("reading"):
+        return None
+    says_target = reading.metrics.get("reading") == "target"
+    if len(bench.split_words(reading.source)) > 1:
+        return says_target
     attestation = pool.get(f"attestation-{shot_id}")
-    if reading is None or attestation is None or not bench.complete(attestation):
+    if attestation is None or not bench.complete(attestation):
         return None
     named = str(reading.payload.get("as_source") or "").strip()
-    return reading.metrics.get("reading") == "target" and not named and bench.judgement_refused(attestation)
+    return says_target and not named and bench.judgement_refused(attestation)
 
 
 def jev_answers(out: Path) -> dict[str, dict]:
