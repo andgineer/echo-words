@@ -16,6 +16,7 @@ import asyncio
 import json
 import os
 import re
+import unicodedata
 from collections import Counter
 from dataclasses import replace
 from pathlib import Path
@@ -25,12 +26,34 @@ import one_note_bench as bench
 from llmbroker import AsyncBroker
 from reverse_items import OFFER_WORDS
 
-from echo_words.languages import serbian_latin
+from echo_words.languages import _SERBIAN_LATIN
 
 ARMS = ("typed", "latin")
 _CYRILLIC = re.compile("[Ѐ-ӿ]")
 _LATIN = re.compile(r"[a-zčćđšž]", re.IGNORECASE)
 _TAG = re.compile(r"<[^>]*>")
+
+
+def serbian_latin(text: str) -> str:
+    """Serbian Cyrillic in Latin letters with its capitals kept; every other character as is."""
+    normalized = unicodedata.normalize("NFC", text)
+    written = []
+    for index, char in enumerate(normalized):
+        latin = _SERBIAN_LATIN.get(char.casefold())
+        if latin is None or char.islower():
+            written.append(latin or char)
+        elif len(latin) > 1 and _in_capitals(normalized, index):
+            written.append(latin.upper())
+        else:
+            written.append(latin.capitalize())
+    return "".join(written)
+
+
+def _in_capitals(text: str, index: int) -> bool:
+    # Љ is Lj at the head of a word and LJ inside one written all in capitals.
+    after = text[index + 1 : index + 2]
+    before = text[index - 1 : index] if index else ""
+    return after.isupper() if after.isalpha() else before.isupper()
 
 
 def typed_jobs() -> list[bench.Shot]:

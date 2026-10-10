@@ -223,3 +223,108 @@ OFFER_WORDS = (
     ("devushka", "девушка"),
     ("sobaka", "собака"),
 )
+
+
+@dataclass(frozen=True)
+class ReadingCase:
+    """Input typed without "!" where the tab's and the target's alphabets overlap.
+
+    Only these reach the model: an alphabet the tab writes and the target does not, or
+    the reverse, decides by itself. `target` is plainly target-language wording the
+    learner meant to reverse; `not` is the tab's own wording, a form or a misspelling of
+    it, look-alikes included; `either` is genuinely open and counts neither way.
+    """
+
+    case_id: str
+    lang: str
+    word: str
+    expected: str
+    note: str = ""
+    target: str = "Russian"
+
+
+READING_CASES = (
+    # The Serbian tab and a Russian target share Cyrillic.
+    ReadingCase("pas", "sr", "пас", "not", "dog"),
+    ReadingCase("kuca", "sr", "кућа", "not", "house"),
+    ReadingCase("grad", "sr", "град", "not", "city; Russian hail"),
+    ReadingCase("kosa", "sr", "коса", "not", "hair, scythe; Russian braid, scythe"),
+    ReadingCase("voda", "sr", "вода", "not", "water, shared"),
+    ReadingCase("sto", "sr", "сто", "not", "table, hundred; Russian hundred"),
+    ReadingCase("zivot", "sr", "живот", "not", "life; Russian belly"),
+    ReadingCase("pravo", "sr", "право", "not", "right, straight; shared"),
+    ReadingCase("hvala", "sr", "хвала", "not", "thanks"),
+    ReadingCase("mozda", "sr", "мозда", "not", "можда misspelled"),
+    ReadingCase("na-kraju", "sr", "на крају крајева", "not", "after all"),
+    ReadingCase("stol", "sr", "стол", "not", "Croatian and Bosnian table, archaic Serbian throne"),
+    ReadingCase("kniga", "sr", "книга", "either", "Russian book; књига misspelled"),
+    ReadingCase("yosh", "sr", "йош", "not", "још on a Russian keyboard"),
+    ReadingCase("devoyka", "sr", "девойка", "not", "девојка on a Russian keyboard"),
+    ReadingCase("kniga-soft", "sr", "кньига", "not", "књига on a Russian keyboard"),
+    ReadingCase("lyubav", "sr", "льубав", "not", "љубав on a Russian keyboard"),
+    ReadingCase("noch", "sr", "ноч", "not", "ноћ on a Russian keyboard; Russian is ночь"),
+    ReadingCase("dzhep", "sr", "джеп", "not", "џеп on a Russian keyboard"),
+    ReadingCase("moy", "sr", "мой", "either", "мој on a Russian keyboard; Russian my"),
+    ReadingCase("lyudi", "sr", "люди", "either", "људи on a Russian keyboard; Russian people"),
+    ReadingCase("kucha", "sr", "куча", "either", "кућа on a Russian keyboard; Russian heap"),
+    ReadingCase("ponos", "sr", "понос", "not", "pride; Russian diarrhoea"),
+    ReadingCase("pozor", "sr", "позор", "not", "attention; Russian disgrace"),
+    ReadingCase("vrach", "sr", "врач", "not", "sorcerer; Russian doctor"),
+    ReadingCase("hleb", "sr", "хлеб", "not", "bread, shared"),
+    ReadingCase("reka", "sr", "река", "not", "river, shared"),
+    ReadingCase("zena", "sr", "жена", "not", "wife, woman; shared"),
+    ReadingCase("covek", "sr", "човек", "not", "man; Russian человек"),
+    ReadingCase("lepo", "sr", "лепо", "not", "nicely"),
+    ReadingCase("sutra", "sr", "сутра", "not", "tomorrow; Russian с утра"),
+    ReadingCase("otec", "sr", "отец", "either", "Russian father; отац misspelled"),
+    ReadingCase("ne-razume", "sr", "Он не разуме", "not", "a Serbian sentence"),
+    # A tab word spelled like a common target word, its own meaning the rarer one.
+    ReadingCase("bulka", "sr", "булка", "not", "Serbian Muslim woman, archaic; Russian bun"),
+    ReadingCase("cheta", "sr", "чета", "not", "Serbian company of soldiers; Russian couple"),
+    ReadingCase("zhir", "sr", "жир", "not", "Serbian acorns, mast; Russian fat"),
+    ReadingCase("divan", "sr", "диван", "not", "Serbian wonderful; Russian sofa"),
+    ReadingCase("sobaka", "sr", "собака", "target", "dog"),
+    ReadingCase("devushka", "sr", "девушка", "target", "girl"),
+    ReadingCase("gorod", "sr", "город", "target", "city"),
+    ReadingCase("spasibo", "sr", "спасибо", "target", "thanks"),
+    ReadingCase("khorosho", "sr", "хорошо", "target", "good"),
+    ReadingCase("zdravstvuyte", "sr", "здравствуйте", "target", "hello"),
+    ReadingCase("yazyk", "sr", "язык", "target", "tongue, language"),
+    ReadingCase("mysh", "sr", "мышь", "target", "mouse"),
+    ReadingCase("seychas", "sr", "сейчас", "target", "now"),
+    ReadingCase("rabota", "sr", "работа", "either", "Russian work; south-eastern Serbian regional"),
+    ReadingCase("vopros", "sr", "вопрос", "target", "question"),
+    ReadingCase("v-kontse", "sr", "в конце концов", "target", "after all"),
+    ReadingCase("ne-ponimaet", "sr", "Он не понимает", "target", "a Russian sentence in shared letters"),
+    ReadingCase("ya-ne-znayu", "sr", "Я не знаю", "target", "a Russian sentence"),
+    # A Serbian target shares Latin with the English and German tabs.
+    ReadingCase("sto-sr", "en", "sto", "target", "table, hundred", "Serbian"),
+    ReadingCase("kuca-sr", "en", "kuća", "target", "house", "Serbian"),
+    ReadingCase("kuca-bare-sr", "en", "kuca", "target", "kuća without its diacritic", "Serbian"),
+    ReadingCase("hvala-sr", "en", "hvala", "target", "thanks", "Serbian"),
+    ReadingCase("jabuka-sr", "en", "jabuka", "target", "apple", "Serbian"),
+    ReadingCase("zdravo-sr", "en", "zdravo", "target", "hello", "Serbian"),
+    ReadingCase("kafa-sr", "en", "kafa", "target", "coffee", "Serbian"),
+    ReadingCase("dobar-dan-sr", "en", "dobar dan", "target", "good day", "Serbian"),
+    ReadingCase("most-en", "en", "most", "not", "English most; Serbian bridge", "Serbian"),
+    ReadingCase("pas-en", "en", "pas", "not", "English pas, a dance step; Serbian dog", "Serbian"),
+    ReadingCase("kit-en", "en", "kit", "not", "English kit; Serbian whale", "Serbian"),
+    ReadingCase("net-en", "en", "net", "not", "English net", "Serbian"),
+    ReadingCase("ran-en", "en", "ran", "not", "form of run", "Serbian"),
+    ReadingCase("recieve-en", "en", "recieve", "not", "receive misspelled", "Serbian"),
+    ReadingCase("teh-en", "en", "teh", "not", "the misspelled", "Serbian"),
+    ReadingCase("baba-en", "en", "baba", "not", "English rum cake; Serbian grandmother", "Serbian"),
+    ReadingCase("dan-en", "en", "dan", "not", "English martial-arts grade; Serbian day", "Serbian"),
+    ReadingCase("sir-en", "en", "sir", "not", "English sir; Serbian cheese", "Serbian"),
+    ReadingCase("brat-en", "en", "brat", "not", "English brat; Serbian brother", "Serbian"),
+    ReadingCase("voda-de", "de", "voda", "target", "water", "Serbian"),
+    ReadingCase("hvala-de", "de", "hvala", "target", "thanks", "Serbian"),
+    ReadingCase("knjiga-de", "de", "knjiga", "target", "book", "Serbian"),
+    ReadingCase("dobar-de", "de", "dobar", "target", "good", "Serbian"),
+    ReadingCase("most-de", "de", "Most", "not", "German cider; Serbian bridge", "Serbian"),
+    ReadingCase("rot-de", "de", "rot", "not", "German red", "Serbian"),
+    ReadingCase("mir-de", "de", "mir", "not", "German me; Serbian peace", "Serbian"),
+    ReadingCase("dom-de", "de", "Dom", "not", "German cathedral; Serbian home", "Serbian"),
+    ReadingCase("ging-de", "de", "ging", "not", "form of gehen", "Serbian"),
+    ReadingCase("maedschen-de", "de", "Mädschen", "not", "Mädchen misspelled", "Serbian"),
+)

@@ -1474,3 +1474,22 @@ def test_a_noun_headword_its_own_sentence_capitalises_is_reported():
 
     assert lowered.metrics["lowercased_headwords"] == ["tisch"]
     assert sentence_start.metrics["lowercased_headwords"] == []
+
+
+def test_a_reading_shot_asks_the_production_question_and_reads_its_answer():
+    shots = bench.reading_shots()
+    sobaka = next(shot for shot in shots if shot.shot_id == "reading-sr-sobaka")
+    answered = bench.score(replace(sobaka, text='{"why": "plain Russian", "reading": "target"}'))
+    garbled = bench.score(replace(sobaka, text='{"reading": "russian"}'))
+    hvala = next(shot for shot in shots if shot.shot_id == "reading-en-hvala-sr")
+
+    assert len({shot.shot_id for shot in shots}) == len(shots)
+    assert bench.prompt_for(sobaka) == bench.build_reading_prompt(
+        bench.LANGUAGES["sr"], "собака", "Russian"
+    )
+    assert bench.prompt_for(hvala) == bench.build_reading_prompt(
+        bench.LANGUAGES["en"], "hvala", "Serbian"
+    )
+    assert answered.metrics["reading"] == "target"
+    assert bench.complete(answered)
+    assert not bench.complete(garbled)

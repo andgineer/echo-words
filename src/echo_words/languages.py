@@ -457,32 +457,8 @@ def sentence_is_source_language(
     A card example is the front of a card, so a target-language sentence with the
     source word wedged into it teaches nothing and is rejected outright.
     """
-    return not reads_as_target(text, language, target)
-
-
-def reads_as_target(
-    text: str,
-    language: Language,
-    target: str = DEFAULT_TARGET_LANGUAGE,
-) -> bool:
-    """Whether the text carries a letter the target language writes and the source does not."""
-    return bool(_letters_in(text) & (_target_letters(target) - _letters_spelled(language)))
-
-
-def reads_as_source(
-    text: str,
-    language: Language,
-    target: str = DEFAULT_TARGET_LANGUAGE,
-) -> bool:
-    """Whether the text carries a letter the source language writes and the target does not.
-
-    A target outside the directory has no known letters, so every letter is the source's.
-    """
-    return bool(_letters_in(text) & (_letters_spelled(language) - _target_letters(target)))
-
-
-def _letters_in(text: str) -> set[str]:
-    return {char for char in unicodedata.normalize("NFC", text).casefold() if char.isalpha()}
+    letters = {char for char in unicodedata.normalize("NFC", text).casefold() if char.isalpha()}
+    return not (letters & (_target_letters(target) - _letters_spelled(language)))
 
 
 @lru_cache(maxsize=8)
@@ -537,28 +513,6 @@ def other_script(text: str, language: Language) -> str:
     for latin, cyrillic in _SERBIAN_CYRILLIC:
         lowered = lowered.replace(latin, cyrillic)
     return lowered
-
-
-def serbian_latin(text: str) -> str:
-    """Serbian Cyrillic in Latin letters with its capitals kept; every other character as is."""
-    normalized = unicodedata.normalize("NFC", text)
-    written = []
-    for index, char in enumerate(normalized):
-        latin = _SERBIAN_LATIN.get(char.casefold())
-        if latin is None or char.islower():
-            written.append(latin or char)
-        elif len(latin) > 1 and _in_capitals(normalized, index):
-            written.append(latin.upper())
-        else:
-            written.append(latin.capitalize())
-    return "".join(written)
-
-
-def _in_capitals(text: str, index: int) -> bool:
-    # Љ is Lj at the head of a word and LJ inside one written all in capitals.
-    after = text[index + 1 : index + 2]
-    before = text[index - 1 : index] if index else ""
-    return after.isupper() if after.isalpha() else before.isupper()
 
 
 def split_words(text: str) -> list[str]:

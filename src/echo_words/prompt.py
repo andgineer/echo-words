@@ -237,6 +237,35 @@ period is used, however uncommon. Wording that is merely well formed — a compo
 derivation or coinage nobody actually says — is not used, however natural it looks.
 Do not write an article, an explanation or anything else."""
 
+_READING_PROMPT = (
+    """You decide what a learner meant to look up.
+
+A {target_lang} speaker learning {source_lang} typed this into the box for {source_lang}
+wording:
+
+"{word}"
+
+The box is for {source_lang}, so first read the input as {source_lang}: name the
+{source_lang} word or expression it is, is a form of — however rare, dialectal or
+inflected{script_note} — or misspells, counting letters a keyboard for another language
+puts in place of ones it lacks. If you can name one, the input is {source_lang}, even
+when it also means something else in {target_lang} or looks more like {target_lang}.
+
+Only input you cannot read as {source_lang} at all may be {target_lang} typed here by
+mistake; a learner who wants {target_lang} wording looked up puts "!" before it, and
+this input has none.
+
+Answer with one line of JSON and nothing else:
+"""
+    '{{"as_source": "<the {source_lang} wording you read it as, or empty>", '
+    '"reading": "source" or "typo" or "target"}}'
+    """
+
+"reading" is "source" when the input is that wording or a form of it, "typo" when it
+misspells it, and "target" only when as_source is empty and the input is plainly
+{target_lang}."""
+)
+
 _REVERSE_PROMPT = """You are a bilingual dictionary from {target_lang} into {source_lang}.
 
 Wording: "{word}"
@@ -394,6 +423,27 @@ def parse_attestation(raw: str) -> Verdict | None:
     value = json_object(raw)
     used = value.get("used") if value is not None else None
     return Verdict(used) if isinstance(used, bool) else None
+
+
+type Reading = Literal["source", "typo", "target"]
+_READINGS = frozenset({"source", "typo", "target"})
+
+
+def build_reading_prompt(language: Language, word: str, target: str) -> str:
+    """Ask whether input without "!" is target-language wording typed by mistake."""
+    return _READING_PROMPT.format(
+        source_lang=language.name,
+        target_lang=target,
+        word=word,
+        script_note=", in either of its alphabets" if language.script == "latin+cyrillic" else "",
+    )
+
+
+def parse_reading(raw: str) -> Reading | None:
+    """Read the reading, which is one bare JSON object and nothing else."""
+    value = json_object(raw)
+    reading = value.get("reading") if value is not None else None
+    return reading if reading in _READINGS else None
 
 
 type ReverseVerdict = Literal["word", "not_a_word", "sentence"]

@@ -14,9 +14,11 @@ from echo_words.prompt import (
     Verdict,
     build_extended_prompt,
     build_prompt,
+    build_reading_prompt,
     build_reverse_prompt,
     extract_answer,
     parse_attestation,
+    parse_reading,
     parse_reverse,
     reverse_example_issue,
 )
@@ -297,6 +299,31 @@ def test_a_string_value_missing_its_opening_quote_is_still_read(languages):
 def test_a_bare_literal_is_not_taken_for_a_missing_quote():
     # Repairing the note must leave the literal before it alone.
     assert parse_attestation('{"used": true, "note": rare but attested"}') == Verdict(True)
+
+
+def test_the_reading_question_names_both_languages_and_a_second_alphabet(languages):
+    serbian = build_reading_prompt(languages["sr"], "собака", "Russian")
+    german = build_reading_prompt(languages["de"], "собака", "Russian")
+
+    assert '"собака"' in serbian
+    assert "into the box for Српски" in serbian
+    assert "in either of its alphabets" in serbian
+    assert "alphabets" not in german
+
+
+@pytest.mark.parametrize(
+    ("raw", "reading"),
+    [
+        ('{"why": "plain Russian", "reading": "target"}', "target"),
+        ('{"why": "Serbian dog", "reading": "source"}', "source"),
+        ('Sure: {"reading": "typo"}', "typo"),
+        ('{"reading": "russian"}', None),
+        ('{"why": "no verdict"}', None),
+        ("not json", None),
+    ],
+)
+def test_only_a_known_reading_is_read(raw, reading):
+    assert parse_reading(raw) == reading
 
 
 def test_a_reverse_answer_carries_its_equivalents_and_the_reading(languages):

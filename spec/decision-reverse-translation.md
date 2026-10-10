@@ -5,39 +5,59 @@ Latin letters six times more; nothing in the app asks it yet.** The
 feature is designed in `spec/plan/reverse-translation.md`, and what it will do for
 the reader is described there until it lands.
 
-## What letters can prove
+## Alphabets, not letters, and a model where alphabets overlap
 
-Whether a typed word is in the target language rather than the selected one is
-decided by its letters wherever they prove it: a letter the target writes and the
-source does not proves the target, one the source writes and the target does not
-proves the source, and a word with neither, or both, is proved neither way. The
-letters are the directory's own per-language alphabets, the same ones the card's
-front-sentence test reads; a target outside the directory has no known letters, so
-there every letter counts as the source's own and letters never prove the target.
+Whether input typed without `!` is in the target language is never read off its
+letters. An alphabet decides only where the tab's and the target's cannot be confused:
+input in a script the target writes and the tab does not is the target's (Cyrillic on
+the English tab with a Russian target), and input in a script the tab writes and the
+target does not is the tab's (Latin on the Serbian tab, since nobody types Russian in
+Latin letters). Where both write the script, a model reads the input, and only a plain
+target reading reverses: a missed reverse costs the reader a `!` or one tap on the
+offer, a wrong one throws away the word they wanted.
 
-Measured on wordfreq's top lists, words of three or more letters, the first 2,000
-per language; Serbian taken from wordfreq's `sh` list (Latin) and transliterated
-for the Cyrillic row:
+Single letters prove nothing, and the operator ruled them out. Measured on wordfreq's
+top lists, words of three or more letters, the first 2,000 per language, Serbian
+taken from wordfreq's `sh` list (Latin) and transliterated for the Cyrillic row:
 
-| Source → target | Target words proved by letters | Source words left open by letters |
+| Source → target | Target words a letter would prove | Source words a letter would leave open |
 |---|---|---|
-| English / German → Russian | 100% | 0% |
-| Serbian → Russian | 43% | 0% in Latin, 73% in Cyrillic |
+| Serbian → Russian | 43% | 73% in Cyrillic |
 | German → English | 0% | 89% |
 | Serbian → English | 0% | 83% |
 | English → German | 11% | 100% |
-| Serbian → German | 11% | 83% |
 
-Serbian Cyrillic lacks Russian й щ ъ ы ь э ю я ё; Ukrainian and Bulgarian separate
-from Russian on 11% of Russian words. So with a Russian target, a Russian word
-letters leave open (город, книга, стол) can only be met on the Serbian tab in
-Cyrillic, which is 57% of Russian words.
+And where a letter seems to prove something, it misleads: a Russian keyboard has no
+ј љ њ ћ ђ џ, so Serbian typed on one carries Russian letters (йош for још, кньига for
+књига, ноч for ноћ), and many Russian words use only letters Serbian shares (город,
+книга, собака).
 
-The letter rule cannot see a loanword that keeps the target's diacritics, so with a
-Latin target it reads some source words as the target's. Measured on the first
-20,000 words of the same lists: with a French or Spanish target, 6–8 English or
-German words, the only common ones café and fiancé and the rest names (josé,
-pokémon, andré). Nothing at all with a Russian target.
+### Reading the input where alphabets overlap
+
+A model reads input in a shared script and answers whether it is the tab's own wording,
+a misspelling of it, or target wording typed without its `!`. It was measured on 72
+cases fixed before the runs and audited blind by a fresh reviewer: Cyrillic on the
+Serbian tab with a Russian target (Serbian words, forms and false friends, Serbian typed
+on a Russian keyboard, Russian words, sentences) and Latin on the English and German
+tabs with a Serbian target. A second fresh reviewer graded every answer:
+
+| | First prompt, 3 samples | Prompt in the code, 2 samples |
+|---|---|---|
+| The tab's own wording reversed | 13 of 118 | 4 of 78 |
+| Target wording caught | 77 of 78 | 48 of 50 |
+| Open cases reversed | 9 of 14 | 4 of 10 |
+
+The first prompt asked which of the three the input is. The one in the code has the
+model first name the tab's word the input is, is a form of, or misspells, counting
+letters a keyboard for another language puts in place of missing ones, and allows a
+target reading only when it names none. It keeps the Serbian typed on a Russian keyboard
+that the first prompt reversed (йош, ноч, девойка). It still reverses the same two words
+in both samples: Serbian врач (a sorcerer; Russian a doctor) and English pas (a dance
+step; Serbian a dog), each a word of the tab spelled like a common target word, its own
+meaning the rarer one. A third sample was cut off by an exhausted pool and is not
+counted. Jev, asked the same question, separates nothing: on the Serbian tab the tab's
+own words score 0.17 to 0.86 and Russian ones 0.72 to 0.88. The reading reverses nothing
+on its own: it is not yet fit to.
 
 Placeholder widths for the input field (built CSS, Chromium and WebKit, 360 px
 viewport, 294 px of text room): «Текст или !русское слово» 193, «!английское» 219,
@@ -83,7 +103,7 @@ meanings (ключ, коса, лук, мир), an inflected form (столы, к
 (сотл, сабака, ключь), not a word (фывапр), a sentence (я иду домой), and Serbian
 typed on a Russian keyboard, into Serbian only (йош for још, моя for моја, йедан,
 ньега, мойе). The same runs asked the Serbian tab's own judgement and article about
-four Russian words its letters leave open (город, книга, девушка, собака).
+four Russian words spelled in letters Serbian shares (город, книга, девушка, собака).
 
 ### First prompt: not fit
 
