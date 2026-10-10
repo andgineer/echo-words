@@ -5,8 +5,8 @@ its parser are in the code and asked by nothing yet; the prompt was benched four
 times on the pool and reviewed by a fresh agent each time, and the result is in
 `spec/decision-reverse-translation.md`: English and German carry it as measured.
 Serbian is asked in Latin letters, with its chips, as the operator chose after six
-Latin samples (the decision spec has the numbers); the parser refuses Cyrillic in a
-Serbian answer and reads a string value missing its opening quote. Open with the
+Latin samples (the decision spec has the numbers); a Serbian answer in Cyrillic is read
+as written, and the parser reads a string value missing its opening quote. Open with the
 operator: acceptance of the faults the decision spec lists. Next is step 4.
 
 ## What the reader gets
@@ -131,10 +131,9 @@ whether an open word is a T word: asked of every open word that is a third call 
   `missing`, `too_long`, `script`, `letters`, `unrelated` (the form is another word's),
   `form`. A failing example is dropped and its equivalent stays as a bare chip; the
   answer itself does not fail. Unusable → `None`. A one-word headword then takes the
-  letter case its own sentence writes it in mid-sentence (`_headword_case`). Both
-  screens see a two-alphabet language as Latin only (`_as_answered`), so Cyrillic in a
-  Serbian word or sentence fails `validate_word` / `validate_text`. The answer is read
-  by `json_object`, which also reads a string value missing its opening quote.
+  letter case its own sentence writes it in mid-sentence (`_headword_case`). A Serbian
+  answer written in Cyrillic despite `_LATIN_ONLY_RULE` is read as written. The answer
+  is read by `json_object`, which also reads a string value missing its opening quote.
 - Why the card's test and not a comparison with the equivalent: German and Serbian
   examples inflect the word, so a whole-word match drops most verb and many noun
   examples, and a substring match passes «сто» inside «место». The stem check only

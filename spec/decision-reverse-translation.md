@@ -59,9 +59,8 @@ script, no letter only the target writes, the context bound, and the equivalent'
 words found whole in it, in order, by the form the answer says the sentence spells
 it in — provided that form shares a stem with the equivalent, else by the equivalent
 itself. A failing example costs its equivalent the sentence and leaves it a bare
-chip; neither costs the answer. Serbian is asked in Latin letters, and in a Serbian
-answer a Cyrillic letter refuses the equivalent or the sentence it stands in, so an
-answer written wholly in Cyrillic carries no word and is asked again. A whole-word comparison with the equivalent would
+chip; neither costs the answer. Serbian is asked in Latin letters, and an answer that
+comes back in Cyrillic is read as written. A whole-word comparison with the equivalent would
 refuse most inflected German and Serbian examples, and a substring one passes «сто»
 inside «место»; the stem condition exists because an answer can name another word as
 the form and write its sentence around that word, and it costs only a suppletive form
@@ -250,10 +249,38 @@ spellings it refused all four. Two entries then ended refused, one as a misspell
 article names glavom bez obzira, and one corrected to glavom bez obzirom, a wrong case of
 the idiom that the second judgement accepted and that is carded.
 
-Two of the 138 Latin answers came back in Cyrillic, both from fallback models; refusing
-Cyrillic in a Serbian answer, re-read over the Latin samples, changed exactly the one of
-them the prompt carries an answer for, from a card for the Russian word стол to a second
-try.
+Two of the 138 Latin answers came back in Cyrillic, both from fallback models, and are
+read as written. The one the prompt carries heads the card for стол with стол, the
+Croatian and Bosnian word for a table, under a sentence that makes no sense, beside two
+wrong chips (маса, бора).
+
+### A Jev check on the Serbian equivalents
+
+Every distinct Serbian equivalent the recorded runs offered, 96 across the Cyrillic runs
+and the Latin samples, was labelled by a fresh reviewer who saw no score, and scored by
+Jev (TypeSafe's jev-1.13.0) on two questions: is it a real Serbian word, Croatian,
+Bosnian and ijekavian forms included, and does it translate the Russian word in the
+sense its sentence uses. The reviewer found half of them unfit to show, every one for
+its meaning, 14 also no word at all, and none a Russian word passed off as Serbian. What
+goes wrong is invented words (клијух, Пружница, glavobezobzirno), meanings reached
+through English (табела, тоналност, клавијатура) and neighbouring meanings (поток for a
+spring, косина), not Russian leaking in.
+
+Dropping an equivalent Jev scores under one half on either question:
+
+| | Unfit, dropped | Fit, dropped |
+|---|---|---|
+| Cards | 6 of 12 | 2 of 24 |
+| Chips | 28 of 36 | 10 of 24 |
+
+Among the fit ones it drops are главом без обзира, the exact idiom for сломя голову, and
+извор for the spring sense of ключ every time it is offered; among the unfit ones it
+keeps are the false friend нега, brzopleto and непромишљено (rashly) for сломя голову,
+and a vulgar card for йош, which is no Russian word. A check took a quarter of a second,
+and the 96 cost under a fifth of a cent. Jev is not asked: it would lose a third of the
+good chips and a twelfth of the good cards to catch half the bad cards, and its two
+questions were fixed before the labels, so rewording them on these same labels would
+measure nothing.
 
 ### The offer on the Serbian tab
 

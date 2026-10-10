@@ -539,6 +539,28 @@ def other_script(text: str, language: Language) -> str:
     return lowered
 
 
+def serbian_latin(text: str) -> str:
+    """Serbian Cyrillic in Latin letters with its capitals kept; every other character as is."""
+    normalized = unicodedata.normalize("NFC", text)
+    written = []
+    for index, char in enumerate(normalized):
+        latin = _SERBIAN_LATIN.get(char.casefold())
+        if latin is None or char.islower():
+            written.append(latin or char)
+        elif len(latin) > 1 and _in_capitals(normalized, index):
+            written.append(latin.upper())
+        else:
+            written.append(latin.capitalize())
+    return "".join(written)
+
+
+def _in_capitals(text: str, index: int) -> bool:
+    # Љ is Lj at the head of a word and LJ inside one written all in capitals.
+    after = text[index + 1 : index + 2]
+    before = text[index - 1 : index] if index else ""
+    return after.isupper() if after.isalpha() else before.isupper()
+
+
 def split_words(text: str) -> list[str]:
     """Split into words, dropping the punctuation that hangs off their edges."""
     return [word for word in (_WORD_EDGES.sub("", part) for part in text.split()) if word]

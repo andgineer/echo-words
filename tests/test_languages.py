@@ -22,6 +22,7 @@ from echo_words.languages import (
     sanitize_context,
     save_languages,
     sentence_is_source_language,
+    serbian_latin,
     unit_excluded_words,
     unknown_language_hint,
     validate_text,
@@ -352,6 +353,16 @@ def test_the_text_hints_have_a_russian_wording(languages):
 def test_serbian_folding_maps_both_scripts_onto_one_spelling(languages):
     assert fold_for_match("Њихово", languages["sr"]) == fold_for_match("njihovo", languages["sr"])
     assert fold_for_match("ЉУБАВ", languages["sr"]) == fold_for_match("ljubav", languages["sr"])
+
+
+def test_serbian_cyrillic_is_written_in_latin_with_its_capitals_kept():
+    assert serbian_latin("Он се синоћ вратио кући.") == "On se sinoć vratio kući."
+    assert serbian_latin("Љубав, ЉУБАВ, КЊ, џем") == "Ljubav, LJUBAV, KNJ, džem"
+    assert serbian_latin("ključ") == "ključ"
+
+
+def test_a_letter_serbian_lacks_is_left_as_written():
+    assert serbian_latin("язык") == "яzыk"
 
 
 def test_folding_a_single_script_language_only_folds_case(languages):

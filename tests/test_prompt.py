@@ -357,19 +357,24 @@ def test_the_reverse_prompt_asks_a_two_script_language_for_latin_only(languages)
     assert "Cyrillic" not in german
 
 
-def test_a_serbian_answer_counts_only_in_latin_letters(languages):
-    """Asked for Latin, any Cyrillic gives a Russian sentence or a disobeying answer away."""
+def test_a_serbian_answer_written_in_cyrillic_is_read_as_written(languages):
     serbian = languages["sr"]
-    russian_example = _reverse(
-        _equivalent("knjiga", "Я читаю эту книгу.", "книгу"), read_as="книга"
-    )
-    cyrillic_answer = _reverse(_equivalent("књига", "Читам ову књигу.", "књигу"), read_as="книга")
+    raw = _reverse(_equivalent("књига", "Читам ову књигу.", "књигу"), read_as="книга")
 
-    assert reverse_example_issue("Читам ову књигу.", "књигу", "књига", serbian) == "script"
-    assert parse_reverse(russian_example, serbian, "Russian") == ReverseAnswer(
-        "word", "книга", (Equivalent("knjiga", ""),)
+    assert parse_reverse(raw, serbian, "Russian") == ReverseAnswer(
+        "word", "книга", (Equivalent("књига", "Читам ову књигу."),)
     )
-    assert parse_reverse(cyrillic_answer, serbian, "Russian") is None
+
+
+def test_a_target_language_sentence_is_no_example_where_the_scripts_are_shared(languages):
+    """Serbian writes Cyrillic, so only the letters Russian alone writes give it away."""
+    serbian = languages["sr"]
+    raw = _reverse(_equivalent("књига", "Я читаю эту книгу.", "книгу"), read_as="книга")
+
+    answer = parse_reverse(raw, serbian, "Russian")
+
+    assert reverse_example_issue("Я читаю эту книгу.", "книгу", "књига", serbian) == "letters"
+    assert answer == ReverseAnswer("word", "книга", (Equivalent("књига", ""),))
 
 
 def test_a_number_is_never_found_inside_a_longer_word(languages):
@@ -460,6 +465,7 @@ def test_a_sentence_written_around_another_word_is_no_example_of_it(languages):
         ("en", "He gave up smoking.", "gave up", "give up"),
         ("sr", "Nadam se da će doći.", "Nadam se", "nadati se"),
         ("sr", "Za stolom je sedeo prijatelj.", "stolom", "sto"),
+        ("sr", "Za stolom je sedeo prijatelj.", "stolom", "сто"),
     ],
 )
 def test_a_form_sharing_a_stem_with_its_word_marks_the_sentence(

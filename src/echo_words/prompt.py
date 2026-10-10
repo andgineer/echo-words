@@ -10,7 +10,7 @@ import logging
 import os
 import re
 import unicodedata
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import Any, Literal
 
 from echo_words.card import (
@@ -418,18 +418,13 @@ class ReverseAnswer:
 
 def build_reverse_prompt(language: Language, word: str, target: str) -> str:
     """Build the question that turns a target-language wording into source-language words."""
-    latin_only = _as_answered(language) is not language
+    latin_only = language.script == "latin+cyrillic"
     return _REVERSE_PROMPT.format(
         source_lang=language.name,
         target_lang=target,
         word=word,
         script_rule=_LATIN_ONLY_RULE.format(source_lang=language.name) if latin_only else "",
     )
-
-
-def _as_answered(language: Language) -> Language:
-    """The language as a reverse answer writes it: one written in two alphabets, in Latin only."""
-    return replace(language, script="latin") if language.script == "latin+cyrillic" else language
 
 
 def parse_reverse(
@@ -449,7 +444,7 @@ def parse_reverse(
         return None
     if verdict != "word":
         return ReverseAnswer(verdict, "", ())
-    equivalents = _equivalents(value.get("equivalents"), _as_answered(language), target)
+    equivalents = _equivalents(value.get("equivalents"), language, target)
     if not equivalents:
         return None
     read_as = value.get("read_as")
@@ -472,7 +467,6 @@ def reverse_example_issue(
     It is the card's own test: a sentence the card cannot mark the word in would fail
     the card later, and a whole-word comparison would refuse every inflected example.
     """
-    language = _as_answered(language)
     if not example:
         return "missing"
     if len(example) > MAX_CONTEXT_LENGTH:

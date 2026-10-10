@@ -1303,19 +1303,15 @@ def test_a_reverse_answer_is_scored_by_what_the_card_gets():
     ]
 
 
-def test_a_serbian_equivalent_counts_only_in_latin():
-    latin = _reverse_shot(
-        "reverse-sr-okno",
+def test_a_serbian_equivalent_counts_in_either_script():
+    for answer in (
         _reverse_answer("окно", ("prozor", "Otvori prozor, molim te.", "prozor")),
-    )
-    cyrillic = _reverse_shot(
-        "reverse-sr-okno",
         _reverse_answer("окно", ("прозор", "Отвори прозор, молим те.", "прозор")),
-    )
+    ):
+        shot = _reverse_shot("reverse-sr-okno", answer)
 
-    assert latin.metrics["first_expected"] is True
-    assert latin.metrics["read_as_expected"] is None
-    assert cyrillic.metrics["usable"] is False
+        assert shot.metrics["first_expected"] is True
+        assert shot.metrics["read_as_expected"] is None
 
 
 def test_a_wrong_reading_and_a_wrong_verdict_are_reported():

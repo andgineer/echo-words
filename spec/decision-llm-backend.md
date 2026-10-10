@@ -1021,6 +1021,42 @@ that measurement is not being bought.
 The harness is `experiments/tier_screen.py`, outside CI; it calls real models and spends
 real money.
 
+## Serbian typed in Cyrillic, asked in Latin — 2026-10-10
+
+Serbian typed in Cyrillic reaches the model as typed. Converting it to Latin letters
+first was measured on every Serbian fixture of the full tier that carries Cyrillic, 53,
+and the four Russian words the Serbian tab meets (город, книга, девушка, собака), each
+asked as typed and in Latin back to back from the free pool
+(`experiments/serbian_input_bench.py`). Availability: 61 of 61 answers each way,
+`gemini-3.5-flash-lite` answering 49 and 51 of them, and one model answering both of a
+pair in 50 of 61. A fresh reviewer graded both answers of every item on rules fixed
+before the run, with Croatian, Bosnian and ijekavian forms no fault and either alphabet
+no fault:
+
+| 52 articles | As typed | In Latin |
+|---|---|---|
+| Right card word | 46 | 46 |
+| Right meanings | 49 | 47 |
+| Russian forms in the Serbian parts | 26, in 13 answers | 7, in 5 |
+| Invented Serbian | 6 | 10 |
+| Example sentences clean | 11 of 30 | 12 of 31 |
+| Words mixing both alphabets | 4 | 8 |
+| Serbian parts written in | Cyrillic 44, mixed 8 | Latin 35, mixed 13, Cyrillic 4 |
+
+On the 50 pairs one model answered, the better answer was the typed one 12 times, the
+Latin one 14 times and neither 24 times: no measurable difference in quality, on one
+sample each way. The nearest thing to a signal is Russian forms in Serbian sentences,
+more often typed (7 answers to 2 on those pairs); in Cyrillic they hide (Мой, Красива,
+деревяну), in Latin they show as Cyrillic words in a Latin sentence (Молодец,
+Пожалуйста). Two differences come from the conversion itself rather than the draw. A
+Cyrillic misspelling whose Latin form is the word without its diacritics reads as
+ordinary Latin: мозда is told it means можда, while mozda is carded možda without a word
+about it. And a Russian word in Latin letters is corrected to its Serbian word rather
+than refused: gorod, kniga and sobaka end on cards for grad, knjiga and pas with the
+correction named, and devuška on девојка, where as typed город, девушка and собака end
+refused and offered the reverse lookup, and книга is accepted as Old Church Slavonic and
+carded књига without a word. Whether the app converts is open with the operator.
+
 ## What would re-open this
 
 - The pool's primary model degrading or disappearing from the curated
