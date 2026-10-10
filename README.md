@@ -17,17 +17,17 @@
 | src/echo\_words/history.py           |      113 |        0 |    100% |           |
 | src/echo\_words/i18n.py              |       23 |        0 |    100% |           |
 | src/echo\_words/language\_catalog.py |       22 |        0 |    100% |           |
-| src/echo\_words/languages.py         |      252 |        2 |     99% |  103, 446 |
+| src/echo\_words/languages.py         |      247 |        2 |     99% |  103, 446 |
 | src/echo\_words/lexicon.py           |       82 |        1 |     99% |       169 |
 | src/echo\_words/llm\_backend.py      |       63 |        0 |    100% |           |
 | src/echo\_words/logs.py              |       14 |        0 |    100% |           |
 | src/echo\_words/main.py              |       44 |        0 |    100% |           |
 | src/echo\_words/pipeline.py          |      726 |       38 |     95% |111, 227, 368, 398, 490, 542, 552-553, 609, 645-646, 812, 830, 837-838, 881, 941-944, 1142, 1150, 1159, 1184, 1187, 1205-1208, 1217, 1221, 1313, 1407, 1419, 1460-1463 |
-| src/echo\_words/prompt.py            |      179 |        1 |     99% |       563 |
+| src/echo\_words/prompt.py            |      194 |        1 |     99% |       629 |
 | src/echo\_words/sanitizer.py         |       25 |        1 |     96% |        37 |
 | src/echo\_words/segments.py          |      107 |        9 |     92% |44, 76, 106, 108, 112, 117, 135, 139, 207 |
 | src/echo\_words/voices.py            |        9 |        0 |    100% |           |
-| **TOTAL**                            | **3708** |  **157** | **96%** |           |
+| **TOTAL**                            | **3718** |  **157** | **96%** |           |
 
 
 ## Setup coverage badge
