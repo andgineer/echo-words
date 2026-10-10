@@ -1,0 +1,1 @@
+WARNING  echo_words.anki:anki.py:455 could not attach a recording for 'money': [Errno 2] No such file or directory: '/tmp/pytest-of-runner/pytest-0/test_a_word_whose_media_cannot0/fetched-money.mp3'

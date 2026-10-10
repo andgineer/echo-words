@@ -1,0 +1,2 @@
+INFO echo_words.audio: downloading Piper voice file configured.onnx
+INFO echo_words.audio: downloading Piper voice file configured.onnx.json

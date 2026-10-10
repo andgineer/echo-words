@@ -1,0 +1,1 @@
+WARNING echo_words.backend: no answer for sr after 0.0 s from the pool model unnamed (trace none): the pool missed the answer budget (NoLLMAvailableError: the wait budget ran out before any LLM produced a delta); paid step unavailable: the paid model is missing OPENAI_API_KEY: Create a key at https://platform.openai.com/api-keys (paid).

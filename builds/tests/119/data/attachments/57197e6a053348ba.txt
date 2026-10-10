@@ -1,0 +1,4 @@
+INFO     echo_words.backend:backend.py:357 the paid model takes over for en: the pool missed the answer budget (NoLLMAvailableError: pool exhausted)
+INFO     echo_words.backend:backend.py:476 the paid model gpt-default: first token after 0.0 s, ended after 0.0 s
+INFO     echo_words.backend:backend.py:357 the paid model takes over for sr: the pool missed the answer budget (NoLLMAvailableError: pool exhausted)
+INFO     echo_words.backend:backend.py:476 the paid model gpt-fast: first token after 0.0 s, ended after 0.0 s

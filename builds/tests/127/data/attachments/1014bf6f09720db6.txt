@@ -1,0 +1,16 @@
+ERROR echo_words.pipeline: word processing failed unexpectedly
+Traceback (most recent call last):
+  File "/home/runner/work/echo-words/echo-words/src/echo_words/pipeline.py", line 504, in _work
+    await self._process_detail(job)
+  File "/home/runner/work/echo-words/echo-words/src/echo_words/pipeline.py", line 847, in _process_detail
+    completion = self.cascade.stream_paid(
+        prompt,
+    ...<2 lines>...
+        detail=True,
+    )
+  File "/home/runner/work/echo-words/echo-words/tests/test_pipeline.py", line 176, in stream_paid
+    return self.stream_completion(prompt, language, trace_id=trace_id)
+           ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/work/echo-words/echo-words/tests/test_pipeline.py", line 135, in stream_completion
+    completion = self.completions.pop(0)
+IndexError: pop from empty list

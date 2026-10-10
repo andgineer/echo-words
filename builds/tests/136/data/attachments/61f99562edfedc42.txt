@@ -1,0 +1,2 @@
+INFO     echo_words.backend:backend.py:230 the pool has no other answer for en: the pool failed (InvalidProviderResponseError: the provider returned no text)
+INFO     echo_words.backend:backend.py:367 the pool answer from pool-model stands for en — the payload cannot be read and the pool has no other answer; the card is left failed

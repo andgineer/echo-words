@@ -1,0 +1,4 @@
+ERROR    asyncio:base_events.py:1890 Task was destroyed but it is pending!
+task: <Task pending name='Task-4523' coro=<Page._on_route() done, defined at /home/runner/work/echo-words/echo-words/.venv/lib/python3.13/site-packages/playwright/_impl/_page.py:294> wait_for=<Future pending cb=[Task.task_wakeup()]> cb=[Connection.dispatch.<locals>._done_callback() at /home/runner/work/echo-words/echo-words/.venv/lib/python3.13/site-packages/playwright/_impl/_connection.py:539]>
+ERROR    asyncio:base_events.py:1890 Task was destroyed but it is pending!
+task: <Task pending name='Task-4529' coro=<Page._on_route() done, defined at /home/runner/work/echo-words/echo-words/.venv/lib/python3.13/site-packages/playwright/_impl/_page.py:294> wait_for=<Future pending cb=[Task.task_wakeup()]> cb=[Connection.dispatch.<locals>._done_callback() at /home/runner/work/echo-words/echo-words/.venv/lib/python3.13/site-packages/playwright/_impl/_connection.py:539]>

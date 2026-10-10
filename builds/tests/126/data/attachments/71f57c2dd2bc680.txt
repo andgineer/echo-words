@@ -1,0 +1,1 @@
+INFO echo_words.backend: the paid model gpt: first token after 0.0 s, ended after 0.2 s

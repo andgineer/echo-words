@@ -1,0 +1,3 @@
+INFO     echo_words.audio:audio.py:460 downloading Piper voice file configured.onnx
+INFO     echo_words.audio:audio.py:460 downloading Piper voice file configured.onnx.json
+WARNING  echo_words.audio:audio.py:187 could not load Piper voice configured: Expecting value: line 1 column 1 (char 0)

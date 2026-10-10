@@ -1,0 +1,1 @@
+INFO     echo_words.backend:backend.py:364 the pool answer from pool-model stands for en — the payload cannot be read and the pool has no other answer; the card is left failed

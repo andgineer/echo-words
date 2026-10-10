@@ -1,0 +1,3 @@
+INFO echo_words.backend: the paid model takes over for en: the pool missed the answer budget (NoLLMAvailableError: pool exhausted)
+INFO echo_words.backend: the paid model gpt-fast: first token after never, ended after 0.0 s
+WARNING echo_words.backend: no answer for en after 0.0 s from the paid model gpt-fast (trace none): the paid model 'gpt-fast' failed (InvalidProviderResponseError: boom)
