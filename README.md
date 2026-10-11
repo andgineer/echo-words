@@ -23,11 +23,11 @@
 | src/echo\_words/logs.py              |       14 |        0 |    100% |           |
 | src/echo\_words/main.py              |       44 |        0 |    100% |           |
 | src/echo\_words/pipeline.py          |      726 |       38 |     95% |111, 227, 368, 398, 490, 542, 552-553, 609, 645-646, 812, 830, 837-838, 881, 941-944, 1142, 1150, 1159, 1184, 1187, 1205-1208, 1217, 1221, 1313, 1407, 1419, 1460-1463 |
-| src/echo\_words/prompt.py            |      194 |        1 |     99% |       629 |
+| src/echo\_words/prompt.py            |      212 |        1 |     99% |       629 |
 | src/echo\_words/sanitizer.py         |       25 |        1 |     96% |        37 |
 | src/echo\_words/segments.py          |      107 |        9 |     92% |44, 76, 106, 108, 112, 117, 135, 139, 207 |
 | src/echo\_words/voices.py            |        9 |        0 |    100% |           |
-| **TOTAL**                            | **3718** |  **157** | **96%** |           |
+| **TOTAL**                            | **3736** |  **157** | **96%** |           |
 
 
 ## Setup coverage badge
