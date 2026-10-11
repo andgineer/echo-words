@@ -1476,25 +1476,6 @@ def test_a_noun_headword_its_own_sentence_capitalises_is_reported():
     assert sentence_start.metrics["lowercased_headwords"] == []
 
 
-def test_a_reading_shot_asks_the_production_question_and_reads_its_answer():
-    shots = bench.reading_shots()
-    sobaka = next(shot for shot in shots if shot.shot_id == "reading-sr-sobaka")
-    answered = bench.score(replace(sobaka, text='{"why": "plain Russian", "reading": "target"}'))
-    garbled = bench.score(replace(sobaka, text='{"reading": "russian"}'))
-    hvala = next(shot for shot in shots if shot.shot_id == "reading-en-hvala-sr")
-
-    assert len({shot.shot_id for shot in shots}) == len(shots)
-    assert bench.prompt_for(sobaka) == bench.build_reading_prompt(
-        bench.LANGUAGES["sr"], "собака", "Russian"
-    )
-    assert bench.prompt_for(hvala) == bench.build_reading_prompt(
-        bench.LANGUAGES["en"], "hvala", "Serbian"
-    )
-    assert answered.metrics["reading"] == "target"
-    assert bench.complete(answered)
-    assert not bench.complete(garbled)
-
-
 def test_a_reverse_sentence_is_scored_by_its_translation():
     answer = json.dumps(
         {
@@ -1513,3 +1494,25 @@ def test_a_reverse_sentence_is_scored_by_its_translation():
     assert shot.metrics["verdict_expected"] is True
     assert shot.metrics["translation"] == "Da li kasnimo na voz?"
     assert untranslated.metrics["usable"] is False
+
+
+def test_typed_fixtures_ask_for_the_language_and_chips_do_not():
+    typed = next(shot for shot in bench.initial_jobs_for_tier("full") if shot.kind == "bare")
+    chip = bench.Shot("click-x", "context", "de", "steht auf", context="Er steht auf.")
+
+    assert "written_in" in bench.prompt_for(typed)
+    assert "written_in" not in bench.prompt_for(chip)
+
+
+def test_a_language_answer_is_read_against_its_tab_and_target():
+    shots = {shot.shot_id: shot for shot in bench.language_shots()}
+    german = shots["language-en-umziehen-sentence"]
+    serbian = shots["language-en-hvala-sr"]
+    answer = '<b>x</b>\n===CARD===\n{"written_in": "%s", "kind": "text", "combinations": []}'
+
+    assert len(shots) == len(bench.LANGUAGE_CASES)
+    assert "IN Serbian" in bench.prompt_for(serbian)
+    assert bench.score(replace(german, text=answer % "de")).metrics["written_in"] == "de"
+    assert bench.score(replace(serbian, text=answer % "sr")).metrics["written_in"] == "target"
+    assert bench.complete(bench.score(replace(german, text=answer % "en")))
+    assert not bench.complete(bench.score(replace(german, text="<b>no card</b>")))

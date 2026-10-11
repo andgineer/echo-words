@@ -81,24 +81,22 @@ from echo_words.prompt import (  # noqa: E402
     MAX_COMPLETE_ANSWER_CHARS,
     build_attestation_prompt,
     build_prompt,
-    build_reading_prompt,
     build_reverse_prompt,
     extract_answer,
     json_object,
     parse_attestation,
-    parse_reading,
     parse_reverse,
+    parse_written_in,
     reverse_example_issue,
 )
 from echo_words.sanitizer import sanitize_html  # noqa: E402
 from echo_words.segments import fill_text_segments  # noqa: E402
 from llmbroker import AsyncBroker, StreamReplacementError  # noqa: E402
 from llmbroker.direct import AsyncDirectClient  # noqa: E402
+from language_items import LANGUAGE_CASES, LanguageCase  # noqa: E402
 from reverse_items import (  # noqa: E402
     OFFER_WORDS,
-    READING_CASES,
     REVERSE_CASES,
-    ReadingCase,
     ReverseCase,
 )
 from unit_verdict_bench import FIXTURES as VERDICT_FIXTURES  # noqa: E402
@@ -193,8 +191,8 @@ MIN_CLICK_SUCCESS = 5
 MIN_EXPRESSION_SUCCESS = 2
 TIER_NAMES = ("smoke", "confirmation", "full")
 REVERSE_KIND = "reverse"
-# Whether input typed without "!" is target-language wording the learner meant to reverse.
-READING_KIND = "reading"
+# Typed input whose answer names the language it is written in.
+LANGUAGE_KIND = "language"
 # The Serbian tab's own answer to a Russian word letters leave open: the judgement, the
 # article beside it, and the second judgement of a correction the article puts in.
 OFFER_KIND = "offer"
@@ -670,15 +668,22 @@ def prompt_for(shot: Shot) -> str:
         return build_attestation_prompt(LANGUAGES[shot.lang], shot.source)
     if shot.kind == REVERSE_KIND:
         return build_reverse_prompt(LANGUAGES[shot.lang], shot.source, TARGET_NAME)
-    if shot.kind == READING_KIND:
-        target = READING_BY_ID[shot.shot_id].target
-        return build_reading_prompt(LANGUAGES[shot.lang], shot.source, target)
+    if shot.kind == LANGUAGE_KIND:
+        return build_prompt(
+            LANGUAGES[shot.lang],
+            shot.source,
+            LANGUAGE_BY_ID[shot.shot_id].target,
+            unit_intent=_unit_intent(shot),
+            typed=True,
+        )
     return build_prompt(
         LANGUAGES[shot.lang],
         shot.source,
         TARGET_NAME,
         context=shot.context,
         unit_intent=_unit_intent(shot),
+        # A chip comes from the app's own answer; everything else the reader typed.
+        typed=shot.kind != "context",
     )
 
 
@@ -1760,9 +1765,15 @@ def _wordlist_chips(shot: Shot, parsed: ParsedAnswer | None) -> int:
 def score(shot: Shot) -> Shot:
     if shot.kind == REVERSE_KIND:
         return score_reverse(shot)
-    if shot.kind == READING_KIND:
-        shot.payload = json_object(shot.text) or {}
-        shot.metrics = {"answered": bool(shot.text), "reading": parse_reading(shot.text)}
+    if shot.kind == LANGUAGE_KIND:
+        target = LANGUAGE_BY_ID[shot.shot_id].target
+        shot.payload, _raw_error = _raw_payload(shot.text)
+        shot.metrics = {
+            "answered": bool(shot.text) and not shot.error,
+            "card_block": CARD_DELIMITER in shot.text,
+            "named": str(shot.payload.get("written_in") or ""),
+            "written_in": parse_written_in(shot.text, LANGUAGES[shot.lang], target),
+        }
         return shot
     if shot.shot_id in EXPECTED_UNIT_OVERRIDES:
         shot.expected_kind = "unit"
@@ -2032,8 +2043,8 @@ def complete(shot: Shot) -> bool:
         return parse_attestation(shot.text) is not None
     if shot.kind == REVERSE_KIND:
         return parse_reverse(shot.text, LANGUAGES[shot.lang], TARGET_NAME) is not None
-    if shot.kind == READING_KIND:
-        return parse_reading(shot.text) is not None
+    if shot.kind == LANGUAGE_KIND:
+        return bool(shot.metrics.get("card_block"))
     return bool(
         shot.metrics.get("answered")
         and (
@@ -2158,15 +2169,15 @@ def reverse_shots() -> list[Shot]:
     ]
 
 
-def reading_id(case: ReadingCase) -> str:
-    return f"reading-{case.lang}-{case.case_id}"
+def language_id(case: LanguageCase) -> str:
+    return f"language-{case.lang}-{case.case_id}"
 
 
-READING_BY_ID = {reading_id(case): case for case in READING_CASES}
+LANGUAGE_BY_ID = {language_id(case): case for case in LANGUAGE_CASES}
 
 
-def reading_shots() -> list[Shot]:
-    return [Shot(reading_id(case), READING_KIND, case.lang, case.word) for case in READING_CASES]
+def language_shots() -> list[Shot]:
+    return [Shot(language_id(case), LANGUAGE_KIND, case.lang, case.text) for case in LANGUAGE_CASES]
 
 
 def offer_shots() -> list[Shot]:

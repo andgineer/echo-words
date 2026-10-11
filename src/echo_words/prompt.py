@@ -19,6 +19,7 @@ from echo_words.card import (
     context_sentence_forms,
     parse_answer_payload,
 )
+from echo_words.language_catalog import catalog_language_named
 from echo_words.languages import (
     DEFAULT_TARGET_LANGUAGE,
     MAX_CONTEXT_LENGTH,
@@ -115,7 +116,7 @@ _BRANCH_CARD_LEAD = """After the article output ===CARD=== on its own line, foll
 immediately by one line of JSON matching ONE of these neutral schematic branches.
 Angle-bracketed values are placeholders, not strings to copy:"""
 
-_UNIT_JSON = """{{"kind": "unit", "word": "<dictionary lemma of the unit>",
+_UNIT_JSON = """{{{language_field}"kind": "unit", "word": "<dictionary lemma of the unit>",
  "word_relation": "<same, morphology or typo>",
  "suggestion": "<corrected spelling, or empty>",
  "meanings": [{{"label": "<short {source_lang} word this sense occurs with, or empty>",
@@ -128,7 +129,7 @@ _UNIT_JSON = """{{"kind": "unit", "word": "<dictionary lemma of the unit>",
 
 _TEXT_JSON = """OR
 
-{{"kind": "text", "combinations": [{{"label": "<dictionary form of the unit>",
+{{{language_field}"kind": "text", "combinations": [{{"label": "<dictionary form of the unit>",
  "surface": "<the same unit as the text spells it>",
  "why": "<short target-language reason>"}}]}}"""
 
@@ -137,7 +138,7 @@ then suggestion holds the correct spelling; morphology when word is a different
 dictionary form of a correctly spelled submission; same when word is the submission
 itself.
 
-suggestion is empty otherwise: it is only ever a correction."""
+suggestion is empty otherwise: it is only ever a correction.{language_rule}"""
 
 _MEANING_RULES = """meanings are the senses that need different words in {target_lang}, most common
 first; do not impose a numerical limit. Every meaning has 2-4 main translations
@@ -237,35 +238,6 @@ period is used, however uncommon. Wording that is merely well formed — a compo
 derivation or coinage nobody actually says — is not used, however natural it looks.
 Do not write an article, an explanation or anything else."""
 
-_READING_PROMPT = (
-    """You decide what a learner meant to look up.
-
-A {target_lang} speaker learning {source_lang} typed this into the box for {source_lang}
-wording:
-
-"{word}"
-
-The box is for {source_lang}, so first read the input as {source_lang}: name the
-{source_lang} word or expression it is, is a form of — however rare, dialectal or
-inflected{script_note} — or misspells, counting letters a keyboard for another language
-puts in place of ones it lacks. If you can name one, the input is {source_lang}, even
-when it also means something else in {target_lang} or looks more like {target_lang}.
-
-Only input you cannot read as {source_lang} at all may be {target_lang} typed here by
-mistake; a learner who wants {target_lang} wording looked up puts "!" before it, and
-this input has none.
-
-Answer with one line of JSON and nothing else:
-"""
-    '{{"as_source": "<the {source_lang} wording you read it as, or empty>", '
-    '"reading": "source" or "typo" or "target"}}'
-    """
-
-"reading" is "source" when the input is that wording or a form of it, "typo" when it
-misspells it, and "target" only when as_source is empty and the input is plainly
-{target_lang}."""
-)
-
 _REVERSE_PROMPT = """You are a bilingual dictionary from {target_lang} into {source_lang}.
 
 Wording: "{word}"
@@ -319,6 +291,22 @@ _LATIN_ONLY_RULE = (
     " its Latin one, latinica, and never in Cyrillic."
 )
 
+_LANGUAGE_CODE = re.compile(r"[a-z]{2}")
+# Asked only of what the reader typed: a chip or a rebuild comes from the app's own
+# answer in the tab's language, and keeps the prompt it was measured with.
+_LANGUAGE_FIELD = '"written_in": "<source, target or an ISO 639-1 code>", '
+_LANGUAGE_RULE = """
+
+written_in says which language the submission is written in. Read it as
+{source_lang} first: it is "source" when it is {source_lang} — any word, expression or
+text, any form of one however rare, dialectal or regional, any national standard of
+{source_lang}, or {source_lang} misspelled, counting letters a keyboard for another
+language puts in place of ones it lacks — even when it also means something in another
+language or looks more like one. Only a submission you cannot read as {source_lang} at
+all is in another language: "target" when it is plainly {target_lang}, otherwise that
+language's two-letter ISO 639-1 code. Write the article and the card as asked whatever
+it says."""
+
 _CONTEXT_RULE = (
     'Include "context_sense": <zero-based index> naming the sense the unit carries in '
     'the supplied context, "context_translation": the target-language translation of '
@@ -347,15 +335,19 @@ no phonetic transcription, JSON or delimiters.
 """
 
 
-def build_prompt(
+def build_prompt(  # noqa: PLR0913 - the whole request a prompt is built for.
     language: Language,
     word: str,
     target_lang: str,
     *,
     context: str = "",
     unit_intent: bool = False,
+    typed: bool = False,
 ) -> str:
-    """Build the prompt for the branch the request is in, or for deciding it."""
+    """Build the prompt for the branch the request is in, or for deciding it.
+
+    `typed` is what the reader typed into the box, whose language the answer also names.
+    """
     request = (
         f'Make a card for this selected unit: "{word}"\nContext: "{context}"'
         if unit_intent and context
@@ -377,6 +369,12 @@ def build_prompt(
             else ""
         ),
         context_rule=_CONTEXT_RULE if context else _NO_CONTEXT_RULE,
+        language_field=_LANGUAGE_FIELD if typed else "",
+        language_rule=(
+            _LANGUAGE_RULE.format(source_lang=language.name, target_lang=target_lang)
+            if typed
+            else ""
+        ),
     )
 
 
@@ -424,27 +422,6 @@ def parse_attestation(raw: str) -> Verdict | None:
     value = json_object(raw)
     used = value.get("used") if value is not None else None
     return Verdict(used) if isinstance(used, bool) else None
-
-
-type Reading = Literal["source", "typo", "target"]
-_READINGS = frozenset({"source", "typo", "target"})
-
-
-def build_reading_prompt(language: Language, word: str, target: str) -> str:
-    """Ask whether input without "!" is target-language wording typed by mistake."""
-    return _READING_PROMPT.format(
-        source_lang=language.name,
-        target_lang=target,
-        word=word,
-        script_note=", in either of its alphabets" if language.script == "latin+cyrillic" else "",
-    )
-
-
-def parse_reading(raw: str) -> Reading | None:
-    """Read the reading, which is one bare JSON object and nothing else."""
-    value = json_object(raw)
-    reading = value.get("reading") if value is not None else None
-    return reading if reading in _READINGS else None
 
 
 type ReverseVerdict = Literal["word", "not_a_word", "sentence"]
@@ -652,6 +629,26 @@ def json_object(raw: str) -> dict | None:
             continue
         return value if isinstance(value, dict) else None
     return None
+
+
+def parse_written_in(raw: str, language: Language, target: str = DEFAULT_TARGET_LANGUAGE) -> str:
+    """The language the answer says typed input is in: "source", "target" or another's code.
+
+    An answer that names none, or names it unreadably, leaves the input in its tab's
+    language, which is where it was before the answer named any.
+    """
+    delimiter_at = raw.find(CARD_DELIMITER)
+    payload = json_object(raw[delimiter_at + len(CARD_DELIMITER) :]) if delimiter_at >= 0 else None
+    value = payload.get("written_in") if payload is not None else None
+    named = value.strip().casefold() if isinstance(value, str) else ""
+    target_entry = catalog_language_named(target)
+    if named == language.code:
+        return "source"
+    if target_entry is not None and named == target_entry.code:
+        return "target"
+    if named in {"source", "target"} or _LANGUAGE_CODE.fullmatch(named):
+        return named
+    return "source"
 
 
 def extract_answer(  # noqa: PLR0913 - the whole request the answer is read against.

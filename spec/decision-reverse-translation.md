@@ -56,8 +56,13 @@ in both samples: Serbian врач (a sorcerer; Russian a doctor) and English pas
 step; Serbian a dog), each a word of the tab spelled like a common target word, its own
 meaning the rarer one. A third sample was cut off by an exhausted pool and is not
 counted. Jev, asked the same question, separates nothing: on the Serbian tab the tab's
-own words score 0.17 to 0.86 and Russian ones 0.72 to 0.88. The reading reverses nothing
-on its own: it is not yet fit to.
+own words score 0.17 to 0.86 and Russian ones 0.72 to 0.88.
+
+The operator ruled out the separate call: the answer the app asks anyway names the
+language the input is written in, in the words that cut the wrong reverses (read as the
+tab's language first, counting a keyboard's stand-in letters), and a single word
+reverses only when the judgement the app also asks finds it unused in the tab's
+language. That line is not benched yet.
 
 Placeholder widths for the input field (built CSS, Chromium and WebKit, 360 px
 viewport, 294 px of text room): «Текст или !русское слово» 193, «!английское» 219,

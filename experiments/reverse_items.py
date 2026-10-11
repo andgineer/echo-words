@@ -250,8 +250,8 @@ OFFER_WORDS = (
 class ReadingCase:
     """Input typed without "!" where the tab's and the target's alphabets overlap.
 
-    Only these reach the model: an alphabet the tab writes and the target does not, or
-    the reverse, decides by itself. `target` is plainly target-language wording the
+    Only there does the answer's language line decide: an alphabet the tab writes and the
+    target does not, or the reverse, decides by itself. `target` is plainly target-language wording the
     learner meant to reverse; `not` is the tab's own wording, a form or a misspelling of
     it, look-alikes included; `either` is genuinely open and counts neither way.
     """

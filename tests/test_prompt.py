@@ -14,12 +14,11 @@ from echo_words.prompt import (
     Verdict,
     build_extended_prompt,
     build_prompt,
-    build_reading_prompt,
     build_reverse_prompt,
     extract_answer,
     parse_attestation,
-    parse_reading,
     parse_reverse,
+    parse_written_in,
     reverse_example_issue,
 )
 
@@ -301,31 +300,6 @@ def test_a_bare_literal_is_not_taken_for_a_missing_quote():
     assert parse_attestation('{"used": true, "note": rare but attested"}') == Verdict(True)
 
 
-def test_the_reading_question_names_both_languages_and_a_second_alphabet(languages):
-    serbian = build_reading_prompt(languages["sr"], "собака", "Russian")
-    german = build_reading_prompt(languages["de"], "собака", "Russian")
-
-    assert '"собака"' in serbian
-    assert "into the box for Српски" in serbian
-    assert "in either of its alphabets" in serbian
-    assert "alphabets" not in german
-
-
-@pytest.mark.parametrize(
-    ("raw", "reading"),
-    [
-        ('{"why": "plain Russian", "reading": "target"}', "target"),
-        ('{"why": "Serbian dog", "reading": "source"}', "source"),
-        ('Sure: {"reading": "typo"}', "typo"),
-        ('{"reading": "russian"}', None),
-        ('{"why": "no verdict"}', None),
-        ("not json", None),
-    ],
-)
-def test_only_a_known_reading_is_read(raw, reading):
-    assert parse_reading(raw) == reading
-
-
 def test_a_reverse_answer_carries_its_equivalents_and_the_reading(languages):
     raw = _reverse(
         _equivalent("Stuhl", "Die Stühle stehen im Garten.", "Stühle"),
@@ -576,3 +550,41 @@ def test_a_bare_chip_in_capitals_is_lowered(languages):
 
     assert answer is not None
     assert answer.equivalents[1] == Equivalent("köter", "")
+
+
+def test_only_typed_input_is_asked_which_language_it_is_in(languages):
+    english = languages["en"]
+    typed_text = build_prompt(english, "Du ziehst um", "Russian", typed=True)
+    typed_word = build_prompt(english, "umziehen", "Russian", unit_intent=True, typed=True)
+    chip = build_prompt(english, "umziehen", "Russian", unit_intent=True, context="Du ziehst um")
+
+    assert '"written_in": "<source, target or an ISO 639-1 code>", "kind": "unit"' in typed_text
+    assert '"written_in": "<source, target or an ISO 639-1 code>", "kind": "text"' in typed_text
+    assert "Read it as\nEnglish first" in typed_text
+    assert "written_in" in typed_word
+    assert "written_in" not in chip
+    assert "written_in" not in build_prompt(english, "Du ziehst um", "Russian")
+
+
+@pytest.mark.parametrize(
+    ("named", "written_in"),
+    [
+        ('"written_in": "de"', "de"),
+        ('"written_in": "DE "', "de"),
+        ('"written_in": "ru"', "target"),
+        ('"written_in": "target"', "target"),
+        ('"written_in": "en"', "source"),
+        ('"written_in": "source"', "source"),
+        ('"written_in": "German"', "source"),
+        ('"written_in": 7', "source"),
+        ('"kind": "text"', "source"),
+    ],
+)
+def test_the_language_an_answer_names_is_read_relative_to_its_tab(languages, named, written_in):
+    raw = f'<b>article</b>\n===CARD===\n{{{named}, "kind": "text", "combinations": []}}'
+
+    assert parse_written_in(raw, languages["en"], "Russian") == written_in
+
+
+def test_an_answer_without_a_card_block_leaves_the_input_in_its_tab(languages):
+    assert parse_written_in("<b>article only</b>", languages["de"], "Russian") == "source"
