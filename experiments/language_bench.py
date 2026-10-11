@@ -41,7 +41,7 @@ async def run(out: Path) -> None:
 def report(out: Path) -> dict:
     rows = answers(out)
     cases = {bench.language_id(case): case for case in LANGUAGE_CASES}
-    named = {sid: rows[sid].metrics.get("written_in") for sid in cases if sid in rows and bench.complete(rows[sid])}
+    named = {sid: rows[sid].metrics.get("submission_language") for sid in cases if sid in rows and bench.complete(rows[sid])}
 
     def ids(expected: str | None = None, *, other: bool = False) -> list[str]:
         return [

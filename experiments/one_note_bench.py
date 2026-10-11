@@ -86,7 +86,7 @@ from echo_words.prompt import (  # noqa: E402
     json_object,
     parse_attestation,
     parse_reverse,
-    parse_written_in,
+    parse_submission_language,
     reverse_example_issue,
 )
 from echo_words.sanitizer import sanitize_html  # noqa: E402
@@ -1771,8 +1771,8 @@ def score(shot: Shot) -> Shot:
         shot.metrics = {
             "answered": bool(shot.text) and not shot.error,
             "card_block": CARD_DELIMITER in shot.text,
-            "named": str(shot.payload.get("written_in") or ""),
-            "written_in": parse_written_in(shot.text, LANGUAGES[shot.lang], target),
+            "named": str(shot.payload.get("submission_language") or ""),
+            "submission_language": parse_submission_language(shot.text, LANGUAGES[shot.lang], target),
         }
         return shot
     if shot.shot_id in EXPECTED_UNIT_OVERRIDES:

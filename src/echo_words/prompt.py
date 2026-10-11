@@ -294,18 +294,22 @@ _LATIN_ONLY_RULE = (
 _LANGUAGE_CODE = re.compile(r"[a-z]{2}")
 # Asked only of what the reader typed: a chip or a rebuild comes from the app's own
 # answer in the tab's language, and keeps the prompt it was measured with.
-_LANGUAGE_FIELD = '"written_in": "<source, target or an ISO 639-1 code>", '
+_LANGUAGE_FIELD = (
+    '"submission": "<the submission exactly as typed>", '
+    '"submission_language": "<two-letter ISO 639-1 code>", '
+)
 _LANGUAGE_RULE = """
 
-written_in says which language the submission is written in. Read it as
-{source_lang} first: it is "source" when it is {source_lang} — any word, expression or
-text, any form of one however rare, dialectal or regional, any national standard of
-{source_lang}, or {source_lang} misspelled, counting letters a keyboard for another
-language puts in place of ones it lacks — even when it also means something in another
-language or looks more like one. Only a submission you cannot read as {source_lang} at
-all is in another language: "target" when it is plainly {target_lang}, otherwise that
-language's two-letter ISO 639-1 code. Write the article and the card as asked whatever
-it says."""
+submission copies what the reader typed, and submission_language is the two-letter
+ISO 639-1 code of the language that copy is written in — not of the word your article
+ends up about, which may be its translation. It is "{source_code}" whenever the
+submission is {source_lang}: any word, expression or text, any form of one however rare,
+dialectal or regional, any national standard of {source_lang}, or {source_lang}
+misspelled, counting letters a keyboard for another language puts in place of ones it
+lacks — even when it also means something in another language. Otherwise a submission
+in {target_lang}, in any of its alphabets or national standards, is {target_code}, even
+when the same words also belong to another language; any other language gets its own
+code. Write the article and the card as asked whatever it says."""
 
 _CONTEXT_RULE = (
     'Include "context_sense": <zero-based index> naming the sense the unit carries in '
@@ -371,11 +375,21 @@ def build_prompt(  # noqa: PLR0913 - the whole request a prompt is built for.
         context_rule=_CONTEXT_RULE if context else _NO_CONTEXT_RULE,
         language_field=_LANGUAGE_FIELD if typed else "",
         language_rule=(
-            _LANGUAGE_RULE.format(source_lang=language.name, target_lang=target_lang)
+            _LANGUAGE_RULE.format(
+                source_lang=language.name,
+                source_code=language.code,
+                target_lang=target_lang,
+                target_code=_quoted_code(target_lang),
+            )
             if typed
             else ""
         ),
     )
+
+
+def _quoted_code(name: str) -> str:
+    entry = catalog_language_named(name)
+    return f'"{entry.code}"' if entry is not None else "its own code"
 
 
 def build_extended_prompt(
@@ -631,7 +645,9 @@ def json_object(raw: str) -> dict | None:
     return None
 
 
-def parse_written_in(raw: str, language: Language, target: str = DEFAULT_TARGET_LANGUAGE) -> str:
+def parse_submission_language(
+    raw: str, language: Language, target: str = DEFAULT_TARGET_LANGUAGE
+) -> str:
     """The language the answer says typed input is in: "source", "target" or another's code.
 
     An answer that names none, or names it unreadably, leaves the input in its tab's
@@ -639,7 +655,7 @@ def parse_written_in(raw: str, language: Language, target: str = DEFAULT_TARGET_
     """
     delimiter_at = raw.find(CARD_DELIMITER)
     payload = json_object(raw[delimiter_at + len(CARD_DELIMITER) :]) if delimiter_at >= 0 else None
-    value = payload.get("written_in") if payload is not None else None
+    value = payload.get("submission_language") if payload is not None else None
     named = value.strip().casefold() if isinstance(value, str) else ""
     target_entry = catalog_language_named(target)
     if named == language.code:

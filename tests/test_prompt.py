@@ -18,7 +18,7 @@ from echo_words.prompt import (
     extract_answer,
     parse_attestation,
     parse_reverse,
-    parse_written_in,
+    parse_submission_language,
     reverse_example_issue,
 )
 
@@ -558,33 +558,45 @@ def test_only_typed_input_is_asked_which_language_it_is_in(languages):
     typed_word = build_prompt(english, "umziehen", "Russian", unit_intent=True, typed=True)
     chip = build_prompt(english, "umziehen", "Russian", unit_intent=True, context="Du ziehst um")
 
-    assert '"written_in": "<source, target or an ISO 639-1 code>", "kind": "unit"' in typed_text
-    assert '"written_in": "<source, target or an ISO 639-1 code>", "kind": "text"' in typed_text
-    assert "Read it as\nEnglish first" in typed_text
-    assert "written_in" in typed_word
-    assert "written_in" not in chip
-    assert "written_in" not in build_prompt(english, "Du ziehst um", "Russian")
+    field = '"submission": "<the submission exactly as typed>", "submission_language": "<two-letter ISO 639-1 code>", '
+    rule = " ".join(typed_text.split())
+    assert field + '"kind": "unit"' in typed_text
+    assert field + '"kind": "text"' in typed_text
+    assert 'It is "en" whenever the submission is English' in rule
+    assert 'a submission in Russian, in any of its alphabets or national standards, is "ru"' in rule
+    assert "submission_language" in typed_word
+    assert "submission_language" not in chip
+    assert "submission_language" not in build_prompt(english, "Du ziehst um", "Russian")
+
+
+def test_a_target_outside_the_directory_is_asked_for_by_its_own_code(languages):
+    prompt = " ".join(build_prompt(languages["en"], "umziehen", "Klingon", typed=True).split())
+
+    assert (
+        "a submission in Klingon, in any of its alphabets or national standards, is its own code"
+        in prompt
+    )
 
 
 @pytest.mark.parametrize(
-    ("named", "written_in"),
+    ("named", "read_as"),
     [
-        ('"written_in": "de"', "de"),
-        ('"written_in": "DE "', "de"),
-        ('"written_in": "ru"', "target"),
-        ('"written_in": "target"', "target"),
-        ('"written_in": "en"', "source"),
-        ('"written_in": "source"', "source"),
-        ('"written_in": "German"', "source"),
-        ('"written_in": 7', "source"),
+        ('"submission_language": "de"', "de"),
+        ('"submission_language": "DE "', "de"),
+        ('"submission_language": "ru"', "target"),
+        ('"submission_language": "target"', "target"),
+        ('"submission_language": "en"', "source"),
+        ('"submission_language": "source"', "source"),
+        ('"submission_language": "German"', "source"),
+        ('"submission_language": 7', "source"),
         ('"kind": "text"', "source"),
     ],
 )
-def test_the_language_an_answer_names_is_read_relative_to_its_tab(languages, named, written_in):
+def test_the_language_an_answer_names_is_read_relative_to_its_tab(languages, named, read_as):
     raw = f'<b>article</b>\n===CARD===\n{{{named}, "kind": "text", "combinations": []}}'
 
-    assert parse_written_in(raw, languages["en"], "Russian") == written_in
+    assert parse_submission_language(raw, languages["en"], "Russian") == read_as
 
 
 def test_an_answer_without_a_card_block_leaves_the_input_in_its_tab(languages):
-    assert parse_written_in("<b>article only</b>", languages["de"], "Russian") == "source"
+    assert parse_submission_language("<b>article only</b>", languages["de"], "Russian") == "source"

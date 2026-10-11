@@ -1500,19 +1500,21 @@ def test_typed_fixtures_ask_for_the_language_and_chips_do_not():
     typed = next(shot for shot in bench.initial_jobs_for_tier("full") if shot.kind == "bare")
     chip = bench.Shot("click-x", "context", "de", "steht auf", context="Er steht auf.")
 
-    assert "written_in" in bench.prompt_for(typed)
-    assert "written_in" not in bench.prompt_for(chip)
+    assert "submission_language" in bench.prompt_for(typed)
+    assert "submission_language" not in bench.prompt_for(chip)
 
 
 def test_a_language_answer_is_read_against_its_tab_and_target():
     shots = {shot.shot_id: shot for shot in bench.language_shots()}
     german = shots["language-en-umziehen-sentence"]
     serbian = shots["language-en-hvala-sr"]
-    answer = '<b>x</b>\n===CARD===\n{"written_in": "%s", "kind": "text", "combinations": []}'
+    answer = '<b>x</b>\n===CARD===\n{"submission": "x", "submission_language": "%s", "kind": "text", "combinations": []}'
 
     assert len(shots) == len(bench.LANGUAGE_CASES)
     assert "IN Serbian" in bench.prompt_for(serbian)
-    assert bench.score(replace(german, text=answer % "de")).metrics["written_in"] == "de"
-    assert bench.score(replace(serbian, text=answer % "sr")).metrics["written_in"] == "target"
+    assert bench.score(replace(german, text=answer % "de")).metrics["submission_language"] == "de"
+    assert (
+        bench.score(replace(serbian, text=answer % "sr")).metrics["submission_language"] == "target"
+    )
     assert bench.complete(bench.score(replace(german, text=answer % "en")))
     assert not bench.complete(bench.score(replace(german, text="<b>no card</b>")))

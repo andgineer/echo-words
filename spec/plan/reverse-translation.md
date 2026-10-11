@@ -195,15 +195,19 @@ wrong tab.
 
 ## The language line (built, being benched)
 
-- `build_prompt(..., typed=True)` asks the S answer for `"written_in": "<source, target
-  or an ISO 639-1 code>"` in both branches, with `_LANGUAGE_RULE` after the relation
-  rules. Only typed input is asked: a chip or a rebuild comes from the app's own S
+- `build_prompt(..., typed=True)` asks the S answer for `"submission": "<the submission
+  exactly as typed>", "submission_language": "<two-letter ISO 639-1 code>"` in both
+  branches, with `_LANGUAGE_RULE` after the relation rules: S's code for anything S
+  (forms, regional standards, misspellings, keyboard stand-ins, false friends), else T's
+  code for T in any alphabet or national standard, else the language's own code. Only typed input is asked: a chip or a rebuild comes from the app's own S
   answer, and its prompt stays byte-identical to the one it was measured with.
-- `parse_written_in(raw, S, T)` → `"source"`, `"target"` or another code; S's own code
+- `parse_submission_language(raw, S, T)` → `"source"`, `"target"` or another code; S's own code
   reads as `source` and T's as `target`, and an answer that names none, or names it
   unreadably, reads as `source` — the behaviour before the line existed.
-- The separate reading call measured before it (decision spec) is gone; its lessons are
-  the line's wording: read as S first, count keyboard stand-ins, lean to S.
+- The separate reading call measured before it (decision spec) is gone. Asking for
+  "source"/"target" failed (the model reads "source" as "the language typed"), and so
+  did a code alone after the article: the model names the article's language. Copying
+  the typed text first is the wording being benched.
 - Bench: `experiments/language_bench.py` asks the 117 cases of
   `experiments/language_items.py` — the 87 reading cases (Cyrillic on the Serbian tab
   with a Russian target; Latin on the English and German tabs with a Serbian target),
@@ -284,7 +288,7 @@ wrong tab.
       undo treat it as stored), no card, no audio.
     - No usable answer from pool or paid → `_fail`.
   - The language line: a typed job asks `build_prompt(..., typed=True)`, and once the S
-    answer is parsed, before anything is carded, `parse_written_in` decides:
+    answer is parsed, before anything is carded, `parse_submission_language` decides:
     - `source` → the S path, untouched.
     - `target`, with `shared_script`, and for a single word the attestation refusing →
       drop the S answer, set `reverse="line"`, and run the reverse resolution above
