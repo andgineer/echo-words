@@ -308,8 +308,9 @@ language, or a string only a rare, slang or euphemistic reading would make a wor
 not_a_word too, and is never read as a misspelled {target_lang} word. It is
 "sentence", with read_as empty and no equivalents, when the wording reports a
 particular situation rather than naming a word or expression; a clause with its own
-subject and finite verb does. Do not write an article, an explanation or anything
-else."""
+subject and finite verb does. A sentence carries "translation": the wording as a
+{source_lang} speaker would naturally say it, in one {source_lang} sentence. Do not
+write an article, an explanation or anything else."""
 
 # Serbian is read in Latin letters, and its Cyrillic shares its letters with Russian, which
 # leaks into the answers.
@@ -464,6 +465,7 @@ class ReverseAnswer:
     verdict: ReverseVerdict
     read_as: str
     equivalents: tuple[Equivalent, ...]
+    translation: str = ""
 
 
 def build_reverse_prompt(language: Language, word: str, target: str) -> str:
@@ -492,6 +494,13 @@ def parse_reverse(
     verdict = value.get("verdict") if value is not None else None
     if value is None or verdict not in _REVERSE_VERDICTS:
         return None
+    if verdict == "sentence":
+        translation = value.get("translation")
+        text = _plain(translation) if isinstance(translation, str) else ""
+        # The translation becomes the source-language submission, so it must be one.
+        if not text or validate_text(text, language) is not None:
+            return None
+        return ReverseAnswer("sentence", "", (), text)
     if verdict != "word":
         return ReverseAnswer(verdict, "", ())
     equivalents = _equivalents(value.get("equivalents"), language, target)

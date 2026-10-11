@@ -1493,3 +1493,23 @@ def test_a_reading_shot_asks_the_production_question_and_reads_its_answer():
     assert answered.metrics["reading"] == "target"
     assert bench.complete(answered)
     assert not bench.complete(garbled)
+
+
+def test_a_reverse_sentence_is_scored_by_its_translation():
+    answer = json.dumps(
+        {
+            "verdict": "sentence",
+            "read_as": "",
+            "equivalents": [],
+            "translation": "Da li kasnimo na voz?",
+        },
+        ensure_ascii=False,
+    )
+    shot = _reverse_shot("reverse-sr-ne-opazdyvaem", answer)
+    untranslated = _reverse_shot(
+        "reverse-sr-ne-opazdyvaem", answer.replace("Da li kasnimo na voz?", "")
+    )
+
+    assert shot.metrics["verdict_expected"] is True
+    assert shot.metrics["translation"] == "Da li kasnimo na voz?"
+    assert untranslated.metrics["usable"] is False

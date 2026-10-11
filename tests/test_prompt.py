@@ -346,11 +346,34 @@ def test_a_reverse_answer_carries_its_equivalents_and_the_reading(languages):
     )
 
 
-@pytest.mark.parametrize("verdict", ["not_a_word", "sentence"])
-def test_a_reverse_refusal_carries_no_equivalents(languages, verdict):
-    raw = _reverse(_equivalent("Stuhl", "Der Stuhl ist neu.", "Stuhl"), verdict=verdict)
+def test_a_word_that_is_none_carries_no_equivalents(languages):
+    raw = _reverse(_equivalent("Stuhl", "Der Stuhl ist neu.", "Stuhl"), verdict="not_a_word")
 
-    assert parse_reverse(raw, languages["de"], "Russian") == ReverseAnswer(verdict, "", ())
+    assert parse_reverse(raw, languages["de"], "Russian") == ReverseAnswer("not_a_word", "", ())
+
+
+def test_a_sentence_carries_its_translation_and_no_equivalents(languages):
+    raw = json.dumps(
+        {
+            "verdict": "sentence",
+            "read_as": "",
+            "equivalents": [],
+            "translation": "  Kommen wir  zu spät zum Zug? ",
+        }
+    )
+
+    assert parse_reverse(raw, languages["de"], "Russian") == ReverseAnswer(
+        "sentence", "", (), "Kommen wir zu spät zum Zug?"
+    )
+
+
+@pytest.mark.parametrize("translation", [None, "", "Не опаздываем ли мы на поезд?"])
+def test_a_sentence_without_a_usable_translation_is_unusable(languages, translation):
+    answer = {"verdict": "sentence", "read_as": "", "equivalents": []}
+    if translation is not None:
+        answer["translation"] = translation
+
+    assert parse_reverse(json.dumps(answer), languages["de"], "Russian") is None
 
 
 @pytest.mark.parametrize(

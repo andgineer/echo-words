@@ -26,7 +26,7 @@ Run:
     uv run python experiments/one_note_bench.py report \
       --tier smoke --out experiments/.bench-one-note-post
 
-The reverse lookup is measured on its own, in its own `--out`: 59 reverse calls, the
+The reverse lookup is measured on its own, in its own `--out`: 68 reverse calls, the
 Serbian article and judgement for four Russian words, and the second judgements
 those answers happen to need. `report` screens whichever of the two a directory holds.
     uv run python experiments/one_note_bench.py run-reverse --resume \
@@ -202,9 +202,9 @@ OFFER_ARTICLE_KIND = "offer-article"
 OFFER_CORRECTION_KIND = "offer-correction"
 REVERSE_BENCH_KINDS = frozenset({REVERSE_KIND, OFFER_KIND, OFFER_ARTICLE_KIND, OFFER_CORRECTION_KIND})
 JUDGEMENT_KINDS = frozenset({"attestation", "correction", OFFER_KIND, OFFER_CORRECTION_KIND})
-REVERSE_FIXTURES = 59
+REVERSE_FIXTURES = 68
 OFFER_FIXTURES = 4
-MIN_REVERSE_USABLE = 53
+MIN_REVERSE_USABLE = 61
 # Of the usable answers: a word refused, or junk carded, leaves the reader nothing.
 MAX_REVERSE_VERDICT_MISSES = 0.1
 
@@ -2290,6 +2290,7 @@ def score_reverse(shot: Shot) -> Shot:
         "read_as": read_as,
         "read_as_expected": normalize(read_as) in readings if readings else None,
         "equivalents": [{"word": word, "example": example} for word, example in kept.items()],
+        "translation": parsed.translation if parsed is not None else "",
         "first_expected": (bool(words) and normalize(words[0], shot.lang) in accepted)
         if accepted
         else None,
@@ -2392,6 +2393,7 @@ def reverse_review_packet(
             "verdict": shot.metrics.get("verdict"),
             "read_as": shot.metrics.get("read_as"),
             "equivalents": shot.metrics.get("equivalents"),
+            "translation": shot.metrics.get("translation"),
             "example_drops": shot.metrics.get("example_drops"),
             "first_expected": shot.metrics.get("first_expected"),
             "read_as_expected": shot.metrics.get("read_as_expected"),
