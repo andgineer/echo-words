@@ -59,10 +59,61 @@ counted. Jev, asked the same question, separates nothing: on the Serbian tab the
 own words score 0.17 to 0.86 and Russian ones 0.72 to 0.88.
 
 The operator ruled out the separate call: the answer the app asks anyway names the
-language the input is written in, in the words that cut the wrong reverses (read as the
-tab's language first, counting a keyboard's stand-in letters), and a single word
-reverses only when the judgement the app also asks finds it unused in the tab's
-language. That line is not benched yet.
+language the input is written in, and a single word reverses only when the judgement
+the app also asks of the typed word finds it unused in the tab's language.
+
+### The language line in the answer
+
+Only typed input is asked; a chip or a rebuild comes from the app's own answer and
+keeps the prompt it was measured with. The answer copies what the reader typed, then
+names the language of that copy by its two-letter code: the tab's code for anything in
+the tab's language (any form, regional standard, misspelling, a keyboard's stand-in
+letters, a word that also means something elsewhere), otherwise the target's code for
+the target in any alphabet or national standard, otherwise the language's own code.
+
+Measured on the 117 language cases on the free pool, 2026-10-11 and 2026-10-12:
+
+| | "source", "target" or a code | a code alone | the copy, then its code (two samples) |
+|---|---|---|---|
+| The tab's own wording named another language | 0 of 35 | 0 of 63 | 0 of 66, 1 of 66 |
+| Target wording caught | 2 of 24 | 19 of 27 | 25 of 28, 22 of 25 |
+| Another language named right | — | 10 of 16 | 11 of 17, 10 of 16 |
+
+Asked for "source" or "target", the model reads "source" as the language the input is
+in, which is always true; a clause about translations raised it only to 15 of 28. A code
+alone, written after the article, names the article's language: «hvala» on the English
+tab is answered with an article on «thank you» and named English, «Merci beaucoup» on
+the German tab is named German by an answer that says it is French. Copying the input
+first points the code at the input.
+
+The full tier asked with the line passes every gate on a healthy pool (203 of 227 from
+the workhorse); every one of its 196 typed answers names the tab's language, no article
+mentions the line, and a fresh review of every item finds the same faults at the same
+rates as the runs before it. Two hints from that one sample are watched, not findings:
+one typo of six named as a typo against two to four before, and one word answer refused
+for an empty field of the text shape.
+
+What the line still gets wrong, from the fresh reviews of both samples:
+
+- **Serbian on the English or German tab named Croatian** in both samples on the same
+  three inputs («video moj telefon», «hvala lepo», «kuća»): with a Serbian tab the
+  reader would get «Перевод с хорватского» instead of the move to that tab.
+- **French greetings English and German dictionaries carry** («bonjour», «merci») are
+  named the tab's language in both samples, an English phrase on the German tab in one.
+  The reader gets today's answer.
+- **About three target inputs of 28 per sample are missed**, different ones each time;
+  one per sample is lost to a broken card (the workhorse garbles a Cyrillic escape in
+  about three answers of a hundred). The reader gets today's answer.
+- **The tab's wording named the target once**: «йош», Serbian још typed on a Russian
+  keyboard, named Russian in one sample of two. It is a single word, so the judgement of
+  «йош» itself must also refuse it; when it does, the reverse call finds no Russian word
+  and the floor returns the ordinary answer, one call later.
+
+The same reviews found faults of the answer itself that reach the reader whatever the
+line says, stable across both samples: look-alikes carded with the Russian sense (врач as
+a doctor, жир as fat), the tab's sense missing (диван without «wonderful», сто without
+«table»), Russian работа carded as standard Serbian, English «baba» given an invented
+sense, German «Most» rewritten as «meist».
 
 Placeholder widths for the input field (built CSS, Chromium and WebKit, 360 px
 viewport, 294 px of text room): «Текст или !русское слово» 193, «!английское» 219,
@@ -76,7 +127,9 @@ a verdict (a word, not a word, or a sentence), the target-language word it was r
 as, and up to six source-language equivalents, one per meaning, the commonest
 first, each with one everyday source-language sentence using it in that meaning.
 The first equivalent is the one carded and its sentence is the card's front; the
-others are offered as chips.
+others are offered as chips. A sentence comes back translated into natural
+source-language text, so the same call tells the shapes apart and the sentence goes
+down the text path; a sentence without its translation is an unusable answer.
 
 An equivalent the source language's own validation refuses is dropped, and an
 example is screened by the card's own front-sentence test — the source language's
@@ -279,6 +332,49 @@ read as written. The one the prompt carries heads the card for стол with с�
 Croatian and Bosnian word for a table, under a sentence that makes no sense, beside two
 wrong chips (маса, бора).
 
+### Sentences
+
+The prompt with the sentence's translation was asked on 2026-10-12 with the same
+fixtures and four Russian sentences into each tab language (я иду домой, не опаздываем
+ли мы на поезд, где ты был вчера, мне нужно купить хлеб). 66 of 68 reverse calls were
+answered, all by gemini-flash-lite; two waited out a provider cooldown. A fresh reviewer
+read every item:
+
+| | First card right | Wrong chips | Sentence translated right |
+|---|---|---|---|
+| English | 13 of 15 | 4 of 22 | 4 of 4 |
+| German | 12 of 14 | 3 of 17 | 4 of 4 |
+| Serbian | 14 of 15 | 3 of 10 | 3 of 3 |
+
+Every translation is faithful, natural and in the tab's language, Serbian in Latin
+letters: "I am going home", «Wo warst du gestern?», «moram da kupim hleb». The one
+shift is «не опаздываем ли мы на поезд» given as "Are we going to miss the train?" and
+«Verpassen wir den Zug?»: the sense holds, but a reader after опаздывать gets miss
+rather than be late. Punctuation follows the input unevenly (a question mark added in
+English and German, none in Serbian). The word answers are as good as on the runs
+before: every non-word and keyboard-Serbian verdict right, сабака and ключь read as
+their words, «crni luk» rightly first for лук.
+
+Faults the same review found, every one seen on earlier runs:
+
+- сотл refused in every language again.
+- коса carded as the scythe in English and German with the braid a chip, and as
+  Serbian kosa, hair, with no other meaning.
+- «halsüberkopf» misspelt in the German headword and its front sentence.
+- English авось carded as hope, which is надежда; German vielleicht and Serbian
+  valjda are right.
+- йош on the Serbian tab read as ещё and carded as još: the reader lands on the word
+  they meant, under a header claiming they typed ещё.
+- Chips whose sentence is nonsense or about another word (board in "room and board",
+  Abteilung, ministarstvo for стол, помрло for сломя голову), and three that give
+  наконец for в конце концов.
+- Serbian тоска came back with both quotes missing around its sentences, an answer the
+  parser cannot read.
+
+The first ten answers took under 1.4 s each; after a call that waited out a cooldown,
+the rest took 3 to 12 s (median 6.5 s) as the pool neared its daily quota, which ran out
+half an hour later.
+
 ### A Jev check on the Serbian equivalents
 
 Every distinct Serbian equivalent the recorded runs offered, 96 across the Cyrillic runs
@@ -319,6 +415,11 @@ ordinary path, under a judgement that is wrong about the typed word, and only к
 is refused and offered the reverse lookup — whose answer is the same књига. The
 offer is reached rarely, and the false acceptances are a finding about the
 attestation judgement on Russian input, not about the reverse prompt.
+
+The judgement does not hold its answer: asked again on 2026-10-12 it refused город,
+девушка and собака and accepted книга ("Old Church Slavonic, archaic, or regional"),
+the opposite on every word. The articles headed the four with the same Serbian words,
+and the language line, asked with them, named all four Russian.
 
 ## Decision
 

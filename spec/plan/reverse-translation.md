@@ -1,6 +1,6 @@
 # Plan: reverse translation
 
-**Status (2026-10-10):** steps 1–3 built, and the routing redesigned by the operator.
+**Status (2026-10-12):** steps 1–3 built, and the routing redesigned by the operator.
 The reverse prompt and its parser are in the code and asked by nothing yet; the prompt
 was benched four times on the pool and reviewed by a fresh agent each time, and the
 result is in `spec/decision-reverse-translation.md`: English and German carry it as
@@ -9,9 +9,12 @@ Cyrillic is read as written. The letter tests that step 1 built are gone: no cod
 a word's letters to guess its language. Alphabets decide only where the tab's and the
 target's cannot be confused; where they overlap, the answer the app asks anyway names
 the language the input is written in (rules 2–3), which also moves input typed on the
-wrong tab to its own tab (rule 9). That line is built and waits for its bench
-(`experiments/language_bench.py`, and the full tier of `one_note_bench.py`). Open with
-the operator: acceptance of the faults the decision spec lists. Next is step 4.
+wrong tab to its own tab (rule 9). That line is built and benched: two samples of
+`experiments/language_bench.py` and the full tier of `one_note_bench.py`, reviewed by
+a fresh agent, recorded in the decision spec. The sentence translation (rule 5) is
+built; its bench (`.bench-reverse-sent-a/b/c`) has one sample of three run and
+reviewed, and the other two resume when the pool's quota allows. Open with the
+operator: acceptance of the faults the decision spec lists. Next is step 4.
 
 ## What the reader gets
 
@@ -131,11 +134,12 @@ wrong tab.
   language, a reading only slang or euphemism makes a word, and an S word typed in T
   letters that is no T word; `sentence` for a clause. A language written in two
   alphabets (Serbian) is asked for Latin only (`_LATIN_ONLY_RULE`).
-- To build and bench (rule 5): for `sentence`, the answer also carries
-  `"translation"`, the clause in natural S, so one call still tells the shapes apart;
-  `parse_reverse` returns it, and a `sentence` without one is unusable. Benched on
-  Russian sentences into English, German and Serbian, graded by a fresh reviewer, as
-  the word half was.
+- Built (rule 5): for `sentence`, the answer also carries `"translation"`, the clause
+  in natural S, so one call still tells the shapes apart; `parse_reverse` returns it,
+  and a `sentence` without one is unusable. Sample a (`.bench-reverse-sent-a`) graded
+  by a fresh reviewer: 11 of 11 translations right, word answers as before (decision
+  spec, "Sentences"). Samples b and c resume on the next day with quota
+  (`run-reverse --resume`), plus sample a's two calls that waited out a cooldown.
 - Answer JSON, strict:
   `{"verdict": "word" | "not_a_word" | "sentence", "read_as": str,
   "equivalents": [{"word": str, "example": str, "form": str}, ...]}`, at most 6
@@ -193,7 +197,7 @@ wrong tab.
 - The same prompt serves `!`, a script T alone writes, a T reading, and the offer's
   tap, which is a `!` submission.
 
-## The language line (built, being benched)
+## The language line (built and benched)
 
 - `build_prompt(..., typed=True)` asks the S answer for `"submission": "<the submission
   exactly as typed>", "submission_language": "<two-letter ISO 639-1 code>"` in both
@@ -207,7 +211,7 @@ wrong tab.
 - The separate reading call measured before it (decision spec) is gone. Asking for
   "source"/"target" failed (the model reads "source" as "the language typed"), and so
   did a code alone after the article: the model names the article's language. Copying
-  the typed text first is the wording being benched.
+  the typed text first is the measured wording (decision spec).
 - Bench: `experiments/language_bench.py` asks the 117 cases of
   `experiments/language_items.py` — the 87 reading cases (Cyrillic on the Serbian tab
   with a Russian target; Latin on the English and German tabs with a Serbian target),
@@ -481,9 +485,8 @@ Results, reviews and the decision are in `spec/decision-reverse-translation.md`.
 
 1. **Done, then replaced.** The letter functions step 1 built are removed by the
    operator's direction; `script_route` and the answer's language line take their
-   place. The line and its parser are built and wait for their bench
-   (`experiments/language_bench.py` and the full tier); `script_route` lands in step 4
-   with its caller.
+   place. The line and its parser are built and benched; `script_route` lands in
+   step 4 with its caller.
    Prefix parsing waits for step 4, so that `!` is never accepted and silently dropped
    before the pipeline can act on it.
 2. **Done.** Reverse prompt (with `form`) + parser (screening examples by the card's
