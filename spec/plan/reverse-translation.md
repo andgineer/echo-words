@@ -1,6 +1,7 @@
 # Plan: reverse translation
 
-**Status (2026-10-12):** built end to end and not yet fully measured. A word or a text
+**Status (2026-10-12):** built end to end, not yet fully measured and read by nobody
+but its author. A word or a text
 typed in the target language (`!стол`, or Cyrillic on a Latin-script tab) becomes the
 entry for its equivalent in the selected language; where the alphabets overlap, the
 answer to typed input names its language and routes it. What the reader gets is in
@@ -9,12 +10,43 @@ reasoning are in `spec/decision-reverse-translation.md`.
 
 What is left:
 
-1. **Samples b and c** of the reverse prompt with the sentence translation (below).
+1. **A review of the implementation** by an agent that did not write it, before any
+   push (below). Recommended to the operator on 2026-10-12 and awaiting their word.
+2. **Samples b and c** of the reverse prompt with the sentence translation (below).
    Until they are recorded the reverse prompt does not count as measured, and the
    feature is not to be called done or deployed as one.
-2. Delete this plan, and set `CLAUDE.md` back to one open plan.
+3. **The operator's word on the first answer being visible.** When a whole sentence is
+   typed on the wrong tab, or in the target language on a shared-script tab without
+   `!`, the tab's first answer is written onto the page and then replaced, because the
+   language is known only at the end of that answer (decision spec, "What the routing
+   costs, and where it stops"). Put to the operator on 2026-10-12 beside the
+   alternative — hold every typed sentence back until its answer is complete — with the
+   recommendation to leave it; not answered yet. The spec documents it, which is not
+   acceptance.
+4. Delete this plan, and set `CLAUDE.md` back to one open plan.
 
 No push and no deploy without the operator's explicit approval for that act.
+
+## The review (owed if the operator agrees)
+
+The routing was written and tested by one session: `git diff 3a5c53e62..6128ef377`,
+three commits, about 700 lines of product code in `src/` and `webapp/src/` and the rest
+tests, specs and screenshots. Its tests pin what the author thought of; five rules were
+broken on purpose and the tests caught each. Nobody else has read it.
+
+Where a second reader is most likely to find something:
+
+- the worker's follow-up loop — one entry carried through a reverse lookup and then an
+  ordinary answer, or moved to another tab — and what a rebuild, a spelling switch, an
+  undo, a newer submission or a superseded job in the middle of it leaves behind;
+- the bookkeeping of a move: the latest submission and the undo of both tabs, and which
+  tab the history entry ends on;
+- the page across a reconnect: the receipt and the resend queue while an entry is being
+  reversed or moved, and retry putting back `!` and `?`.
+
+The review needs no pool quota, so it does not wait for the samples. A fix that comes
+out of it must leave the reverse prompt and `parse_reverse` alone until b and c are
+recorded (below); anything it finds there is written down and fixed after.
 
 ## What was measured, and what was not
 
