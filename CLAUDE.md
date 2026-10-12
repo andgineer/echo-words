@@ -38,12 +38,11 @@ the code and does not apply to those.
   `reverse-translation.md` — a word typed in the target language (`!стол`,
   or Cyrillic on a Latin-script tab) carded as its equivalent in the
   selected language; its prompt built and benched, the app around it not yet.
-  `observed-defects.md` — twenty-one faults left unfixed, each with its
-  evidence, from three readings: six met while using the app, from a
-  rebuilt bundle that can leave the reader on a white screen to a word the
-  chain could not speak that no reader can ask again for, fourteen read out
-  of bench review packets whose every automated screen was green, and one
-  found by auditing the recordings the deployed host had cached.
+  `observed-defects.md` — fifteen faults left unfixed, each with its
+  evidence, from two readings: three met while using the app, from a sense
+  chip that repeats the carded sense to a word the chain could not speak
+  that no reader can ask again for, and twelve read out of bench review
+  packets whose every automated screen was green.
   Writing a defect into a decision spec documents it; it does not accept
   it, and only the operator accepts a limitation of the product. Write
   a new plan only for work that needs one, and delete it once that work

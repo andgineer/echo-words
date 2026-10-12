@@ -1,14 +1,12 @@
 # Implementation plan — defects seen in use and in the bench, none of them fixed yet
 
-Twenty-one items, from three readings.
+Fifteen items, from two readings.
 
-Items 1, 2, 12, 13, 17 and 18 were found while running the app against the real
-provider keys and reading what it did, or by tracing what it did in production. Each was reproduced and has its evidence written
-down; two sibling defects found in the same session — the player speaking a
-corrected misspelling, and sense chips that all carried the same word — are
-already fixed and are not repeated here.
+Items 9, 11 and 12 were found while running the app against the real provider keys
+and reading what it did, or by tracing what it did in production. Each was
+reproduced and has its evidence written down.
 
-Items 3 to 11, 14, 15 and 19 to 21 come from a different reading: the review packets
+Items 1 to 8, 10 and 13 to 15 come from a different reading: the review packets
 of the smoke-tier bench runs behind the source-language sense cue and the answer shape,
 and of the language-line and reverse-lookup runs of 2026-10-11 and 2026-10-12, read
 item by item by a fresh agent each time. Every deterministic contract and
@@ -16,43 +14,7 @@ every quality threshold in those runs was green, so these are the faults an
 automated screen cannot see. Each quotes the answer it was found in, because the
 run directories are not checked in and the evidence has to outlive them.
 
-Item 16 comes from neither: an audit of what the deployed host had actually
-cached, which is what showed that the head of the audio chain had been answering
-nothing at all.
-
-## 1. A rebuilt bundle can leave the reader on a white screen
-
-Observed locally: after `inv build-static` produced a new hashed bundle, the next
-page load rendered nothing. The service worker served its cached `index.html`,
-which references the previous asset hash, and that file no longer exists — the
-request answered `404`, `#app` stayed empty, and the console was silent. A second
-reload recovered it, because by then the new worker had taken over.
-
-The PWA is configured `registerType: "autoUpdate"` with `skipWaiting` and
-`clientsClaim`, so one reload is meant to be enough. What is unknown, and is the
-first task here, is whether a deploy reproduces it: the local rebuild **deletes**
-the old asset (`emptyOutDir`), while a deploy replaces a checkout and may leave the
-precached pair internally consistent. Reproduce it against a deployed build before
-changing anything — a fix aimed at a failure that does not happen there would be
-machinery for nothing.
-
-If it does reproduce, the reader meets a blank page after every release, which is
-the most serious of the items on this page.
-
-## 2. One user action makes two concurrent pool calls
-
-Every unit submission opens two pool calls at once — the article and the
-attestation. When the pool's first choice refuses, both meet the same refusal, so
-one reader action counts twice against that provider and drives its cooldown ladder
-at twice the rate a single call would.
-
-This is recorded here as the defect it is, and not scheduled: llmbroker's queue
-carries the routing fix that decides how much it still costs. Revisit once that
-fix has shipped and the pool's behaviour has been re-measured — the app's own
-call shape is not the cheaper end to change, since both calls are wanted and
-neither can be deferred behind the other.
-
-## 3. A wrong grammatical form reaches a card, and nothing can see it
+## 1. A wrong grammatical form reaches a card, and nothing can see it
 
 Bulgarian `разказвам` was carded with three examples that wedge the first-person
 citation form into sentences needing another person:
@@ -80,22 +42,7 @@ anything is built: a repair that guesses an inflected form is the failure mode t
 answer-shape decisions have refused elsewhere. The stray `<` `>` around the bold
 span is separable and is a plain sanitizer question.
 
-## 4. A coinage was carded because the judge vouched for it
-
-`Löffelangst`, a word that does not exist, was carded with a confident sense —
-"боязнь заболеть бешенством" — an invented folk etymology about rabies and
-cutlery, and two invented citations. The standalone judgement is what should have
-stopped it, and `openrouter-laguna-s-2.1` answered `{"used": true, "where":
-"informal speech, southern Germany/Austria"}`.
-
-The aggregate threshold tolerates this: the smoke tier asks that two of three
-unused wordings be refused, two were, and the screen stayed green. So the guard
-that exists for exactly this reader-facing harm can fail on a concrete item
-without the run saying so. What is open is whether the judgement is asked
-differently, asked of more than one model, or whether a single vouching answer
-should stop being enough.
-
-## 5. A word of two scripts reaches a card front
+## 2. A word of two scripts reaches a card front
 
 `bare-sr-grad` carded this example:
 
@@ -107,17 +54,17 @@ ContextProduction gapped front. The note also has the Cyrillic headword `гра�
 beside a Latin sentence, so one note shows two scripts across its four cards.
 
 Serbian is configured `latin+cyrillic`, so both alphabets are legal letters and
-the sentence passes the source-language test. This is the one item on this page
-the backend can settle deterministically: a word-shaped token of a
-`latin+cyrillic` language may not mix the two scripts inside itself. Whether the
-example is dropped or the note refused is the open choice; mixing scripts within
-one word is not a spelling any of these languages has.
+the sentence passes the source-language test. Mixing scripts within one word is not
+a spelling any of these languages has, but the operator has ruled out letter checks
+on a model's answer: the fix is a prompt line or a model check, measured like any
+prompt change.
 
-## 6. Invented origins reach the reader
+## 3. Invented origins reach the reader
 
 Three confident and wrong, in one smoke tier: `олівець` said to be borrowed from
 Turkic (it is from `олово`); `разказвам` traced to "казнить" (the root is
-`казать`); `Löffelangst` given the rabies story above. Two more say nothing while
+`казать`); `Löffelangst`, a word that does not exist, given a folk etymology about
+rabies and cutlery. Two more say nothing while
 sounding like an origin: `прозорец` "восходящее к общему индоевропейскому фонду с
 кодом *or-*", `causal` "происходит от латинского слова через английские суффиксы".
 
@@ -131,7 +78,7 @@ The instruction is not obeyed, and no screen tests it — an etymology is prose,
 prose is only checked for its markup. What is open is whether this is worth a
 measurement of its own or is the price of the section.
 
-## 7. A near-neighbour warning that does not fire, and a collocation invented in its place
+## 4. A near-neighbour warning that does not fire, and a collocation invented in its place
 
 `wider` was answered with no mention of `wieder`, which is the whole reason that
 fixture exists. The same article invents the collocation `wider Erwachten` — the
@@ -142,7 +89,7 @@ prose translations ("против, навстречу, о") also disagree with t
 
 `causal` did warn about `casual`, so the arm is not dead; one of two fired.
 
-## 8. The article's markup and prose are not held to what the format rules ask
+## 5. The article's markup and prose are not held to what the format rules ask
 
 From one run: `text-sr-8` returns Markdown, not HTML — `**Sve mi se čini da …**`,
 whose asterisks print literally. Several answers nest bold inside bold
@@ -156,7 +103,7 @@ The sanitizer decides what tags survive; it does not decide whether the text
 around them is one language, one script, or grammatical. Some of this is
 sanitizer work and some is not, which is the first thing to separate.
 
-## 9. Card content in the wrong language, and reader-visible translations that invert the sense
+## 6. Card content in the wrong language, and reader-visible translations that invert the sense
 
 `typo-en-recieve` carried "приймать" into the `Translations` field — the Ukrainian
 word, not a Russian one, and it is the answer the card gives. Separately, and
@@ -166,17 +113,15 @@ action happened: "He was <b>reluctant</b> to sign the contract." → "Он не�
 performance. Example translations are shown to the reader and are not one of the
 six fields, so this one stops at the article.
 
-The next run put three more wrong translations on card backs: `вина` for
-`Verantwortung`, which is responsibility and not guilt; `это` beside `он` for
-Serbian `Он`; and `неделя` as a co-equal translation of Ukrainian `неділя`, which
-is Sunday — the very false friend that fixture exists to catch, carded as the
-mistake.
+The next run put two more wrong translations on card backs: `вина` for
+`Verantwortung`, which is responsibility and not guilt, and `это` beside `он` for
+Serbian `Он`; a third, `неділя`, is item 10.
 
 The translations that do reach a card are the ones worth a guard, if any is
 possible: the target language's alphabet is testable, a wrong word inside it is
 not.
 
-## 10. A target-language word inside a source-language sentence, where the letter test cannot see it
+## 7. A target-language word inside a source-language sentence, where the letter test cannot see it
 
 `bare-sr-grad` carded `Живим у красивом старом граду.` — `красивом` is Russian;
 Serbian is `лепом`. `cyrillic-uk-rozmovlyaty` printed the Russian ending in its
@@ -196,10 +141,13 @@ almost nothing for Serbian Cyrillic — so a whole Russian word inside a Serbian
 sentence passes, and reaches a card front. The same blindness is written into
 `decision-card-shapes.md` as a limitation of the sense cue; this is the same hole
 seen from the sentence side, where what it lets through is what the reader
-reviews. Any fix is a judgement about how the backend can know a word belongs to
-a language at all, which is why nothing is proposed here.
+reviews. The `красивом` sentence and `bare-sr-voditi`'s `Моратите ___ о свом здрављу.`
+(`Моратите` is no Serbian word; `Морате`) were ContextRecognition fronts and
+ContextProduction stimuli, so both are drilled. Any fix is a judgement about how
+the backend can know a word belongs to a language at all, which is why nothing is
+proposed here.
 
-## 11. A note carded on the wrong language's word
+## 8. A note carded on the wrong language's word
 
 `neighbour-de-wider` was answered as though `wider` were the English word: the
 note carries the translations "шире, более широкий", the carded sentence
@@ -216,24 +164,7 @@ as English rather than a standing behaviour — which is why the open question i
 whether a note this wrong is reachable by any check the app can run, or whether
 it belongs with the qualitative model errors the backend does not adjudicate.
 
-## 12. The deeper article has no length anyone chose
-
-Reported from ordinary use: "Подробнее" — the paid deeper article — comes back
-"безумно длинный". The extended prompt now asks for around 2000 characters and never
-more than 4000, and nothing in the code enforces either. Measured on 2026-09-21 over
-384 deeper articles from sixteen configurations, none exceeded 4000 characters (the
-longest was 3719) and the medians per configuration ran from 1915 to 2960; the
-configuration the app now asks wrote a median of 2747. The instruction holds as a
-ceiling and overshoots the target by up to a half. Whether that is still too long for
-the reader is theirs to say.
-
-Length is the whole complaint, so it is the thing to decide: a reader who taps
-"the full entry" wants more than the article, not an essay. Whether that is a
-sentence in the prompt, a bound like the answer's, or both is open — but the
-budget the paid step spends is real money, and a longer answer also costs the
-reader the wait it takes to write.
-
-## 13. A sense chip repeats the sense already on the card
+## 9. A sense chip repeats the sense already on the card
 
 `die Tafel` was carded, and the entry still offered a chip reading "плитка" with
 the same sense the note carries. A chip is an invitation to analyse that sense as
@@ -249,7 +180,7 @@ the duplicate by position. Neither a text comparison of the translations nor the
 mere count of senses settles it — the reader's question is whether the second chip
 would produce a different card.
 
-## 14. A false friend confirmed on the card's translations field
+## 10. A false friend confirmed on the card's translations field
 
 `неділя` (uk) was carded with translations `воскресенье, неделя`. It means
 Sunday; the Ukrainian for week is `тиждень`. The Recall front therefore reads
@@ -263,54 +194,7 @@ well formed. Recorded in `decision-answer-shape.md` with the run that found it;
 the false-friend pair is not vouched for on the strength of that run, since `стол`
 passed and this one failed.
 
-## 15. Two card-front sentences that are not the language they claim
-
-From the same reading: `bare-sr-voditi` carded `Моратите ___ о свом здрављу.` —
-`Моратите` is not a Serbian word, the form is `Морате` — and `bare-sr-grad`
-carded `Живим у красивом старом ___.`, where `красивом` is the Russian adjective
-and Serbian wants `лепом`. Both are ContextRecognition fronts and
-ContextProduction stimuli, so both are drilled.
-
-The letter test cannot see either: every character is legal Serbian Cyrillic. It
-is the same class as 10 and 11 — a word that is spelled plausibly for the source
-language and is not a word of it — and it is what a reader meets rather than what
-a screen can catch.
-
-## 16. Cards already made silent still carry no recording
-
-Of the 200 cards made since 21 Aug, 42 carry no audio at all: the head of the
-audio chain was answering nothing, and where the engines had no voice either the
-note was written silent. Fingerprinting the mp3 frames of the 305 recordings
-cached on the host found 293 at 22 050 Hz and 12 at 24 000 Hz — the two engines —
-and none at the 44.1 kHz a human recording carries, so nothing came from the
-chain's first step at all.
-
-New cards are unaffected: the head of the chain reaches Wikimedia Commons now.
-The 42 are a maintenance pass of its own, and it **needs the operator's word
-before anything writes to the collection**, which is why it is here rather than
-done.
-
-Three ways to close it, and what each costs.
-
-- **A pass of its own**, in the shape of the two maintenance commands that
-  already exist: it names the notes it would touch, writes nothing until that is
-  confirmed, runs with the service stopped, fetches each headword through the
-  chain as it now stands, attaches the media to the existing note, leaves every
-  other field alone, and syncs. No model call, about two minutes for the
-  forty-two, and it stays useful for any card made silent later. Roughly a
-  hundred and fifty lines with its tests.
-- **Re-submitting the words by hand** needs no code and buys a fresh analysis for
-  each one: forty-two pool answers against a daily cap of a hundred, and
-  forty-two cards whose text changes for the sake of their audio.
-- **Leaving them** costs nothing and leaves a fifth of that window's cards mute.
-
-The pass is the one worth building, and it is built: `inv backfill-recordings`
-names what it would fill, writes nothing until that is confirmed, fetches through
-the chain as it stands, changes only the audio of a silent note, leaves a word the
-chain still cannot speak alone, and syncs. The defect stands until it is run,
-which is the operator's word.
-
-## 17. The answer budget bounds silence, not the answer
+## 11. The answer budget bounds silence, not the answer
 
 `stream_api` passes `ANSWER_BUDGET_SECONDS` to `client.stream(prompt, timeout=…)`,
 llmbroker hands that number to httpx as a bare float, and httpx spreads a bare float
@@ -337,7 +221,7 @@ Two ways to close it.
 
 Waiting is the one worth taking, and it costs nothing but the wait.
 
-## 18. A word the chain could not speak has no second chance the reader can give it
+## 12. A word the chain could not speak has no second chance the reader can give it
 
 The chain runs once, when the card is made. A word it could not speak — Commons
 throttled, a voice not yet downloaded, the network gone — is carded silent, and
@@ -368,7 +252,7 @@ The retry is the one worth building, and the same affordance covers the word an
 engine spoke where Commons has a recording — the condition is wider, the
 machinery identical.
 
-## 19. Serbian look-alikes carded with the Russian meaning, and their own missing
+## 13. Serbian look-alikes carded with the Russian meaning, and their own missing
 
 Both samples of the language bench (2026-10-11 and 2026-10-12, the Serbian tab, a
 Russian target) carded five Serbian words that Russian spells alike as though they were
@@ -387,10 +271,10 @@ the Russian word, the same way in every answer that could be read:
 
 The language line named all five Serbian, rightly, so the reader stays on the Serbian
 tab and drills the Russian meaning. The judgement's attestation does not catch it
-either: each is a real Serbian spelling. The same blindness as items 10 and 14, from
+either: each is a real Serbian spelling. The same blindness as items 7 and 10, from
 the headword's side.
 
-## 20. A real word answered as another word, or with a meaning it does not have
+## 14. A real word answered as another word, or with a meaning it does not have
 
 From the same two samples, with Serbian as the language translated into:
 
@@ -401,7 +285,7 @@ From the same two samples, with Serbian as the language translated into:
   other: the reader typed a correct German word and got a card for a different one,
   with no correction announced.
 
-## 21. An answer broken past reading costs the reader a second call
+## 15. An answer broken past reading costs the reader a second call
 
 3 of the 482 answers of the language runs and the full tier of 2026-10-11 and
 2026-10-12 garbled a Cyrillic escape inside the card block, splicing letters of
@@ -425,5 +309,3 @@ three answers under a fuller wording measured earlier.
 - **Two blanks for a contiguous two-word unit.** `I ___ ___ after ten minutes.`
   says the answer is two words, and the operator does not read that as a defect:
   a two-word unit is two words, and the front is not a riddle about its length.
-- **The two defects already fixed in this session.** They are in the code and in
-  the tests; a plan that lists finished work is an archive.

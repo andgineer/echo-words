@@ -669,6 +669,12 @@ manifests, pacing and promotion procedure are recorded in
   understood. `sonnet` is not recommended while it answers in markdown.
 - **Web grounding is dropped** from v0.1 — no switch, no search
   dependency.
+- **A word's article and its judgement go to the pool together, and a refusal
+  counts against both.** When the pool's first choice refuses, the two calls meet
+  the same refusal and drive its cooldown twice as fast as one call would.
+  llmbroker protects every call after a refusal, not the calls already running,
+  and both calls are wanted with neither able to wait for the other; the operator
+  accepted the cost on 2026-10-12.
 
 ## What money buys, measured on cards rather than on a rubric
 
