@@ -138,6 +138,13 @@ language, in which a word of another one is rightly unused. A typed word the tab
 is not offered the lookup a second time once the lookup has answered that it is no word
 of the target.
 
+The line is the last thing an answer writes, so the tab's own answer to typed text is on
+the page while it is being written, and a reversal or a move replaces it once it ends. A
+single word is mostly spared this, because its text is held back until the judgement
+vouches for it and a word of another language is usually refused. Holding typed text
+back until its answer is complete would spare the rest, at the cost of every typed text
+appearing all at once instead of as it is written.
+
 Text mixing the two alphabets where they differ («я люблю Python» on the English tab) is
 read as the target's: the tab's own validation refuses any letter it does not write, so
 no reading of the tab is lost.

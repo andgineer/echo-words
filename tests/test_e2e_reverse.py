@@ -88,7 +88,7 @@ def test_a_target_word_is_translated_first_and_then_becomes_the_entry_for_its_wo
         expect(page.locator(".entry-text")).to_contain_text("table — стол")
         expect(page.locator(".segment-label")).to_have_text(["desk"])
         expect(page.locator(".delete-card")).to_be_visible()
-        assert "Wording: \"стол\"" in app.broker.stream_calls[0]["prompt"]
+        assert 'Wording: "стол"' in app.broker.stream_calls[0]["prompt"]
 
 
 def test_a_word_the_tab_refuses_is_offered_the_target_reading_with_one_tap(
@@ -101,7 +101,9 @@ def test_a_word_the_tab_refuses_is_offered_the_target_reading_with_one_tap(
     and the tap sends the same word with its shortcut."""
     in_russian(page)
     handles = [
-        FakeHandle([article("<b>город</b>", "город", submission="город", submission_language="sr")]),
+        FakeHandle(
+            [article("<b>город</b>", "город", submission="город", submission_language="sr")]
+        ),
         FakeHandle([reverse_words(GRAD, read_as="город")]),
         FakeHandle([article("<b>grad</b> — город", "grad", GRAD[1])]),
     ]
