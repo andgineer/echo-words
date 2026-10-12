@@ -1,9 +1,10 @@
 # Decision: reverse translation
 
 Status: **the reverse prompt is measured and reviewed four times, and Serbian asked in
-Latin letters six times more; nothing in the app asks it yet.** The
-feature is designed in `spec/plan/reverse-translation.md`, and what it will do for
-the reader is described there until it lands.
+Latin letters six times more; the app asks it and routes typed input by the language
+line.** What the reader gets is in `spec/functional-description.md`; this file holds the
+measurements and the reasoning behind it. Two more samples of the prompt with the
+sentence translation are owed (`spec/plan/reverse-translation.md`).
 
 ## Alphabets, not letters, and a model where alphabets overlap
 
@@ -118,10 +119,66 @@ a doctor, жир as fat), the tab's sense missing (диван without «wonderfu
 «table»), Russian работа carded as standard Serbian, English «baba» given an invented
 sense, German «Most» rewritten as «meist».
 
-Placeholder widths for the input field (built CSS, Chromium and WebKit, 360 px
-viewport, 294 px of text room): «Текст или !русское слово» 193, «!английское» 219,
-«!азербайджанское» 269 (the longest in the directory), «Текст или !слово на
-суахили» 215.
+### What the routing costs, and where it stops
+
+The reverse lookup is the last resort wherever a model decides. For a lookup the line
+asked for, the tab's own answer is kept in hand while the lookup runs: when the lookup
+finds no target word, or no model answers it, that answer goes on with nothing asked
+twice, and no paid answer is bought over an unusable lookup, because the reader is not
+left with an empty page. A lookup the reader asked for with `!`, or one an alphabet
+decided, has nothing on the page yet, so an answer the pool cannot make usable is bought
+from the paid model without asking, and a lookup that finds no word says so rather than
+falling back to a reading the reader has just ruled out.
+
+Input the answer names as another of the reader's languages is asked again on that tab
+once and without the line, so it can neither move a second time nor reverse; a tab whose
+alphabet cannot write the input is not moved to. A word of a language no tab teaches
+keeps its article past the judgement's refusal, since the judgement is about the tab's
+language, in which a word of another one is rightly unused. A typed word the tab refuses
+is not offered the lookup a second time once the lookup has answered that it is no word
+of the target.
+
+Text mixing the two alphabets where they differ («я люблю Python» on the English tab) is
+read as the target's: the tab's own validation refuses any letter it does not write, so
+no reading of the tab is lost.
+
+### Dropped alternatives
+
+- **Letter tests**: a letter proves too little and misleads where it seems to prove
+  something (table above).
+- **Converting Serbian Cyrillic input to Latin before asking**: it would hide the one
+  signal the reader gave, and a Russian word converted is still a Russian word.
+- **A separate reading call** before the answer: the operator ruled it out in favour of
+  the line the answer already carries, which costs no call.
+- **Jev as the reader**: its scores for the tab's own words and for Russian ones overlap
+  (above).
+- **Wiktionary translation tables** as the source of equivalents: no sentence for the
+  card's front, and no reading of an inflected form or a slip.
+- **A rule of its own for a tab in the target language itself**: considered and dropped
+  by the operator, since no such tab exists; there `!` asks for a word's equivalents in
+  its own language and every refused word is offered that lookup.
+
+### The empty field's hint
+
+Measured in the field's own font at a 360 px viewport, where the field has 262 px of
+text room; a browser test repeats it in Chromium and WebKit for the longest names in
+the directory and the three that do not decline, with a Russian target, in both
+interface languages.
+
+| Hint | Width |
+|---|---|
+| «Текст или !русский текст» (the alphabets overlap) | 190 |
+| «Русский или английский текст» | 232 |
+| «Русский или азербайджанский текст» | 282 |
+| «Русский текст или текст на африкаанс» | 293 |
+
+Where the alphabets differ the hint is the two bare names («Русский или английский»):
+with the noun after them the English and German tabs fit and six of the twelve tabs
+measured do not, and a verb in front («Введите русский или английский текст») is longer
+still.
+A bare name also needs no ending, so the names that do not decline (африкаанс,
+эсперанто, суахили) read the same way. Where the alphabets overlap the hint keeps the
+shortcut and the noun, which fits with a Russian target.
 
 ## The reverse prompt
 

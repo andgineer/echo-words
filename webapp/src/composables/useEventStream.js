@@ -11,6 +11,36 @@ function detailOf(entry) {
   };
 }
 
+// What a fresh run of an entry starts from: nothing of the answer before it.
+const BLANK = {
+  text: "",
+  status: "pending",
+  error: null,
+  shape: null,
+  segments: [],
+  segment_kind: null,
+  carded_sense: null,
+  card_status: null,
+  card_kinds: [],
+  no_audio: false,
+  no_card_audio: false,
+  detail_pending: false,
+  controls_expired: false,
+};
+
+// A reverse lookup found the entry its wording, so from here it is about that wording:
+// a retry sends it, and no longer what was typed.
+const REVERSAL_FIELDS = ["word", "typed_word", "read_as", "context", "requested_shape"];
+
+function reversal(data) {
+  if (!Object.hasOwn(data, "typed_word")) return {};
+  const fields = { requested_reverse: null };
+  for (const key of REVERSAL_FIELDS) {
+    if (Object.hasOwn(data, key)) fields[key] = data[key];
+  }
+  return fields;
+}
+
 function eventData(event) {
   try {
     return JSON.parse(event.data);
@@ -22,6 +52,7 @@ function eventData(event) {
 export function useEventStream({
   EventSourceClass = globalThis.EventSource,
   fetchEntry = (id) => apiRequest(`/api/words/${encodeURIComponent(id)}`),
+  onMoved = () => {},
 } = {}) {
   let source = null;
   let activeRefresh = null;
@@ -69,21 +100,21 @@ export function useEventStream({
     } else if (name === "reset") {
       upsertEntry({
         entry_id: data.entry_id,
-        text: "",
-        status: "pending",
-        error: null,
-        shape: null,
-        segments: [],
-        segment_kind: null,
-        carded_sense: null,
-        card_status: null,
-        card_kinds: [],
-        no_audio: false,
-        no_card_audio: false,
-        detail_pending: false,
-        controls_expired: false,
+        ...BLANK,
         ...(Object.hasOwn(data, "detail_html") ? { detail_html: data.detail_html } : {}),
+        ...reversal(data),
       });
+    } else if (name === "moved") {
+      // The input is in another of the reader's languages, and is asked again there.
+      const from = entries.value.find((entry) => entry.entry_id === data.entry_id)?.lang;
+      upsertEntry({
+        entry_id: data.entry_id,
+        ...BLANK,
+        lang: data.lang,
+        language: data.language,
+        moved: true,
+      });
+      onMoved({ entryId: data.entry_id, from, to: data.lang });
     } else if (name === "done") {
       upsertEntry({ ...data, status: "done", controls_expired: false });
     } else if (name === "detail") {
@@ -120,6 +151,7 @@ export function useEventStream({
       "accepted",
       "update",
       "reset",
+      "moved",
       "done",
       "detail",
       "control_error",

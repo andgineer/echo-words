@@ -80,6 +80,11 @@ and a free Gemini key.
 - **a deeper entry when you want one** — one tap re-asks the strongest model for
   a lexicographer's article: every sense including the rare ones, etymology in
   depth, near-synonyms, the mistakes learners make
+- **two shortcuts in the input field** — `?` before a word shows its analysis
+  without making a card; `!` before a word or a sentence in your own language
+  finds how to say it in the language you are learning, and makes the card for
+  that. Where the two alphabets differ — English or German for a Russian
+  speaker — the `!` is not needed: just type it in your own language
 - **nothing to pay** — a pool of free LLM providers answers; a paid model is
   optional and capped, and on the author's own use it costs about half a dollar a
   month

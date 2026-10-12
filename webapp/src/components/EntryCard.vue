@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "../i18n/index.js";
+import { reverseOffer, reversing, translatedFrom } from "../i18n/languageWording.js";
 
 const { t } = useI18n();
 
@@ -19,6 +20,7 @@ const emit = defineEmits([
   "swipe",
   "paid-answer",
   "remove-entry",
+  "reverse",
 ]);
 
 const SWIPE_THRESHOLD = 55;
@@ -34,10 +36,21 @@ let held = false;
 const isText = computed(() => props.entry.shape === "text");
 const isPending = computed(() => props.entry.status === "pending");
 const working = computed(() => isPending.value || !!props.entry.detail_pending);
-const busyLabel = computed(() =>
-  isPending.value
+// The reverse lookup is still finding the word the entry will be about.
+const isReversing = computed(
+  () => isPending.value && !!props.entry.requested_reverse && !props.entry.typed_word,
+);
+const busyLabel = computed(() => {
+  if (isReversing.value) return reversing(props.entry);
+  return isPending.value
     ? t("add.analysing", { word: props.entry.word })
-    : t("add.buildingEntry"),
+    : t("add.buildingEntry");
+});
+
+// What the reader typed in the target language, the word it was read as where that is
+// another one, and the wording found for it, which is what the entry is about.
+const headline = computed(() =>
+  [props.entry.typed_word, props.entry.read_as, props.entry.word].filter(Boolean).join(" → "),
 );
 
 // The deeper analysis is offered on any finished word answer; a running text has no
@@ -252,6 +265,10 @@ const spellingNotice = computed(() => {
   // the analysis may be of another word and the card was made without asking.
   const entry = props.entry;
   if (entry.status !== "done") return "";
+  if (entry.card_status === "reverse_not_a_word") {
+    return t("add.reverseNotAWord", { word: entry.word });
+  }
+  if (entry.card_status === "foreign") return translatedFrom(entry.foreign_language);
   if (entry.card_status === "unattested") {
     // A lookup asked for no card, so it is not one that was withheld.
     return entry.lookup_only
@@ -350,7 +367,7 @@ function confirmDelete() {
 
     <div class="entry-head">
       <span class="entry-title" :class="isText ? 'kind' : 'word selectable'">
-        {{ isText ? t("add.sentence") : entry.word }}
+        {{ isText ? t("add.sentence") : headline }}
       </span>
       <span v-if="entry.model" class="entry-model">{{ entry.model }}</span>
     </div>
@@ -363,6 +380,14 @@ function confirmDelete() {
         @click="emit('switch')"
       >
         {{ correctionLabel }}
+      </button>
+      <button
+        v-if="entry.reverse_offered"
+        class="btn-inline reverse-offer"
+        :disabled="busy"
+        @click="emit('reverse')"
+      >
+        {{ reverseOffer() }}
       </button>
     </div>
 
@@ -504,7 +529,7 @@ function confirmDelete() {
       <span>{{ busyLabel }}</span>
     </div>
 
-    <p v-if="isText && entry.text" class="entry-source selectable">{{ entry.word }}</p>
+    <p v-if="isText && entry.text" class="entry-source selectable">{{ headline }}</p>
 
     <div v-if="entry.text" class="entry-text selectable" v-html="entry.text"></div>
 

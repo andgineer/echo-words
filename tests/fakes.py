@@ -169,6 +169,7 @@ class FakeBroker:
         snapshot: object | None = None,
         stats: dict[str, object] | None = None,
         attestation: str = VOUCHED_ANSWER,
+        attestations: Iterable[str] = (),
     ) -> None:
         self.home = home
         self.direct_aliases = list(direct)
@@ -179,6 +180,9 @@ class FakeBroker:
         self.stream_calls: list[dict] = []
         self.attestation_calls: list[str] = []
         self.attestation = attestation
+        # Judgements answered in the order they are asked, before the standing one: a
+        # test that refuses one word and vouches for the next scripts both here.
+        self.attestations = list(attestations)
         self.direct_calls: list[str] = []
         self.closed = False
         self.snapshot_value = snapshot or SimpleNamespace(
@@ -212,7 +216,7 @@ class FakeBroker:
             # Answered off the prepared handles and in any order: it runs in parallel
             # with the article, so a test cannot script it by position.
             self.attestation_calls.append(prompt)
-            handle = FakeHandle([self.attestation])
+            handle = FakeHandle([self._judgement()])
         else:
             if not self.handles:
                 raise AssertionError(
@@ -245,10 +249,13 @@ class FakeBroker:
         )
         if ATTESTATION_MARK in prompt:
             self.attestation_calls.append(prompt)
-            return FakeHandle([self.attestation])
+            return FakeHandle([self._judgement()])
         if not self.handles:
             raise AssertionError("the pool was asked for one stream more than the test prepared")
         return self.handles.pop(0)
+
+    def _judgement(self) -> str:
+        return self.attestations.pop(0) if self.attestations else self.attestation
 
     async def direct(self, alias: str) -> FakeDirectClient:
         self.direct_calls.append(alias)

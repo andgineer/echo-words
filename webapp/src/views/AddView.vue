@@ -1,10 +1,11 @@
 <script setup>
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { apiRequest } from "../api/_request.js";
-import { upsertEntry } from "../composables/useEntries.js";
+import { applyReceipt, upsertEntry } from "../composables/useEntries.js";
 import { useEventStream } from "../composables/useEventStream.js";
 import { useLanguage } from "../composables/useLanguage.js";
 import { useI18n } from "../i18n/index.js";
+import { placeholder } from "../i18n/languageWording.js";
 import {
   enqueueWord,
   isRetryableWordError,
@@ -18,7 +19,11 @@ import WordRail from "../components/WordRail.vue";
 
 const { t } = useI18n();
 const { languages, selected, loadLanguages } = useLanguage();
-const { entries, start: startEventStream, stop: stopEventStream } = useEventStream();
+const {
+  entries,
+  start: startEventStream,
+  stop: stopEventStream,
+} = useEventStream({ onMoved: followMoved });
 
 const emit = defineEmits(["navigate"]);
 
@@ -26,7 +31,6 @@ const word = ref("");
 const hint = ref("");
 const hintChecks = ref(false);
 const busy = ref(false);
-const helpOpen = ref(false);
 // Which entry each language is showing, so switching back to a language returns to
 // the word it was left on rather than to its newest.
 const selectedIds = ref({});
@@ -113,6 +117,15 @@ function selectNewest(lang, entryId) {
   selectedIds.value = { ...selectedIds.value, [lang]: entryId };
 }
 
+// Input typed on the wrong tab is answered on its own, and a reader still looking at it
+// goes there with it; one who has moved on to something else is left where they are.
+function followMoved({ entryId, from, to }) {
+  if (selected.value !== from || selectedIds.value[from] !== entryId) return;
+  if (!languages.value.some((item) => item.code === to)) return;
+  selectNewest(to, entryId);
+  selected.value = to;
+}
+
 async function submit() {
   if (busy.value || !word.value.trim() || !selected.value) return;
   await sendWord(word.value.trim());
@@ -121,10 +134,17 @@ async function submit() {
 async function analyseSegment(entry, segment) {
   if (busy.value) return;
   // The unit belongs to the text it was found in, whatever the selector shows now.
-  await sendWord(segment.label, segment.context || "", "unit", entry.lang);
+  await sendWord(segment.label, {
+    context: segment.context || "",
+    shape: "unit",
+    lang: entry.lang,
+  });
 }
 
-async function sendWord(submittedWord, context = "", shape = null, lang = selected.value) {
+async function sendWord(
+  submittedWord,
+  { context = "", shape = null, lang = selected.value, lookupOnly = false } = {},
+) {
   busy.value = true;
   hint.value = "";
   hintChecks.value = false;
@@ -132,7 +152,7 @@ async function sendWord(submittedWord, context = "", shape = null, lang = select
   const body = withRequestId({
     word: submittedWord,
     lang,
-    lookup_only: false,
+    lookup_only: lookupOnly,
   });
   if (context) body.context = context;
   if (shape) body.shape = shape;
@@ -140,8 +160,8 @@ async function sendWord(submittedWord, context = "", shape = null, lang = select
     const accepted = await submitWord(body, (receipt) => {
       // What the entry holds is the submission as the server read it — the `?` shortcut
       // stripped and the wording normalized. Guessing it here would put the reader's
-      // own typing in the rail and leave it there: no later event carries the word.
-      const metadata = {
+      // own typing in the rail and leave it there.
+      applyReceipt({
         entry_id: receipt.entry_id,
         word: receipt.word,
         lang,
@@ -151,12 +171,8 @@ async function sendWord(submittedWord, context = "", shape = null, lang = select
         // Kept so a failed entry can be sent again as submitted: `shape` is what the
         // answer turned out to be, which a failed entry never has.
         requested_shape: shape,
-      };
-      const alreadyStreaming = entries.value.some((entry) => entry.entry_id === receipt.entry_id);
-      upsertEntry(
-        alreadyStreaming ? metadata : { ...metadata, status: "pending" },
-        { newest: true },
-      );
+        requested_reverse: receipt.reverse ?? null,
+      });
     });
     selectNewest(lang, accepted.entry_id);
     word.value = "";
@@ -177,7 +193,21 @@ async function sendWord(submittedWord, context = "", shape = null, lang = select
 
 async function retry(entry) {
   if (busy.value) return;
-  await sendWord(entry.word, entry.context || "", entry.requested_shape ?? null, entry.lang);
+  // The server stripped both shortcuts from what it handed back, so they are put back:
+  // a failed `!word` is not a word of this tab, and a failed `?word` asked for no card.
+  const forced = entry.requested_reverse === "forced";
+  await sendWord(forced ? `!${entry.word}` : entry.word, {
+    context: entry.context || "",
+    shape: entry.requested_shape ?? null,
+    lang: entry.lang,
+    lookupOnly: !!entry.lookup_only,
+  });
+}
+
+// The tab's language refused the word, so it is asked again as a word of the target.
+async function lookUpAsTarget(entry) {
+  if (busy.value) return;
+  await sendWord(`!${entry.word}`, { lang: entry.lang, lookupOnly: !!entry.lookup_only });
 }
 
 function removeEntry(entry) {
@@ -260,7 +290,7 @@ async function requestDetail(entry) {
       autocomplete="off"
       autocapitalize="none"
       spellcheck="false"
-      :placeholder="t('add.wordPlaceholder')"
+      :placeholder="placeholder(selected)"
       @keyup.enter="submit"
     />
 
@@ -299,23 +329,12 @@ async function requestDetail(entry) {
       @delete-card="entryAction(selectedEntry, 'delete-card')"
       @paid-answer="entryAction(selectedEntry, 'rebuild')"
       @retry="retry(selectedEntry)"
+      @reverse="lookUpAsTarget(selectedEntry)"
       @segment="analyseSegment(selectedEntry, $event)"
       @remove-entry="removeEntry(selectedEntry)"
       @swipe="swipe"
     />
     <p v-else class="empty">{{ t("add.empty") }}</p>
-  </section>
-
-  <section class="about">
-    <button class="btn-inline about-toggle" @click="helpOpen = !helpOpen">
-      {{ helpOpen ? t("add.aboutHide") : t("add.aboutShow") }}
-    </button>
-    <div v-if="helpOpen" class="about-text">
-      <p v-html="t('add.aboutIntro')"></p>
-      <p v-html="t('add.aboutText')"></p>
-      <p v-html="t('add.aboutLookup')"></p>
-      <p v-html="t('add.aboutCorrection')"></p>
-    </div>
   </section>
 </template>
 
@@ -370,21 +389,5 @@ async function requestDetail(entry) {
   font-size: 0.85rem;
   text-align: center;
   padding: 1.5rem 0;
-}
-
-.about {
-  text-align: center;
-}
-
-.about-text {
-  margin-top: 0.75rem;
-  text-align: left;
-  font-size: 0.85rem;
-  color: var(--text-muted);
-  line-height: 1.5;
-}
-
-.about-text p + p {
-  margin-top: 0.6rem;
 }
 </style>

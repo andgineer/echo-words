@@ -1,5 +1,6 @@
 import { ref, watch } from "vue";
 import { cachedRequest, invalidateCache, readCache } from "../api/cache.js";
+import { loadTarget } from "./useTarget.js";
 
 const STORAGE_KEY = "echo-words.lang";
 
@@ -56,7 +57,7 @@ export async function refreshReferences() {
   await Promise.allSettled([
     loadLanguages(),
     cachedRequest("/api/languages/config"),
-    cachedRequest("/api/languages/catalog"),
+    loadTarget(),
   ]);
 }
 

@@ -270,7 +270,7 @@ def test_the_text_gives_up_a_word_and_only_the_margin_swipes(
     ) as app:
         submit(page, app.url)
         expect(page.locator(".delete-card")).to_be_visible()
-        page.get_by_placeholder("a word or a phrase").fill(second)
+        page.locator("#word").fill(second)
         page.get_by_role("button", name="Analyse").click()
         title = page.locator(".entry-title")
         analysis = page.locator(".entry-text")

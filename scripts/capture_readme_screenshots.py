@@ -9,6 +9,7 @@ import sys
 import threading
 import wave
 from collections.abc import Iterator
+from dataclasses import asdict
 from pathlib import Path
 
 import uvicorn
@@ -16,6 +17,8 @@ from fastapi import FastAPI
 from fastapi.responses import Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from playwright.sync_api import Browser, Locator, Page, ViewportSize, expect, sync_playwright
+
+from echo_words.language_catalog import CATALOG
 
 REPO = Path(__file__).resolve().parents[1]
 SCREENSHOTS = REPO / "docs" / "common" / "images" / "screenshots"
@@ -171,6 +174,17 @@ async def languages():
         {"code": "de", "name": "Deutsch"},
         {"code": "sr", "name": "Српски"},
     ]
+
+
+# The demo's answers are written in English, so English is what it translates into.
+@app.get("/api/target")
+async def target():
+    return {"code": "en", "name": "English"}
+
+
+@app.get("/api/languages/catalog")
+async def catalog():
+    return [asdict(entry) for entry in CATALOG]
 
 
 @app.get("/api/stats")
@@ -336,11 +350,11 @@ def capture(browser: Browser, url: str, out: Path) -> None:
         page.evaluate(SEED_HISTORY, [WORD_ENTRY, TEXT_ENTRY, SERBIAN_ENTRY])
         page.reload(wait_until="networkidle")
         page.get_by_role("tab", name="Deutsch", exact=True).click()
-        page.get_by_placeholder("a word or a phrase").fill("sich verlassen auf")
+        page.locator("#word").fill("sich verlassen auf")
         settled_card(page)
         page.screenshot(path=out / "add-word.png", animations="disabled")
 
-        page.get_by_placeholder("a word or a phrase").fill("")
+        page.locator("#word").fill("")
         page.get_by_role("tab", name="Sehnsucht", exact=True).click()
         settled_card(page).screenshot(path=out / "card-added.png", animations="disabled")
 

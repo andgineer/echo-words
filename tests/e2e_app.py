@@ -168,5 +168,5 @@ def unreadable(article: str, word: str = WORD) -> str:
 
 def submit(page: Page, url: str, word: str = WORD) -> None:
     page.goto(url)
-    page.get_by_placeholder("a word or a phrase").fill(word)
+    page.locator("#word").fill(word)
     page.get_by_role("button", name="Analyse").click()

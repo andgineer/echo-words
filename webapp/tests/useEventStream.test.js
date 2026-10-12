@@ -281,3 +281,91 @@ it("replays live events after a stale reconnect snapshot", async () => {
   resolveRecent({ entry_id: "one", text: "stale snapshot" });
   await vi.waitFor(() => expect(entries.value[0]?.text).toBe("new live text"));
 });
+
+it("renames the entry for the word a reverse lookup found", () => {
+  entries.value = [
+    {
+      entry_id: "one",
+      word: "сотл",
+      lang: "en",
+      status: "pending",
+      requested_shape: null,
+      requested_reverse: "forced",
+    },
+  ];
+  const stream = useEventStream({ EventSourceClass: FakeEventSource });
+  stream.start();
+
+  FakeEventSource.instances[0].emit("reset", {
+    entry_id: "one",
+    word: "table",
+    typed_word: "сотл",
+    read_as: "стол",
+    context: "The book is on the table.",
+    requested_shape: "unit",
+  });
+
+  // From here a retry sends the word found as the chip it is, without the shortcut.
+  expect(entries.value[0]).toMatchObject({
+    word: "table",
+    typed_word: "сотл",
+    read_as: "стол",
+    context: "The book is on the table.",
+    requested_shape: "unit",
+    requested_reverse: null,
+    status: "pending",
+    text: "",
+  });
+});
+
+it("leaves the word and what a retry sends alone on an ordinary reset", () => {
+  entries.value = [
+    {
+      entry_id: "one",
+      word: "стол",
+      context: "",
+      requested_shape: null,
+      requested_reverse: "forced",
+      text: "partial",
+    },
+  ];
+  const stream = useEventStream({ EventSourceClass: FakeEventSource });
+  stream.start();
+
+  FakeEventSource.instances[0].emit("reset", { entry_id: "one" });
+
+  expect(entries.value[0]).toMatchObject({
+    word: "стол",
+    requested_shape: null,
+    requested_reverse: "forced",
+    text: "",
+  });
+});
+
+it("moves an entry to the tab its input is written in, and says so", () => {
+  entries.value = [
+    {
+      entry_id: "one",
+      word: "Haus",
+      lang: "en",
+      language: "English",
+      text: "the English tab's answer",
+      status: "pending",
+    },
+  ];
+  const onMoved = vi.fn();
+  const stream = useEventStream({ EventSourceClass: FakeEventSource, onMoved });
+  stream.start();
+
+  FakeEventSource.instances[0].emit("moved", { entry_id: "one", lang: "de", language: "Deutsch" });
+
+  expect(entries.value[0]).toMatchObject({
+    word: "Haus",
+    lang: "de",
+    language: "Deutsch",
+    moved: true,
+    text: "",
+    status: "pending",
+  });
+  expect(onMoved).toHaveBeenCalledWith({ entryId: "one", from: "en", to: "de" });
+});

@@ -214,7 +214,7 @@ def test_a_second_word_being_analysed_does_not_write_into_the_card_still_open(
         submit(page, app.url)
         expect(page.locator(".entry-text")).to_contain_text("the first analysis")
 
-        page.get_by_placeholder("a word or a phrase").fill(OTHER)
+        page.locator("#word").fill(OTHER)
         page.get_by_role("button", name="Analyse").click()
         expect(page.locator(".entry-text")).to_contain_text("the second analysis")
 

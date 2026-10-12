@@ -7,6 +7,7 @@ import { apiRequest } from "../src/api/_request.js";
 import { entries } from "../src/composables/useEntries.js";
 import { ServerUnreachable } from "../src/composables/useServerReach.js";
 import { languages, selected } from "../src/composables/useLanguage.js";
+import { catalog, target } from "../src/composables/useTarget.js";
 import { locale } from "../src/i18n/index.js";
 import AddView from "../src/views/AddView.vue";
 import { EPIC, FEATURE, labelBehavior } from "./allure-taxonomy.js";
@@ -21,6 +22,8 @@ beforeEach(async () => {
   languages.value = [];
   entries.value = [];
   selected.value = "";
+  catalog.value = [];
+  target.value = null;
   locale.value = "en";
   localStorage.clear();
   apiRequest.mockReset();
@@ -32,20 +35,57 @@ beforeEach(async () => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   locale.value = "en";
   localStorage.clear();
 });
 
+const DIRECTORY = [
+  { code: "en", english: "English", russian: "английский", script: "latin" },
+  { code: "de", english: "German", russian: "немецкий", script: "latin" },
+  { code: "ru", english: "Russian", russian: "русский", script: "cyrillic" },
+];
+
+class FakeEventSource {
+  static last = null;
+
+  constructor() {
+    this.listeners = new Map();
+    FakeEventSource.last = this;
+  }
+
+  addEventListener(name, callback) {
+    this.listeners.set(name, [...(this.listeners.get(name) || []), callback]);
+  }
+
+  emit(name, data) {
+    for (const callback of this.listeners.get(name) || []) callback({ data: JSON.stringify(data) });
+  }
+
+  close() {}
+}
+
 // The receipt says what the submission became: the `?` shortcut stripped and the
 // wording normalized, so the page never has to work that out for itself.
-function accepts(entryId, { word = null, lookupOnly = false } = {}) {
+function accepts(entryId, { word = null, lookupOnly = false, reverse = null, before = null } = {}) {
   apiRequest.mockImplementation(async (path, init) => {
     if (path === "/api/languages") return OPTIONS;
     if (path === "/api/words") {
-      return { entry_id: entryId, word: word ?? init.body.word, lookup_only: lookupOnly };
+      // What the event stream delivers while the receipt is still on its way.
+      before?.();
+      return {
+        entry_id: entryId,
+        word: word ?? init.body.word,
+        lookup_only: lookupOnly,
+        reverse,
+      };
     }
     throw new Error(`Unexpected request: ${path}`);
   });
+}
+
+function posted() {
+  return apiRequest.mock.calls.find(([path]) => path === "/api/words")[1].body;
 }
 
 function unit(entryId, word, lang = "en", extra = {}) {
@@ -96,7 +136,7 @@ describe("AddView", () => {
       "Deutsch",
     ]);
     expect(wrapper.get('[data-testid="lang-en"]').classes()).toContain("active");
-    expect(wrapper.get("#word").attributes("placeholder")).toBe("a word or a phrase");
+    expect(wrapper.get("#word").attributes("placeholder")).toBe("A word or a text");
     expect(wrapper.text()).toContain("Word analyses will appear here");
     // The field label, the lookup checkbox and undo are all gone; the placeholder
     // carries the whole instruction and the card carries the deletion.
@@ -697,17 +737,230 @@ describe("AddView", () => {
       });
   });
 
-  it("documents the lookup shortcut and what becomes of a misspelling", async () => {
+  describe("a word of the target language", () => {
+    beforeEach(() => {
+      catalog.value = DIRECTORY;
+      target.value = { code: "ru", name: "Russian" };
+    });
+
+    it("says in the empty field what the selected tab takes", async () => {
+      const wrapper = mount(AddView);
+      await flushPromises();
+
+      expect(wrapper.get("#word").attributes("placeholder")).toBe("Russian or English");
+
+      await wrapper.get('[data-testid="lang-de"]').trigger("click");
+      expect(wrapper.get("#word").attributes("placeholder")).toBe("Russian or German");
+
+      locale.value = "ru";
+      await flushPromises();
+      expect(wrapper.get("#word").attributes("placeholder")).toBe("Русский или немецкий");
+    });
+
+    it("says the word is being translated until the reverse lookup has found it", async () => {
+      accepts("entry-1", { reverse: "script" });
+      const wrapper = mount(AddView);
+      await flushPromises();
+      await wrapper.get("#word").setValue("стол");
+
+      await wrapper.get(".submit").trigger("click");
+      await flushPromises();
+
+      expect(posted()).toMatchObject({ word: "стол", lookup_only: false });
+      expect(entries.value[0].requested_reverse).toBe("script");
+      expect(wrapper.get(".working.pending").text()).toBe("Translating «стол» into English…");
+      expect(wrapper.get(".entry-title").text()).toBe("стол");
+    });
+
+    it("keeps the word a lookup found when the receipt is read after it", async () => {
+      accepts("entry-1", {
+        reverse: "forced",
+        // Nothing orders the receipt and the stream: the lookup can land first.
+        before: () => {
+          entries.value.unshift({
+            entry_id: "entry-1",
+            word: "table",
+            typed_word: "стол",
+            context: "The book is on the table.",
+            requested_shape: "unit",
+            requested_reverse: null,
+            lang: "en",
+            status: "pending",
+          });
+        },
+      });
+      const wrapper = mount(AddView);
+      await flushPromises();
+      await wrapper.get("#word").setValue("!стол");
+
+      await wrapper.get(".submit").trigger("click");
+      await flushPromises();
+
+      expect(entries.value).toHaveLength(1);
+      expect(entries.value[0]).toMatchObject({
+        word: "table",
+        typed_word: "стол",
+        context: "The book is on the table.",
+        requested_shape: "unit",
+        requested_reverse: null,
+      });
+      expect(wrapper.get(".entry-title").text()).toBe("стол → table");
+      expect(wrapper.get('[data-testid="chip-entry-1"]').text()).toBe("table");
+    });
+
+    it("sends a failed forced lookup again with both of its shortcuts", async () => {
+      entries.value = [
+        {
+          entry_id: "entry-1",
+          word: "стол",
+          lang: "en",
+          language: "English",
+          lookup_only: true,
+          requested_shape: null,
+          requested_reverse: "forced",
+          status: "error",
+          error: "analysis_failed",
+        },
+      ];
+      accepts("entry-2", { reverse: "forced", lookupOnly: true });
+      const wrapper = mount(AddView);
+      await flushPromises();
+
+      await wrapper.get(".entry-error .retry").trigger("click");
+      await flushPromises();
+
+      // The server handed the word back without its shortcuts, so both are put back.
+      expect(posted()).toEqual({
+        word: "!стол",
+        lang: "en",
+        lookup_only: true,
+        request_id: expect.any(String),
+      });
+    });
+
+    it("sends a failed entry a lookup already renamed as the word it found", async () => {
+      entries.value = [
+        {
+          entry_id: "entry-1",
+          word: "table",
+          typed_word: "стол",
+          lang: "en",
+          language: "English",
+          lookup_only: false,
+          context: "The book is on the table.",
+          requested_shape: "unit",
+          requested_reverse: null,
+          status: "error",
+          error: "analysis_failed",
+        },
+      ];
+      accepts("entry-2");
+      const wrapper = mount(AddView);
+      await flushPromises();
+
+      await wrapper.get(".entry-error .retry").trigger("click");
+      await flushPromises();
+
+      expect(posted()).toMatchObject({
+        word: "table",
+        shape: "unit",
+        context: "The book is on the table.",
+      });
+    });
+
+    it("asks a refused word again as a word of the target, keeping it a lookup", async () => {
+      selected.value = "de";
+      entries.value = [
+        unit("entry-1", "город", "de", {
+          card_status: "unattested",
+          lookup_only: true,
+          reverse_offered: true,
+          text: "",
+          shape: null,
+        }),
+      ];
+      accepts("entry-2", { word: "город", reverse: "forced", lookupOnly: true });
+      const wrapper = mount(AddView);
+      await flushPromises();
+
+      const offer = wrapper.get(".reverse-offer");
+      expect(offer.text()).toBe("Look it up as a word in Russian");
+      await offer.trigger("click");
+      await flushPromises();
+
+      expect(posted()).toEqual({
+        word: "!город",
+        lang: "de",
+        lookup_only: true,
+        request_id: expect.any(String),
+      });
+    });
+
+    it("follows input typed on the wrong tab to the tab it is answered on", async () => {
+      vi.stubGlobal("EventSource", FakeEventSource);
+      accepts("entry-1");
+      const wrapper = mount(AddView);
+      await flushPromises();
+      await wrapper.get("#word").setValue("Haus");
+      await wrapper.get(".submit").trigger("click");
+      await flushPromises();
+
+      FakeEventSource.last.emit("moved", { entry_id: "entry-1", lang: "de", language: "Deutsch" });
+      await flushPromises();
+
+      expect(wrapper.get('[data-testid="lang-de"]').classes()).toContain("active");
+      expect(wrapper.get('[data-testid="chip-entry-1"]').classes()).toContain("active");
+      expect(wrapper.get(".working.pending").text()).toContain("Haus");
+      expect(entries.value[0]).toMatchObject({ lang: "de", language: "Deutsch", status: "pending" });
+    });
+
+    it("leaves a reader who has moved on where they are", async () => {
+      vi.stubGlobal("EventSource", FakeEventSource);
+      entries.value = [unit("entry-0", "window", "en")];
+      accepts("entry-1");
+      const wrapper = mount(AddView);
+      await flushPromises();
+      await wrapper.get("#word").setValue("Haus");
+      await wrapper.get(".submit").trigger("click");
+      await flushPromises();
+      await wrapper.get('[data-testid="chip-entry-0"]').trigger("click");
+
+      FakeEventSource.last.emit("moved", { entry_id: "entry-1", lang: "de", language: "Deutsch" });
+      await flushPromises();
+
+      expect(wrapper.get('[data-testid="lang-en"]').classes()).toContain("active");
+      expect(wrapper.get(".entry-title").text()).toBe("window");
+      expect(entries.value.find((entry) => entry.entry_id === "entry-1").lang).toBe("de");
+    });
+
+    it("does not let a late receipt take a moved entry back to the tab it left", async () => {
+      accepts("entry-1", {
+        before: () => {
+          entries.value.unshift({
+            entry_id: "entry-1",
+            word: "Haus",
+            lang: "de",
+            language: "Deutsch",
+            moved: true,
+            status: "pending",
+          });
+        },
+      });
+      const wrapper = mount(AddView);
+      await flushPromises();
+      await wrapper.get("#word").setValue("Haus");
+
+      await wrapper.get(".submit").trigger("click");
+      await flushPromises();
+
+      expect(entries.value[0]).toMatchObject({ lang: "de", language: "Deutsch" });
+    });
+  });
+
+  it("has no help panel under the rail", async () => {
     const wrapper = mount(AddView);
     await flushPromises();
 
-    await wrapper.get(".about-toggle").trigger("click");
-
-    const help = wrapper.get(".about-text").text();
-    expect(help).toContain("“? word”");
-    expect(help).toContain("said above the analysis");
-    expect(help).toContain("will not invent a word");
-    // The checkbox it used to open with no longer exists.
-    expect(help).not.toContain("checkbox");
+    expect(wrapper.find(".about").exists()).toBe(false);
   });
 });

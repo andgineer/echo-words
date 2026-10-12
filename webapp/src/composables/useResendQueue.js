@@ -1,6 +1,6 @@
 import { ref } from "vue";
 import { apiRequest } from "../api/_request.js";
-import { entries, upsertEntry } from "./useEntries.js";
+import { applyReceipt } from "./useEntries.js";
 import { ServerUnreachable } from "./useServerReach.js";
 
 const STORAGE_KEY = "echo-words-resend-queue";
@@ -90,16 +90,15 @@ export async function flushQueue() {
           // The POST can finish before SSE connects. Keep its receipt so reconnect
           // can recover this one answer without downloading a server history.
           if (!accepted?.entry_id) return;
-          const streaming = entries.value.some((entry) => entry.entry_id === accepted.entry_id);
-          upsertEntry({
+          applyReceipt({
             entry_id: accepted.entry_id,
             word: accepted.word ?? item.body.word,
             lang: item.body.lang,
             lookup_only: accepted.lookup_only ?? item.body.lookup_only,
             context: item.body.context || "",
             requested_shape: item.body.shape ?? null,
-            ...(streaming ? {} : { status: "pending" }),
-          }, { newest: true });
+            requested_reverse: accepted.reverse ?? null,
+          });
         });
         queuedWords.value.shift();
         saveQueue();

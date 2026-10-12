@@ -37,7 +37,8 @@ the code and does not apply to those.
   what is left. Two are open.
   `reverse-translation.md` — a word typed in the target language (`!стол`,
   or Cyrillic on a Latin-script tab) carded as its equivalent in the
-  selected language; its prompt built and benched, the app around it not yet.
+  selected language; built end to end, with two bench samples of its prompt
+  owed before it counts as measured.
   `observed-defects.md` — fifteen faults left unfixed, each with its
   evidence, from two readings: three met while using the app, from a sense
   chip that repeats the carded sense to a word the chain could not speak

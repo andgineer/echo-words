@@ -5,7 +5,9 @@ export default {
   "nav.label": "Navigation",
   "nav.locale": "Interface language",
 
-  "add.wordPlaceholder": "a word or a phrase",
+  "add.placeholder": "A word or a text",
+  "add.placeholderShared": "Text or !{target}",
+  "add.placeholderApart": "{target} or {source}",
   "add.submit": "Analyse",
   "add.queued": "No connection — the word is saved and will be sent later.",
   "add.queuedNoAnswer": "The server isn't answering — the word is saved and will be sent later.",
@@ -57,30 +59,12 @@ export default {
   "add.pauseAudio": "Pause",
   "add.sentence": "Sentence",
   "add.railLabel": "Analysed words",
-  "add.aboutHide": "Hide",
-  "add.aboutShow": "What this is and how to use it",
-  "add.aboutIntro":
-    "echo-words analyses a word or a whole expression in the language you pick: translation, " +
-    "senses, usage, origin and examples — and adds one selected sense to Anki as four cards, " +
-    "so it is reviewed from both bare and sentence prompts. An expression is analysed as one thing, " +
-    "and its component words remain available as separate chips. Everything analysed stays in the " +
-    "rail of words above the card: tap a word, or swipe the card sideways.",
-  "add.aboutText":
-    "<b>A sentence or a longer text</b> gets a different answer: it is translated and its hard " +
-    "parts are explained, and it makes no card — a whole sentence is not reviewable. Under the " +
-    "answer comes every source word, with multi-word combinations kept together; one tap " +
-    "analyses that chip as a unit, with the text kept as its context.",
-  "add.aboutLookup":
-    "<b>Look up only.</b> A leading <b>?</b> — “? word” — gives you the analysis and the " +
-    "pronunciation without creating a card. It is rarely needed: every card offers " +
-    "“Delete from Anki”.",
-  "add.aboutCorrection":
-    "<b>Spelling.</b> What became of the word you typed is always said above the analysis. When " +
-    "no such word exists, the card is made for the corrected one and says so; the card's own " +
-    "“Delete from Anki” removes it. " +
-    "When the word exists but another spelling is the usual one, the card is yours and a button " +
-    "offers to replace it. When the model does not vouch for the word at all, there is no card " +
-    "and no article: it will not invent a word that nobody uses.",
+  "add.reversing": "Translating «{word}» into {language}…",
+  "add.reverseNotAWord": "The model does not take «{word}» for a word — check the spelling.",
+  "add.reverseOffer": "Look it up as {target}",
+  "add.reverseOfferUnknown": "Look it up as a word in the translation language",
+  "add.foreign": "Translated from {language}",
+  "add.foreignUnknown": "Translated from another language",
 
   "languages.none": "No language is configured.",
   "languages.title": "Languages you study",

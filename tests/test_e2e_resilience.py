@@ -43,7 +43,7 @@ def unrouted_worker_page(request: pytest.FixtureRequest, playwright: Playwright)
 
 
 def _type_word(page: Page) -> None:
-    page.get_by_placeholder("a word or a phrase").fill(WORD)
+    page.locator("#word").fill(WORD)
     with page.expect_request("**/api/words"):
         page.get_by_role("button", name="Analyse").click()
 
@@ -78,7 +78,7 @@ def test_cached_startup_shows_languages_and_history_without_downloading_them(
             page.reload()
             expect(page.locator(".entry-text")).to_contain_text("the finished analysis")
             expect(page.get_by_role("tab", name="English", exact=True)).to_be_visible()
-            page.get_by_placeholder("a word or a phrase").fill("another word")
+            page.locator("#word").fill("another word")
             expect(page.get_by_role("button", name="Analyse")).to_be_enabled()
         assert requests == []
 
@@ -108,7 +108,7 @@ def test_an_expired_language_cache_stays_visible_when_refresh_fails(
         })""")
     page.reload()
     expect(page.get_by_role("tab", name="English", exact=True)).to_be_visible()
-    page.get_by_placeholder("a word or a phrase").fill("word")
+    page.locator("#word").fill("word")
     expect(page.get_by_role("button", name="Analyse")).to_be_enabled()
     requests = []
     page.on(
@@ -234,7 +234,7 @@ def test_a_word_submitted_with_no_connection_is_sent_once_when_it_returns(
         page.goto(app.url)
         expect(page.get_by_role("tab", name="English", exact=True)).to_be_visible()
         page.context.set_offline(True)
-        page.get_by_placeholder("a word or a phrase").fill(WORD)
+        page.locator("#word").fill(WORD)
         page.get_by_role("button", name="Analyse").click()
         expect(page.get_by_text("the word is saved and will be sent later")).to_be_visible()
 

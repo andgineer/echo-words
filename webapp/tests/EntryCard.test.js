@@ -3,6 +3,7 @@ import { mount } from "@vue/test-utils";
 import { nextTick } from "vue";
 
 import EntryCard from "../src/components/EntryCard.vue";
+import { catalog, target } from "../src/composables/useTarget.js";
 import { locale } from "../src/i18n/index.js";
 import { EPIC, FEATURE, labelBehavior } from "./allure-taxonomy.js";
 
@@ -67,7 +68,163 @@ beforeEach(async () => {
 
 afterEach(() => {
   locale.value = "en";
+  catalog.value = [];
+  target.value = null;
   vi.restoreAllMocks();
+});
+
+function reversedEntry(extra = {}) {
+  return {
+    entry_id: "entry-1",
+    word: "table",
+    typed_word: "стол",
+    read_as: null,
+    lang: "en",
+    language: "English",
+    lookup_only: false,
+    shape: "unit",
+    status: "done",
+    text: "стол",
+    card_status: "added",
+    context: "The book is on the table.",
+    segment_kind: "equivalents",
+    segments: [{ label: "desk", reason: "", context: "She works at her desk." }],
+    ...extra,
+  };
+}
+
+describe("an entry for a word typed in the target language", () => {
+  beforeEach(() => {
+    catalog.value = [
+      { code: "en", english: "English", russian: "английский", script: "latin" },
+      { code: "ru", english: "Russian", russian: "русский", script: "cyrillic" },
+      { code: "fr", english: "French", russian: "французский", script: "latin" },
+    ];
+    target.value = { code: "ru", name: "Russian" };
+  });
+
+  it("is headed by what was typed and the word found for it", () => {
+    expect(card(reversedEntry()).get(".entry-title").text()).toBe("стол → table");
+  });
+
+  it("also names the word a slip or a form was read as", () => {
+    const wrapper = card(reversedEntry({ typed_word: "сотл", read_as: "стол" }));
+
+    expect(wrapper.get(".entry-title").text()).toBe("сотл → стол → table");
+  });
+
+  it("offers the other equivalents as chips that carry their own sentence", async () => {
+    const wrapper = card(reversedEntry());
+
+    expect(wrapper.findAll(".segment-label").map((chip) => chip.text())).toEqual(["desk"]);
+    await wrapper.get(".segment-label").trigger("click");
+
+    expect(wrapper.emitted("segment")[0][0]).toMatchObject({
+      label: "desk",
+      context: "She works at her desk.",
+    });
+  });
+
+  it("heads a translated sentence with what was typed and its translation", () => {
+    const wrapper = card(
+      reversedEntry({
+        word: "I am going home.",
+        typed_word: "я иду домой",
+        shape: "text",
+        card_status: "text",
+        segment_kind: "text",
+        segments: [],
+      }),
+    );
+
+    expect(wrapper.get(".entry-title").text()).toBe("Sentence");
+    expect(wrapper.get(".entry-source").text()).toBe("я иду домой → I am going home.");
+  });
+
+  it("says the word is being translated only until the lookup has found it", async () => {
+    const waiting = {
+      entry_id: "entry-1",
+      word: "стол",
+      lang: "en",
+      language: "English",
+      status: "pending",
+      requested_reverse: "script",
+    };
+    const wrapper = card(waiting);
+    expect(wrapper.get(".working.pending").text()).toBe("Translating «стол» into English…");
+
+    locale.value = "ru";
+    await nextTick();
+    expect(wrapper.get(".working.pending").text()).toBe("Перевожу «стол» на английский…");
+
+    await wrapper.setProps({
+      entry: { ...waiting, word: "table", typed_word: "стол", requested_reverse: null },
+    });
+    expect(wrapper.get(".working.pending").text()).toContain("Разбираю «table»");
+  });
+
+  it("says a forced lookup found no word, and offers nothing else", () => {
+    const wrapper = card({
+      entry_id: "entry-1",
+      word: "фывапр",
+      lang: "en",
+      status: "done",
+      card_status: "reverse_not_a_word",
+      text: "",
+    });
+
+    expect(wrapper.get(".notice-text").text()).toBe(
+      "The model does not take «фывапр» for a word — check the spelling.",
+    );
+    expect(wrapper.find(".reverse-offer").exists()).toBe(false);
+    expect(wrapper.find(".correction").exists()).toBe(false);
+  });
+
+  it("heads input in a language no tab teaches as a translation from it", async () => {
+    const wrapper = card({
+      entry_id: "entry-1",
+      word: "chaussure",
+      lang: "en",
+      status: "done",
+      card_status: "foreign",
+      foreign_language: "fr",
+      text: "ботинок",
+      segments: [],
+    });
+
+    expect(wrapper.get(".notice-text").text()).toBe("Translated from French");
+    expect(wrapper.find(".segments").exists()).toBe(false);
+    expect(wrapper.find(".delete-card").exists()).toBe(false);
+
+    locale.value = "ru";
+    await nextTick();
+    expect(wrapper.get(".notice-text").text()).toBe("Перевод с французского");
+  });
+
+  it("offers a refused word the target reading, and asks for it on a tap", async () => {
+    const refused = {
+      entry_id: "entry-1",
+      word: "город",
+      lang: "sr",
+      status: "done",
+      card_status: "unattested",
+      reverse_offered: true,
+      text: "",
+    };
+    const wrapper = card(refused);
+
+    const offer = wrapper.get(".reverse-offer");
+    expect(offer.text()).toBe("Look it up as a word in Russian");
+    await offer.trigger("click");
+    expect(wrapper.emitted("reverse")).toHaveLength(1);
+
+    locale.value = "ru";
+    await nextTick();
+    expect(wrapper.get(".reverse-offer").text()).toBe("Искать как русское слово");
+    expect(card({ ...refused, reverse_offered: false }).find(".reverse-offer").exists()).toBe(
+      false,
+    );
+  });
 });
 
 describe("EntryCard", () => {

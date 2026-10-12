@@ -86,13 +86,18 @@ the work again. **Do not re-open any of it.**
   second one. Rebuild and detail use the stored unit headword and explicit
   unit intent; rebuild reuses card audio only while the NFC-normalized returned
   headword is exactly unchanged, including case. Both act per source language.
-- Multiple source languages via the **language selector**; the
-  selection determines the deck. One deck per source language from the
-  languages config, no per-word switching and no guessing the deck from
-  the word. A single target language for explanations
-  (`ECHOWORDS_TARGET_LANG`, Russian default). Language is never
-  auto-detected — the selection is authoritative; an unknown code gets
-  a hint, not a guess.
+- Multiple source languages via the **language selector**. The tab
+  chooses the deck and the source language; one deck per source language
+  from the languages config. A single target language for explanations
+  (`ECHOWORDS_TARGET_LANG`, Russian default). Whether a word is in the
+  target language is decided by `!`, by an alphabet the target writes and
+  the tab does not, or by the language the answer itself names, read as
+  the tab's language first; input in another of the reader's languages
+  moves to its tab, and input in a language no tab teaches is translated
+  and nothing more. A single typed word the source language refuses is
+  offered the target reading with one tap. No code reads a word's letters
+  to guess its language; an unknown language code gets a hint, not a
+  guess (`decision-reverse-translation.md`).
 - Accent: config-level (`ECHOWORDS_ACCENT` default, per-language override),
   applies to English audio, US default, one recording per card, no
   per-word choice.

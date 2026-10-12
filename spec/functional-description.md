@@ -91,7 +91,9 @@ The four requirements every design decision is weighed against:
    the rail of analysed words) and submits exactly the word, expression,
    fragment or text they want analysed. A lookup-only request — the answer and
    audio arrive as usual but no Anki note is created — is made by prefixing the
-   text with `?`.
+   text with `?`. A leading `!` asks for the text to be read as the target
+   language instead of the selected one (item 2), and the two shortcuts combine
+   in either order.
    Every compact answer ends in one hidden discriminated payload, and the
    prompt that asks for it carries only the branches the request can still be
    in. A single source word is a known vocabulary unit, and so is a tapped
@@ -150,10 +152,83 @@ The four requirements every design decision is weighed against:
    quotation marks — and to a longer 500-character length bound, the same one
    that caps the context a suggested unit is submitted with. Anything else —
    including a language code not present in the configuration — gets a
-   short hint instead of an LLM call. The language is always the user's
-   explicit selection, never guessed from the word (auto-detecting the
-   language of a single word is not reliable enough to trust with deck
-   placement).
+   short hint instead of an LLM call.
+
+   **The tab chooses the deck and the language being learned; what was typed
+   may still be in another language.** Three things can say so, and no code
+   ever reads a word's letters to guess:
+
+   - *The reader.* A leading `!` has the text read as the target language,
+     whatever it is written in and with no check of its letters; only an empty
+     text and one over the text bound are refused.
+   - *The alphabet, where it cannot be confused.* Text holding a letter of an
+     alphabet the target language writes and the selected one does not —
+     Cyrillic on the English tab with a Russian target — can only be the
+     target's, and needs no `!`. Text in an alphabet the selected language
+     alone writes is never read as the target's. Whole alphabets decide and
+     never single letters: a keyboard for one language types another with its
+     own letters, so a letter proves nothing. A target language the directory
+     does not carry has no known alphabet, and there only `!` and the answer
+     decide.
+   - *The answer, where the alphabets overlap.* The answer to anything typed
+     also names the language the typed text is written in: the selected
+     language for any word or form of it however rare, any national standard,
+     any misspelling and any letters a foreign keyboard put in place of missing
+     ones, and another language only when the text cannot be read as the
+     selected one at all. It costs no call of its own. A chip is never asked:
+     its text comes from the app's own answer.
+
+   **Text read as the target language is looked up in reverse** by one call,
+   before anything else is asked. A word or a fixed expression comes back as
+   the selected language's words for it — one for each meaning that needs a
+   different word, the commonest first, each with one everyday sentence using
+   it — and an inflected form or a slip of a letter or two is read as the word
+   meant. The first is carded, with its sentence as the front of the card, and
+   the entry becomes the entry a tap on a chip for that word would have made:
+   its rail label, card, audio, controls and messages are all about that word,
+   the typed word is never spoken, and every later run of the entry starts
+   from that word. Only its heading says what was typed («стол → table», or
+   «сотл → стол → table» when the typed text was read as another word). The
+   other words are the entry's chips and stay its chips through every later
+   run; a lookup that found one word keeps that word's own sense chips.
+   Running text comes back as one translation into the selected language, and
+   that translation goes down the ordinary text path: explained, no note, a
+   chip for each unit in it. Text needs no list of equivalents, because its own
+   context picks the meaning. While the lookup runs, the entry says the text
+   is being translated. When the lookup finds no word of the target language
+   in what the reader explicitly asked to be read as one, the entry says so
+   and nothing is stored.
+
+   **Where the answer names the target language**, the reverse lookup is the
+   last resort: a wrong one throws away the word the reader wanted, and a
+   missed one costs a tap. It runs only in an alphabet both languages write;
+   text is looked up, and a single word only when the standalone judgement
+   also finds it unused in the selected language, because the named language
+   alone still takes a rare word of the tab spelled like a common target word
+   for the target's. The selected language's answer is kept in hand meanwhile
+   and is the floor: when the lookup finds no target word, or no model answers
+   it, that answer goes on exactly as it would have, with nothing asked twice.
+
+   **Where the answer names another language the reader has a tab for**, the
+   entry moves to that tab and is asked again there, once, by that language's
+   own rules; the page follows it when the reader is still looking at it.
+   Croatian or Bosnian named by the answer counts as Serbian for a reader who
+   has a Serbian tab and no tab for the language named: the models name words
+   both languages spell alike by either, and to that reader they are one
+   language. **Where it names a language no tab teaches**, the answer stays as
+   written under a heading that says what it is («Перевод с французского»),
+   with no card, no chips and nothing spoken, and the selected language's
+   judgement withholds none of it.
+
+   **A single typed word the selected language refuses**, in an alphabet both
+   languages write, is offered the target reading with one tap. The tap
+   submits the same word with `!`, keeping a `?`. A chip is never offered it,
+   and neither is a word whose lookup has just answered that it is no word of
+   the target language.
+
+   **The empty field says what the tab takes**: both languages by name where
+   their alphabets differ («Русский или английский»), and the shortcut where
+   they overlap («Текст или !русский текст»).
 3. The word immediately appears in the answer area as a pending entry
    ("⏳ *word* …"), so the user sees the request was accepted.
 4. The entry fills in as the free-pool answer arrives over the server-sent
@@ -189,6 +264,11 @@ The four requirements every design decision is weighed against:
    throws away an analysis the user was already reading. Only the pool
    failing to answer at all takes the paid step without being asked,
    because then there is nothing on the page and nothing to judge.
+   A reverse lookup asked before anything else is the same case and takes the
+   same step: an answer the pool cannot make usable is bought from the paid
+   model without asking, because nothing is on the page yet. A lookup asked
+   because the answer named the target language is not: the selected
+   language's answer is in hand, so it buys nothing.
    **Nothing already written is cleared to make room for a step that has
    produced nothing yet.** A paid answer reaches the page only once it has
    arrived whole and can be read, and it replaces what was there in one
@@ -601,8 +681,12 @@ both in the answer entry and on the flashcard.
 
 Kept minimal — everything beyond typing a word:
 
-- **About/help note** — what the app does, the two input shapes, the `?`
-  lookup shortcut, and the correction button for a suspected typo.
+- **The empty field's hint** — the only instruction on the screen: what the
+  selected tab takes, and the `!` shortcut where it is needed. There is no help
+  panel; the `?` and `!` shortcuts are described in the documentation.
+- **Send it again** — a failed entry is resent as it was submitted, with its
+  `?` and its `!` put back; one a reverse lookup had already renamed is resent
+  as the word found.
 - **The rail and the card** — the analysed words of the selected language sit
   as a scrollable strip of chips above a single card, newest first. The chip
   is the index and the card is the reader: one tap opens any entry, and the

@@ -51,6 +51,58 @@ describe("resend queue", () => {
     await flushQueue();
     expect(entries.value[0]).toMatchObject({ text: "answer", status: "done" });
   });
+
+  it("records that a queued word asked for the target reading", async () => {
+    enqueueWord({ word: "!город", lang: "sr", lookup_only: false });
+    apiRequest.mockResolvedValue({
+      entry_id: "accepted",
+      word: "город",
+      lookup_only: false,
+      reverse: "forced",
+    });
+
+    await flushQueue();
+
+    // Without it a queued `!город` that fails would retry as a word of the tab.
+    expect(entries.value[0]).toMatchObject({
+      word: "город",
+      requested_reverse: "forced",
+      status: "pending",
+    });
+  });
+
+  it("keeps the word a lookup found when the queued receipt is read after it", async () => {
+    entries.value = [
+      {
+        entry_id: "accepted",
+        word: "grad",
+        typed_word: "город",
+        context: "Ovo je lep grad.",
+        requested_shape: "unit",
+        requested_reverse: null,
+        lang: "sr",
+        status: "pending",
+      },
+    ];
+    enqueueWord({ word: "!город", lang: "sr", lookup_only: false });
+    apiRequest.mockResolvedValue({
+      entry_id: "accepted",
+      word: "город",
+      lookup_only: false,
+      reverse: "forced",
+    });
+
+    await flushQueue();
+
+    expect(entries.value[0]).toMatchObject({
+      word: "grad",
+      typed_word: "город",
+      context: "Ovo je lep grad.",
+      requested_shape: "unit",
+      requested_reverse: null,
+    });
+  });
+
   it("re-sends saved words in order and removes successful items", async () => {
     enqueueWord(first);
     enqueueWord(second);

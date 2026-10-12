@@ -33,6 +33,24 @@ export function upsertEntry(entry, { newest = false } = {}) {
   writeCache(HISTORY_KEY, entries.value);
 }
 
+// A receipt can be read after the events it would overwrite. Once a reverse lookup has
+// renamed the entry, or its answer moved it to another tab, what was submitted is no
+// longer what the entry is.
+export function applyReceipt(receipt) {
+  const known = entries.value.find((entry) => entry.entry_id === receipt.entry_id);
+  const fields = { ...receipt };
+  if (known?.typed_word) {
+    for (const key of ["word", "context", "requested_shape", "requested_reverse"]) {
+      delete fields[key];
+    }
+  }
+  if (known?.moved) {
+    delete fields.lang;
+    delete fields.language;
+  }
+  upsertEntry(known ? fields : { ...fields, status: "pending" }, { newest: true });
+}
+
 // Each language is bounded on its own, so a busy one never empties another's rail.
 // Oldest first, and never an entry still waiting on the pipeline: dropping one
 // would leave an answer with nowhere to land.
