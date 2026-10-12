@@ -1,6 +1,6 @@
 # Implementation plan — defects seen in use and in the bench, none of them fixed yet
 
-Eighteen items, from three readings.
+Twenty-one items, from three readings.
 
 Items 1, 2, 12, 13, 17 and 18 were found while running the app against the real
 provider keys and reading what it did, or by tracing what it did in production. Each was reproduced and has its evidence written
@@ -8,9 +8,10 @@ down; two sibling defects found in the same session — the player speaking a
 corrected misspelling, and sense chips that all carried the same word — are
 already fixed and are not repeated here.
 
-Items 3 to 11, 14 and 15 come from a different reading: the review packets of the
-smoke-tier bench runs behind the source-language sense cue and the answer shape,
-read item by item by a fresh agent each time. Every deterministic contract and
+Items 3 to 11, 14, 15 and 19 to 21 come from a different reading: the review packets
+of the smoke-tier bench runs behind the source-language sense cue and the answer shape,
+and of the language-line and reverse-lookup runs of 2026-10-11 and 2026-10-12, read
+item by item by a fresh agent each time. Every deterministic contract and
 every quality threshold in those runs was green, so these are the faults an
 automated screen cannot see. Each quotes the answer it was found in, because the
 run directories are not checked in and the evidence has to outlive them.
@@ -183,7 +184,10 @@ forms table, `ти розмовляешь` for `розмовляєш`. The rever
 (2026-10-09) met it again where Russian is the input: the Serbian article for a
 typed `собака` carded `пас` with the example `В моем дворе живет велики пас.`,
 three Russian words of five, and its article for `книга` wrote «Моя сестра обожает
-читать хорошую књигу пред спавање.».
+читать хорошую књигу пред спавање.». On 2026-10-12 its article for a typed `город`
+wrote «Усев је потпуно унищен због кад је пао град» in its prose — a Russian щ in
+`уништен` and a broken clause — while the card's example of the same sentence was
+right.
 
 The guard that exists is `sentence_is_source_language`, and it works by letters:
 it holds a sentence to the alphabet the source language spells with. Against
@@ -363,6 +367,55 @@ Two ways to give it back to the reader.
 The retry is the one worth building, and the same affordance covers the word an
 engine spoke where Commons has a recording — the condition is wider, the
 machinery identical.
+
+## 19. Serbian look-alikes carded with the Russian meaning, and their own missing
+
+Both samples of the language bench (2026-10-11 and 2026-10-12, the Serbian tab, a
+Russian target) carded five Serbian words that Russian spells alike as though they were
+the Russian word, the same way in every answer that could be read:
+
+- `врач` (a soothsayer) carded as a doctor: «врач, доктор (неформ.)», then «ветеринар,
+  врач».
+- `жир` (acorns fed to pigs) given, after the right «желудь», a second meaning «жир,
+  сало» under «свињски» and «животињски» — the Russian fat.
+- `сто` carded only as «сто, сотня»: the hundred, with no table, which is what Serbian
+  `сто` most often means.
+- `диван` carded only as «диван, софа, тахта»: the sofa, with no «wonderful», the
+  adjective Serbian uses it for; the other sample's answer was unreadable.
+- `работа` carded as plain Serbian for work («работа, труд, занятие»), where Serbian
+  says `рад` or `посао` and `работа` is colloquial at most.
+
+The language line named all five Serbian, rightly, so the reader stays on the Serbian
+tab and drills the Russian meaning. The judgement's attestation does not catch it
+either: each is a real Serbian spelling. The same blindness as items 10 and 14, from
+the headword's side.
+
+## 20. A real word answered as another word, or with a meaning it does not have
+
+From the same two samples, with Serbian as the language translated into:
+
+- English `baba` carded with «grandmother» («baka, nana») and a second meaning «rug»
+  («tepih, tepihče» in one sample, «baka» in the other), which English `baba` does not
+  have.
+- German `Most` (must, cider) carded as `meist` in one sample and `am meisten` in the
+  other: the reader typed a correct German word and got a card for a different one,
+  with no correction announced.
+
+## 21. An answer broken past reading costs the reader a second call
+
+3 of the 482 answers of the language runs and the full tier of 2026-10-11 and
+2026-10-12 garbled a Cyrillic escape inside the card block, splicing letters of
+another script into it: `\u04нд` (Serbian `диван`), `\u04िलों` (`kuća`), `\u04해서`
+(`вопрос`). The card block does not parse, and production asks again — the pool, then
+the paid model — so the reader waits for a second answer. Each came from
+gemini-flash-lite, and only answers that chose to escape their Cyrillic did it (3 of
+13).
+
+The reverse lookup has its own form of it: the Serbian answer for `тоска` on
+2026-10-12 dropped both quotes around its example sentences —
+`"example": obuzela ga je neopisiva tuga zbog odlaska, form": "tuga"` — where the parser
+reads past one missing opening quote and no more. The same break came back in two of
+three answers under a fuller wording measured earlier.
 
 ## What is deliberately not here
 

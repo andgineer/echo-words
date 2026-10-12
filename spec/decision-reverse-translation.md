@@ -96,14 +96,17 @@ for an empty field of the text shape.
 What the line still gets wrong, from the fresh reviews of both samples:
 
 - **Serbian on the English or German tab named Croatian** in both samples on the same
-  three inputs («video moj telefon», «hvala lepo», «kuća»): with a Serbian tab the
-  reader would get «Перевод с хорватского» instead of the move to that tab.
+  three inputs («video moj telefon», «hvala lepo», «kuća»), words both languages spell
+  alike. Croatian and Bosnian are the same language to the reader of a Serbian tab, so
+  for a reader who has a Serbian tab and no tab for the language named, the answer's
+  Croatian or Bosnian counts as Serbian and the input moves to the Serbian tab; a reader
+  with a Croatian or Bosnian tab is moved there.
 - **French greetings English and German dictionaries carry** («bonjour», «merci») are
   named the tab's language in both samples, an English phrase on the German tab in one.
   The reader gets today's answer.
 - **About three target inputs of 28 per sample are missed**, different ones each time;
-  one per sample is lost to a broken card (the workhorse garbles a Cyrillic escape in
-  about three answers of a hundred). The reader gets today's answer.
+  one per sample is lost to a broken card (the workhorse garbled a Cyrillic escape in
+  3 of the 482 answers of the three runs). The reader gets today's answer.
 - **The tab's wording named the target once**: «йош», Serbian још typed on a Russian
   keyboard, named Russian in one sample of two. It is a single word, so the judgement of
   «йош» itself must also refuse it; when it does, the reverse call finds no Russian word
@@ -426,5 +429,14 @@ and the language line, asked with them, named all four Russian.
 The reverse prompt and its parser are what the reverse lookup is built on for every
 source language: English and German carry it as measured, and Serbian in Latin
 letters with its chips, which the operator chose on 2026-10-09 over the first card
-only and over Cyrillic. Acceptance of the faults listed above is open, and nothing here
-accepts them.
+only and over Cyrillic. The language line is what routes typed input where the
+alphabets overlap, as measured above.
+
+The operator accepted on 2026-10-12, as known limitations of the reverse lookup and the
+language line, the misses that every run repeated and no wording moved: сотл refused,
+коса carded as the scythe or as Serbian hair, «Hals über Kopf» misspelt, English авось
+carded as hope, a chip in about six with a wrong meaning or a sentence about another
+word, йош read as ещё, French greetings named the tab's language, and the few target
+inputs per sample the line misses. Faults of the ordinary article the same reviews
+found (look-alikes carded with the Russian sense, answers broken past reading) are not
+accepted; they are listed with the other unfixed defects.

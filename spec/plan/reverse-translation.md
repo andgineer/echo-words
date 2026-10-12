@@ -9,12 +9,15 @@ Cyrillic is read as written. The letter tests that step 1 built are gone: no cod
 a word's letters to guess its language. Alphabets decide only where the tab's and the
 target's cannot be confused; where they overlap, the answer the app asks anyway names
 the language the input is written in (rules 2–3), which also moves input typed on the
-wrong tab to its own tab (rule 9). That line is built and benched: two samples of
+wrong tab to its own tab (rule 8). That line is built and benched: two samples of
 `experiments/language_bench.py` and the full tier of `one_note_bench.py`, reviewed by
 a fresh agent, recorded in the decision spec. The sentence translation (rule 5) is
 built; its bench (`.bench-reverse-sent-a/b/c`) has one sample of three run and
-reviewed, and the other two resume when the pool's quota allows. Open with the
-operator: acceptance of the faults the decision spec lists. Next is step 4.
+reviewed, and the other two are owed (see "Samples b and c" below). On 2026-10-12 the
+operator accepted the misses every run repeated as known limitations (decision spec,
+"Decision"), ruled that Croatian or Bosnian named by the line counts as Serbian for a
+reader with a Serbian tab (rule 8), and had the ordinary article's faults the reviews
+found added to `observed-defects.md`. Next is step 4, in parallel with samples b and c.
 
 ## What the reader gets
 
@@ -100,7 +103,12 @@ Notation: S = the selected language, T = the target language.
    language's. When the line names a language with no tab (French, Japanese), the
    answer stays as written — the translation and its notes — headed «Перевод с
    французского», with no card and no chips: the reader is not learning it. Script
-   decides nothing here; only the line does.
+   decides nothing here; only the line does. Croatian or Bosnian named by the line
+   counts as Serbian for a reader who has a Serbian tab and no tab for the language
+   named (operator, 2026-10-12): «kuća» on the English tab moves to the Serbian tab
+   rather than being headed «Перевод с хорватского». The model names those words
+   Croatian because both languages spell them alike, and to this reader Croatian and
+   Bosnian forms are Serbian.
 9. **No rule of its own for a tab in T itself.** Nothing stops a Russian tab beside
    a Russian target. There `!` asks for the Russian equivalents of a Russian word, and
    every refused word is offered that lookup. Considered (ignore `!` and the offer
@@ -299,7 +307,10 @@ wrong tab.
       (rule 3). Otherwise the S path.
     - a code the reader has a tab for → publish `switched` carrying that code, and
       re-enqueue the entry as that language's typed job (rule 8). The PWA selects that
-      tab.
+      tab. `hr` or `bs` with no tab of its own, from a reader who has an `sr` tab,
+      resolves to that tab first (a small mapping beside the tab lookup, with its
+      test; not a letter check — it reads the model's answer through the operator's
+      rule).
     - any other code → keep the article, store no card, empty the segments, and finish
       with `card_status` `foreign` and the code, which the PWA words as «Перевод с
       {language}».
@@ -481,6 +492,45 @@ Results, reviews and the decision are in `spec/decision-reverse-translation.md`.
   open" when the work lands.
 - `uv run inv readme-screenshots` after the placeholder and panel change.
 
+## Samples b and c (owed)
+
+Sample a of the reverse prompt with the sentence translation is reviewed and recorded
+(decision spec, "Sentences"). Samples b and c measure the same prompt again, so the
+three can be read together; they are owed before the reverse prompt counts as measured.
+
+- **Do not change the reverse prompt or `parse_reverse` until b and c are recorded.**
+  A report keeps only answers whose prompt hash matches the current prompt, and
+  `run-reverse` refuses to run on drift: a change made by step 4 would void b and c and
+  re-spend their quota. Step 4 may touch everything else.
+- A job started on 2026-10-12 waits for 2026-10-13 09:05, checks every 15 minutes that
+  gemini-flash-lite answers, then resumes a (two calls that timed out), b and c, and
+  stops itself when the workhorse cools for 960 s or more (its daily quota gone). It
+  lives in the first session's scratchpad: `pgrep -fl resume.sh` shows whether it runs;
+  its progress is in `/private/tmp/claude-501/-Users-andrei-sorokin2-projects-echo-words/a7c1d2e7-d43c-4109-ae8f-4863e3fb519e/scratchpad/tomorrow.log` and the calls in `/private/tmp/claude-501/-Users-andrei-sorokin2-projects-echo-words/a7c1d2e7-d43c-4109-ae8f-4863e3fb519e/scratchpad/reverse-sent.log`. The
+  directory is under `/private/tmp` and does not survive a reboot.
+- Sample b already holds 15 answers, 7 of them from groq-gpt-oss-120b bought after
+  gemini's quota ran out on 2026-10-12; `--resume` keeps them, and the report's
+  "answered by" line shows the share.
+- If the job is gone or stopped, resume by hand once the pool has reset (09:00 CEST),
+  after one probe call shows gemini answering:
+
+      uv run python experiments/one_note_bench.py run-reverse --resume --wait 180 \
+        --pace 2 --concurrency 1 --out experiments/.bench-reverse-sent-<a|b|c>
+
+  About 76 calls a sample. Stop when the log shows
+  `google-gemini-3.5-flash-lite cooling for 960s`, and resume on a later day.
+- Then, for each of b and c: `uv run python experiments/one_note_bench.py report --out
+  experiments/.bench-reverse-sent-<x>`. Read availability first ("answered by": gemini
+  should carry nearly all; well below that means the run is void). A fresh Opus agent
+  then reviews every item of each `review-packet-reverse.json`, briefed as sample a's
+  reviewer was: the sentence translations (faithful, natural, in the tab's language,
+  Serbian in Latin), first cards and chips, the operator's rules (Croatian, Bosnian and
+  ijekavian forms are no fault; Serbian Cyrillic is read as written), the accepted
+  limitations (decision spec, "Decision") counted but not re-argued, and per-tab counts
+  of first cards right, chips wrong and translations right.
+- Record: the "Sentences" table in the decision spec becomes three samples, with any
+  new fault; then `uv run inv pre`, `uv run inv test`, commit locally.
+
 ## Order of work
 
 1. **Done, then replaced.** The letter functions step 1 built are removed by the
@@ -494,7 +544,7 @@ Results, reviews and the decision are in `spec/decision-reverse-translation.md`.
 3. **Done.** Bench action + fixtures + attestation shots + dropped-example counts +
    its test; run, fresh review, revision, re-run, second fresh review, recorded. Steps
    4–6 are checked against its result before they are built.
-4. Prefix parsing + `script_route` + API (`!`, the script route, `typed`,
+4. **Next.** Prefix parsing + `script_route` + API (`!`, the script route, `typed`,
    `offers_reverse`, `/api/target`) + pipeline reverse resolution and the language
    line (equivalents kept across rebuild and switch, rule 6's floor, the move to
    another tab, the untaught language) + the offer + history + tests.
