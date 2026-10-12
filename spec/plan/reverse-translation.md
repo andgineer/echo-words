@@ -11,23 +11,15 @@ reasoning are in `spec/decision-reverse-translation.md`.
 What is left:
 
 1. **A review of the implementation** by an agent that did not write it, before any
-   push (below). Recommended to the operator on 2026-10-12 and awaiting their word.
+   push (below). The operator agreed to it on 2026-10-12, to be run in the next session.
 2. **Samples b and c** of the reverse prompt with the sentence translation (below).
    Until they are recorded the reverse prompt does not count as measured, and the
    feature is not to be called done or deployed as one.
-3. **The operator's word on the first answer being visible.** When a whole sentence is
-   typed on the wrong tab, or in the target language on a shared-script tab without
-   `!`, the tab's first answer is written onto the page and then replaced, because the
-   language is known only at the end of that answer (decision spec, "What the routing
-   costs, and where it stops"). Put to the operator on 2026-10-12 beside the
-   alternative — hold every typed sentence back until its answer is complete — with the
-   recommendation to leave it; not answered yet. The spec documents it, which is not
-   acceptance.
-4. Delete this plan, and set `CLAUDE.md` back to one open plan.
+3. Delete this plan, and set `CLAUDE.md` back to one open plan.
 
 No push and no deploy without the operator's explicit approval for that act.
 
-## The review (owed if the operator agrees)
+## The review (owed)
 
 The routing was written and tested by one session: `git diff 3a5c53e62..6128ef377`,
 three commits, about 700 lines of product code in `src/` and `webapp/src/` and the rest

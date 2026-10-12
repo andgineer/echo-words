@@ -143,7 +143,9 @@ the page while it is being written, and a reversal or a move replaces it once it
 single word is mostly spared this, because its text is held back until the judgement
 vouches for it and a word of another language is usually refused. Holding typed text
 back until its answer is complete would spare the rest, at the cost of every typed text
-appearing all at once instead of as it is written.
+appearing all at once instead of as it is written; the operator chose on 2026-10-12 to
+leave the answer visible, since it shows only after input the tab was not meant for and
+corrects itself.
 
 Text mixing the two alphabets where they differ («я люблю Python» on the English tab) is
 read as the target's: the tab's own validation refuses any letter it does not write, so
