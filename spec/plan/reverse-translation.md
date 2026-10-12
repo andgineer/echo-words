@@ -1,7 +1,9 @@
 # Plan: reverse translation
 
-**Status (2026-10-12):** steps 1–3 built, and the routing redesigned by the operator.
-The reverse prompt and its parser are in the code and asked by nothing yet; the prompt
+**Status (2026-10-12):** steps 1–4 built, and the routing redesigned by the operator.
+The backend asks the reverse prompt and acts on the language line (step 4: `!`, the
+script route, `/api/target`, the reverse resolution, the move to another tab, the
+untaught language, the offer); the page does not show any of it yet (step 5). The prompt
 was benched four times on the pool and reviewed by a fresh agent each time, and the
 result is in `spec/decision-reverse-translation.md`: English and German carry it as
 measured, Serbian is asked in Latin letters with its chips, and a Serbian answer in
@@ -17,7 +19,7 @@ reviewed, and the other two are owed (see "Samples b and c" below). On 2026-10-1
 operator accepted the misses every run repeated as known limitations (decision spec,
 "Decision"), ruled that Croatian or Bosnian named by the line counts as Serbian for a
 reader with a Serbian tab (rule 8), and had the ordinary article's faults the reviews
-found added to `observed-defects.md`. Next is step 4, in parallel with samples b and c.
+found added to `observed-defects.md`. Next is step 5, in parallel with samples b and c.
 
 ## What the reader gets
 
@@ -202,6 +204,9 @@ wrong tab.
     completion ignores it.
   - The reverse call is `reported`: it is the entry's first answer, and the only one
     when it fails.
+  - A lookup the language line asked for (rule 3) is the exception to the exception:
+    the tab's answer is in hand, so the pipeline buys no paid answer over an unusable
+    one, and any failure of the call leaves that answer standing (rule 6).
 - The same prompt serves `!`, a script T alone writes, a T reading, and the offer's
   tap, which is a `!` submission.
 
@@ -232,12 +237,15 @@ wrong tab.
 ## Backend changes
 
 - `languages.py`
-  - New `script_route(text, language, target) -> "target" | "source" | "shared"`: the
-    scripts the input's letters are written in (`_letter_script`), against S's
+  - Built: `script_route(text, language, target) -> "target" | "source" | "shared"`:
+    the scripts the input's letters are written in (`_letter_script`), against S's
     (`_ALLOWED_SCRIPTS[language.script]`) and T's (its directory row's script; none
-    known → `shared`). Whole scripts only, never single letters.
-  - `normalize_submission` (`:286`): strip leading `?` and `!` in any order; return
-    `(text, lookup_only, forced)`. Lands in step 4 together with its caller.
+    known → `shared`). Whole scripts only, never single letters. One letter in a script
+    T writes and S does not is `target` whatever else the input holds, because S's own
+    validation refuses it («я люблю Python» on the English tab); all letters in scripts
+    S alone writes, or no letters at all, is `source`; anything else is `shared`.
+  - Built: `normalize_submission` strips leading `?` and `!` in any order and returns
+    `(text, lookup_only, forced)`.
 - `api.py` `submit_word` (`:334`):
   - Today's S normalisation and validation run as now, but their hint is held rather
     than raised until the reverse decision is made: on the English tab «стол» fails
@@ -259,10 +267,10 @@ wrong tab.
     here because the pipeline cannot recompute it: `:346-347` gives a typed single
     word `intent="unit"`, exactly what a chip sends, so by the time a job is queued a
     chip looks like a typed word (rule 4).
-  - Pass `reverse`, `typed`, the script route and `offers_reverse` to
-    `pipeline.enqueue`. Add all
-    three to the fingerprint (`SubmissionFingerprint`, `:69`), and `reverse` to
-    `SubmissionAccepted` (`:230`) as `"forced" | "script" | None`: the PWA shows the
+  - Pass `reverse`, `typed`, the script route (`shared_script`) and `offers_reverse` to
+    `pipeline.enqueue`. `reverse` and `typed` join the fingerprint
+    (`SubmissionFingerprint`); the other two follow from them and the word. `reverse`
+    is on `SubmissionAccepted` as `"forced" | "script" | None`: the PWA shows the
     pending line for both, and retries with `!` only for `"forced"` (a script retry
     triggers again by itself).
   - New `GET /api/target` → `{"code": <T's directory code> | null, "name": <T as
@@ -271,17 +279,24 @@ wrong tab.
     target outside the directory has only its configured name. `/api/languages`
     keeps its shape: it carries only the code and the endonym.
 - `pipeline.py`
-  - `Job.reverse: Literal["forced", "script", "line"] | None`, `Job.typed: bool`,
+  - Built as written below, with these names: `process_word` runs a job through every
+    job it turns into (`_reverse` for a forced or script reverse, `_answer` for the S
+    path, which hands back a follow-up job when the line reverses or moves the input);
+    `_reverse_answer` is the call, `_reversed` the entry and job it becomes,
+    `_line_route` the reading of the line, `_moved` the move to another tab.
+  - `Job.reverse: Literal["forced", "script"] | None`, `Job.typed: bool`,
     `Job.shared_script: bool`, `Job.offers_reverse: bool` and `Job.equivalents:
     tuple[Segment, ...]`, all
     defaulting to "no" / empty so rebuilds, switches and chips carry none of them
-    unless passed.
-  - Reverse resolution runs at the top of `process_word` (`:516`), before the audio
-    task and the attestation are created (`:520`, `:549`), and runs the reverse call
-    as routed above:
+    unless passed. A lookup the line asks for is no job of its own: it runs inside the
+    S job, which keeps its answer in hand as the floor.
+  - Reverse resolution runs before the audio task and the attestation are created, and
+    runs the reverse call as routed above:
     - `word` → set `entry.word = first.word`, `entry.typed_word = job.word`,
       `entry.read_as` (when it differs from the typed word),
-      `entry.context = first.example`, and publish `reset` carrying those four.
+      `entry.context = first.example`, and publish `reset` carrying those four and
+      `requested_shape` (what a retry sends from here on: `"unit"` for a word, none for
+      translated text).
       Continue with `replace(job, word=first.word, context=first.example,
       intent="unit", reverse=None, offers_reverse=False, equivalents=others)` — the
       chip path. From here `ControlState`, `shown_spelling`, undo, rebuild, switch,
@@ -294,26 +309,33 @@ wrong tab.
       publish `reset`, and continue as the ordinary S text job:
       `replace(job, word=translation, intent=None, reverse=None, offers_reverse=False)`
       — the S answer then decides the branch as it does for any typed text (rule 5).
-    - `not_a_word` → if `reverse == "line"`, continue as the ordinary S job with
-      `reverse=None` (rule 6). Otherwise finish the entry with `card_status`
+    - `not_a_word` → for a lookup the line asked for, the S job goes on with the answer
+      it holds, asking nothing again, and the lookup is not offered a second time
+      (rule 6). Otherwise finish the entry with `card_status`
       `reverse_not_a_word` (and the same code as its action, so neither counters nor
       undo treat it as stored), no card, no audio.
-    - No usable answer from pool or paid → `_fail`.
+    - No usable answer from pool or paid → `_fail`; for a lookup the line asked for,
+      the S answer stands and the lookup stays on offer.
   - The language line: a typed job asks `build_prompt(..., typed=True)`, and once the S
     answer is parsed, before anything is carded, `parse_submission_language` decides:
     - `source` → the S path, untouched.
     - `target`, with `shared_script`, and for a single word the attestation refusing →
-      drop the S answer, set `reverse="line"`, and run the reverse resolution above
-      (rule 3). Otherwise the S path.
-    - a code the reader has a tab for → publish `switched` carrying that code, and
-      re-enqueue the entry as that language's typed job (rule 8). The PWA selects that
-      tab. `hr` or `bs` with no tab of its own, from a reader who has an `sr` tab,
-      resolves to that tab first (a small mapping beside the tab lookup, with its
-      test; not a letter check — it reads the model's answer through the operator's
-      rule).
-    - any other code → keep the article, store no card, empty the segments, and finish
-      with `card_status` `foreign` and the code, which the PWA words as «Перевод с
-      {language}».
+      run the reverse call; a word or a sentence drops the S answer and becomes the
+      entry (rule 3). Otherwise the S path.
+    - a code the reader has a tab for → publish `moved` carrying that tab's code and
+      name, and go on as that language's job in the same entry (rule 8); the PWA
+      selects that tab. The job is asked there once and without the line, so it can
+      neither move again nor reverse. `hr`, `bs` or `sh` with no tab of its own, from
+      a reader who has an `sr` tab, resolves to that tab first (`_READ_AS_TAB`; not a
+      letter check — it reads the model's answer through the operator's rule), which on
+      the Serbian tab itself means the S path. A tab whose alphabet cannot write the
+      input is not moved to. The pipeline reads the tabs through a `languages` callable
+      the API passes, because the editor replaces the table while the app runs.
+    - any other code → keep the article, store no card, empty the segments, speak
+      nothing, and finish with `card_status` `foreign` (its action too) and the code in
+      `Entry.foreign_language`, which the PWA words as «Перевод с {language}». It stands
+      ahead of the attestation's refusal: the judgement is about S, in which a word of
+      another language is rightly unused.
   - Equivalents: when there is more than one, the others are carried on the job as
     `Segment(label=word, reason="", context=example)`, and `_segments_for` (`:1301`)
     returns them with `segment_kind = "equivalents"` ahead of anything the answer
@@ -330,11 +352,11 @@ wrong tab.
     The misspelling overrule (`pipeline.py:678-684`) runs before it, so a corrected S
     misspelling that ends carded is not offered; a refused `?` lookup is
     (`UNATTESTED_STATUS` with action `lookup`).
-  - The new fields reach the page on two events: the reversal on `reset`, and
-    `reverse_offered` on `done`, whose payload is an explicit dict (`:1036`), not
-    `entry.public()`.
-- `history.py`: `Entry` (`:15`) gains `typed_word`, `read_as`, `reverse_offered`, all
-  in `public()`. `SegmentKind` (`:11`) gains `"equivalents"`. `_reset_reused_entry`
+  - The new fields reach the page on three events: the reversal on `reset`, the move
+    on `moved`, and `reverse_offered` and `foreign_language` on `done`, whose payload
+    is an explicit dict, not `entry.public()`.
+- `history.py`: `Entry` gains `typed_word`, `read_as`, `reverse_offered` and
+  `foreign_language`, all in `public()`. `SegmentKind` (`:11`) gains `"equivalents"`. `_reset_reused_entry`
   keeps the first two across a switch or a rebuild and clears `reverse_offered`.
 - `i18n.py`: no new hint; a reverse request over the text bound gets `text.too_long`. Finished entries
   carry codes, and their wording is the client's (`pipeline.py:41`).
@@ -427,7 +449,8 @@ wrong tab.
   `not_a_word` → continues as the S job (rule 6); `!` + `not_a_word`
   on Serbian → stays not a word; an equivalent the attestation refuses → refusal
   shown, chips kept; `typed_word` survives a switch.
-- `tests/test_attestation.py` (the offer): a refused job with `offers_reverse` sets
+- `tests/test_pipeline.py` too (the offer; it needs the scripted cascade that lives
+  there): a refused job with `offers_reverse` sets
   `reverse_offered`, and so does a refused `?` lookup; a declared misspelling the
   overrule cards does not; a refused job without `offers_reverse` (a chip) does not;
   a switch or a rebuild clears it.
@@ -544,11 +567,12 @@ three can be read together; they are owed before the reverse prompt counts as me
 3. **Done.** Bench action + fixtures + attestation shots + dropped-example counts +
    its test; run, fresh review, revision, re-run, second fresh review, recorded. Steps
    4–6 are checked against its result before they are built.
-4. **Next.** Prefix parsing + `script_route` + API (`!`, the script route, `typed`,
+4. **Done.** Prefix parsing + `script_route` + API (`!`, the script route, `typed`,
    `offers_reverse`, `/api/target`) + pipeline reverse resolution and the language
    line (equivalents kept across rebuild and switch, rule 6's floor, the move to
-   another tab, the untaught language) + the offer + history + tests.
-5. Frontend: placeholder (rule 7), the tab switch and «Перевод с …» (rule 8), pending line, `reset` handling, both receipt handlers,
+   another tab, the untaught language) + the offer + history + tests. It changes
+   neither prompt nor parser, so samples b and c stand.
+5. **Next.** Frontend: placeholder (rule 7), the tab switch and «Перевод с …» (rule 8), pending line, `reset` handling, both receipt handlers,
    `sendWord`'s `lookup_only`, retry, header, chips, outcomes, offer button, panel
    removal + tests.
 6. Browser tests.

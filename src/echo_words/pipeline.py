@@ -5,9 +5,9 @@ import logging
 import time
 import unicodedata
 import uuid
-from collections.abc import Callable, Coroutine
+from collections.abc import Callable, Coroutine, Mapping
 from contextlib import aclosing, suppress
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any, Literal, Protocol
 
@@ -22,17 +22,24 @@ from echo_words.languages import (
     MAX_CONTEXT_LENGTH,
     Language,
     fold_for_match,
+    plain_unit,
     split_words,
+    validate_text,
+    validate_word,
 )
 from echo_words.lexicon import Usage
 from echo_words.prompt import (
     CARD_DELIMITER,
+    ReverseAnswer,
     Verdict,
     build_attestation_prompt,
     build_extended_prompt,
     build_prompt,
+    build_reverse_prompt,
     extract_answer,
     parse_attestation,
+    parse_reverse,
+    parse_submission_language,
 )
 from echo_words.sanitizer import sanitize_html
 from echo_words.segments import Segment, display_text
@@ -49,6 +56,12 @@ CARD_FAILED_STATUS = "failed"
 UNATTESTED_STATUS = "unattested"
 MISSPELLED_STATUS = "misspelled"
 DELETED_STATUS = "deleted"
+# Each is its own action too, so neither the counters nor undo take it for a stored card.
+REVERSE_NOT_A_WORD_STATUS = "reverse_not_a_word"
+FOREIGN_STATUS = "foreign"
+# To the reader of a Serbian tab these are the same language, and a model names a word
+# they all spell alike by any of them.
+_READ_AS_TAB = {"hr": "sr", "bs": "sr", "sh": "sr"}
 REQUEST_EXPIRED = "request expired"
 # An entry this process knows only because the page asked for its deeper article.
 RESTORED_ACTION = "restored"
@@ -95,10 +108,15 @@ AudioFetcher = Callable[[str, Language], Coroutine[Any, Any, Path | None]]
 DictionaryLookup = Callable[[str, Language], Coroutine[Any, Any, bool | None]]
 UsageLookup = Callable[[str, Language], Coroutine[Any, Any, Usage | None]]
 JobKind = Literal["submit", "rebuild", "switch"]
+Tabs = Callable[[], Mapping[str, Language]]
 
 
 async def _no_audio(_word: str, _language: Language) -> Path | None:
     return None
+
+
+def _no_tabs() -> Mapping[str, Language]:
+    return {}
 
 
 async def _no_lookup(_word: str, _language: Language) -> bool | None:
@@ -130,6 +148,18 @@ class Job:
     replace_media: str | None = None
     replaced_audio: Path | None = None
     replaced_card_audio: Path | None = None
+    # Read as the target language before anything else: asked for with `!`, or written
+    # in an alphabet the tab's language does not write.
+    reverse: Literal["forced", "script"] | None = None
+    # Typed by the reader rather than taken from the app's own answer, so its answer
+    # also names the language it is written in.
+    typed: bool = False
+    # The tab's language and the target write this input's alphabet alike, so only the
+    # answer can say which of the two it is.
+    shared_script: bool = False
+    offers_reverse: bool = False
+    # The other source-language words a reverse lookup found beside the one carded.
+    equivalents: tuple[Segment, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -165,6 +195,7 @@ class ControlState:
     context_audio_path: Path | None = None
     card_audio_path: Path | None = None
     carded_word: str | None = None
+    equivalents: tuple[Segment, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -177,6 +208,19 @@ class StoreResult:
     kinds: tuple[str, ...] = ()
 
 
+@dataclass(frozen=True)
+class _LineRoute:
+    """Where the language an answer names sends typed input: on as another job, out as
+    a language no tab teaches, or nowhere."""
+
+    job: Job | None = None
+    foreign: str | None = None
+    # The reverse lookup was asked and found no target word, so it is not offered again.
+    reverse_refused: bool = False
+
+
+_STAYS = _LineRoute()
+
 QueueJob = Job | DetailJob
 
 
@@ -188,6 +232,7 @@ class WordPipeline:
         cascade: Cascade | None,
         *,
         target_lang: str,
+        languages: Tabs = _no_tabs,
         events: EventHub | None = None,
         anki: CardStore | None = None,
         audio: AudioFetcher = _no_audio,
@@ -205,6 +250,8 @@ class WordPipeline:
         self.usage = usage
         self.audio_timeout = audio_timeout
         self.target_lang = target_lang
+        # Read on every use: the editor replaces the table while the app runs.
+        self.languages = languages
         self._clock = clock
         self._queue: asyncio.Queue[QueueJob] = asyncio.Queue()
         self.history = History(history_size)
@@ -253,6 +300,11 @@ class WordPipeline:
         replace_media: str | None = None,
         replaced_audio: Path | None = None,
         replaced_card_audio: Path | None = None,
+        reverse: Literal["forced", "script"] | None = None,
+        typed: bool = False,
+        shared_script: bool = False,
+        offers_reverse: bool = False,
+        equivalents: tuple[Segment, ...] = (),
     ) -> Entry:
         if reuse_entry is not None:
             entry = self._entries[reuse_entry]
@@ -312,6 +364,11 @@ class WordPipeline:
                 replace_media,
                 replaced_audio,
                 replaced_card_audio,
+                reverse=reverse,
+                typed=typed,
+                shared_script=shared_script,
+                offers_reverse=offers_reverse,
+                equivalents=equivalents,
             ),
         )
         await self.events.publish("accepted", entry.public())
@@ -360,6 +417,7 @@ class WordPipeline:
             kept_context_audio=state.context_audio_path,
             replace_note_id=state.note_id,
             replace_media=state.media_filename,
+            equivalents=state.equivalents,
         )
 
     async def request_switch(self, entry_id: str) -> Entry:
@@ -380,6 +438,7 @@ class WordPipeline:
             replace_media=state.media_filename,
             replaced_audio=state.audio_path,
             replaced_card_audio=state.card_audio_path,
+            equivalents=state.equivalents,
         )
 
     async def request_detail(
@@ -513,9 +572,188 @@ class WordPipeline:
             finally:
                 self._queue.task_done()
 
-    async def process_word(self, job: Job) -> None:  # noqa: C901, PLR0912, PLR0915
+    async def process_word(self, job: Job) -> None:
+        """Run a job to its end, through every job it turns into on the way: a reverse
+        lookup becomes the job for the word it found, and input in another of the
+        reader's languages becomes that tab's job."""
+        step: Job | None = job
+        while step is not None and self._is_current(step):
+            if step.reverse is not None:
+                step = await self._reverse(step)
+            else:
+                step = await self._answer(step)
+
+    async def _reverse(self, job: Job) -> Job | None:
+        """Turn a submission read as the target language into its source-language job."""
+        entry = self._entries[job.entry_id]
+        answer = await self._reverse_answer(job, bought=True)
         if not self._is_current(job):
-            return
+            return None
+        if answer is None:
+            await self._fail(job)
+            return None
+        if answer.verdict == "not_a_word":
+            not_a_word = StoreResult(REVERSE_NOT_A_WORD_STATUS, REVERSE_NOT_A_WORD_STATUS)
+            await self._finish_entry(entry, "", "", None, not_a_word)
+            return None
+        return await self._reversed(job, entry, answer)
+
+    async def _reverse_answer(self, job: Job, *, bought: bool) -> ReverseAnswer | None:
+        """The reverse lookup of what was typed, or None when no model gave a usable one.
+
+        `bought` is whether an answer the pool cannot make usable is bought from the paid
+        model without asking: only where nothing is on the page for the reader to keep.
+        """
+        if self.cascade is None:
+            return None
+        prompt = build_reverse_prompt(job.language, plain_unit(job.word), self.target_lang)
+        parts: list[str] = []
+
+        async def reset() -> None:
+            parts.clear()
+
+        def read(answer: str) -> ReverseAnswer | None:
+            return parse_reverse(answer, job.language, self.target_lang)
+
+        try:
+            pool = self.cascade.stream_completion(
+                prompt,
+                job.language,
+                trace_id=f"{job.entry_id}-reverse",
+                on_reset=reset,
+                usable=lambda answer: read(answer) is not None,
+            )
+            async with aclosing(pool):
+                async for delta in pool:
+                    parts.append(delta)
+            answer = read("".join(parts))
+            await pool.record_quality(1.0 if answer is not None else 0.0)
+            if answer is not None or not bought or self._paid_refusal(job.language) is not None:
+                return answer
+            parts.clear()
+            paid = self.cascade.stream_paid(
+                prompt,
+                job.language,
+                trace_id=f"{job.entry_id}-reverse-paid",
+            )
+            async with aclosing(paid):
+                async for delta in paid:
+                    parts.append(delta)
+        except BackendError:
+            return None
+        return read("".join(parts))
+
+    async def _reversed(self, job: Job, entry: Entry, answer: ReverseAnswer) -> Job:
+        """The entry and its job as the source-language wording found for what was typed.
+
+        From here the entry is the one a tap on a chip for that wording would have made,
+        so everything later reads the wording found and the typed one is never spoken.
+        """
+        typed = plain_unit(job.word)
+        if answer.verdict == "sentence":
+            word, context, read_as = answer.translation, job.context, None
+            others: tuple[Segment, ...] = ()
+            single = len(split_words(word)) == 1
+            word = plain_unit(word) if single else word
+        else:
+            first, *rest = answer.equivalents
+            word, context, single = first.word, first.example, True
+            others = tuple(
+                Segment(label=other.word, reason="", context=other.example) for other in rest
+            )
+            read_as = answer.read_as if _reads_another_word(answer.read_as, typed) else None
+        intent: Literal["unit"] | None = "unit" if single else None
+        entry.word = entry.shown_spelling = word
+        entry.typed_word = typed
+        entry.read_as = read_as
+        entry.context = context
+        entry.text = ""
+        await self.events.publish(
+            "reset",
+            {
+                "entry_id": entry.entry_id,
+                "word": word,
+                "typed_word": typed,
+                "read_as": read_as,
+                "context": context,
+                # What a retry sends from here on: the wording found, as the chip or
+                # the text it now is, and no longer what was typed.
+                "requested_shape": intent,
+            },
+        )
+        return replace(
+            job,
+            word=word,
+            context=context,
+            intent=intent,
+            reverse=None,
+            typed=False,
+            shared_script=False,
+            offers_reverse=False,
+            equivalents=others,
+        )
+
+    async def _line_route(
+        self,
+        job: Job,
+        entry: Entry,
+        raw: str,
+        attestation: "_Attestation",
+    ) -> _LineRoute:
+        """Where the language the answer names sends what the reader typed."""
+        if not job.typed:
+            return _STAYS
+        named = parse_submission_language(raw, job.language, self.target_lang)
+        if named == "source":
+            return _STAYS
+        if named == "target":
+            return await self._target_reading(job, entry, attestation)
+        tabs = self.languages()
+        tab = tabs.get(named) or tabs.get(_READ_AS_TAB.get(named, ""))
+        if tab is None:
+            return _LineRoute(foreign=named)
+        if tab.code == job.language.code or _tab_refuses(job, tab):
+            return _STAYS
+        return _LineRoute(job=await self._moved(job, entry, tab))
+
+    async def _target_reading(
+        self,
+        job: Job,
+        entry: Entry,
+        attestation: "_Attestation",
+    ) -> _LineRoute:
+        """The reverse lookup of input the answer names the target's, as the last resort.
+
+        A wrong reverse throws away the word the reader wanted and a missed one costs
+        them a tap, so the answer in hand stands unless the lookup finds a target word.
+        """
+        if not job.shared_script:
+            return _STAYS
+        # The line alone takes a rare word of the tab spelled like a common target word
+        # for the target's, so a single word also needs the judgement to refuse it.
+        if job.intent == "unit" and not _refuses(await attestation.result()):
+            return _STAYS
+        answer = await self._reverse_answer(job, bought=False)
+        if answer is None or not self._is_current(job):
+            return _STAYS
+        if answer.verdict == "not_a_word":
+            return _LineRoute(reverse_refused=True)
+        return _LineRoute(job=await self._reversed(job, entry, answer))
+
+    async def _moved(self, job: Job, entry: Entry, tab: Language) -> Job:
+        """The same input as a submission to the tab whose language it is written in."""
+        self._reset_reused_entry(entry, tab, job.word, job.lookup_only, job.context, job.kind)
+        self._latest_submissions[tab.code] = entry.entry_id
+        self.history.undo.pop(tab.code, None)
+        await self.events.publish(
+            "moved",
+            {"entry_id": entry.entry_id, "lang": tab.code, "language": tab.name},
+        )
+        # Asked once: the tab it lands on answers by its own rules and is not read again.
+        return replace(job, language=tab, typed=False, shared_script=False, offers_reverse=False)
+
+    async def _answer(self, job: Job) -> Job | None:  # noqa: C901, PLR0911, PLR0912, PLR0915
+        """Answer a submission in its tab's language, or hand back the job it turned into."""
         entry = self._entries[job.entry_id]
         audio_task = None
         context_audio_task = None
@@ -550,13 +788,14 @@ class WordPipeline:
         try:
             if self.cascade is None:
                 await self._fail(job)
-                return
+                return None
             prompt = build_prompt(
                 job.language,
                 job.word,
                 self.target_lang,
                 context=job.context,
                 unit_intent=job.intent == "unit",
+                typed=job.typed,
             )
             parsed: ParsedAnswer | None = None
 
@@ -606,7 +845,7 @@ class WordPipeline:
                 async with aclosing(completion):
                     async for delta in completion:
                         if not self._is_current(job):
-                            return
+                            return None
                         if not entry_reset:
                             self._reset_reused_entry(
                                 entry,
@@ -653,20 +892,30 @@ class WordPipeline:
                         "control_error",
                         {"entry_id": entry.entry_id, "message": str(exc)},
                     )
-                    return
+                    return None
                 await self._handle_backend_error(job, entry, last_published)
-                return
+                return None
             if not self._is_current(job):
-                return
-            audio_path, context_audio_path, card_audio_path = await self._audio_paths(
-                job,
-                parsed,
-                audio_task,
-                context_audio_task,
-                context,
-            )
-            audio_task = None
-            context_audio_task = None
+                return None
+            route = await self._line_route(job, entry, raw, attestation)
+            if route.job is not None or not self._is_current(job):
+                return route.job
+            foreign = route.foreign is not None
+            if foreign:
+                # The reader is not learning this language: the answer stays as written,
+                # and nothing of it is carded, spoken in the tab's voice or offered.
+                parsed = None
+                audio_path = context_audio_path = card_audio_path = None
+            else:
+                audio_path, context_audio_path, card_audio_path = await self._audio_paths(
+                    job,
+                    parsed,
+                    audio_task,
+                    context_audio_task,
+                    context,
+                )
+                audio_task = None
+                context_audio_task = None
             attested = await attestation.result()
             # A correction overrules the standalone refusal: nobody writes `recieve` —
             # being a misspelling is what that means (spec/decision-answer-shape.md).
@@ -681,12 +930,18 @@ class WordPipeline:
                 refused = corrected is not None and _refuses(
                     await self._attest(job, corrected, suffix="-correction"),
                 )
-            stored = (
+            if foreign:
+                # Ahead of the refusal: the judgement is about the tab's language, which
+                # a word of another one is rightly not used in.
+                stored = StoreResult(FOREIGN_STATUS, FOREIGN_STATUS)
+            elif refused:
                 # A refused lookup is still a lookup: it made no card either way.
-                StoreResult(UNATTESTED_STATUS, "lookup" if job.lookup_only else "unattested")
-                if refused
-                else await self._store_card(job, parsed, card_audio_path)
-            )
+                stored = StoreResult(
+                    UNATTESTED_STATUS,
+                    "lookup" if job.lookup_only else "unattested",
+                )
+            else:
+                stored = await self._store_card(job, parsed, card_audio_path)
             if job.kind == "switch" and _kept_previous_note(job, stored):
                 # The switch stored nothing, so the entry stays on the note it had and
                 # keeps playing the recording of the spelling that note carries.
@@ -708,7 +963,10 @@ class WordPipeline:
             ):
                 audio_path = card_audio_path
             entry.audio_file = audio_path.name if audio_path else None
-            entry.no_audio = audio_path is None and stored.status != UNATTESTED_STATUS
+            entry.no_audio = audio_path is None and stored.status not in {
+                UNATTESTED_STATUS,
+                FOREIGN_STATUS,
+            }
             entry.no_card_audio = stored.action == "added" and card_audio_path is None
             # A status that says nothing was carded must not stand over a surviving note.
             entry.card_kept = _kept_previous_note(job, stored)
@@ -746,6 +1004,12 @@ class WordPipeline:
             # rather than taken, because the analysis in front of the reader is usually
             # a good one and only they can say it is worth replacing.
             entry.paid_answer_available = stored.status == CARD_FAILED_STATUS and paid_ready
+            entry.foreign_language = route.foreign
+            entry.reverse_offered = (
+                job.offers_reverse
+                and not route.reverse_refused
+                and stored.status == UNATTESTED_STATUS
+            )
             self._update_state(
                 job,
                 parsed,
@@ -763,6 +1027,7 @@ class WordPipeline:
                 if pending is not None:
                     _cancel_task(pending)
             attestation.cancel()
+        return None
 
     async def _absent_from_references(
         self,
@@ -1058,6 +1323,8 @@ class WordPipeline:
                 "detail_available": entry.detail_available,
                 "detail_word": entry.detail_word,
                 "paid_answer_available": entry.paid_answer_available,
+                "reverse_offered": entry.reverse_offered,
+                "foreign_language": entry.foreign_language,
             },
         )
         self.history.trim()
@@ -1090,6 +1357,7 @@ class WordPipeline:
         if job.kind != "rebuild":
             existing.shown_spelling = job.word
         existing.context_audio_path = context_audio_path
+        existing.equivalents = job.equivalents
         replacement_failed = _kept_previous_note(job, stored)
         if not replacement_failed:
             existing.note_id = stored.note_id
@@ -1254,6 +1522,8 @@ class WordPipeline:
         entry.analysed_as = None
         entry.typo_suspected = False
         entry.showing_other_spelling = False
+        entry.reverse_offered = False
+        entry.foreign_language = None
         entry.error = None
         entry.model = None
         if kind != "rebuild":
@@ -1302,6 +1572,10 @@ def _segments_for(
     parsed: ParsedAnswer | None,
     job: Job,
 ) -> tuple[list[Segment], str | None]:
+    if job.equivalents:
+        # Ahead of anything the answer holds, and kept when there is no answer to show:
+        # each is another word for what was typed, judged afresh when it is tapped.
+        return list(job.equivalents), "equivalents"
     if isinstance(parsed, ParsedText):
         return parsed.segments, "text"
     if not isinstance(parsed, ParsedUnit):
@@ -1358,6 +1632,21 @@ def _analysed_as(job: Job, parsed: ParsedAnswer | None) -> str | None:
     if fold_for_match(parsed.note.word, job.language) == fold_for_match(job.word, job.language):
         return None
     return parsed.note.word
+
+
+def _reads_another_word(read_as: str, typed: str) -> bool:
+    """Whether the lookup read the typed wording as a different one: its dictionary
+    form, or the word a slip was meant to be."""
+    return bool(read_as) and _folded(read_as) != _folded(typed)
+
+
+def _folded(text: str) -> str:
+    return unicodedata.normalize("NFC", text).casefold()
+
+
+def _tab_refuses(job: Job, tab: Language) -> bool:
+    check = validate_word if job.intent == "unit" else validate_text
+    return check(job.word, tab) is not None
 
 
 def _refuses(verdict: "Verdict | None | object") -> bool:

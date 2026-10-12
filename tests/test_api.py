@@ -93,7 +93,8 @@ def test_accepted_submission_names_the_resolved_language(client: TestClient):
     response = submit(client, word="receive")
     assert response.status_code == 200
     body = response.json()
-    assert list(body) == ["entry_id", "word", "lookup_only"]
+    assert list(body) == ["entry_id", "word", "lookup_only", "reverse"]
+    assert body["reverse"] is None
     entry = recent_entry(client, body["entry_id"])
     assert entry["word"] == "receive"
     assert entry["lang"] == "en"
@@ -434,7 +435,7 @@ def test_unknown_language_gets_a_hint_and_no_processing(client: TestClient):
 
 
 def test_the_word_is_validated_for_the_selected_language(client: TestClient):
-    response = submit(client, word="слово", lang="en")
+    response = submit(client, word="слово", lang="en", shape="unit")
     assert response.status_code == 400
     assert response.json()["detail"] == "“English” needs the Latin script."
 
@@ -464,7 +465,11 @@ def test_empty_word_gets_a_hint(client: TestClient):
 
 def test_hints_follow_the_interface_language(client: TestClient):
     russian = {"Accept-Language": "ru-RU,ru;q=0.9"}
-    word = client.post("/api/words", json={"lang": "en", "word": "слово"}, headers=russian)
+    word = client.post(
+        "/api/words",
+        json={"lang": "en", "word": "слово", "shape": "unit"},
+        headers=russian,
+    )
     assert word.json()["detail"] == "Для «English» нужна латиница."
 
     language = client.post("/api/words", json={"lang": "fr", "word": "bonjour"}, headers=russian)
@@ -902,3 +907,180 @@ def test_the_editor_refusals_speak_the_interface_language(client: TestClient):
 
     assert response.status_code == 400
     assert "не код языка" in response.json()["detail"]
+
+
+def queued(client: TestClient):
+    """The pipeline's queue call, kept so a test can read what a submission became."""
+    pipeline = client.app.state.pipeline
+    pipeline.enqueue = AsyncMock(wraps=pipeline.enqueue)
+    return pipeline.enqueue
+
+
+@pytest.mark.parametrize(
+    ("lang", "word"),
+    [("en", "!стол"), ("de", "! стол"), ("sr", "!стол"), ("sr", "!grad"), ("en", "!table")],
+)
+def test_an_exclamation_mark_asks_for_the_target_reading_on_every_tab(
+    client: TestClient,
+    lang: str,
+    word: str,
+):
+    enqueue = queued(client)
+
+    accepted = submit(client, word=word, lang=lang)
+
+    assert accepted.status_code == 200
+    body = accepted.json()
+    # The receipt names the word without its shortcut, and says the lookup was asked for.
+    assert body["word"] == word.lstrip("! ")
+    assert body["reverse"] == "forced"
+    assert enqueue.await_args.kwargs["reverse"] == "forced"
+    assert enqueue.await_args.kwargs["offers_reverse"] is False
+
+
+@pytest.mark.parametrize("word", ["?!стол", "!?стол", "! ? стол"])
+def test_the_two_shortcuts_combine_in_either_order(client: TestClient, word: str):
+    enqueue = queued(client)
+
+    body = submit(client, word=word, lang="sr").json()
+
+    assert (body["word"], body["lookup_only"], body["reverse"]) == ("стол", True, "forced")
+    assert enqueue.await_args.args[2] is True
+
+
+def test_an_alphabet_only_the_target_writes_is_read_as_the_target(client: TestClient):
+    enqueue = queued(client)
+
+    word = submit(client, word="стол", lang="en")
+    text = submit(client, word="Я иду домой.", lang="de")
+
+    assert word.json()["reverse"] == "script"
+    assert text.json()["reverse"] == "script"
+    assert text.json()["word"] == "Я иду домой."
+    assert enqueue.await_args.kwargs["reverse"] == "script"
+
+
+def test_a_chip_is_never_read_as_the_target(client: TestClient):
+    """A chip's label comes from the app's own answer in the tab's language, so the
+    tab's rules stand for it and nothing about it is offered or reversed."""
+    enqueue = queued(client)
+
+    refused = submit(client, word="стол", lang="en", shape="unit")
+    accepted = submit(client, word="град", lang="sr", shape="unit")
+
+    assert refused.status_code == 400
+    assert accepted.json()["reverse"] is None
+    kwargs = enqueue.await_args.kwargs
+    assert (kwargs["typed"], kwargs["offers_reverse"], kwargs["shared_script"]) == (
+        False,
+        False,
+        False,
+    )
+
+
+def test_typed_input_is_queued_as_typed(client: TestClient):
+    enqueue = queued(client)
+
+    submit(client, word="receive")
+    assert enqueue.await_args.kwargs["typed"] is True
+
+    submit(client, word="Er steht um sechs auf.", lang="de")
+    assert enqueue.await_args.kwargs["typed"] is True
+
+
+@pytest.mark.parametrize("word", ["!стoл", "!123", "!sto стол", "!ねこ"])
+def test_a_forced_reading_takes_anything_with_no_check_of_its_letters(
+    client: TestClient,
+    word: str,
+):
+    """The reverse call itself answers for junk; the tab's alphabet says nothing about
+    a word the reader has just said is not in the tab's language."""
+    accepted = submit(client, word=word, lang="en")
+
+    assert accepted.status_code == 200
+    assert accepted.json()["reverse"] == "forced"
+
+
+def test_a_forced_reading_works_for_a_target_outside_the_directory(settings: Settings):
+    app = create_app(settings.model_copy(update={"target_lang": "Japanese"}))
+    with TestClient(app) as client:
+        accepted = submit(client, word="!ねこ")
+        # With no alphabet known for the target, none can decide by itself.
+        refused = submit(client, word="стол")
+
+    assert accepted.json()["reverse"] == "forced"
+    assert refused.status_code == 400
+    assert refused.json()["detail"] == "“English” needs the Latin script."
+
+
+@pytest.mark.parametrize("word", ["!", "! ?", "!...", "?!"])
+def test_a_shortcut_with_nothing_after_it_is_refused_as_empty(client: TestClient, word: str):
+    response = submit(client, word=word)
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Enter a word."
+
+
+def test_a_reverse_request_over_the_text_bound_gets_the_text_hint(client: TestClient):
+    forced = submit(client, word="!" + "слово " * 100)
+    by_script = submit(client, word="слово " * 100)
+
+    for response in (forced, by_script):
+        assert response.status_code == 400
+        assert response.json()["detail"] == (
+            f"This text is too long: no more than {MAX_TEXT_LENGTH} characters."
+        )
+
+
+def test_a_forced_word_longer_than_a_word_is_still_within_the_text_bound(client: TestClient):
+    assert submit(client, word="!" + "я" * (MAX_WORD_LENGTH + 1)).status_code == 200
+
+
+@pytest.mark.parametrize(
+    ("body", "offered", "shared"),
+    [
+        # One typed word in an alphabet both languages write.
+        ({"word": "город", "lang": "sr"}, True, True),
+        ({"word": "?город", "lang": "sr"}, True, True),
+        # Text is never offered: its own context says what it is.
+        ({"word": "мы идём домой", "lang": "sr"}, False, True),
+        # A chip looks exactly like a typed word once queued, and is not one.
+        ({"word": "город", "lang": "sr", "shape": "unit"}, False, False),
+        # An alphabet one of the two languages alone writes leaves nothing to offer.
+        ({"word": "grad", "lang": "sr"}, False, False),
+        ({"word": "table", "lang": "en"}, False, False),
+    ],
+)
+def test_the_target_reading_is_offered_only_for_one_typed_word_in_a_shared_alphabet(
+    client: TestClient,
+    body: dict[str, str],
+    offered: bool,
+    shared: bool,
+):
+    enqueue = queued(client)
+
+    assert submit(client, **body).status_code == 200
+
+    assert enqueue.await_args.kwargs["offers_reverse"] is offered
+    assert enqueue.await_args.kwargs["shared_script"] is shared
+    assert enqueue.await_args.kwargs["reverse"] is None
+
+
+def test_a_request_id_is_not_reused_between_a_typed_word_and_a_forced_one(client: TestClient):
+    request_id = "a7237d5b-2b51-443d-bdb7-1b6e4259d10a"
+    first = submit(client, word="град", lang="sr", request_id=request_id)
+    forced = submit(client, word="!град", lang="sr", request_id=request_id)
+    chip = submit(client, word="град", lang="sr", shape="unit", request_id=request_id)
+
+    assert first.status_code == 200
+    assert forced.status_code == 409
+    assert chip.status_code == 409
+
+
+def test_the_page_is_told_the_target_language(settings: Settings):
+    with TestClient(create_app(settings)) as client:
+        assert client.get("/api/target").json() == {"code": "ru", "name": "Russian"}
+
+    # A target the directory does not carry has only the name it was configured with.
+    app = create_app(settings.model_copy(update={"target_lang": "Japanese"}))
+    with TestClient(app) as client:
+        assert client.get("/api/target").json() == {"code": None, "name": "Japanese"}

@@ -19,6 +19,7 @@ from echo_words.languages import (
     reflexive_markers,
     sanitize_context,
     save_languages,
+    script_route,
     sentence_is_source_language,
     unit_excluded_words,
     unknown_language_hint,
@@ -174,13 +175,21 @@ def test_unknown_script_is_a_config_error(tmp_path: Path):
 @pytest.mark.parametrize(
     ("text", "flag", "expected"),
     [
-        ("word", False, ("word", False)),
-        ("  word  ", False, ("word", False)),
-        ("?word", False, ("word", True)),
-        ("? word", False, ("word", True)),
-        ("  ?  word ", False, ("word", True)),
-        ("word", True, ("word", True)),
-        ("?word", True, ("word", True)),
+        ("word", False, ("word", False, False)),
+        ("  word  ", False, ("word", False, False)),
+        ("?word", False, ("word", True, False)),
+        ("? word", False, ("word", True, False)),
+        ("  ?  word ", False, ("word", True, False)),
+        ("word", True, ("word", True, False)),
+        ("?word", True, ("word", True, False)),
+        ("!стол", False, ("стол", False, True)),
+        ("! стол", False, ("стол", False, True)),
+        ("?!стол", False, ("стол", True, True)),
+        ("!?стол", False, ("стол", True, True)),
+        (" ! ? стол ", False, ("стол", True, True)),
+        ("!стол", True, ("стол", True, True)),
+        ("!", False, ("", False, True)),
+        ("стол!", False, ("стол!", False, False)),
     ],
 )
 def test_normalize_submission_strips_the_lookup_shortcut(text, flag, expected):
@@ -705,3 +714,58 @@ def test_a_target_language_outside_the_directory_leaves_the_sentence_untested():
     german = Language(code="de", name="Deutsch", deck="d", script="latin")
 
     assert sentence_is_source_language("Он liest книгу.", german, "Klingon") is True
+
+
+@pytest.mark.parametrize(
+    ("text", "tab", "target", "expected"),
+    [
+        # An alphabet only the target writes: the tab's own validation refuses it.
+        ("стол", "en", "Russian", "target"),
+        ("я иду домой", "de", "Russian", "target"),
+        ("стол", "en", "Serbian", "target"),
+        # An alphabet only the tab writes: nobody types Russian in Latin letters.
+        ("sto", "sr", "Russian", "source"),
+        ("table", "en", "Russian", "source"),
+        # An alphabet both write, where only the answer can say.
+        ("сто", "sr", "Russian", "shared"),
+        ("город", "sr", "Russian", "shared"),
+        ("sto", "en", "Serbian", "shared"),
+        ("Tisch", "de", "English", "shared"),
+    ],
+)
+def test_an_alphabet_decides_only_where_it_cannot_be_confused(
+    languages: dict[str, Language],
+    text: str,
+    tab: str,
+    target: str,
+    expected: str,
+):
+    assert script_route(text, languages[tab], target) == expected
+
+
+def test_a_letter_proves_nothing_about_the_language(languages: dict[str, Language]):
+    """A Russian keyboard types Serbian with Russian letters, so the й of йош is no
+    proof of Russian: the alphabet is shared, and the answer decides."""
+    assert script_route("йош", languages["sr"], "Russian") == "shared"
+    assert script_route("ноч", languages["sr"], "Russian") == "shared"
+
+
+def test_a_target_outside_the_directory_shares_every_alphabet(languages: dict[str, Language]):
+    assert script_route("table", languages["en"], "Klingon") == "shared"
+    assert script_route("стол", languages["en"], "Klingon") == "shared"
+
+
+def test_one_letter_the_tab_does_not_write_leaves_only_the_target_reading(
+    languages: dict[str, Language],
+):
+    """Text mixing the two alphabets is refused by the tab's own validation whatever
+    else it holds, so nothing is lost by reading it as the target's."""
+    assert script_route("я люблю Python", languages["en"], "Russian") == "target"
+    assert script_route("стoл", languages["en"], "Russian") == "target"
+    # On a tab that writes both, the Latin name inside it settles nothing.
+    assert script_route("я люблю Python", languages["sr"], "Russian") == "shared"
+
+
+def test_input_with_no_letters_is_left_to_the_tab(languages: dict[str, Language]):
+    assert script_route("123", languages["en"], "Russian") == "source"
+    assert script_route("ねこ", languages["en"], "Russian") == "source"

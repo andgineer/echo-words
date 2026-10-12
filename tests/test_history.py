@@ -67,3 +67,24 @@ def test_public_history_carries_answer_and_segment_kinds_with_each_chip_context(
     assert public["segments"][0]["context"] == "The bank opens."
     assert "context_dropped" not in public
     assert "segments_are_senses" not in public
+
+
+def test_public_history_carries_what_a_reverse_lookup_changed():
+    entry = Entry("one", "en", "table", typed_word="сотл", read_as="стол")
+    entry.reverse_offered = True
+    entry.foreign_language = "fr"
+    entry.segment_kind = "equivalents"
+    entry.segments = [{"label": "desk", "surface": "", "reason": "", "context": "A desk."}]
+
+    public = entry.public()
+
+    assert (public["word"], public["typed_word"], public["read_as"]) == ("table", "сотл", "стол")
+    assert (public["reverse_offered"], public["foreign_language"]) == (True, "fr")
+    assert public["segment_kind"] == "equivalents"
+
+
+def test_an_ordinary_entry_carries_none_of_it():
+    public = Entry("one", "en", "table").public()
+
+    assert (public["typed_word"], public["read_as"]) == (None, None)
+    assert (public["reverse_offered"], public["foreign_language"]) == (False, None)

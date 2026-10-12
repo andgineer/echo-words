@@ -11,6 +11,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, fields, replace
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 import tomli_w
 
@@ -32,6 +33,8 @@ MAX_TEXT_LENGTH = MAX_CONTEXT_LENGTH
 
 LATIN = "latin"
 CYRILLIC = "cyrillic"
+
+type ScriptRoute = Literal["target", "source", "shared"]
 
 _ALLOWED_SCRIPTS: dict[str, frozenset[str]] = {
     LATIN: frozenset({LATIN}),
@@ -283,12 +286,19 @@ def save_languages(path: Path, table: dict[str, Language]) -> None:
         raise
 
 
-def normalize_submission(text: str, lookup_only: bool = False) -> tuple[str, bool]:
-    """Strip the leading ``?`` lookup-only shortcut; return the text and the resulting flag."""
+def normalize_submission(text: str, lookup_only: bool = False) -> tuple[str, bool, bool]:
+    """Strip the leading ``?`` and ``!`` shortcuts, in either order.
+
+    Returns the text, whether it is a lookup only, and whether it was forced to be read
+    as the target language.
+    """
     normalized = unicodedata.normalize("NFC", text).strip()
-    if normalized.startswith("?"):
-        return normalized[1:].strip(), True
-    return normalized, lookup_only
+    forced = False
+    while normalized[:1] in {"?", "!"}:
+        lookup_only = lookup_only or normalized[0] == "?"
+        forced = forced or normalized[0] == "!"
+        normalized = normalized[1:].strip()
+    return normalized, lookup_only, forced
 
 
 # Serbian is written in both scripts, so a model answer may come back transliterated
@@ -597,6 +607,26 @@ def _letter_script(char: str) -> str | None:
     if name.startswith("CYRILLIC "):
         return CYRILLIC
     return None
+
+
+def script_route(text: str, language: Language, target: str) -> ScriptRoute:
+    """Whose input the alphabet alone says this is: the target's, the tab's, or either's.
+
+    Whole scripts, never single letters: a keyboard for one language types another with
+    its own letters, so a letter proves nothing about the language.
+    """
+    entry = catalog_language_named(target)
+    if entry is None:
+        return "shared"
+    written = {script for script in map(_letter_script, text) if script is not None}
+    source, theirs = _ALLOWED_SCRIPTS[language.script], _ALLOWED_SCRIPTS[entry.script]
+    # A letter the tab's language does not write is refused by its own validation, so
+    # the target's reading is the only one left.
+    if written & (theirs - source):
+        return "target"
+    if written <= source - theirs:
+        return "source"
+    return "shared"
 
 
 def _script_hint(language: Language, locale: str) -> str:

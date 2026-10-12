@@ -1,6 +1,7 @@
 import asyncio
 import json
 from collections.abc import AsyncIterator, Iterable
+from dataclasses import replace
 
 from fakes import FakeDirectClient, FakeHandle, fake_cascade
 from llmbroker import NoLLMAvailableError
@@ -9,14 +10,17 @@ from echo_words import pipeline as pipeline_module
 from echo_words.anki import Added, MisconfiguredNoteTypeError
 from echo_words.broker import BackendError
 from echo_words.events import Event, EventHub
+from echo_words.history import Entry
 from echo_words.lexicon import Usage
 from echo_words.pipeline import (
     ADDED_STATUS,
     ANALYSIS_FAILED_CODE,
     CARD_FAILED_STATUS,
     DELETED_STATUS,
+    FOREIGN_STATUS,
     LOOKUP_ONLY_STATUS,
     MISSPELLED_STATUS,
+    REVERSE_NOT_A_WORD_STATUS,
     TEXT_STATUS,
     UNATTESTED_STATUS,
     DetailSubject,
@@ -231,6 +235,8 @@ async def test_deltas_are_throttled_cut_sanitized_and_finished(languages):
                 "detail_available": False,
                 "detail_word": None,
                 "paid_answer_available": True,
+                "reverse_offered": False,
+                "foreign_language": None,
             },
         )
     finally:
@@ -311,6 +317,8 @@ async def test_card_parse_quality_and_suggestion_are_published_after_completion(
                 "detail_available": True,
                 "detail_word": "recieve",
                 "paid_answer_available": True,
+                "reverse_offered": False,
+                "foreign_language": None,
             },
         )
     finally:
@@ -363,6 +371,8 @@ async def test_card_without_examples_is_rated_as_a_failure_without_losing_analys
                 "detail_available": False,
                 "detail_word": None,
                 "paid_answer_available": True,
+                "reverse_offered": False,
+                "foreign_language": None,
             },
         )
     finally:
@@ -4081,3 +4091,936 @@ async def test_undo_leaves_the_recordings_of_both_spellings_in_the_cache(
 
     assert submitted.exists()
     assert headword.exists()
+
+
+TABLE = ("table", "The book is on the table.", "table")
+DESK = ("desk", "She works at her desk.", "desk")
+NOT_A_WORD = '{"verdict": "not_a_word", "read_as": "", "equivalents": []}'
+REVERSE_MARK = "You are a bilingual dictionary from"
+
+
+def reverse_words(*equivalents, read_as="стол"):
+    return json.dumps(
+        {
+            "verdict": "word",
+            "read_as": read_as,
+            "equivalents": [
+                {"word": word, "example": sentence, "form": form}
+                for word, sentence, form in equivalents
+            ],
+        },
+        ensure_ascii=False,
+    )
+
+
+def reverse_sentence(translation):
+    return json.dumps(
+        {"verdict": "sentence", "read_as": "", "equivalents": [], "translation": translation},
+        ensure_ascii=False,
+    )
+
+
+def typed_card(word, named, **fields):
+    """The answer to typed input, which also names the language the input is in."""
+    return card_with(word, submission=word, submission_language=named, **fields)
+
+
+def typed_text(named, translation="Перевод."):
+    return (
+        f'{translation}===CARD==={{"kind":"text","submission":"x",'
+        f'"submission_language":"{named}","combinations":[]}}'
+    )
+
+
+def typed(**overrides):
+    """How the API queues one typed word in an alphabet the tab and the target share."""
+    return {
+        "intent": "unit",
+        "typed": True,
+        "shared_script": True,
+        "offers_reverse": True,
+        **overrides,
+    }
+
+
+def chips(*equivalents):
+    return [
+        {"label": word, "reason": "", "context": sentence, "surface": ""}
+        for word, sentence, _form in equivalents
+    ]
+
+
+async def test_a_forced_reverse_cards_the_first_equivalent_and_offers_the_others(languages):
+    spoken = []
+
+    async def fetch_audio(text, _language):
+        spoken.append(text)
+
+    anki = RecordingAnki(Added(7, None, ("Recognition",)))
+    reverse = Completion([reverse_words(TABLE, DESK)])
+    cascade = ScriptedCascade([reverse, Completion([valid_card("table", context=TABLE[1])])])
+    hub = EventHub()
+    pipeline = WordPipeline(
+        cascade,
+        target_lang="Russian",
+        events=hub,
+        anki=anki,
+        audio=fetch_audio,
+    )
+    pipeline.start()
+    try:
+        async with hub.subscribe() as subscriber:
+            entry = await pipeline.enqueue(
+                languages["en"],
+                "стол",
+                False,
+                intent="unit",
+                reverse="forced",
+            )
+            await pipeline.join()
+            events = drain(subscriber)
+
+        assert [event.data for event in events if event.name == "reset"] == [
+            {
+                "entry_id": entry.entry_id,
+                "word": "table",
+                "typed_word": "стол",
+                "read_as": None,
+                "context": TABLE[1],
+                "requested_shape": "unit",
+            },
+        ]
+        # From here the entry is the one a tap on a chip for "table" would have made.
+        assert [note.word for note, _deck, _audio in anki.calls] == ["table"]
+        assert (entry.word, entry.shown_spelling, entry.typed_word) == ("table", "table", "стол")
+        assert (entry.card_status, entry.context) == (ADDED_STATUS, TABLE[1])
+        assert (entry.segment_kind, entry.segments) == ("equivalents", chips(DESK))
+        assert entry.carded_sense is None
+        assert entry.detail_word == "table"
+        # The typed target word is never spoken in the tab's voice.
+        assert spoken == ["table", TABLE[1]]
+        assert REVERSE_MARK in cascade.prompts[0]
+        assert 'Wording: "стол"' in cascade.prompts[0]
+        assert 'Make a card for this selected unit: "table"' in cascade.prompts[1]
+        assert "submission_language" not in cascade.prompts[1]
+        assert cascade.trace_ids == [f"{entry.entry_id}-reverse", entry.entry_id]
+        assert reverse.scores == [1.0]
+        assert await pipeline.undo(languages["en"]) == "table"
+    finally:
+        await pipeline.close()
+
+
+async def test_a_reversal_names_the_word_the_typed_one_was_read_as(languages):
+    """A slip or an inflected form is shown with the word it was taken for, so the
+    reader sees whose equivalents these are."""
+    cascade = ScriptedCascade(
+        [
+            Completion([reverse_words(TABLE, read_as="стол")]),
+            Completion([valid_card("table", context=TABLE[1])]),
+        ],
+    )
+    pipeline = WordPipeline(cascade, target_lang="Russian")
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(
+            languages["en"],
+            "Столы",
+            False,
+            intent="unit",
+            reverse="script",
+        )
+        await pipeline.join()
+
+        assert (entry.typed_word, entry.read_as, entry.word) == ("Столы", "стол", "table")
+    finally:
+        await pipeline.close()
+
+
+async def test_a_single_equivalent_keeps_the_sense_chips_of_its_own_article(languages):
+    cascade = ScriptedCascade(
+        [Completion([reverse_words(TABLE)]), Completion([valid_card("table", context=TABLE[1])])],
+    )
+    pipeline = WordPipeline(
+        cascade,
+        target_lang="Russian",
+        anki=RecordingAnki(Added(7, None)),
+    )
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(
+            languages["en"],
+            "стол",
+            False,
+            intent="unit",
+            reverse="forced",
+        )
+        await pipeline.join()
+
+        assert entry.segment_kind == "senses"
+        assert [chip["label"] for chip in entry.segments] == ["table"]
+    finally:
+        await pipeline.close()
+
+
+async def test_a_lookup_only_reverse_finds_the_word_and_makes_no_card(languages):
+    anki = RecordingAnki(Added(7, None))
+    cascade = ScriptedCascade(
+        [Completion([reverse_words(TABLE)]), Completion([valid_card("table", context=TABLE[1])])],
+    )
+    pipeline = WordPipeline(cascade, target_lang="Russian", anki=anki)
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(
+            languages["en"],
+            "стол",
+            True,
+            intent="unit",
+            reverse="forced",
+        )
+        await pipeline.join()
+
+        assert (entry.word, entry.card_status) == ("table", LOOKUP_ONLY_STATUS)
+        assert anki.calls == []
+    finally:
+        await pipeline.close()
+
+
+async def test_a_rebuild_and_a_switch_of_a_reversed_entry_keep_the_other_equivalents(
+    languages,
+):
+    """Each run rebuilds the chips from its own job, so without carrying them a rebuild
+    or a switch would trade the other equivalents for the carded word's senses."""
+    gasse = ("Gasse", "Die Gasse ist eng.", "Gasse")
+    anki = MutableAnki([Added(1, None), Added(2, None), Added(3, None)])
+    named_other = card_with("Straße", word_relation="typo", suggestion="Strasse")
+    cascade = ScriptedCascade(
+        [
+            Completion([reverse_words(("Strase", "", ""), gasse, read_as="улица")]),
+            Completion([named_other]),
+            Completion([named_other]),
+            Completion([corrected_card("Strasse")]),
+        ],
+    )
+    pipeline = WordPipeline(cascade, target_lang="Russian", anki=anki)
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(
+            languages["de"],
+            "улица",
+            False,
+            intent="unit",
+            reverse="forced",
+        )
+        await pipeline.join()
+        assert (entry.card_status, entry.suggestion) == (ADDED_STATUS, "Strasse")
+        assert entry.segments == chips(gasse)
+
+        await pipeline.request_rebuild(entry.entry_id)
+        await pipeline.join()
+        assert (entry.segment_kind, entry.segments) == ("equivalents", chips(gasse))
+
+        await pipeline.request_switch(entry.entry_id)
+        await pipeline.join()
+        assert entry.word == "Strasse"
+        assert (entry.segment_kind, entry.segments) == ("equivalents", chips(gasse))
+        # What the reader typed still heads the entry after the switch.
+        assert entry.typed_word == "улица"
+        assert [prompt.count(REVERSE_MARK) for prompt in cascade.prompts] == [1, 0, 0, 0]
+    finally:
+        await pipeline.close()
+
+
+async def test_an_equivalent_the_judgement_refuses_is_withheld_and_the_others_stay(languages):
+    """The first equivalent goes through the judgement like any word. The others are
+    kept: each is judged afresh when it is tapped."""
+    anki = RecordingAnki(Added(7, None))
+    cascade = ScriptedCascade(
+        [
+            Completion([reverse_words(TABLE, DESK)]),
+            Completion([valid_card("table", context=TABLE[1])]),
+        ],
+        attestations=[REFUSED],
+    )
+    pipeline = WordPipeline(cascade, target_lang="Russian", anki=anki)
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(
+            languages["en"],
+            "стол",
+            False,
+            intent="unit",
+            reverse="forced",
+        )
+        await pipeline.join()
+
+        assert (entry.card_status, entry.text) == (UNATTESTED_STATUS, "")
+        assert (entry.segment_kind, entry.segments) == ("equivalents", chips(DESK))
+        assert entry.reverse_offered is False
+        assert anki.calls == []
+    finally:
+        await pipeline.close()
+
+
+async def test_a_forced_reverse_of_no_word_says_so_and_stores_nothing(languages):
+    anki = RecordingAnki(Added(7, None))
+    spoken = []
+
+    async def fetch_audio(text, _language):
+        spoken.append(text)
+
+    cascade = ScriptedCascade([Completion([NOT_A_WORD])])
+    hub = EventHub()
+    pipeline = WordPipeline(
+        cascade,
+        target_lang="Russian",
+        events=hub,
+        anki=anki,
+        audio=fetch_audio,
+    )
+    pipeline.start()
+    try:
+        async with hub.subscribe() as subscriber:
+            entry = await pipeline.enqueue(
+                languages["sr"],
+                "фывапр",
+                False,
+                intent="unit",
+                reverse="forced",
+                shared_script=True,
+            )
+            await pipeline.join()
+            done = drain(subscriber)[-1]
+
+        # A reader who asked for the target reading is not handed the tab's one instead.
+        assert (done.name, done.data["card_status"]) == ("done", REVERSE_NOT_A_WORD_STATUS)
+        assert (entry.action, entry.word) == (REVERSE_NOT_A_WORD_STATUS, "фывапр")
+        assert (entry.status, entry.text, entry.segments) == ("done", "", [])
+        assert anki.calls == []
+        assert spoken == []
+        assert len(cascade.prompts) == 1
+        assert await pipeline.undo(languages["sr"]) is None
+        assert pipeline.counters("sr") == {"lookup_only": 0}
+    finally:
+        await pipeline.close()
+
+
+async def test_a_reversed_sentence_goes_down_the_text_path_as_its_translation(languages):
+    spoken = []
+
+    async def fetch_audio(text, _language):
+        spoken.append(text)
+
+    anki = RecordingAnki(Added(7, None))
+    cascade = ScriptedCascade(
+        [
+            Completion([reverse_sentence("I am going home.")]),
+            Completion(['Я иду домой.===CARD==={"kind":"text","combinations":[]}']),
+        ],
+    )
+    pipeline = WordPipeline(cascade, target_lang="Russian", anki=anki, audio=fetch_audio)
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(languages["en"], "я иду домой", False, reverse="script")
+        await pipeline.join()
+
+        assert (entry.word, entry.typed_word) == ("I am going home.", "я иду домой")
+        assert (entry.card_status, entry.shape, entry.segment_kind) == (TEXT_STATUS, "text", "text")
+        assert [chip["label"] for chip in entry.segments] == ["I", "am", "going", "home"]
+        assert 'Analyse this submitted text: "I am going home."' in cascade.prompts[1]
+        assert "submission_language" not in cascade.prompts[1]
+        assert spoken == ["I am going home."]
+        assert anki.calls == []
+        # Text is never asked about as a wording.
+        assert cascade.attested == []
+    finally:
+        await pipeline.close()
+
+
+async def test_a_reverse_answer_the_pool_cannot_make_usable_is_bought(languages):
+    """Nothing is on the page yet, so the paid model is asked without the reader being
+    asked first: the alternative is an entry that failed before it showed anything."""
+    unusable = Completion(['{"verdict": "dog"}'])
+    cascade = ScriptedCascade(
+        [
+            unusable,
+            Completion([reverse_words(TABLE)]),
+            Completion([valid_card("table", context=TABLE[1])]),
+        ],
+    )
+    pipeline = WordPipeline(cascade, target_lang="Russian", anki=RecordingAnki(Added(7, None)))
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(
+            languages["en"],
+            "собака",
+            False,
+            intent="unit",
+            reverse="script",
+        )
+        await pipeline.join()
+
+        assert unusable.scores == [0.0]
+        assert cascade.paid_calls == 1
+        assert cascade.trace_ids[:2] == [
+            f"{entry.entry_id}-reverse",
+            f"{entry.entry_id}-reverse-paid",
+        ]
+        assert (entry.word, entry.card_status) == ("table", ADDED_STATUS)
+    finally:
+        await pipeline.close()
+
+
+async def test_a_reverse_no_model_can_answer_fails_the_entry(languages):
+    cascade = ScriptedCascade([Completion(["no json at all"])], refusal="the cap is spent")
+    hub = EventHub()
+    pipeline = WordPipeline(cascade, target_lang="Russian", events=hub)
+    pipeline.start()
+    try:
+        async with hub.subscribe() as subscriber:
+            entry = await pipeline.enqueue(
+                languages["en"],
+                "стол",
+                False,
+                intent="unit",
+                reverse="forced",
+            )
+            await pipeline.join()
+            last = drain(subscriber)[-1]
+
+        assert last == Event("error", {"entry_id": entry.entry_id, "code": ANALYSIS_FAILED_CODE})
+        assert (entry.status, entry.word) == ("error", "стол")
+        assert cascade.paid_calls == 0
+    finally:
+        await pipeline.close()
+
+
+async def test_a_reverse_the_pool_never_answers_fails_the_entry(languages):
+    cascade = ScriptedCascade([Completion([], error=BackendError("nothing answered"))])
+    pipeline = WordPipeline(cascade, target_lang="Russian")
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(
+            languages["en"],
+            "стол",
+            False,
+            intent="unit",
+            reverse="forced",
+        )
+        await pipeline.join()
+
+        # The cascade already stepped up inside that call, so there is no second purchase.
+        assert entry.status == "error"
+        assert cascade.paid_calls == 0
+    finally:
+        await pipeline.close()
+
+
+async def test_a_silent_pool_is_stepped_up_inside_the_reverse_call(settings, languages):
+    cascade = fake_cascade(
+        settings,
+        handles=[
+            FakeHandle(error=POOL_MISSED),
+            FakeHandle([valid_card("table", context=TABLE[1])]),
+        ],
+        client=FakeDirectClient([reverse_words(TABLE)]),
+    )
+    anki = RecordingAnki(Added(7, None))
+    pipeline = WordPipeline(cascade, target_lang="Russian", anki=anki)
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(
+            languages["en"],
+            "стол",
+            False,
+            intent="unit",
+            reverse="forced",
+        )
+        await pipeline.join()
+    finally:
+        await pipeline.close()
+
+    assert cascade.broker.direct_calls == ["gpt-fast"]
+    assert cascade.calls_today == 1
+    assert (entry.word, entry.card_status) == ("table", ADDED_STATUS)
+
+
+async def test_an_unreadable_pool_reverse_is_rated_down_and_replaced_by_a_paid_one(
+    settings,
+    languages,
+):
+    unreadable = FakeHandle(['{"verdict": "dog"}'])
+    cascade = fake_cascade(
+        settings,
+        handles=[unreadable, FakeHandle([valid_card("table", context=TABLE[1])])],
+        client=FakeDirectClient([reverse_words(TABLE)]),
+    )
+    pipeline = WordPipeline(cascade, target_lang="Russian", anki=RecordingAnki(Added(7, None)))
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(
+            languages["en"],
+            "стол",
+            False,
+            intent="unit",
+            reverse="forced",
+        )
+        await pipeline.join()
+    finally:
+        await pipeline.close()
+
+    assert unreadable.scores == [0.0]
+    assert cascade.broker.direct_calls == ["gpt-fast"]
+    assert (entry.word, entry.card_status) == ("table", ADDED_STATUS)
+
+
+async def test_only_typed_input_is_asked_which_language_it_is_in(languages):
+    cascade = ScriptedCascade(
+        [Completion([typed_card("word", "en")]), Completion([valid_card("word")])],
+    )
+    pipeline = WordPipeline(cascade, target_lang="Russian", anki=RecordingAnki(Added(7, None)))
+    pipeline.start()
+    try:
+        typed_entry = await pipeline.enqueue(languages["en"], "word", False, **typed())
+        chip = await pipeline.enqueue(languages["en"], "word", False, intent="unit")
+        await pipeline.join()
+
+        assert "submission_language" in cascade.prompts[0]
+        assert "submission_language" not in cascade.prompts[1]
+        assert (typed_entry.card_status, chip.card_status) == (ADDED_STATUS, ADDED_STATUS)
+    finally:
+        await pipeline.close()
+
+
+async def test_a_refused_word_the_answer_names_the_targets_is_looked_up_in_reverse(languages):
+    grad = ("grad", "Ovo je lep grad.", "grad")
+    anki = RecordingAnki(Added(7, None))
+    hub = EventHub()
+    cascade = ScriptedCascade(
+        [
+            Completion([typed_card("город", "ru")]),
+            Completion([reverse_words(grad, read_as="город")]),
+            Completion([valid_card("grad", context=grad[1])]),
+        ],
+        attestations=[REFUSED],
+    )
+    pipeline = WordPipeline(cascade, target_lang="Russian", events=hub, anki=anki)
+    pipeline.start()
+    try:
+        async with hub.subscribe() as subscriber:
+            entry = await pipeline.enqueue(languages["sr"], "город", False, **typed())
+            await pipeline.join()
+            events = drain(subscriber)
+
+        assert (entry.word, entry.typed_word, entry.card_status) == ("grad", "город", ADDED_STATUS)
+        assert [note.word for note, _deck, _audio in anki.calls] == ["grad"]
+        assert entry.reverse_offered is False
+        # The tab's own answer about «город» was withheld throughout, and dropped.
+        assert [event.data["text"] for event in events if event.name == "update"] == ["analysis"]
+        assert cascade.trace_ids == [entry.entry_id, f"{entry.entry_id}-reverse", entry.entry_id]
+    finally:
+        await pipeline.close()
+
+
+async def test_a_vouched_word_stays_the_tabs_whatever_language_the_answer_names(languages):
+    """The line alone takes a rare word of the tab spelled like a common target word
+    for the target's (врач, a sorcerer), so the judgement has to refuse it as well."""
+    anki = RecordingAnki(Added(7, None))
+    cascade = ScriptedCascade([Completion([typed_card("врач", "ru")])])
+    pipeline = WordPipeline(cascade, target_lang="Russian", anki=anki)
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(languages["sr"], "врач", False, **typed())
+        await pipeline.join()
+
+        assert (entry.word, entry.typed_word, entry.card_status) == ("врач", None, ADDED_STATUS)
+        assert len(cascade.prompts) == 1
+    finally:
+        await pipeline.close()
+
+
+async def test_a_target_reading_never_reverses_an_alphabet_the_target_does_not_write(
+    languages,
+):
+    """Latin on the Serbian tab with a Russian target: nobody types Russian in Latin
+    letters, so the answer's reading of it is not acted on."""
+    cascade = ScriptedCascade([Completion([typed_card("grad", "ru")])], attestations=[REFUSED])
+    pipeline = WordPipeline(cascade, target_lang="Russian")
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(
+            languages["sr"],
+            "grad",
+            False,
+            **typed(shared_script=False, offers_reverse=False),
+        )
+        await pipeline.join()
+
+        assert (entry.card_status, entry.typed_word) == (UNATTESTED_STATUS, None)
+        assert len(cascade.prompts) == 1
+    finally:
+        await pipeline.close()
+
+
+async def test_text_the_answer_names_the_targets_is_translated_without_a_judgement(languages):
+    """Text has no judgement to wait for: its own words say which language it is."""
+    cascade = ScriptedCascade(
+        [
+            Completion([typed_text("ru")]),
+            Completion([reverse_sentence("Idemo kući.")]),
+            Completion(['Мы идём домой.===CARD==={"kind":"text","combinations":[]}']),
+        ],
+    )
+    hub = EventHub()
+    pipeline = WordPipeline(cascade, target_lang="Russian", events=hub)
+    pipeline.start()
+    try:
+        async with hub.subscribe() as subscriber:
+            entry = await pipeline.enqueue(
+                languages["sr"],
+                "мы идём домой",
+                False,
+                typed=True,
+                shared_script=True,
+            )
+            await pipeline.join()
+            events = drain(subscriber)
+
+        assert (entry.word, entry.typed_word) == ("Idemo kući.", "мы идём домой")
+        assert (entry.card_status, entry.text) == (TEXT_STATUS, "Мы идём домой.")
+        assert cascade.attested == []
+        resets = [event.data for event in events if event.name == "reset"]
+        assert (resets[-1]["word"], resets[-1]["requested_shape"]) == ("Idemo kući.", None)
+    finally:
+        await pipeline.close()
+
+
+async def test_a_target_reading_no_lookup_confirms_leaves_the_answer_in_hand(languages):
+    """Today's outcome is the floor: «йош» is Serbian још typed on a Russian keyboard,
+    and when the lookup finds no Russian word the tab's answer goes on as it would
+    have, with no second article asked for."""
+    anki = RecordingAnki(Added(7, None))
+    corrected = card_with(
+        "још",
+        word_relation="typo",
+        suggestion="још",
+        submission="йош",
+        submission_language="ru",
+    )
+    cascade = ScriptedCascade(
+        [Completion([corrected]), Completion([NOT_A_WORD])],
+        attestations=[REFUSED, ScriptedCascade.VOUCHED],
+    )
+    pipeline = WordPipeline(cascade, target_lang="Russian", anki=anki)
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(languages["sr"], "йош", False, **typed())
+        await pipeline.join()
+
+        assert [note.word for note, _deck, _audio in anki.calls] == ["још"]
+        assert (entry.card_status, entry.typed_word) == (ADDED_STATUS, None)
+        assert len(cascade.prompts) == 2
+    finally:
+        await pipeline.close()
+
+
+async def test_a_refusal_the_lookup_already_answered_is_not_offered_the_lookup_again(languages):
+    cascade = ScriptedCascade(
+        [Completion([typed_card("фывапр", "ru")]), Completion([NOT_A_WORD])],
+        attestations=[REFUSED],
+    )
+    pipeline = WordPipeline(cascade, target_lang="Russian")
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(languages["sr"], "фывапр", False, **typed())
+        await pipeline.join()
+
+        assert entry.card_status == UNATTESTED_STATUS
+        assert entry.reverse_offered is False
+    finally:
+        await pipeline.close()
+
+
+async def test_a_lookup_the_line_asked_for_is_never_bought(settings, languages):
+    """The tab's answer is in hand, so an unreadable lookup costs the reader nothing
+    they had: it is not paid for, and the answer stands with the lookup on offer."""
+    cascade = fake_cascade(
+        settings,
+        handles=[FakeHandle([typed_card("город", "ru")]), FakeHandle(['{"verdict": "dog"}'])],
+        client=FakeDirectClient([reverse_words(("grad", "Ovo je lep grad.", "grad"))]),
+        attestation=REFUSED,
+    )
+    pipeline = WordPipeline(cascade, target_lang="Russian")
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(languages["sr"], "город", False, **typed())
+        await pipeline.join()
+    finally:
+        await pipeline.close()
+
+    assert cascade.broker.direct_calls == []
+    assert (entry.card_status, entry.word) == (UNATTESTED_STATUS, "город")
+    assert entry.reverse_offered is True
+
+
+async def test_input_in_another_of_the_readers_languages_moves_to_its_tab(languages):
+    anki = RecordingAnki(Added(7, None))
+    hub = EventHub()
+    cascade = ScriptedCascade(
+        [Completion([typed_card("Haus", "de")]), Completion([valid_card("Haus")])],
+    )
+    pipeline = WordPipeline(
+        cascade,
+        target_lang="Russian",
+        languages=lambda: languages,
+        events=hub,
+        anki=anki,
+    )
+    pipeline.start()
+    try:
+        async with hub.subscribe() as subscriber:
+            entry = await pipeline.enqueue(
+                languages["en"],
+                "Haus",
+                False,
+                **typed(shared_script=False, offers_reverse=False),
+            )
+            await pipeline.join()
+            events = drain(subscriber)
+
+        moved = [event.data for event in events if event.name == "moved"]
+        assert moved == [{"entry_id": entry.entry_id, "lang": "de", "language": "Deutsch"}]
+        assert (entry.lang, entry.language, entry.card_status) == ("de", "Deutsch", ADDED_STATUS)
+        assert [(note.word, deck) for note, deck, _audio in anki.calls] == [
+            ("Haus", "German::Vocabulary"),
+        ]
+        # Asked once: the tab it lands on answers by its own rules and is not read again.
+        assert cascade.calls == ["en", "de"]
+        assert "submission_language" not in cascade.prompts[1]
+        assert pipeline.history.undo["de"].word == "Haus"
+        assert await pipeline.undo(languages["en"]) is None
+    finally:
+        await pipeline.close()
+
+
+async def test_croatian_named_by_the_answer_is_serbian_to_the_reader_of_a_serbian_tab(
+    languages,
+):
+    """Both languages spell «kuća» alike and a model names it by either; to this reader
+    they are one language, so it moves to the Serbian tab instead of being headed as a
+    translation from a language nobody here is learning."""
+    cascade = ScriptedCascade(
+        [Completion([typed_card("kuća", "hr")]), Completion([valid_card("kuća")])],
+    )
+    pipeline = WordPipeline(
+        cascade,
+        target_lang="Russian",
+        languages=lambda: languages,
+        anki=RecordingAnki(Added(7, None)),
+    )
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(
+            languages["de"],
+            "kuća",
+            False,
+            **typed(shared_script=False, offers_reverse=False),
+        )
+        await pipeline.join()
+
+        assert (entry.lang, entry.card_status, entry.foreign_language) == ("sr", ADDED_STATUS, None)
+    finally:
+        await pipeline.close()
+
+
+@pytest.mark.parametrize("named", ["hr", "bs", "sr", "SR"])
+async def test_the_serbian_tabs_own_wording_stays_whatever_standard_it_is_named_by(
+    languages,
+    named,
+):
+    anki = RecordingAnki(Added(7, None))
+    cascade = ScriptedCascade([Completion([typed_card("kuća", named)])])
+    pipeline = WordPipeline(
+        cascade,
+        target_lang="Russian",
+        languages=lambda: languages,
+        anki=anki,
+    )
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(
+            languages["sr"],
+            "kuća",
+            False,
+            **typed(shared_script=False, offers_reverse=False),
+        )
+        await pipeline.join()
+
+        assert (entry.lang, entry.card_status, entry.foreign_language) == ("sr", ADDED_STATUS, None)
+        assert len(cascade.prompts) == 1
+    finally:
+        await pipeline.close()
+
+
+async def test_a_reader_with_a_croatian_tab_is_moved_there(languages):
+    croatian = replace(languages["sr"], code="hr", name="Hrvatski", script="latin")
+    tabs = {**languages, "hr": croatian}
+    cascade = ScriptedCascade(
+        [Completion([typed_card("kuća", "hr")]), Completion([valid_card("kuća")])],
+    )
+    pipeline = WordPipeline(cascade, target_lang="Russian", languages=lambda: tabs)
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(
+            languages["en"],
+            "kuća",
+            False,
+            **typed(shared_script=False, offers_reverse=False),
+        )
+        await pipeline.join()
+
+        assert entry.lang == "hr"
+    finally:
+        await pipeline.close()
+
+
+async def test_input_a_tab_cannot_write_is_not_moved_to_it(languages):
+    """The answer named a language whose tab takes another alphabet, so there is
+    nothing that tab could do with these letters."""
+    cyrillic_only = replace(languages["sr"], code="bg", name="Български", script="cyrillic")
+    tabs = {**languages, "bg": cyrillic_only}
+    cascade = ScriptedCascade([Completion([typed_card("kuka", "bg")])])
+    pipeline = WordPipeline(cascade, target_lang="Russian", languages=lambda: tabs)
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(
+            languages["en"],
+            "kuka",
+            False,
+            **typed(shared_script=False, offers_reverse=False),
+        )
+        await pipeline.join()
+
+        assert (entry.lang, len(cascade.prompts)) == ("en", 1)
+    finally:
+        await pipeline.close()
+
+
+async def test_input_in_a_language_no_tab_teaches_is_translated_and_nothing_more(languages):
+    """The reader is not learning French: the answer stays as written, with no card,
+    no chips and nothing spoken in the English voice — and the English judgement,
+    which rightly finds the word unused in English, withholds none of it."""
+    spoken = []
+
+    async def fetch_audio(text, _language):
+        spoken.append(text)
+
+    anki = RecordingAnki(Added(7, None))
+    hub = EventHub()
+    cascade = ScriptedCascade(
+        [Completion([typed_card("chaussure", "fr")])],
+        attestations=[REFUSED],
+    )
+    pipeline = WordPipeline(
+        cascade,
+        target_lang="Russian",
+        languages=lambda: languages,
+        events=hub,
+        anki=anki,
+        audio=fetch_audio,
+    )
+    pipeline.start()
+    try:
+        async with hub.subscribe() as subscriber:
+            entry = await pipeline.enqueue(
+                languages["en"],
+                "chaussure",
+                False,
+                **typed(shared_script=False, offers_reverse=False),
+            )
+            await pipeline.join()
+            done = drain(subscriber)[-1]
+
+        assert (entry.card_status, entry.action) == (FOREIGN_STATUS, FOREIGN_STATUS)
+        assert (entry.foreign_language, entry.text) == ("fr", "analysis")
+        assert (done.data["foreign_language"], done.data["text"]) == ("fr", "analysis")
+        assert (entry.segments, entry.shape, entry.suggestion) == ([], None, None)
+        assert (entry.audio_url, entry.no_audio) == (None, False)
+        assert (entry.detail_available, entry.paid_answer_available) == (False, False)
+        assert entry.lang == "en"
+        assert anki.calls == []
+        assert await pipeline.undo(languages["en"]) is None
+    finally:
+        await pipeline.close()
+
+
+@pytest.mark.parametrize(
+    ("answer", "attestations", "submission", "offered"),
+    [
+        # One typed word the tab's language refuses may be a target word instead.
+        (typed_card("книга", "sr"), [REFUSED], typed(), True),
+        # A refused lookup made no card either way, and is offered the same reading.
+        (typed_card("книга", "sr"), [REFUSED], typed(lookup_only=True), True),
+        # A chip comes from the app's own answer, and is never offered it.
+        (valid_card("книга"), [REFUSED], {"intent": "unit"}, False),
+        # A word the tab's language takes needs no other reading.
+        (typed_card("књига", "sr"), [], typed(), False),
+    ],
+)
+async def test_a_typed_word_the_tab_refuses_is_offered_the_target_reading(
+    languages,
+    answer,
+    attestations,
+    submission,
+    offered,
+):
+    hub = EventHub()
+    cascade = ScriptedCascade([Completion([answer])], attestations=attestations)
+    pipeline = WordPipeline(cascade, target_lang="Russian", events=hub)
+    lookup_only = submission.pop("lookup_only", False)
+    pipeline.start()
+    try:
+        async with hub.subscribe() as subscriber:
+            entry = await pipeline.enqueue(languages["sr"], "книга", lookup_only, **submission)
+            await pipeline.join()
+            done = drain(subscriber)[-1]
+
+        assert entry.reverse_offered is offered
+        assert done.data["reverse_offered"] is offered
+    finally:
+        await pipeline.close()
+
+
+async def test_a_misspelling_the_answer_corrects_and_cards_is_not_offered_the_lookup(languages):
+    corrected = card_with(
+        "књига",
+        word_relation="typo",
+        suggestion="књига",
+        submission="кнйига",
+        submission_language="sr",
+    )
+    cascade = ScriptedCascade(
+        [Completion([corrected])],
+        attestations=[REFUSED, ScriptedCascade.VOUCHED],
+    )
+    pipeline = WordPipeline(cascade, target_lang="Russian", anki=RecordingAnki(Added(7, None)))
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(languages["sr"], "кнйига", False, **typed())
+        await pipeline.join()
+
+        assert (entry.card_status, entry.reverse_offered) == (ADDED_STATUS, False)
+    finally:
+        await pipeline.close()
+
+
+def test_a_new_run_of_an_entry_withdraws_the_offer_and_keeps_what_was_typed(languages):
+    entry = Entry("one", "sr", "grad", typed_word="город", read_as="город")
+    entry.reverse_offered = True
+    entry.foreign_language = "fr"
+
+    for kind in ("switch", "rebuild"):
+        WordPipeline._reset_reused_entry(entry, languages["sr"], "grad", False, "", kind)
+
+        assert (entry.reverse_offered, entry.foreign_language) == (False, None)
+        assert (entry.typed_word, entry.read_as) == ("город", "город")
+        entry.reverse_offered = True

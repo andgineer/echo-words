@@ -8,7 +8,7 @@ from typing import Literal
 
 from echo_words.card import AnswerKind
 
-type SegmentKind = Literal["text", "expression", "senses"]
+type SegmentKind = Literal["text", "expression", "senses", "equivalents"]
 
 
 @dataclass
@@ -67,6 +67,14 @@ class Entry:
     # The analysis reads and only the card behind it failed. Whether to spend a paid
     # call on a second opinion is the reader's decision, so the entry offers it.
     paid_answer_available: bool = False
+    # What the reader typed in the target language, when the entry is about the source
+    # word found for it; and the target word it was read as, where that is another one.
+    typed_word: str | None = None
+    read_as: str | None = None
+    # The tab's language refused the typed word, so it may be a target word instead.
+    reverse_offered: bool = False
+    # The code of the language the answer says the input is in, when no tab teaches it.
+    foreign_language: str | None = None
 
     def __post_init__(self) -> None:
         if not self.shown_spelling:

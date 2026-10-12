@@ -32,7 +32,7 @@ from echo_words.config import settings as default_settings
 from echo_words.events import EventHub
 from echo_words.history import Entry
 from echo_words.i18n import message, pick_locale
-from echo_words.language_catalog import CATALOG
+from echo_words.language_catalog import CATALOG, catalog_language_named
 from echo_words.languages import (
     MAX_CONTEXT_LENGTH,
     MAX_TEXT_LENGTH,
@@ -44,6 +44,7 @@ from echo_words.languages import (
     plain_unit,
     sanitize_context,
     save_languages,
+    script_route,
     split_words,
     unknown_language_hint,
     validate_text,
@@ -66,7 +67,7 @@ logger = logging.getLogger(__name__)
 SSE_KEEP_ALIVE_SECONDS = 15
 SUBMISSION_RECEIPT_TTL_SECONDS = 7 * 24 * 60 * 60
 SUBMISSION_RECEIPT_LIMIT = 4096
-SubmissionFingerprint = tuple[str, str, bool, str, Literal["unit"] | None]
+SubmissionFingerprint = tuple[str, str, bool, str, Literal["unit"] | None, str | None, bool]
 Clock = Callable[[], float]
 SubmissionReceipt = tuple[SubmissionFingerprint, str, float]
 
@@ -189,6 +190,7 @@ def _lifespan(settings: Settings):
         app.state.pipeline = WordPipeline(
             app.state.cascade,
             target_lang=settings.target_lang,
+            languages=lambda: app.state.languages,
             events=app.state.events,
             anki=app.state.anki,
             audio=partial(fetch_pronunciation, settings=settings),
@@ -233,6 +235,9 @@ class SubmissionAccepted(BaseModel):
     # server's, so the page has nothing to mirror while it waits for the answer.
     word: str
     lookup_only: bool
+    # The submission is read as the target language before anything else: because the
+    # reader asked with `!`, or because the tab's language does not write its alphabet.
+    reverse: Literal["forced", "script"] | None = None
 
 
 class LanguageOption(BaseModel):
@@ -330,11 +335,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:  # noqa: C901, PLR0
             _reload_languages(request.app, settings, [])
         return {"deleted": code}
 
+    @app.get("/api/target")
+    async def target_language() -> dict[str, str | None]:
+        entry = catalog_language_named(settings.target_lang)
+        return {"code": entry.code if entry is not None else None, "name": settings.target_lang}
+
     @app.post("/api/words")
     async def submit_word(request: Request, submission: WordSubmission) -> SubmissionAccepted:
         locale = pick_locale(request.headers.get("accept-language"))
         language = _resolve_language(request.app.state.languages, submission.lang, locale)
-        word, lookup_only = normalize_submission(submission.word, submission.lookup_only)
+        word, lookup_only, forced = normalize_submission(submission.word, submission.lookup_only)
+        # A chip's label comes from the app's own answer, so only typed input is ever
+        # read for its language.
+        typed = submission.shape is None
         intent = submission.shape
         if intent == "unit":
             word = plain_unit(word)
@@ -346,10 +359,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:  # noqa: C901, PLR0
                 word = plain_unit(word)
                 intent = "unit"
                 hint = validate_word(word, language, locale)
+        route = script_route(word, language, settings.target_lang) if typed else None
+        reverse: Literal["forced", "script"] | None = (
+            "forced" if forced else "script" if route == "target" else None
+        )
+        if reverse is not None:
+            # Read as the target language, which the tab's own rules say nothing about.
+            hint = _reverse_hint(word, locale)
         if hint:
             raise HTTPException(status_code=400, detail=hint)
         context = sanitize_context(submission.context)
-        fingerprint = (language.code, word, lookup_only, context, intent)
+        fingerprint = (language.code, word, lookup_only, context, intent, reverse, typed)
         try:
             entry_id = await request.app.state.submissions.accept(
                 submission.request_id,
@@ -361,11 +381,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:  # noqa: C901, PLR0
                     lookup_only,
                     intent=intent,
                     context=context,
+                    reverse=reverse,
+                    typed=typed,
+                    shared_script=route == "shared",
+                    # A chip sends a single word exactly as a typed one is queued, so
+                    # only here is it still known which of the two this is.
+                    offers_reverse=reverse is None and route == "shared" and intent == "unit",
                 ),
             )
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
-        return SubmissionAccepted(entry_id=entry_id, word=word, lookup_only=lookup_only)
+        return SubmissionAccepted(
+            entry_id=entry_id,
+            word=word,
+            lookup_only=lookup_only,
+            reverse=reverse,
+        )
 
     @app.get("/api/words/recent")
     async def recent_words(
@@ -497,6 +528,14 @@ def _reload_languages(app: FastAPI, settings: Settings, provision: list[Language
     app.state.languages = load_languages(settings.languages_config)
     if provision:
         _provision_voices(app, settings, provision)
+
+
+def _reverse_hint(word: str, locale: str) -> str | None:
+    if not plain_unit(word):
+        return message("word.empty", locale)
+    if len(word) > MAX_TEXT_LENGTH:
+        return message("text.too_long", locale, limit=MAX_TEXT_LENGTH)
+    return None
 
 
 def _resolve_language(languages: dict[str, Language], code: str, locale: str) -> Language:
