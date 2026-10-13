@@ -1,14 +1,14 @@
 # Implementation plan — defects seen in use and in the bench, none of them fixed yet
 
-Fourteen items, from two readings.
+Sixteen items, from two readings.
 
 Items 9 and 11 were found while running the app against the real provider keys
 and reading what it did, or by tracing what it did in production. Each was
 reproduced and has its evidence written down.
 
-Items 1 to 8, 10 and 12 to 14 come from a different reading: the review packets
+Items 1 to 8, 10 and 12 to 16 come from a different reading: the review packets
 of the smoke-tier bench runs behind the source-language sense cue and the answer shape,
-and of the language-line and reverse-lookup runs of 2026-10-11 and 2026-10-12, read
+and of the language-line and reverse-lookup runs of 2026-10-11 to 2026-10-13, read
 item by item by a fresh agent each time. Every deterministic contract and
 every quality threshold in those runs was green, so these are the faults an
 automated screen cannot see. Each quotes the answer it was found in, because the
@@ -269,6 +269,73 @@ The reverse lookup has its own form of it: the Serbian answer for `тоска` o
 `"example": obuzela ga je neopisiva tuga zbog odlaska, form": "tuga"` — where the parser
 reads past one missing opening quote and no more. The same break came back in two of
 three answers under a fuller wording measured earlier.
+
+Over the three samples of 2026-10-12 and 2026-10-13 it is 4 of the 78 Serbian reverse
+answers as first given, every one from gemini-flash-lite and none in English or German:
+`тоска` twice with no quotes, `мир` once with its sentences inside typographic quotes
+(`"example": „Posle dugih pregovora konačno je sklopljen mir između dve zemlje.”`), and
+`собака` once with the bare word `Description` in place of each sentence. The two that
+were asked again came back readable. A lookup the reader asked for with `!` then waits
+for a second answer, the pool's or a paid one; a lookup tried as the last resort is
+dropped and the tab's own answer stands.
+
+## 15. A reverse lookup answered by one of the pool's other models
+
+The reverse lookup is asked of the pool like every other answer, so when
+gemini-flash-lite is out of quota or cooling off, another model answers it. In samples
+b and c of 2026-10-12 and 2026-10-13 that was 26 of 136 answers (gpt-oss-120b 22,
+laguna 2, nemotron 2), and a fresh reviewer read them beside the workhorse's:
+
+| | gemini-flash-lite | The other models |
+|---|---|---|
+| First card right | 66 of 71 | 15 of 20 |
+| Wrong chips | 9 of 85 | 17 of 30 |
+| Sentences | 22 of 22 translated right | 2 of 2 carded as a word |
+
+Every card the workhorse got wrong is a miss the operator has accepted. The others'
+are not of that kind:
+
+- German `коса` (laguna): carded as Krawatte «Er trug eine breite Krawatte.», with the
+  chips Brautstrauß and Fliese — a necktie, a bridal bouquet and a tile.
+- English `сотл` (gpt-oss): read as «сотить», which is no Russian word and is what the
+  entry's heading would show, and carded as lay «The hen will lay a clutch of eggs
+  tomorrow.», with the chip breed.
+- German `сломя голову`: kopfüber «Er sprang kopfüber ins Wasser.» (gpt-oss) and
+  in Eile «Er hat das in Eile gemacht.» (laguna).
+- English `собака` (gpt-oss): the right word under a front sentence that is not
+  English, «Dog barks loudly.», beside the chip Cur «Cur snarls at strangers.».
+- `я иду домой` (gpt-oss), English and German: answered as a word, so the sentence is
+  never translated: it is carded as I «I walked to the store.» with the chips go and
+  home, and as gehen.
+- Serbian chips from gpt-oss, five wrong of six: kos (a blackbird) and rt «Na Jadranu
+  se nalazi poznata rt.» for `коса`, Nadamo se and Za svaki slučaj for `авось`, Operi
+  «Operi ruke pre jela.» for `моя`.
+- A chip whose sentence insults somebody, which the prompt forbids: Drachen «Die alte
+  Nachbarin ist ein richtiger Drachen.» for `собака` (nemotron).
+
+How often a reader meets it: in production's own journal the workhorse wrote 220 of
+the 259 answers of 2026-09-21 to 2026-10-10 and gpt-oss 38, about one in seven. A
+bench that exhausts the workhorse's daily quota raises that for everyone until the
+reset, because the quota is the app's: after the bench of 2026-10-12 the next
+morning's use got 27 of 29 answers from gpt-oss.
+
+Nothing in the app tells a reverse answer of one model from another's, and the paid
+model has not been measured on the reverse prompt, so stepping up to it instead is not
+known to be better.
+
+## 16. Serbian typed on a Russian keyboard, carded through a false friend
+
+`ньега` — `њега`, him, typed on a Russian keyboard — asked through the reverse lookup
+on the Serbian tab, sample c of 2026-10-13, gemini-flash-lite: read as «него» and
+carded as nego «Nije otišao juče nego danas.». The heading says the reader typed
+«него», and Serbian `nego` means "but rather"; the Serbian for него is njega, which is
+the word the reader meant. Samples a and b refused the same input, which is the answer
+that hands it to the Serbian article. It is the miss the operator accepted for `йош`
+(read as ещё and carded as još), with one difference: there the reader lands on the
+word they meant, and here on another word.
+
+The lookup reaches such input only when it was typed with `!`, or when the tab's own
+answer names it Russian and the judgement also refuses it.
 
 ## What is deliberately not here
 

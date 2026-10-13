@@ -34,15 +34,11 @@ the code and does not apply to those.
 - `spec/plan/` — work that is started and not finished, one file each.
   **Read these first when picking work up**: each says where its work
   stands, what is already built, what its experiments established and
-  what is left. Two are open.
-  `reverse-translation.md` — a word typed in the target language (`!стол`,
-  or Cyrillic on a Latin-script tab) carded as its equivalent in the
-  selected language; built end to end, with two bench samples of its prompt
-  owed before it counts as measured.
-  `observed-defects.md` — fourteen faults left unfixed, each with its
+  what is left. One is open.
+  `observed-defects.md` — sixteen faults left unfixed, each with its
   evidence, from two readings: two met while using the app, a sense chip
   that repeats the carded sense and an answer budget that bounds silence
-  instead of the answer, and twelve read out of bench review packets whose
+  instead of the answer, and fourteen read out of bench review packets whose
   every automated screen was green.
   Writing a defect into a decision spec documents it; it does not accept
   it, and only the operator accepts a limitation of the product. Write

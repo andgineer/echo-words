@@ -1,10 +1,10 @@
 # Decision: reverse translation
 
-Status: **the reverse prompt is measured and reviewed four times, and Serbian asked in
-Latin letters six times more; the app asks it and routes typed input by the language
-line.** What the reader gets is in `spec/functional-description.md`; this file holds the
-measurements and the reasoning behind it. Two more samples of the prompt with the
-sentence translation are owed (`spec/plan/reverse-translation.md`).
+Status: **the reverse prompt is measured and reviewed four times, Serbian asked in
+Latin letters six times more, and the prompt with the sentence translation three times;
+the app asks it and routes typed input by the language line.** What the reader gets is
+in `spec/functional-description.md`; this file holds the measurements and the reasoning
+behind it.
 
 ## Alphabets, not letters, and a model where alphabets overlap
 
@@ -403,46 +403,98 @@ wrong chips (маса, бора).
 
 ### Sentences
 
-The prompt with the sentence's translation was asked on 2026-10-12 with the same
+The prompt with the sentence's translation was asked three times with the same
 fixtures and four Russian sentences into each tab language (я иду домой, не опаздываем
-ли мы на поезд, где ты был вчера, мне нужно купить хлеб). 66 of 68 reverse calls were
-answered, all by gemini-flash-lite; two waited out a provider cooldown. A fresh reviewer
-read every item:
+ли мы на поезд, где ты был вчера, мне нужно купить хлеб): sample a on 2026-10-12, and
+samples b and c on 2026-10-12 and 2026-10-13. Each is 68 reverse calls, and every one
+was answered. gemini-flash-lite gave all 68 answers of sample a, 54 of b and 56 of c;
+the rest came from gpt-oss-120b (13 and 9), laguna (1 and 1) and nemotron (2 in c),
+seven of b's after the workhorse's daily quota had run out and the others while it
+cooled off for a minute after each rate-limit refusal the bench's pace drew. A fresh
+reviewer read every item of sample a, and a second one every item of b and c on one
+scale.
 
-| | First card right | Wrong chips | Sentence translated right |
+On the workhorse's answers:
+
+| | Sample a | Sample b | Sample c |
 |---|---|---|---|
-| English | 13 of 15 | 4 of 22 | 4 of 4 |
-| German | 12 of 14 | 3 of 17 | 4 of 4 |
-| Serbian | 14 of 15 | 3 of 10 | 3 of 3 |
+| English, first card right | 13 of 15 | 10 of 12 | 11 of 12 |
+| English, wrong chips | 4 of 22 | 1 of 19 | 2 of 20 |
+| German, first card right | 13 of 15 | 9 of 9 | 12 of 13 |
+| German, wrong chips | 3 of 19 | 1 of 11 | 2 of 17 |
+| Serbian, first card right | 15 of 16 | 13 of 13 | 11 of 12 |
+| Serbian, wrong chips | 3 of 11 | 3 of 12 | 0 of 6 |
+| Sentences translated right, all tabs | 12 of 12 | 12 of 12 | 10 of 10 |
 
-Every translation is faithful, natural and in the tab's language, Serbian in Latin
-letters: "I am going home", «Wo warst du gestern?», «moram da kupim hleb». The one
+The three samples agree. Every translation is faithful, natural and in the tab's
+language: "I am going home", «Wo warst du gestern?», «moram da kupim hleb». The one
 shift is «не опаздываем ли мы на поезд» given as "Are we going to miss the train?" and
 «Verpassen wir den Zug?»: the sense holds, but a reader after опаздывать gets miss
-rather than be late. Punctuation follows the input unevenly (a question mark added in
-English and German, none in Serbian). The word answers are as good as on the runs
-before: every non-word and keyboard-Serbian verdict right, сабака and ключь read as
-their words, «crni luk» rightly first for лук.
+rather than be late; sample c's English gave "Are we late for the train?". Punctuation
+follows the input unevenly (a question mark added in English and German, none in
+Serbian). Every first card the workhorse got wrong in b and c is one of the accepted
+misses: коса four times and English авось once. Every non-word was refused, сабака and
+ключь were read as their words, and «crni luk» was rightly first for лук.
 
-Faults the same review found, every one seen on earlier runs:
+What the workhorse repeats across the samples:
 
-- сотл refused in every language again.
+- сотл refused, eight times of eight.
 - коса carded as the scythe in English and German with the braid a chip, and as
   Serbian kosa, hair, with no other meaning.
-- «halsüberkopf» misspelt in the German headword and its front sentence.
-- English авось carded as hope, which is надежда; German vielleicht and Serbian
-  valjda are right.
-- йош on the Serbian tab read as ещё and carded as još: the reader lands on the word
-  they meant, under a header claiming they typed ещё.
+- English авось carded as hope, which is надежда, in two samples and as chance in the
+  third; German vielleicht and Serbian valjda are right.
+- Two Serbian answers come back in Cyrillic in every sample and are read as written:
+  the card for сломя голову, «главом без обзира», which is the exact idiom, and the
+  sentence «да ли каснимо на воз», the same string three times.
 - Chips whose sentence is nonsense or about another word (board in "room and board",
-  Abteilung, ministarstvo for стол, помрло for сломя голову), and three that give
-  наконец for в конце концов.
-- Serbian тоска came back with both quotes missing around its sentences, an answer the
-  parser cannot read.
+  Abteilung, ministarstvo and katedra for стол, kuća for a dog, Gemeinschaft for мир,
+  Chance for окно, «a rich food»), and three that give наконец for в конце концов. On
+  the workhorse it is a chip in seven over the three samples.
+- Serbian в конце концов is carded as «konačno», the word for наконец; «na kraju
+  krajeva» is never offered. Serbian ключ repeats «ključ» for every meaning, so the
+  reader gets one card, no chips and never «izvor».
+- An answer the parser cannot read: four of the 78 Serbian answers as first given. The
+  sentences of тоска came twice with both quotes missing, those of мир once inside
+  typographic quotes („…”), and собака once with the bare word Description where each
+  sentence belongs. Asked again, as production does, тоска and собака came back
+  readable.
 
-The first ten answers took under 1.4 s each; after a call that waited out a cooldown,
-the rest took 3 to 12 s (median 6.5 s) as the pool neared its daily quota, which ran out
-half an hour later.
+Seen once on the workhorse: «halsüberkopf» misspelt in the German headword and its
+front sentence (a); йош on the Serbian tab read as ещё and carded as još, so the reader
+lands on the word they meant under a header claiming they typed ещё (a); and ньега,
+which is њега on a Russian keyboard, read as него and carded as «nego», a false friend
+that means "but rather" (c). The other thirteen keyboard-Serbian answers, two of them
+from gpt-oss, ended where they should.
+
+**Which model answers matters more than the wording.** The second reviewer's count of
+samples b and c, split by who answered:
+
+| | Workhorse | Other pool models |
+|---|---|---|
+| First card right | 66 of 71 | 15 of 20 |
+| Wrong chips | 9 of 85 | 17 of 30 |
+| Sentences | 22 of 22 translated right | 2 of 2 carded as a word |
+
+The other models' wrong cards are of a kind the workhorse never gave: коса answered
+with a necktie, a bridal bouquet and a tile (laguna); сотл read as «сотить», no Russian
+word, and carded as lay (gpt-oss); сломя голову as «kopfüber», head first into water
+(gpt-oss), and as «in Eile» (laguna), so that expression has no right German card in
+three samples; собака under the front sentence «Dog barks loudly.» (gpt-oss); and
+«я иду домой» cut into its words and carded as I and as gehen (gpt-oss). gpt-oss also
+returns headwords in capitals, and five of its six Serbian chips were wrong (kos, rt,
+Nadamo se, Za svaki slučaj, Operi), though it alone carded Serbian коса as «pletenica»,
+the braid.
+
+How often that happens in use: of the 311 answers production gave in the three weeks
+to 2026-10-13, the workhorse wrote 228 and gpt-oss 82. Before 2026-10-11 it is 220 of
+259 against 38, about one answer in seven. On 2026-10-11 to 2026-10-13, while benches
+were spending the workhorse's daily quota, gpt-oss wrote 44 of 52: the quota is the
+app's own, and after the bench of 2026-10-12 had exhausted it the reader's next
+morning, before the reset, got 27 of 29 answers from gpt-oss.
+
+Sample c, asked on a fresh quota, answered in a median of 0.87 s (p90 2.83 s). In
+sample a the first ten answers took under 1.4 s each and the rest 3 to 12 s (median
+6.5 s) as the pool neared its daily quota, which ran out half an hour later.
 
 ### A Jev check on the Serbian equivalents
 
@@ -485,10 +537,11 @@ is refused and offered the reverse lookup — whose answer is the same књиг�
 offer is reached rarely, and the false acceptances are a finding about the
 attestation judgement on Russian input, not about the reverse prompt.
 
-The judgement does not hold its answer: asked again on 2026-10-12 it refused город,
-девушка and собака and accepted книга ("Old Church Slavonic, archaic, or regional"),
-the opposite on every word. The articles headed the four with the same Serbian words,
-and the language line, asked with them, named all four Russian.
+The judgement does not hold its answer: asked again on 2026-10-12 and twice on
+2026-10-13 it refused город, девушка and собака and accepted книга ("Old Church
+Slavonic, archaic, or regional"), the opposite on every word. The articles headed the
+four with the same Serbian words, and the language line, asked with them, named all
+four Russian.
 
 ## Decision
 
@@ -503,6 +556,7 @@ language line, the misses that every run repeated and no wording moved: сотл
 коса carded as the scythe or as Serbian hair, «Hals über Kopf» misspelt, English авось
 carded as hope, a chip in about six with a wrong meaning or a sentence about another
 word, йош read as ещё, French greetings named the tab's language, and the few target
-inputs per sample the line misses. Faults of the ordinary article the same reviews
-found (look-alikes carded with the Russian sense, answers broken past reading) are not
-accepted; they are listed with the other unfixed defects.
+inputs per sample the line misses. Not accepted, and listed with the other unfixed
+defects: faults of the ordinary article the same reviews found (look-alikes carded with
+the Russian sense, answers broken past reading), the reverse answers of the pool's
+other models, and Serbian typed on a Russian keyboard carded through a false friend.
