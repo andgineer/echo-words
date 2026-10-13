@@ -35,10 +35,10 @@ the code and does not apply to those.
   **Read these first when picking work up**: each says where its work
   stands, what is already built, what its experiments established and
   what is left. One is open.
-  `observed-defects.md` — sixteen faults left unfixed, each with its
+  `observed-defects.md` — fifteen faults left unfixed, each with its
   evidence, from two readings: two met while using the app, a sense chip
   that repeats the carded sense and an answer budget that bounds silence
-  instead of the answer, and fourteen read out of bench review packets whose
+  instead of the answer, and thirteen read out of bench review packets whose
   every automated screen was green.
   Writing a defect into a decision spec documents it; it does not accept
   it, and only the operator accepts a limitation of the product. Write

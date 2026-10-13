@@ -1,8 +1,9 @@
 # Decision: reverse translation
 
 Status: **the reverse prompt is measured and reviewed four times, Serbian asked in
-Latin letters six times more, and the prompt with the sentence translation three times;
-the app asks it and routes typed input by the language line.** What the reader gets is
+Latin letters six times more, the prompt with the sentence translation three times, and
+the paid model's answers to it once; the app asks it and routes typed input by the
+language line.** What the reader gets is
 in `spec/functional-description.md`; this file holds the measurements and the reasoning
 behind it.
 
@@ -490,11 +491,55 @@ to 2026-10-13, the workhorse wrote 228 and gpt-oss 82. Before 2026-10-11 it is 2
 259 against 38, about one answer in seven. On 2026-10-11 to 2026-10-13, while benches
 were spending the workhorse's daily quota, gpt-oss wrote 44 of 52: the quota is the
 app's own, and after the bench of 2026-10-12 had exhausted it the reader's next
-morning, before the reset, got 27 of 29 answers from gpt-oss.
+morning, before the reset, got 27 of 29 answers from gpt-oss. The operator leaves the
+benches' timing as it is.
 
 Sample c, asked on a fresh quota, answered in a median of 0.87 s (p90 2.83 s). In
 sample a the first ten answers took under 1.4 s each and the rest 3 to 12 s (median
 6.5 s) as the pool neared its daily quota, which ran out half an hour later.
+
+### The paid model
+
+A lookup the reader asked for is answered by the paid model when the pool is silent or
+its answer cannot be read, so the same 68 reverse calls were bought from it on
+2026-10-13: gpt-5.6-luna, the model the paid step asks by default. Every call was
+answered and every answer could be read. It is slower: a median of 5.6 s, p90 11.3 s,
+the slowest 20.5 s, none past the 25-second budget.
+
+A fresh reviewer graded it blind, beside the workhorse's answers to the same inputs
+with the models' names withheld — sample c's where the workhorse had answered readably,
+sample a's for the other fourteen:
+
+| | Paid model | Workhorse |
+|---|---|---|
+| First card right | 48 of 49 | 42 of 46 |
+| Wrong chips | 2 of 72 | 5 of 53 |
+| Sentences translated right | 12 of 12 | 12 of 12 |
+| сотл read as стол | 3 of 3 | 0 of 3 |
+| Serbian answers in Cyrillic | 0 | 2 |
+| The better answer of the two | 24 fixtures | 6 fixtures |
+
+The paid model does not make the misses accepted of the workhorse. It cards коса as
+the braid on every tab (braid, Zopf, pletenica) with the scythe a chip, авось as
+perhaps, and сломя голову as «in Windeseile» beside a correctly spelt «Hals über Kopf»;
+its Serbian is all in Latin letters, and its translations are capitalised and
+punctuated («Kommen wir nicht zu spät zum Zug?», «Zar ne kasnimo na voz?»).
+
+Its own faults:
+
+- Serbian typed on a Russian keyboard is carded where it should be refused, three
+  inputs of four: йош read as ёж and carded as «jež», a hedgehog; ньега read as нега
+  and carded as «uživanje»; мойе read as мой and carded as «moj». The workhorse refused
+  three of the same four.
+- Its lists run longer, a mean of 2.4 equivalents and up to six, the tail made of
+  obsolete or technical senses (throne and presto for стол, Schalter for ключ). Two
+  chips are wrong: «Taste» for ключ, and Serbian «okno», a mine shaft, for окно.
+- One Serbian card, «sto», lost its sentence: the answer named the dictionary form for
+  a sentence that inflects it («Knjiga je na stolu.»), and the card is then made from
+  the article's own example.
+
+It is fit to answer the lookup on all three tabs, and nothing here asks for another
+paid model.
 
 ### A Jev check on the Serbian equivalents
 
@@ -556,7 +601,8 @@ language line, the misses that every run repeated and no wording moved: сотл
 коса carded as the scythe or as Serbian hair, «Hals über Kopf» misspelt, English авось
 carded as hope, a chip in about six with a wrong meaning or a sentence about another
 word, йош read as ещё, French greetings named the tab's language, and the few target
-inputs per sample the line misses. Not accepted, and listed with the other unfixed
-defects: faults of the ordinary article the same reviews found (look-alikes carded with
-the Russian sense, answers broken past reading), the reverse answers of the pool's
-other models, and Serbian typed on a Russian keyboard carded through a false friend.
+inputs per sample the line misses. On 2026-10-13 the operator accepted one more of the
+same kind as йош: ньега read as него and carded as «nego». Not accepted, and listed with
+the other unfixed defects: faults of the ordinary article the same reviews found
+(look-alikes carded with the Russian sense, answers broken past reading), and the
+reverse answers of the pool's other models.

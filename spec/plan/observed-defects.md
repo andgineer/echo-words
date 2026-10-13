@@ -1,12 +1,12 @@
 # Implementation plan — defects seen in use and in the bench, none of them fixed yet
 
-Sixteen items, from two readings.
+Fifteen items, from two readings.
 
 Items 9 and 11 were found while running the app against the real provider keys
 and reading what it did, or by tracing what it did in production. Each was
 reproduced and has its evidence written down.
 
-Items 1 to 8, 10 and 12 to 16 come from a different reading: the review packets
+Items 1 to 8, 10 and 12 to 15 come from a different reading: the review packets
 of the smoke-tier bench runs behind the source-language sense cue and the answer shape,
 and of the language-line and reverse-lookup runs of 2026-10-11 to 2026-10-13, read
 item by item by a fresh agent each time. Every deterministic contract and
@@ -319,23 +319,11 @@ bench that exhausts the workhorse's daily quota raises that for everyone until t
 reset, because the quota is the app's: after the bench of 2026-10-12 the next
 morning's use got 27 of 29 answers from gpt-oss.
 
-Nothing in the app tells a reverse answer of one model from another's, and the paid
-model has not been measured on the reverse prompt, so stepping up to it instead is not
-known to be better.
-
-## 16. Serbian typed on a Russian keyboard, carded through a false friend
-
-`ньега` — `њега`, him, typed on a Russian keyboard — asked through the reverse lookup
-on the Serbian tab, sample c of 2026-10-13, gemini-flash-lite: read as «него» and
-carded as nego «Nije otišao juče nego danas.». The heading says the reader typed
-«него», and Serbian `nego` means "but rather"; the Serbian for него is njega, which is
-the word the reader meant. Samples a and b refused the same input, which is the answer
-that hands it to the Serbian article. It is the miss the operator accepted for `йош`
-(read as ещё and carded as još), with one difference: there the reader lands on the
-word they meant, and here on another word.
-
-The lookup reaches such input only when it was typed with `!`, or when the tab's own
-answer names it Russian and the judgement also refuses it.
+Nothing in the app tells a reverse answer of one model from another's. The paid model
+was measured on the same inputs on 2026-10-13 and answers them better than the
+workhorse does (48 of 49 first cards right, 2 of 72 chips wrong, a median of 5.6 s), so
+an answer bought from it in place of another model's is known to be the better one;
+nothing buys it yet except a silent pool or an unreadable answer.
 
 ## What is deliberately not here
 
