@@ -4544,6 +4544,30 @@ async def test_a_silent_pool_is_stepped_up_inside_the_reverse_call(settings, lan
     assert (entry.word, entry.card_status) == ("table", ADDED_STATUS)
 
 
+async def test_a_paid_reverse_nobody_can_read_is_not_bought_a_second_time(settings, languages):
+    cascade = fake_cascade(
+        settings,
+        handles=[FakeHandle(error=POOL_MISSED)],
+        client=FakeDirectClient(['{"verdict": "dog"}']),
+    )
+    pipeline = WordPipeline(cascade, target_lang="Russian")
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(
+            languages["en"],
+            "стол",
+            False,
+            intent="unit",
+            reverse="forced",
+        )
+        await pipeline.join()
+    finally:
+        await pipeline.close()
+
+    assert cascade.broker.direct_calls == ["gpt-fast"]
+    assert (entry.status, entry.word) == ("error", "стол")
+
+
 async def test_an_unreadable_pool_reverse_is_rated_down_and_replaced_by_a_paid_one(
     settings,
     languages,
@@ -4762,6 +4786,30 @@ async def test_a_lookup_the_line_asked_for_is_never_bought(settings, languages):
     assert entry.reverse_offered is True
 
 
+async def test_a_lookup_the_line_asked_for_is_not_bought_from_a_silent_pool(settings, languages):
+    """A pool that never answers steps an ordinary call up to the paid model by itself,
+    which is the one purchase this lookup must not make either."""
+    cascade = fake_cascade(
+        settings,
+        handles=[FakeHandle([typed_card("город", "ru")]), FakeHandle(error=POOL_MISSED)],
+        client=FakeDirectClient([reverse_words(("grad", "Ovo je lep grad.", "grad"))]),
+        attestation=REFUSED,
+    )
+    pipeline = WordPipeline(cascade, target_lang="Russian")
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(languages["sr"], "город", False, **typed())
+        await pipeline.join()
+    finally:
+        await pipeline.close()
+
+    assert cascade.broker.direct_calls == []
+    assert (entry.card_status, entry.word) == (UNATTESTED_STATUS, "город")
+    assert entry.reverse_offered is True
+    # The tab's own answer is the language's last call, and it was answered.
+    assert cascade.last_calls["sr"].ok is True
+
+
 async def test_input_in_another_of_the_readers_languages_moves_to_its_tab(languages):
     anki = RecordingAnki(Added(7, None))
     hub = EventHub()
@@ -4798,6 +4846,40 @@ async def test_input_in_another_of_the_readers_languages_moves_to_its_tab(langua
         assert "submission_language" not in cascade.prompts[1]
         assert pipeline.history.undo["de"].word == "Haus"
         assert await pipeline.undo(languages["en"]) is None
+    finally:
+        await pipeline.close()
+
+
+async def test_a_move_leaves_undo_with_a_word_sent_to_that_tab_after_it(languages):
+    """Undo follows the latest send, and an entry that arrives on a tab by being moved
+    was sent before the word the reader typed there while it was still being answered."""
+    cascade = ScriptedCascade(
+        [
+            Completion([typed_card("Haus", "de")]),
+            Completion([valid_card("Haus")]),
+            Completion([valid_card("Tisch")]),
+        ],
+    )
+    pipeline = WordPipeline(
+        cascade,
+        target_lang="Russian",
+        languages=lambda: languages,
+        anki=RecordingAnki(Added(7, None)),
+    )
+    moved = await pipeline.enqueue(
+        languages["en"],
+        "Haus",
+        False,
+        **typed(shared_script=False, offers_reverse=False),
+    )
+    later = await pipeline.enqueue(languages["de"], "Tisch", False, intent="unit")
+    pipeline.start()
+    try:
+        await pipeline.join()
+
+        assert (moved.lang, later.lang) == ("de", "de")
+        assert (moved.card_status, later.card_status) == (ADDED_STATUS, ADDED_STATUS)
+        assert pipeline.history.undo["de"].word == "Tisch"
     finally:
         await pipeline.close()
 

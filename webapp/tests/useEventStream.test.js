@@ -369,3 +369,47 @@ it("moves an entry to the tab its input is written in, and says so", () => {
   });
   expect(onMoved).toHaveBeenCalledWith({ entryId: "one", from: "en", to: "de" });
 });
+
+it("says an entry moved when a reconnect finds it on another tab", async () => {
+  // The stream was down for the move, so the snapshot is the only word of it.
+  replaceEntries([
+    { entry_id: "one", word: "Haus", lang: "en", language: "English", status: "pending" },
+  ]);
+  let leaving;
+  const onMoved = vi.fn(() => { leaving = entries.value[0].lang; });
+  const fetchEntry = vi.fn(async () => ({
+    entry_id: "one",
+    word: "Haus",
+    lang: "de",
+    language: "Deutsch",
+    status: "done",
+    text: "the answer",
+  }));
+  const stream = useEventStream({ EventSourceClass: FakeEventSource, fetchEntry, onMoved });
+  stream.start();
+
+  await stream.refresh();
+
+  expect(onMoved).toHaveBeenCalledWith({ entryId: "one", from: "en", to: "de" });
+  // Told while the entry is still on the tab it is leaving.
+  expect(leaving).toBe("en");
+  expect(entries.value[0]).toMatchObject({ lang: "de", moved: true, status: "done" });
+});
+
+it("moves nothing when a reconnect finds the entry where it was", async () => {
+  replaceEntries([{ entry_id: "one", word: "house", lang: "en", status: "pending" }]);
+  const onMoved = vi.fn();
+  const fetchEntry = vi.fn(async () => ({
+    entry_id: "one",
+    word: "house",
+    lang: "en",
+    status: "done",
+  }));
+  const stream = useEventStream({ EventSourceClass: FakeEventSource, fetchEntry, onMoved });
+  stream.start();
+
+  await stream.refresh();
+
+  expect(onMoved).not.toHaveBeenCalled();
+  expect(entries.value[0].moved).toBeUndefined();
+});

@@ -868,6 +868,34 @@ describe("AddView", () => {
       });
     });
 
+    it("sends a renamed entry as the word found when no event said it was renamed", async () => {
+      // The stream was down for the rename, so the reconnect's snapshot brought the word
+      // found and what the receipt kept is still the `!` the reader typed.
+      entries.value = [
+        {
+          entry_id: "entry-1",
+          word: "table",
+          typed_word: "стол",
+          lang: "en",
+          language: "English",
+          lookup_only: false,
+          context: "The book is on the table.",
+          requested_shape: null,
+          requested_reverse: "forced",
+          status: "error",
+          error: "analysis_failed",
+        },
+      ];
+      accepts("entry-2");
+      const wrapper = mount(AddView);
+      await flushPromises();
+
+      await wrapper.get(".entry-error .retry").trigger("click");
+      await flushPromises();
+
+      expect(posted()).toMatchObject({ word: "table", context: "The book is on the table." });
+    });
+
     it("asks a refused word again as a word of the target, keeping it a lookup", async () => {
       selected.value = "de";
       entries.value = [
@@ -941,6 +969,38 @@ describe("AddView", () => {
       expect(wrapper.get('[data-testid="lang-de"]').classes()).toContain("active");
       expect(wrapper.get('[data-testid="chip-entry-1"]').classes()).toContain("active");
       expect(entries.value[0]).toMatchObject({ lang: "de", language: "Deutsch" });
+    });
+
+    it("follows such an entry from a tab that was showing a word picked earlier", async () => {
+      // Until the reply is read the tab still shows the word the reader had picked, so
+      // the move finds them looking at something else and only the reply can take them.
+      vi.stubGlobal("EventSource", FakeEventSource);
+      entries.value = [unit("entry-0", "window", "en"), unit("entry-00", "door", "en")];
+      accepts("entry-1", {
+        before: () => {
+          FakeEventSource.last.emit("accepted", {
+            entry_id: "entry-1",
+            word: "Haus",
+            lang: "en",
+            language: "English",
+            status: "pending",
+          });
+          FakeEventSource.last.emit("moved", {
+            entry_id: "entry-1",
+            lang: "de",
+            language: "Deutsch",
+          });
+        },
+      });
+      const wrapper = mount(AddView);
+      await flushPromises();
+      await wrapper.get('[data-testid="chip-entry-00"]').trigger("click");
+      await wrapper.get("#word").setValue("Haus");
+      await wrapper.get(".submit").trigger("click");
+      await flushPromises();
+
+      expect(wrapper.get('[data-testid="lang-de"]').classes()).toContain("active");
+      expect(wrapper.get('[data-testid="chip-entry-1"]').classes()).toContain("active");
     });
 
     it("leaves a reader who has moved on where they are", async () => {

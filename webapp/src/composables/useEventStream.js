@@ -83,12 +83,20 @@ export function useEventStream({
         }
       }));
       if (activeRefresh !== refreshState) return;
-      for (const entry of snapshot) upsertEntry(entry);
+      for (const entry of snapshot) upsertEntry(arrived(entry));
       activeRefresh = null;
       for (const { name, data } of refreshState.events) applyData(name, data);
     } finally {
       if (activeRefresh === refreshState) activeRefresh = null;
     }
+  }
+
+  // The stream can be down for a move, and then the snapshot is the only word of it.
+  function arrived(fresh) {
+    const known = entries.value.find((entry) => entry.entry_id === fresh.entry_id);
+    if (!fresh.lang || !known?.lang || fresh.lang === known.lang) return fresh;
+    onMoved({ entryId: fresh.entry_id, from: known.lang, to: fresh.lang });
+    return { ...fresh, moved: true };
   }
 
   function applyData(name, data) {

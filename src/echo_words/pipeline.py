@@ -622,14 +622,22 @@ class WordPipeline:
                 trace_id=f"{job.entry_id}-reverse",
                 on_reset=reset,
                 usable=lambda answer: read(answer) is not None,
+                # A silent pool steps a call up to the paid model by itself, and a lookup
+                # that fails beside an answer in hand is not the language's last call.
+                pool_only=not bought,
+                reported=bought,
             )
             async with aclosing(pool):
                 async for delta in pool:
                     parts.append(delta)
             answer = read("".join(parts))
             await pool.record_quality(1.0 if answer is not None else 0.0)
-            if answer is not None or not bought or self._paid_refusal(job.language) is not None:
+            # A silent pool was stepped up inside that call, and a lookup is bought once.
+            stepped_up = getattr(pool, "paid", False)
+            if answer is not None or not bought or stepped_up:
                 return answer
+            if self._paid_refusal(job.language) is not None:
+                return None
             parts.clear()
             paid = self.cascade.stream_paid(
                 prompt,
@@ -743,14 +751,22 @@ class WordPipeline:
     async def _moved(self, job: Job, entry: Entry, tab: Language) -> Job:
         """The same input as a submission to the tab whose language it is written in."""
         self._reset_reused_entry(entry, tab, job.word, job.lookup_only, job.context, job.kind)
-        self._latest_submissions[tab.code] = entry.entry_id
-        self.history.undo.pop(tab.code, None)
+        # Undo follows the latest send: a word typed on that tab while this one was still
+        # being answered was sent after it, and keeps the tab's undo.
+        if not self._sent_after(self._latest_submissions.get(tab.code), entry.entry_id):
+            self._latest_submissions[tab.code] = entry.entry_id
+            self.history.undo.pop(tab.code, None)
         await self.events.publish(
             "moved",
             {"entry_id": entry.entry_id, "lang": tab.code, "language": tab.name},
         )
         # Asked once: the tab it lands on answers by its own rules and is not read again.
         return replace(job, language=tab, typed=False, shared_script=False, offers_reverse=False)
+
+    def _sent_after(self, other: str | None, entry_id: str) -> bool:
+        if other not in self._entries or entry_id not in self._entries:
+            return False
+        return self._order.index(other) > self._order.index(entry_id)
 
     async def _answer(self, job: Job) -> Job | None:  # noqa: C901, PLR0911, PLR0912, PLR0915
         """Answer a submission in its tab's language, or hand back the job it turned into."""

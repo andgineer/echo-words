@@ -11,7 +11,7 @@ import re
 from pathlib import Path
 
 import pytest
-from e2e_app import Gate, answer, live_app
+from e2e_app import Gate, answer, live_app, wait_for_server_entry
 from fakes import FakeDirectClient, FakeHandle
 from playwright.sync_api import Page, expect
 
@@ -202,6 +202,45 @@ def test_input_typed_on_the_wrong_tab_takes_the_reader_to_its_own_tab(
         # Nothing of it is left behind on the tab it was typed on.
         page.get_by_test_id("lang-en").click()
         expect(page.locator(".chips .chip")).to_have_count(0)
+
+
+def test_a_move_made_while_the_reader_was_on_another_screen_takes_them_along(
+    page: Page,
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The move is told by an event, and the page stops listening when the reader leaves
+    the screen. Back on it the entry is on another tab, and a reader left on the one it
+    was typed on would find their word gone and nothing in its place."""
+    gate = Gate()
+    typed_on_english = article(
+        "<b>the English tab's answer</b>",
+        "Haus",
+        submission="Haus",
+        submission_language="de",
+    )
+    handles = [
+        FakeHandle([typed_on_english], hold=gate.wait),
+        FakeHandle([article("<b>Haus</b> — дом", "Haus")]),
+    ]
+    with live_app(settings, monkeypatch, handles=handles) as app:
+        page.goto(app.url)
+        type_word(page, "Haus")
+        expect(page.locator(".entry-text")).to_contain_text("the English tab's answer")
+
+        page.get_by_test_id("nav-status").click()
+        expect(page.locator("#word")).to_have_count(0)
+        gate.open()
+        # Everything about the move went out to a page that was not listening.
+        wait_for_server_entry(
+            page,
+            app.url,
+            lambda entry: (entry["lang"], entry["status"]) == ("de", "done"),
+        )
+        page.get_by_test_id("nav-add").click()
+
+        expect(page.get_by_test_id("lang-de")).to_have_class(re.compile(r"\bactive\b"))
+        expect(page.locator(".entry-text")).to_contain_text("Haus — дом")
 
 
 def test_input_in_a_language_no_tab_teaches_is_headed_as_a_translation(

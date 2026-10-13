@@ -10,7 +10,8 @@ import asyncio
 import contextlib
 import json
 import threading
-from collections.abc import Iterator
+import time
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -164,6 +165,16 @@ def unreadable(article: str, word: str = WORD) -> str:
     payload = json.loads(answer("", word).split("===CARD===", 1)[1])
     payload["meanings"][0]["examples"] = []
     return f"{article}===CARD==={json.dumps(payload, ensure_ascii=False)}"
+
+
+def wait_for_server_entry(page: Page, url: str, reached: Callable[[dict], bool]) -> None:
+    """Wait until the server's own newest entry is as asked. A read of what it holds,
+    made beside the page, so it holds while the page itself is not listening."""
+    deadline = time.monotonic() + GATE_TIMEOUT_SECONDS
+    while not reached(page.request.get(f"{url}/api/words/recent").json()[0]):
+        if time.monotonic() > deadline:
+            raise TimeoutError("the server never brought the entry to the awaited state")
+        page.wait_for_timeout(50)
 
 
 def submit(page: Page, url: str, word: str = WORD) -> None:

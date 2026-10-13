@@ -122,7 +122,11 @@ function selectNewest(lang, entryId) {
 // What the tab shows is asked, not what was picked on it: an entry is on screen before
 // the reply to its own send has been read, and a re-sent one is never picked at all.
 function followMoved({ entryId, from, to }) {
-  if (selected.value !== from || selectedId.value !== entryId) return;
+  if (selectedId.value === entryId) goWith(entryId, from, to);
+}
+
+function goWith(entryId, from, to) {
+  if (selected.value !== from) return;
   if (!languages.value.some((item) => item.code === to)) return;
   selectNewest(to, entryId);
   selected.value = to;
@@ -177,6 +181,10 @@ async function sendWord(
       });
     });
     selectNewest(lang, accepted.entry_id);
+    // A move read before this reply found the tab still showing the word picked before
+    // the send, so the reader was left behind and is taken along here.
+    const landed = entries.value.find((entry) => entry.entry_id === accepted.entry_id)?.lang;
+    if (landed && landed !== lang) goWith(accepted.entry_id, lang, landed);
     word.value = "";
   } catch (e) {
     if (isRetryableWordError(e)) {
@@ -197,7 +205,8 @@ async function retry(entry) {
   if (busy.value) return;
   // The server stripped both shortcuts from what it handed back, so they are put back:
   // a failed `!word` is not a word of this tab, and a failed `?word` asked for no card.
-  const forced = entry.requested_reverse === "forced";
+  // An entry a lookup has renamed is the word found, however the page learned of it.
+  const forced = entry.requested_reverse === "forced" && !entry.typed_word;
   await sendWord(forced ? `!${entry.word}` : entry.word, {
     context: entry.context || "",
     shape: entry.requested_shape ?? null,

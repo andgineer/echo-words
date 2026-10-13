@@ -16,7 +16,7 @@ from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
-from e2e_app import BUILT_PWA, WORD, Gate, answer, live_app, submit
+from e2e_app import BUILT_PWA, WORD, Gate, answer, live_app, submit, wait_for_server_entry
 from fakes import FakeHandle
 from playwright.sync_api import Page, Playwright, Route, expect
 
@@ -202,9 +202,13 @@ def test_an_answer_finished_while_the_page_was_deaf_is_recovered_on_reconnect(
     settings: Settings,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The event stream is the only way an answer reaches the page, and it dies with the
-    connection. Everything published while it was down has to be recovered when it comes
-    back, or the entry stays half-written on the screen with the work long since done."""
+    """The event stream is the only way an answer reaches the page, and the page stops
+    listening when the reader leaves the screen, as it does when the connection dies.
+    Everything published meanwhile has to be recovered when it listens again, or the
+    entry stays half-written on the screen with the work long since done.
+
+    The browser's offline switch is no way to get there: a stream already open goes on
+    delivering through it, and the answer then arrives with nothing recovered."""
     gate = Gate()
     with live_app(
         settings,
@@ -214,9 +218,12 @@ def test_an_answer_finished_while_the_page_was_deaf_is_recovered_on_reconnect(
         submit(page, app.url)
         expect(page.locator(".entry-text")).to_contain_text("the finished analysis")
 
-        page.context.set_offline(True)
+        page.get_by_test_id("nav-status").click()
+        expect(page.locator("#word")).to_have_count(0)
         gate.open()
-        page.context.set_offline(False)
+        wait_for_server_entry(page, app.url, lambda entry: entry["status"] == "done")
+        with page.expect_request(re.compile(r"/api/words/\w+$")):
+            page.get_by_test_id("nav-add").click()
 
         expect(page.locator(".delete-card")).to_be_visible(timeout=RECONNECT_TIMEOUT_MS)
         expect(page.locator(".working.pending")).to_have_count(0)

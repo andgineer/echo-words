@@ -831,7 +831,9 @@ Kept minimal — everything beyond typing a word:
   does. When the last word created nothing — a lookup-only request, a running
   text, or a card that failed — undo reports that there is nothing to undo and
   changes nothing: it must never delete a note that existed before the last
-  send, and deleting a card takes that note out of undo's reach as well.
+  send, and deleting a card takes that note out of undo's reach as well. An
+  entry that moved to another tab is a send to the tab it landed on, made when
+  it was typed: a word sent to that tab after it is the later send.
 There is no plain "run it again" control: re-rolling the same model on the
 same prompt is not how a weak answer gets fixed.
 
