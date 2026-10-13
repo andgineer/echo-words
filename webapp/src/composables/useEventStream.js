@@ -107,6 +107,9 @@ export function useEventStream({
     } else if (name === "moved") {
       // The input is in another of the reader's languages, and is asked again there.
       const from = entries.value.find((entry) => entry.entry_id === data.entry_id)?.lang;
+      // Told first: whether the reader is looking at the entry can only be read while
+      // it is still on the tab it is leaving.
+      onMoved({ entryId: data.entry_id, from, to: data.lang });
       upsertEntry({
         entry_id: data.entry_id,
         ...BLANK,
@@ -114,7 +117,6 @@ export function useEventStream({
         language: data.language,
         moved: true,
       });
-      onMoved({ entryId: data.entry_id, from, to: data.lang });
     } else if (name === "done") {
       upsertEntry({ ...data, status: "done", controls_expired: false });
     } else if (name === "detail") {

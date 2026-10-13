@@ -39,11 +39,11 @@ the code and does not apply to those.
   or Cyrillic on a Latin-script tab) carded as its equivalent in the
   selected language; built end to end, with two bench samples of its prompt
   owed before it counts as measured.
-  `observed-defects.md` — fifteen faults left unfixed, each with its
-  evidence, from two readings: three met while using the app, from a sense
-  chip that repeats the carded sense to a word the chain could not speak
-  that no reader can ask again for, and twelve read out of bench review
-  packets whose every automated screen was green.
+  `observed-defects.md` — fourteen faults left unfixed, each with its
+  evidence, from two readings: two met while using the app, a sense chip
+  that repeats the carded sense and an answer budget that bounds silence
+  instead of the answer, and twelve read out of bench review packets whose
+  every automated screen was green.
   Writing a defect into a decision spec documents it; it does not accept
   it, and only the operator accepts a limitation of the product. Write
   a new plan only for work that needs one, and delete it once that work

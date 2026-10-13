@@ -119,8 +119,10 @@ function selectNewest(lang, entryId) {
 
 // Input typed on the wrong tab is answered on its own, and a reader still looking at it
 // goes there with it; one who has moved on to something else is left where they are.
+// What the tab shows is asked, not what was picked on it: an entry is on screen before
+// the reply to its own send has been read, and a re-sent one is never picked at all.
 function followMoved({ entryId, from, to }) {
-  if (selected.value !== from || selectedIds.value[from] !== entryId) return;
+  if (selected.value !== from || selectedId.value !== entryId) return;
   if (!languages.value.some((item) => item.code === to)) return;
   selectNewest(to, entryId);
   selected.value = to;

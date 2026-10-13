@@ -213,6 +213,16 @@ the one deployment target — the 1 GB (+ swap) micro instance:
   grapheme-to-phoneme pass measured above for Latin Serbian, but for every
   word of that language. A language with no voice it can use has no
   recording, which the entry and the card both say plainly.
+- **A word is given its audio once, and a second try is the operator's.**
+  The chain runs when the card is made. A word it could not speak then —
+  Commons throttling, a voice still downloading, the network gone — is
+  carded silent, and one an engine spoke while Commons was throttled keeps
+  the engine's voice; the page offers no retry for either. What fills them
+  is the operator's pass over the whole collection, run with the service
+  stopped, which names every such note before it changes anything. The
+  operator accepted this as it stands on 12 Oct 2026 and wants no retry
+  beside the entry. That pass's count is where silent cards piling up would
+  show, and it is what would re-open the question.
 
 ## Risks
 

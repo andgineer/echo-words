@@ -914,6 +914,35 @@ describe("AddView", () => {
       expect(entries.value[0]).toMatchObject({ lang: "de", language: "Deutsch", status: "pending" });
     });
 
+    it("follows an entry whose move is read before the reply to its own send", async () => {
+      vi.stubGlobal("EventSource", FakeEventSource);
+      accepts("entry-1", {
+        before: () => {
+          FakeEventSource.last.emit("accepted", {
+            entry_id: "entry-1",
+            word: "Haus",
+            lang: "en",
+            language: "English",
+            status: "pending",
+          });
+          FakeEventSource.last.emit("moved", {
+            entry_id: "entry-1",
+            lang: "de",
+            language: "Deutsch",
+          });
+        },
+      });
+      const wrapper = mount(AddView);
+      await flushPromises();
+      await wrapper.get("#word").setValue("Haus");
+      await wrapper.get(".submit").trigger("click");
+      await flushPromises();
+
+      expect(wrapper.get('[data-testid="lang-de"]').classes()).toContain("active");
+      expect(wrapper.get('[data-testid="chip-entry-1"]').classes()).toContain("active");
+      expect(entries.value[0]).toMatchObject({ lang: "de", language: "Deutsch" });
+    });
+
     it("leaves a reader who has moved on where they are", async () => {
       vi.stubGlobal("EventSource", FakeEventSource);
       entries.value = [unit("entry-0", "window", "en")];

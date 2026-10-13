@@ -1,12 +1,12 @@
 # Implementation plan — defects seen in use and in the bench, none of them fixed yet
 
-Fifteen items, from two readings.
+Fourteen items, from two readings.
 
-Items 9, 11 and 12 were found while running the app against the real provider keys
+Items 9 and 11 were found while running the app against the real provider keys
 and reading what it did, or by tracing what it did in production. Each was
 reproduced and has its evidence written down.
 
-Items 1 to 8, 10 and 13 to 15 come from a different reading: the review packets
+Items 1 to 8, 10 and 12 to 14 come from a different reading: the review packets
 of the smoke-tier bench runs behind the source-language sense cue and the answer shape,
 and of the language-line and reverse-lookup runs of 2026-10-11 and 2026-10-12, read
 item by item by a fresh agent each time. Every deterministic contract and
@@ -221,38 +221,7 @@ Two ways to close it.
 
 Waiting is the one worth taking, and it costs nothing but the wait.
 
-## 12. A word the chain could not speak has no second chance the reader can give it
-
-The chain runs once, when the card is made. A word it could not speak — Commons
-throttled, a voice not yet downloaded, the network gone — is carded silent, and
-the next step writes at the same cache path, so nothing in ordinary use asks
-again. The reader sees a card with no sound and has no way to say "try that
-again": the only thing that can heal it is an operator running
-`inv backfill-recordings` over the whole collection with the service stopped.
-
-The cost is small per word and it accumulates in the only place that matters, the
-deck the reader reviews. It is also invisible: nothing on the page says the audio
-failed rather than that this word simply has no recording.
-
-Two ways to give it back to the reader.
-
-- **A retry beside the entry**, shown when the answer produced no audio: it asks
-  the chain again with the cache discarded, and on success attaches the recording
-  to the note that was already saved, so the deck gets it without the card being
-  rebuilt. The pieces exist — the chain already takes a refresh that ignores what
-  the cache holds, and the maintenance pass already replaces a note's media and
-  syncs it. What is new is the affordance, an endpoint behind it, and saying on
-  the page whether the word has no recording or the attempt failed.
-- **Leave it to the operator's pass**, which is where it stands. It works, it is
-  measured, and it costs the reader nothing — but it needs the service stopped, it
-  runs over the whole collection, and a reader who is not the operator has no way
-  to ask for it.
-
-The retry is the one worth building, and the same affordance covers the word an
-engine spoke where Commons has a recording — the condition is wider, the
-machinery identical.
-
-## 13. Serbian look-alikes carded with the Russian meaning, and their own missing
+## 12. Serbian look-alikes carded with the Russian meaning, and their own missing
 
 Both samples of the language bench (2026-10-11 and 2026-10-12, the Serbian tab, a
 Russian target) carded five Serbian words that Russian spells alike as though they were
@@ -274,7 +243,7 @@ tab and drills the Russian meaning. The judgement's attestation does not catch i
 either: each is a real Serbian spelling. The same blindness as items 7 and 10, from
 the headword's side.
 
-## 14. A real word answered as another word, or with a meaning it does not have
+## 13. A real word answered as another word, or with a meaning it does not have
 
 From the same two samples, with Serbian as the language translated into:
 
@@ -285,7 +254,7 @@ From the same two samples, with Serbian as the language translated into:
   other: the reader typed a correct German word and got a card for a different one,
   with no correction announced.
 
-## 15. An answer broken past reading costs the reader a second call
+## 14. An answer broken past reading costs the reader a second call
 
 3 of the 482 answers of the language runs and the full tier of 2026-10-11 and
 2026-10-12 garbled a Cyrillic escape inside the card block, splicing letters of

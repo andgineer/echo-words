@@ -34,7 +34,10 @@ Where a second reader is most likely to find something:
 - the bookkeeping of a move: the latest submission and the undo of both tabs, and which
   tab the history entry ends on;
 - the page across a reconnect: the receipt and the resend queue while an entry is being
-  reversed or moved, and retry putting back `!` and `?`.
+  reversed or moved, and retry putting back `!` and `?`. One fault of this kind is
+  already found and fixed: a move read before the reply to its own send left the reader
+  on the tab the entry had gone from. The browser test of the move lost that race about
+  once in twenty-five runs, and a component test now pins the order.
 
 The review needs no pool quota, so it does not wait for the samples. A fix that comes
 out of it must leave the reverse prompt and `parse_reverse` alone until b and c are
