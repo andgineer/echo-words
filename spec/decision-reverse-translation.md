@@ -602,7 +602,13 @@ language line, the misses that every run repeated and no wording moved: сотл
 carded as hope, a chip in about six with a wrong meaning or a sentence about another
 word, йош read as ещё, French greetings named the tab's language, and the few target
 inputs per sample the line misses. On 2026-10-13 the operator accepted one more of the
-same kind as йош: ньега read as него and carded as «nego». Not accepted, and listed with
-the other unfixed defects: faults of the ordinary article the same reviews found
-(look-alikes carded with the Russian sense, answers broken past reading), and the
-reverse answers of the pool's other models.
+same kind as йош: ньега read as него and carded as «nego». On 2026-10-15 the operator
+accepted the faults of the ordinary article the same reviews found: look-alikes carded
+with the Russian sense, recorded with the other card faults in
+`decision-answer-shape.md`, and answers broken past reading — 4 of 78 Serbian reverse
+answers, every one from gemini-flash-lite — which are asked again at the cost of a few
+seconds' wait. The reverse answers of the pool's other models are not accepted: the
+operator decided the same day that a lookup the reader asked for, answered by any pool
+model but the main one, is answered by the paid model instead, inside the daily cap,
+and that a last-resort lookup such a model answered is dropped so the tab's own answer
+stands. That routing is not built yet.

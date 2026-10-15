@@ -845,12 +845,18 @@ same prompt is not how a weak answer gets fixed.
   the paid attempt a fresh budget of the same size, so a recovered request
   may take ~40–60 s end to end; requiring the paid model to consume only
   whatever time the failed pool left behind would not make it answer faster.
-  The card is added within ~5 s after generation ends. Outstanding audio roles
+  For the paid attempt the budget bounds silence, not the whole answer: its
+  text reaches the page as it is written, so an answer still arriving at the
+  budget is let finish, and only a paid model that has said nothing for the
+  whole budget is given up on. Of 63 paid answers from 2026-09-01 to
+  2026-10-15 the slowest finished in 16.5 s, and the one that failed had said
+  nothing for 25 s. The card is added within ~5 s after generation ends. Outstanding audio roles
   are waited concurrently under that same hard maximum and cannot extend it.
   Time to the first token is deliberately not a requirement: it measures
   how quickly a model starts talking, not how long the user waits, and
-  bounding it would prefer a model that trickles for a minute over one
-  that thinks briefly and then answers at once.
+  bounding it would prefer, among the pool's racing models, one that
+  trickles for a minute over one that thinks briefly and then answers at
+  once.
 - **Cost**: **no metered API is ever required.** Every answer starts on
   the free-tier `llmbroker` model pool, which is un-metered. A paid
   per-token model is reached in exactly two situations, both bounded by a

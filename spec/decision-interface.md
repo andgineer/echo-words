@@ -210,7 +210,9 @@ note, carries no such control. The chips carry no caption either:
 and filled pills that look pressable say it instead. Sense chips are named by
 their translations. After a successful save, they offer only the other senses:
 the selected sense is already in the deck, and a sole carded sense needs no chip
-row. Failed saves and lookups keep every sense available. Older browser history
+row. An answer that returns two senses with the same content still shows the
+uncarded one as a chip; the operator accepted that on 2026-10-15 with the other card
+faults in `decision-answer-shape.md`. Failed saves and lookups keep every sense available. Older browser history
 without a recorded selection keeps its chips, because their wording cannot
 identify which sense was carded.
 

@@ -392,11 +392,40 @@ case, tense or person is the one of these the prompt now forbids in those words:
 naming a grammatical category in a table fell from 26% to 11% of tables when the
 rule was stated, measured over 139 tables before and 56 after.
 
+It can give the near-neighbour warning in one answer and not in another (`causal`
+warned of `casual`; `wider` never named `wieder`), invent a collocation
+(`wider Erwachten` for `wider Erwarten`), translate an example as its opposite
+(`He was reluctant to sign the contract.` as «Он неохотно подписал контракт.»), and
+let its prose slip into another language or script (`сыat по горло`, an English
+example half in Russian). The prompt already asks for an origin to be left out where
+it is not known, and the answers do not obey it. The operator accepted all of these
+with the rest of this section on 2026-10-15.
+
 These are article defects rather than card defects — the payload is usually clean
 while the visible prose carries them — and the mandatory semantic review is the
 only thing that sees them. Over a reviewed full tier, roughly half of a packet's
 items carry a defect the reader would read and about a fifth one that reaches a
-card they would drill. For an explicit context request, the answer is not asked to
+card they would drill.
+
+**A card can teach something false while every field is filled and in the right
+alphabet, and the operator accepted that on 2026-10-15 as the free pool's quality.**
+The reviewed runs found it in between one note in nine and about one in five: a
+citation form wedged into sentences that need another person (Bulgarian
+`Той често разказвам…`), a word spelt in two scripts (`lepiх`, Latin with a Cyrillic
+х), a Russian word inside a Serbian or Ukrainian sentence (`красивом`,
+`ти розмовляешь`), a homograph read as another language's word (German `wider`
+carded as English *wider*), a translation wrong or in the wrong language
+(`приймать`, `вина` for `Verantwortung`), the false friend `неділя` carded as
+«воскресенье, неделя», Serbian look-alikes carded with the Russian sense (`врач` as a
+doctor, `сто` with no table), a real word answered as another (`Most` carded as
+`meist`), and a sense chip whose content repeats the carded sense. No check the app
+runs sees any of it. The specialised attestation model was measured as such a check
+on Serbian equivalents and rejected (`decision-reverse-translation.md`), and a second
+reading of each finished card by the paid model, at about a dollar a month and a few
+seconds per card, was weighed and declined. The fixtures and the mandatory review
+stay, because these numbers move with the prompt and the model.
+
+For an explicit context request, the answer is not asked to
 reproduce the sentence at all. It names the sense the unit carries there, the
 words the unit is in that sentence, and what the sentence means; the backend
 builds the contextual example from its own sentence and its own marking of it.
@@ -450,9 +479,9 @@ three came from the parser. Two are Serbian sentences carrying a non-word
 **A false friend confirmed on the card's translations field.** `неділя` was carded
 with translations `воскресенье, неделя`. The Ukrainian word means Sunday; the word
 for week is `тиждень`. This is worse than an article defect, because the translations
-field is a card field and the fixture exists to catch exactly this. It is recorded,
-not accepted: the false-friend pair is not vouched for on the strength of this run —
-`стол` passed and `неділя` failed.
+field is a card field and the fixture exists to catch exactly this. The false-friend
+pair is not vouched for on the strength of this run — `стол` passed and `неділя`
+failed — and the fault is accepted with the other card faults recorded above.
 
 ## The context sentence is not copied — 2026-09-09
 
@@ -502,8 +531,8 @@ Answer quality on the same reading: 23 of 42 items carry a defect a reader would
 notice, and 4 of 29 notes one that reaches a card. Two readers with different
 thresholds counted this and the run before it, so that is not a measured regression.
 Three of the four are the free pool's already-recorded Serbian and Ukrainian failures
-on the same fixtures, `неділя` among them — which stays recorded and not accepted, the
-fixture built to catch that false friend having failed it twice.
+on the same fixtures, `неділя` among them, the fixture built to catch that false
+friend having failed it twice.
 
 ## What a rejected payload is worth — measured in production
 

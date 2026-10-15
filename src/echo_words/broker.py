@@ -10,8 +10,8 @@ from echo_words.languages import Language
 if TYPE_CHECKING:
     from llmbroker import AsyncBroker
 
-# Both providers get the functional description's complete-answer budget. A paid
-# step-up may therefore take two such windows end to end, but never a separate minute.
+# The pool reads this as the whole answer's budget; the paid step's direct stream hands
+# it to httpx as a read timeout, so there it bounds silence, as the description asks.
 ANSWER_BUDGET_SECONDS = 25.0
 
 
