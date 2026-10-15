@@ -603,10 +603,8 @@ class WordPipeline:
     async def _reverse_answer(self, job: Job, *, bought: bool) -> ReverseAnswer | None:
         """The reverse lookup of what was typed, or None when no model gave a usable one.
 
-        `bought` is whether the paid model is asked, without the reader being asked first,
-        where the pool's answer cannot be made usable or came from a model that is not a
-        main one: only where nothing is on the page for the reader to keep. Elsewhere such
-        an answer counts as none.
+        `bought` is set only where nothing is on the page for the reader to keep: there the
+        paid model replaces a pool answer unasked, elsewhere such an answer counts as none.
         """
         if self.cascade is None:
             return None
@@ -631,13 +629,20 @@ class WordPipeline:
             return None
         if self._paid_refusal(job.language) is not None:
             return answer
-        if answer is not None:
+        paid = await self._paid_reverse(self.cascade, job, prompt)
+        if answer is not None and paid is not None:
             logger.info(
                 "the paid model answers the reverse lookup for %s: the pool answer came from %s",
                 job.language.code,
                 model or "unnamed",
             )
-        paid = await self._paid_reverse(self.cascade, job, prompt)
+        elif answer is not None:
+            logger.info(
+                "the pool answer from %s stands for the reverse lookup for %s:"
+                " the paid model gave none",
+                model or "unnamed",
+                job.language.code,
+            )
         # A set-aside pool answer is still better than an entry that failed.
         return answer if paid is None else paid
 

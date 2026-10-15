@@ -501,11 +501,12 @@ sample a the first ten answers took under 1.4 s each and the rest 3 to 12 s (med
 
 ### The paid model
 
-A lookup the reader asked for is answered by the paid model whenever the pool's main
-model does not answer it, so the same 68 reverse calls were bought from it on
-2026-10-13: gpt-5.6-luna, the model the paid step asks by default. Every call was
-answered and every answer could be read. It is slower: a median of 5.6 s, p90 11.3 s,
-the slowest 20.5 s, none past the 25-second budget.
+A lookup the reader asked for is asked of the paid model whenever the pool's main model
+does not answer it and the paid step is open to it, with a paid key set and the day's
+cap not spent, so the same 68 reverse calls were bought from it on 2026-10-13:
+gpt-5.6-luna, the model the paid step asks by default. Every call was answered and every
+answer could be read. It is slower: a median of 5.6 s, p90 11.3 s, the slowest 20.5 s,
+none past the 25-second budget.
 
 A fresh reviewer graded it blind, beside the workhorse's answers to the same inputs
 with the models' names withheld — sample c's where the workhorse had answered readably,
@@ -611,15 +612,15 @@ answers, every one from gemini-flash-lite — which are asked again at the cost 
 seconds' wait.
 
 The reverse answers of the pool's other models are not accepted, by the operator's
-decision of the same day. A lookup the reader asked for that any pool model but the main
-one answered is set aside unseen and answered by the paid model instead, inside the
-daily cap; the pool's answer stands only when the paid step is refused, or gives no
-answer that can be read, because an entry that failed is worse than a weaker lookup. A
-last-resort lookup such a model answered counts as no answer: the tab's own answer
-stands, and a refused word is still offered the lookup with one tap. The rating a
-lookup gives the pool model that answered it is unchanged, because the rating is per
-language and shared with the article, where these models' answers are not what was
-measured here.
+decision of the same day. A lookup the reader asked for with `!`, or one an alphabet
+decided, that any pool model but the main one answered is set aside unseen and answered
+by the paid model instead, inside the daily cap; the pool's answer stands only when the
+paid step is refused, or gives no answer that can be read, because an entry that failed
+is worse than a weaker lookup. A last-resort lookup such a model answered counts as no
+answer: the tab's own answer stands, and a refused word is still offered the lookup with
+one tap. The rating a lookup gives the pool model that answered it is unchanged, because
+the rating is per language and shared with the article, where these models' answers are
+not what was measured here.
 
 Which pool models are main is a setting of the app's, gemini-flash-lite alone by
 default, and an empty one keeps every pool model's answer. The model names are

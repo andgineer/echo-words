@@ -1,4 +1,5 @@
 import asyncio
+import json
 import threading
 import time
 from datetime import UTC, datetime
@@ -8,7 +9,7 @@ from unittest.mock import AsyncMock
 from uuid import UUID
 
 import pytest
-from fakes import FakeBroker
+from fakes import FakeBroker, FakeDirectClient, FakeHandle
 from fastapi.testclient import TestClient
 
 from echo_words import __version__
@@ -1074,6 +1075,78 @@ def test_a_request_id_is_not_reused_between_a_typed_word_and_a_forced_one(client
     assert first.status_code == 200
     assert forced.status_code == 409
     assert chip.status_code == 409
+
+
+def lookup(word: str, sentence: str) -> str:
+    """The reverse lookup's answer for «стол»: one target word, in its sentence."""
+    equivalent = {"word": word, "example": sentence, "form": word}
+    return json.dumps(
+        {"verdict": "word", "read_as": "стол", "equivalents": [equivalent]},
+        ensure_ascii=False,
+    )
+
+
+def card_in_its_sentence(word: str) -> str:
+    """The tab's answer about a word the lookup found in a sentence."""
+    example = {
+        "text": f"Use {word} now.",
+        "translation": "Перевод.",
+        "highlighted": f"Use <b>{word}</b> now.",
+        "gapped": "Use ___ now.",
+    }
+    card = {
+        "kind": "unit",
+        "word": word,
+        "word_relation": "same",
+        "suggestion": "",
+        "meanings": [{"label": "", "translations": ["стол"], "examples": [example]}],
+        "segments": [],
+        "context_sense": 0,
+        "context_translation": "Перевод.",
+        "context_surface": word,
+    }
+    return f"<b>{word}</b>===CARD==={json.dumps(card, ensure_ascii=False)}"
+
+
+def finished(client: TestClient, entry_id: str) -> dict:
+    deadline = time.monotonic() + 5
+    entry = recent_entry(client, entry_id)
+    while entry["status"] != "done" and time.monotonic() < deadline:
+        time.sleep(0.01)
+        entry = recent_entry(client, entry_id)
+    return entry
+
+
+def test_the_running_app_buys_a_lookup_a_pool_model_it_does_not_keep_answered(
+    monkeypatch: pytest.MonkeyPatch,
+    settings: Settings,
+):
+    """Which pool models' lookups are kept is the operator's setting, so the app must
+    act on it: the fake pool's model is left out of it here, and its lookup is bought."""
+    broker = FakeBroker(
+        handles=[
+            FakeHandle([lookup("desk", "She works at her desk.")]),
+            FakeHandle([card_in_its_sentence("table")]),
+        ],
+        client=FakeDirectClient([lookup("table", "The book is on the table.")]),
+    )
+    monkeypatch.setattr("echo_words.api.create_broker", lambda *_args: broker)
+
+    async def nothing(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr("echo_words.api.fetch_pronunciation", nothing)
+    monkeypatch.setattr("echo_words.api.Wiktionary", lambda: SimpleNamespace(documents=nothing))
+    monkeypatch.setattr("echo_words.api.Wikipedia", lambda: SimpleNamespace(usage=nothing))
+    main_only = settings.model_copy(
+        update={"reverse_pool_models": ["google-gemini-3.5-flash-lite"]},
+    )
+
+    with TestClient(create_app(main_only)) as live_client:
+        entry = finished(live_client, submit(live_client, word="!стол").json()["entry_id"])
+
+    assert broker.direct_calls == ["gpt-fast"]
+    assert (entry["status"], entry["word"], entry["card_status"]) == ("done", "table", "added")
 
 
 def test_the_page_is_told_the_target_language(settings: Settings):

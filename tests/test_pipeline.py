@@ -4650,6 +4650,7 @@ async def test_a_reverse_another_pool_model_answered_is_bought_from_the_paid_mod
         f"the paid model answers the reverse lookup for en: the pool answer came from {OTHER_MODEL}"
         in caplog.messages
     )
+    assert not any("stands for the reverse lookup" in message for message in caplog.messages)
 
 
 async def test_a_reverse_another_pool_model_answered_stands_when_the_paid_step_is_refused(
@@ -4695,10 +4696,12 @@ async def test_a_reverse_another_pool_model_answered_stands_when_the_paid_step_i
 async def test_a_set_aside_reverse_stands_when_the_paid_model_gives_none(
     settings,
     languages,
+    caplog,
     client,
 ):
     """A paid step that gives no usable lookup leaves the reader with the pool's one
     rather than with an entry that failed."""
+    caplog.set_level(logging.INFO, logger="echo_words.pipeline")
     cascade = fake_cascade(
         settings,
         handles=[
@@ -4723,6 +4726,11 @@ async def test_a_set_aside_reverse_stands_when_the_paid_model_gives_none(
 
     assert cascade.broker.direct_calls == ["gpt-fast"]
     assert (entry.word, entry.card_status) == ("table", ADDED_STATUS)
+    assert (
+        f"the pool answer from {OTHER_MODEL} stands for the reverse lookup for en:"
+        " the paid model gave none"
+    ) in caplog.messages
+    assert not any("the paid model answers" in message for message in caplog.messages)
 
 
 @pytest.mark.parametrize(

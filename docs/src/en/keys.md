@@ -41,18 +41,25 @@ answer and take over when Gemini is slow, out of its free quota or down.
 OPENAI_API_KEY=...
 ```
 
-Create it at [OpenAI](https://platform.openai.com/api-keys). It pays for two
-things: the deeper article you ask for with one tap, and a card the free pool
-failed to answer. Without it, the deeper article says it is unavailable, and a
-card the pool failed shows the failure.
+Create it at [OpenAI](https://platform.openai.com/api-keys). It pays for three
+things: the deeper article you ask for with one tap, a card the free pool failed
+to answer, and the lookup of a word you typed in your own language when Gemini
+did not answer it. Without it, the deeper article says it is unavailable, a card
+the pool failed shows the failure, and a lookup keeps the answer of whichever
+free model gave one.
 
-It costs little. A deeper article costs about $0.036, so a dollar buys about 28 of
-them, and a paid card costs a fraction of a cent. A card goes to the paid model
-only when the free pool fails to answer it, or when you ask for the paid model
-on a failed card. On the author's own use over the 30 days to 2 October 2026, 14
-deeper articles and 12 paid cards came to about $0.53 in all. The app also stops after 100 paid calls a day, which
-`ECHOWORDS_API_DAILY_CAP` changes.
-`ECHOWORDS_API_MODEL=` switches paid calls off entirely, even with the key set.
+It costs little. A deeper article costs about $0.036, so a dollar buys about 28
+of them, and a paid card or lookup costs a fraction of a cent. A card goes to
+the paid model only when the free pool fails to answer it, or when you ask for
+the paid model on a failed card. A word or sentence typed in your own language —
+after `!`, or in letters the language you are learning does not use — goes to it
+when the free pool fails to answer, and also when one of the pool's other models
+answered in Gemini's place: they pick the wrong word far more often than Gemini
+does, and on the author's server they write about one answer in seven. On the
+author's own use over the 30 days to 2 October 2026, 14 deeper articles and 12
+paid cards came to about $0.53 in all. The app also stops after 100 paid calls a
+day, which `ECHOWORDS_API_DAILY_CAP` changes. `ECHOWORDS_API_MODEL=` switches
+paid calls off entirely, even with the key set.
 
 ## AnkiWeb login
 
