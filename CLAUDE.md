@@ -111,6 +111,11 @@ deciding; never accept or reject on the reviewer's word. Then:
   spec or a project invariant. Collected for the final report, never
   decided here.
 
+A test gap shown by deliberately breaking the code is a `must-fix` only when
+that break changes a recorded bench answer; one that changes only a made-up
+input is a `nit`. Code that reads model answers is pinned by a test built
+from real recorded answers, not by made-up inputs alone.
+
 A `nit` never starts a round by itself: it rides with a round that happens
 anyway, or it is dropped. Keep a ledger in the session scratchpad, not in
 the repo: round × finding × severity × component × verdict.
