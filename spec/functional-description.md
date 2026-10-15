@@ -869,8 +869,8 @@ same prompt is not how a weak answer gets fixed.
 - **Cost**: **no metered API is ever required.** Every answer starts on
   the free-tier `llmbroker` model pool, which is un-metered. A paid
   per-token model is reached in these situations, all bounded by a
-  daily cap (`ECHOWORDS_API_DAILY_CAP`): when the pool fails to deliver a
-  complete and usable answer within its attempt budget; when a reverse
+  daily cap (`ECHOWORDS_API_DAILY_CAP`): when the pool delivers no
+  complete answer within its attempt budget; when a reverse
   lookup asked before anything else was not answered by the pool's main
   model; when the pool's answer declares the submission a misspelling;
   when the user takes the paid answer offered on a failed card; when the

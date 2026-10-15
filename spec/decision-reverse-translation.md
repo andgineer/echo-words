@@ -431,8 +431,8 @@ On the workhorse's answers:
 | English, wrong chips | 4 of 22 | 1 of 19 | 2 of 20 |
 | German, first card right | 13 of 15 | 9 of 9 | 12 of 13 |
 | German, wrong chips | 3 of 19 | 1 of 11 | 2 of 17 |
-| Serbian, first card right | 15 of 16 | 13 of 13 | 12 of 13 |
-| Serbian, wrong chips | 3 of 11 | 3 of 12 | 0 of 7 |
+| Serbian, first card right | 15 of 16 | 13 of 13 | 11 of 12 |
+| Serbian, wrong chips | 3 of 11 | 3 of 12 | 0 of 6 |
 | Sentences translated right, all tabs | 12 of 12 | 12 of 12 | 10 of 10 |
 
 The three samples agree. Every translation is faithful, natural and in the tab's
@@ -481,8 +481,8 @@ samples b and c, split by who answered:
 
 | | Workhorse | Other pool models |
 |---|---|---|
-| First card right | 67 of 72 | 15 of 20 |
-| Wrong chips | 9 of 86 | 17 of 30 |
+| First card right | 66 of 71 | 15 of 20 |
+| Wrong chips | 9 of 85 | 17 of 30 |
 | Sentences | 22 of 22 translated right | 2 of 2 carded as a word |
 
 The other models' wrong cards are of a kind the workhorse never gave: коса answered

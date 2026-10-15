@@ -104,13 +104,13 @@ rules the reader can rely on:
   article and in a card's example.
 
 Measured on 2026-10-15 by re-reading all 6,880 recorded answers through this
-reading, with no model called. All 281 articles show bold where they showed
-asterisks, and in none of them is a word added, lost or moved. A fresh reviewer
-read all 1,170 new bold spans, and every one is what the model meant. One recorded
-article leaves a pair unclosed, and it prints as written. The doubled bracket
-occurred once, on a Bulgarian card that used to drop the example for it; the
-example is now kept, and the card is better for it, because the two examples it
-carded instead both put the verb in the wrong person.
+reading, with no model called. 281 articles show bold where the model wrote
+doubled asterisks, and in none of them is a word added, lost or moved. A fresh
+reviewer read all 1,170 new bold spans, and every one is what the model meant. One
+more article, from gpt-oss-120b, leaves a pair unclosed, and it prints as written.
+The doubled bracket occurred in one answer, in its article and in its Bulgarian
+card's example. The example is kept on the card, and the card is better for it,
+because the answer's two other examples both put the verb in the wrong person.
 
 ### Two prompts, because half of one of them could never apply
 
