@@ -83,6 +83,8 @@ def test_a_markdown_bold_never_crosses_an_allowed_tag():
     assert sanitize_html("<td>**x</td><td>y**</td>") == "<td>**x</td><td>y**</td>"
     assert sanitize_html("**x <i>y**</i>") == "**x <i>y**</i>"
     assert sanitize_html("<i>**x</b> y**</i>") == "<i>**x&lt;/b&gt; y**</i>"
+    assert sanitize_html("**a <i>**b c****</i>") == "**a <i><b>b c</b>**</i>"
+    assert sanitize_html("**a <i>b***c**</i>") == "**a <i>b***c**</i>"
 
 
 def test_an_unclosed_markdown_bold_does_not_pair_with_one_after_punctuation():
@@ -93,6 +95,7 @@ def test_an_unclosed_markdown_bold_does_not_pair_with_one_after_punctuation():
 
 def test_a_markdown_bold_after_a_letter_does_not_open_onto_punctuation():
     assert sanitize_html("x**(y)**") == "x**(y)**"
+    assert sanitize_html("a**→b**") == "a**→b**"
 
 
 def test_a_bracket_beside_a_markdown_bold_stays():
