@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 from collections.abc import AsyncIterator, Iterable
 from dataclasses import replace
 
@@ -4597,6 +4598,171 @@ async def test_an_unreadable_pool_reverse_is_rated_down_and_replaced_by_a_paid_o
     assert (entry.word, entry.card_status) == ("table", ADDED_STATUS)
 
 
+MAIN_MODEL = "google-gemini-3.5-flash-lite"
+OTHER_MODEL = "groq-gpt-oss-120b"
+
+
+def forced_reverse_pipeline(cascade, anki=None, reverse_pool_models=(MAIN_MODEL,)):
+    return WordPipeline(
+        cascade,
+        target_lang="Russian",
+        anki=anki or RecordingAnki(Added(7, None)),
+        reverse_pool_models=reverse_pool_models,
+    )
+
+
+async def test_a_reverse_another_pool_model_answered_is_bought_from_the_paid_model(
+    settings,
+    languages,
+    caplog,
+):
+    """Nothing is on the page yet, so the other model's lookup is set aside unseen and
+    the paid model answers instead."""
+    caplog.set_level(logging.INFO, logger="echo_words.pipeline")
+    other = FakeHandle([reverse_words(DESK)], llm_name=OTHER_MODEL)
+    cascade = fake_cascade(
+        settings,
+        handles=[other, FakeHandle([valid_card("table", context=TABLE[1])])],
+        client=FakeDirectClient([reverse_words(TABLE)]),
+    )
+    anki = RecordingAnki(Added(7, None))
+    pipeline = forced_reverse_pipeline(cascade, anki)
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(
+            languages["en"],
+            "стол",
+            False,
+            intent="unit",
+            reverse="forced",
+        )
+        await pipeline.join()
+    finally:
+        await pipeline.close()
+
+    assert cascade.broker.direct_calls == ["gpt-fast"]
+    assert cascade.calls_today == 1
+    assert (entry.word, entry.card_status) == ("table", ADDED_STATUS)
+    assert [note.word for note, _deck, _audio in anki.calls] == ["table"]
+    # The rating is the language's, shared with the article, so the answer keeps it.
+    assert other.scores == [1.0]
+    assert (
+        f"the paid model answers the reverse lookup for en: the pool answer came from {OTHER_MODEL}"
+        in caplog.messages
+    )
+
+
+async def test_a_reverse_another_pool_model_answered_stands_when_the_paid_step_is_refused(
+    settings,
+    languages,
+    caplog,
+):
+    caplog.set_level(logging.INFO, logger="echo_words.pipeline")
+    capped = settings.model_copy(update={"api_daily_cap": 1})
+    cascade = fake_cascade(
+        capped,
+        handles=[
+            FakeHandle([reverse_words(TABLE)], llm_name=OTHER_MODEL),
+            FakeHandle([valid_card("table", context=TABLE[1])]),
+        ],
+        client=FakeDirectClient([reverse_words(DESK)]),
+    )
+    cascade.spend_paid_call(languages["en"])
+    pipeline = forced_reverse_pipeline(cascade)
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(
+            languages["en"],
+            "стол",
+            False,
+            intent="unit",
+            reverse="forced",
+        )
+        await pipeline.join()
+    finally:
+        await pipeline.close()
+
+    assert cascade.broker.direct_calls == []
+    assert (entry.word, entry.card_status) == ("table", ADDED_STATUS)
+    assert not any("the paid model answers" in message for message in caplog.messages)
+
+
+@pytest.mark.parametrize(
+    "client",
+    [FakeDirectClient(['{"verdict": "dog"}']), FakeDirectClient([])],
+    ids=["unreadable", "failed"],
+)
+async def test_a_set_aside_reverse_stands_when_the_paid_model_gives_none(
+    settings,
+    languages,
+    client,
+):
+    """A paid step that gives no usable lookup leaves the reader with the pool's one
+    rather than with an entry that failed."""
+    cascade = fake_cascade(
+        settings,
+        handles=[
+            FakeHandle([reverse_words(TABLE)], llm_name=OTHER_MODEL),
+            FakeHandle([valid_card("table", context=TABLE[1])]),
+        ],
+        client=client,
+    )
+    pipeline = forced_reverse_pipeline(cascade)
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(
+            languages["en"],
+            "стол",
+            False,
+            intent="unit",
+            reverse="forced",
+        )
+        await pipeline.join()
+    finally:
+        await pipeline.close()
+
+    assert cascade.broker.direct_calls == ["gpt-fast"]
+    assert (entry.word, entry.card_status) == ("table", ADDED_STATUS)
+
+
+@pytest.mark.parametrize(
+    ("model", "reverse_pool_models"),
+    [(MAIN_MODEL, (MAIN_MODEL,)), (OTHER_MODEL, ())],
+    ids=["main-model", "empty-setting"],
+)
+async def test_a_reverse_a_main_pool_model_answered_buys_nothing(
+    settings,
+    languages,
+    model,
+    reverse_pool_models,
+):
+    """With no model named, every pool model counts as a main one."""
+    cascade = fake_cascade(
+        settings,
+        handles=[
+            FakeHandle([reverse_words(TABLE)], llm_name=model),
+            FakeHandle([valid_card("table", context=TABLE[1])]),
+        ],
+        client=FakeDirectClient([reverse_words(DESK)]),
+    )
+    pipeline = forced_reverse_pipeline(cascade, reverse_pool_models=reverse_pool_models)
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(
+            languages["en"],
+            "стол",
+            False,
+            intent="unit",
+            reverse="forced",
+        )
+        await pipeline.join()
+    finally:
+        await pipeline.close()
+
+    assert cascade.broker.direct_calls == []
+    assert (entry.word, entry.card_status) == ("table", ADDED_STATUS)
+
+
 async def test_only_typed_input_is_asked_which_language_it_is_in(languages):
     cascade = ScriptedCascade(
         [Completion([typed_card("word", "en")]), Completion([valid_card("word")])],
@@ -4808,6 +4974,68 @@ async def test_a_lookup_the_line_asked_for_is_not_bought_from_a_silent_pool(sett
     assert entry.reverse_offered is True
     # The tab's own answer is the language's last call, and it was answered.
     assert cascade.last_calls["sr"].ok is True
+
+
+@pytest.mark.parametrize(
+    ("model", "reverse_pool_models", "reversed_"),
+    [
+        (OTHER_MODEL, (MAIN_MODEL,), False),
+        (MAIN_MODEL, (MAIN_MODEL,), True),
+        (OTHER_MODEL, (), True),
+    ],
+    ids=["other-model", "main-model", "empty-setting"],
+)
+async def test_a_last_resort_lookup_another_pool_model_answered_is_dropped(
+    settings,
+    languages,
+    caplog,
+    model,
+    reverse_pool_models,
+    reversed_,
+):
+    """The tab's own answer is in hand, so the other model's lookup is not bought over:
+    it counts as none, and the reader can still ask for the lookup with one tap."""
+    caplog.set_level(logging.INFO, logger="echo_words.pipeline")
+    grad = ("grad", "Ovo je lep grad.", "grad")
+    cascade = fake_cascade(
+        settings,
+        handles=[
+            FakeHandle([typed_card("город", "ru")]),
+            FakeHandle([reverse_words(grad, read_as="город")], llm_name=model),
+            FakeHandle([valid_card("grad", context=grad[1])]),
+        ],
+        client=FakeDirectClient([reverse_words(("varoš", "Ovo je mala varoš.", "varoš"))]),
+        attestations=[REFUSED],
+    )
+    pipeline = WordPipeline(
+        cascade,
+        target_lang="Russian",
+        anki=RecordingAnki(Added(7, None)),
+        reverse_pool_models=reverse_pool_models,
+    )
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(languages["sr"], "город", False, **typed())
+        await pipeline.join()
+    finally:
+        await pipeline.close()
+
+    dropped = f"the last-resort reverse lookup for sr is dropped: the pool answer came from {model}"
+    assert cascade.broker.direct_calls == []
+    if reversed_:
+        assert (entry.word, entry.card_status, entry.reverse_offered) == (
+            "grad",
+            ADDED_STATUS,
+            False,
+        )
+        assert dropped not in caplog.messages
+    else:
+        assert (entry.word, entry.card_status, entry.reverse_offered) == (
+            "город",
+            UNATTESTED_STATUS,
+            True,
+        )
+        assert dropped in caplog.messages
 
 
 async def test_input_in_another_of_the_readers_languages_moves_to_its_tab(languages):

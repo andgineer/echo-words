@@ -124,10 +124,11 @@ sense, German «Most» rewritten as «meist».
 
 The reverse lookup is the last resort wherever a model decides. For a lookup the line
 asked for, the tab's own answer is kept in hand while the lookup runs: when the lookup
-finds no target word, or no model answers it, that answer goes on with nothing asked
-twice, and no paid answer is bought over an unusable lookup, because the reader is not
-left with an empty page. A lookup the reader asked for with `!`, or one an alphabet
-decided, has nothing on the page yet, so an answer the pool cannot make usable is bought
+finds no target word, or no model answers it, or only a pool model other than the main
+one does, that answer goes on with nothing asked twice, and no paid answer is bought over
+the lookup, because the reader is not left with an empty page. A lookup the reader asked
+for with `!`, or one an alphabet decided, has nothing on the page yet, so an answer the
+pool cannot make usable, or one a pool model other than the main one wrote, is bought
 from the paid model without asking, and a lookup that finds no word says so rather than
 falling back to a reading the reader has just ruled out.
 
@@ -500,8 +501,8 @@ sample a the first ten answers took under 1.4 s each and the rest 3 to 12 s (med
 
 ### The paid model
 
-A lookup the reader asked for is answered by the paid model when the pool is silent or
-its answer cannot be read, so the same 68 reverse calls were bought from it on
+A lookup the reader asked for is answered by the paid model whenever the pool's main
+model does not answer it, so the same 68 reverse calls were bought from it on
 2026-10-13: gpt-5.6-luna, the model the paid step asks by default. Every call was
 answered and every answer could be read. It is slower: a median of 5.6 s, p90 11.3 s,
 the slowest 20.5 s, none past the 25-second budget.
@@ -607,8 +608,32 @@ accepted the faults of the ordinary article the same reviews found: look-alikes 
 with the Russian sense, recorded with the other card faults in
 `decision-answer-shape.md`, and answers broken past reading — 4 of 78 Serbian reverse
 answers, every one from gemini-flash-lite — which are asked again at the cost of a few
-seconds' wait. The reverse answers of the pool's other models are not accepted: the
-operator decided the same day that a lookup the reader asked for, answered by any pool
-model but the main one, is answered by the paid model instead, inside the daily cap,
-and that a last-resort lookup such a model answered is dropped so the tab's own answer
-stands. That routing is not built yet.
+seconds' wait.
+
+The reverse answers of the pool's other models are not accepted, by the operator's
+decision of the same day. A lookup the reader asked for that any pool model but the main
+one answered is set aside unseen and answered by the paid model instead, inside the
+daily cap; the pool's answer stands only when the paid step is refused, or gives no
+answer that can be read, because an entry that failed is worse than a weaker lookup. A
+last-resort lookup such a model answered counts as no answer: the tab's own answer
+stands, and a refused word is still offered the lookup with one tap. The rating a
+lookup gives the pool model that answered it is unchanged, because the rating is per
+language and shared with the article, where these models' answers are not what was
+measured here.
+
+Which pool models are main is a setting of the app's, gemini-flash-lite alone by
+default, and an empty one keeps every pool model's answer. The model names are
+llmbroker's and change with its catalog; which of them may answer this task is the
+app's choice, so it does not live in llmbroker's catalog.
+
+What it costs the reader: a lookup bought this way waits for the other model's answer
+and then for the paid one. Asking only the main model and stepping up as soon as it
+cannot answer would need llmbroker to take a per-call list of the models it may use,
+which it does not offer; that is an llmbroker release and is built only if the extra
+wait proves noticeable in use.
+
+Not yet observed in use: how many lookups the paid model takes over this way and what
+they cost. The service log names each lookup bought over another pool model's answer
+and each last-resort lookup dropped for the same reason; for a week after the routing
+is first deployed, those lines are counted against the reverse lookups in the log, and
+the share and the paid spend are recorded here.

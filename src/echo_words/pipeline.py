@@ -5,14 +5,14 @@ import logging
 import time
 import unicodedata
 import uuid
-from collections.abc import Callable, Coroutine, Mapping
+from collections.abc import Callable, Collection, Coroutine, Mapping
 from contextlib import aclosing, suppress
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any, Literal, Protocol
 
 from echo_words.anki import Added
-from echo_words.backend import Cascade
+from echo_words.backend import Cascade, Completion
 from echo_words.broker import BackendError
 from echo_words.card import Meaning, Note, ParsedAnswer, ParsedText, ParsedUnit
 from echo_words.events import EventHub
@@ -241,6 +241,7 @@ class WordPipeline:
         audio_timeout: float = 10,
         history_size: int = 50,
         clock: Clock = time.monotonic,
+        reverse_pool_models: Collection[str] = (),
     ) -> None:
         self.cascade = cascade
         self.events = events or EventHub()
@@ -250,6 +251,7 @@ class WordPipeline:
         self.usage = usage
         self.audio_timeout = audio_timeout
         self.target_lang = target_lang
+        self.reverse_pool_models = frozenset(reverse_pool_models)
         # Read on every use: the editor replaces the table while the app runs.
         self.languages = languages
         self._clock = clock
@@ -601,12 +603,52 @@ class WordPipeline:
     async def _reverse_answer(self, job: Job, *, bought: bool) -> ReverseAnswer | None:
         """The reverse lookup of what was typed, or None when no model gave a usable one.
 
-        `bought` is whether an answer the pool cannot make usable is bought from the paid
-        model without asking: only where nothing is on the page for the reader to keep.
+        `bought` is whether the paid model is asked, without the reader being asked first,
+        where the pool's answer cannot be made usable or came from a model that is not a
+        main one: only where nothing is on the page for the reader to keep. Elsewhere such
+        an answer counts as none.
         """
         if self.cascade is None:
             return None
         prompt = build_reverse_prompt(job.language, plain_unit(job.word), self.target_lang)
+        try:
+            answer, pool = await self._pool_reverse(self.cascade, job, prompt, bought=bought)
+        except BackendError:
+            return None
+        model = getattr(pool, "llm_name", None)
+        main = not self.reverse_pool_models or model in self.reverse_pool_models
+        # A silent pool was stepped up inside that call, and a lookup is bought once.
+        if getattr(pool, "paid", False) or (answer is not None and main):
+            return answer
+        if not bought:
+            if answer is not None:
+                logger.info(
+                    "the last-resort reverse lookup for %s is dropped:"
+                    " the pool answer came from %s",
+                    job.language.code,
+                    model or "unnamed",
+                )
+            return None
+        if self._paid_refusal(job.language) is not None:
+            return answer
+        if answer is not None:
+            logger.info(
+                "the paid model answers the reverse lookup for %s: the pool answer came from %s",
+                job.language.code,
+                model or "unnamed",
+            )
+        paid = await self._paid_reverse(self.cascade, job, prompt)
+        # A set-aside pool answer is still better than an entry that failed.
+        return answer if paid is None else paid
+
+    async def _pool_reverse(
+        self,
+        cascade: Cascade,
+        job: Job,
+        prompt: str,
+        *,
+        bought: bool,
+    ) -> tuple[ReverseAnswer | None, Completion]:
         parts: list[str] = []
 
         async def reset() -> None:
@@ -615,31 +657,28 @@ class WordPipeline:
         def read(answer: str) -> ReverseAnswer | None:
             return parse_reverse(answer, job.language, self.target_lang)
 
+        pool = cascade.stream_completion(
+            prompt,
+            job.language,
+            trace_id=f"{job.entry_id}-reverse",
+            on_reset=reset,
+            usable=lambda answer: read(answer) is not None,
+            # A silent pool steps a call up to the paid model by itself, and a lookup
+            # that fails beside an answer in hand is not the language's last call.
+            pool_only=not bought,
+            reported=bought,
+        )
+        async with aclosing(pool):
+            async for delta in pool:
+                parts.append(delta)
+        answer = read("".join(parts))
+        await pool.record_quality(1.0 if answer is not None else 0.0)
+        return answer, pool
+
+    async def _paid_reverse(self, cascade: Cascade, job: Job, prompt: str) -> ReverseAnswer | None:
+        parts: list[str] = []
         try:
-            pool = self.cascade.stream_completion(
-                prompt,
-                job.language,
-                trace_id=f"{job.entry_id}-reverse",
-                on_reset=reset,
-                usable=lambda answer: read(answer) is not None,
-                # A silent pool steps a call up to the paid model by itself, and a lookup
-                # that fails beside an answer in hand is not the language's last call.
-                pool_only=not bought,
-                reported=bought,
-            )
-            async with aclosing(pool):
-                async for delta in pool:
-                    parts.append(delta)
-            answer = read("".join(parts))
-            await pool.record_quality(1.0 if answer is not None else 0.0)
-            # A silent pool was stepped up inside that call, and a lookup is bought once.
-            stepped_up = getattr(pool, "paid", False)
-            if answer is not None or not bought or stepped_up:
-                return answer
-            if self._paid_refusal(job.language) is not None:
-                return None
-            parts.clear()
-            paid = self.cascade.stream_paid(
+            paid = cascade.stream_paid(
                 prompt,
                 job.language,
                 trace_id=f"{job.entry_id}-reverse-paid",
@@ -649,7 +688,7 @@ class WordPipeline:
                     parts.append(delta)
         except BackendError:
             return None
-        return read("".join(parts))
+        return parse_reverse("".join(parts), job.language, self.target_lang)
 
     async def _reversed(self, job: Job, entry: Entry, answer: ReverseAnswer) -> Job:
         """The entry and its job as the source-language wording found for what was typed.

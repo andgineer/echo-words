@@ -197,6 +197,7 @@ def _lifespan(settings: Settings):
             dictionary=Wiktionary().documents,
             usage=Wikipedia().usage,
             audio_timeout=settings.audio_timeout,
+            reverse_pool_models=settings.reverse_pool_models,
         )
         app.state.submissions = SubmissionRegistry()
         app.state.pipeline.start()

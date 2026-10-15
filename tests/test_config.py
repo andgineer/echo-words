@@ -18,6 +18,7 @@ def test_defaults_match_the_specification():
     assert settings.api_daily_cap == 100
     assert settings.detail_model == "gpt"
     assert settings.detail_params == {"reasoning_effort": "none", "service_tier": "priority"}
+    assert settings.reverse_pool_models == ["google-gemini-3.5-flash-lite"]
     assert settings.anki_sync is True
     assert settings.audio_timeout == 10
 
@@ -55,6 +56,21 @@ def test_the_deeper_articles_parameters_are_set_as_one_json_object(monkeypatch):
     settings = Settings(_env_file=None)
     assert settings.detail_model == "gpt-mini"
     assert settings.detail_params == {"reasoning_effort": "low"}
+
+
+@pytest.mark.parametrize(
+    ("value", "models"),
+    [
+        (
+            "google-gemini-3.5-flash-lite, groq-gpt-oss-120b",
+            ["google-gemini-3.5-flash-lite", "groq-gpt-oss-120b"],
+        ),
+        ("", []),
+    ],
+)
+def test_the_reverse_pool_models_are_one_comma_separated_list(monkeypatch, value, models):
+    monkeypatch.setenv("ECHOWORDS_REVERSE_POOL_MODELS", value)
+    assert Settings(_env_file=None).reverse_pool_models == models
 
 
 def test_the_data_dir_env_var_alone_moves_its_children(monkeypatch, tmp_path: Path):

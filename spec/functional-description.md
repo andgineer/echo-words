@@ -70,9 +70,10 @@ The four requirements every design decision is weighed against:
   pool** streams (many free, rate-limited models with automatic
   failover) and takes every request, while a **paid frontier model**
   streams through llmbroker's *direct client* behind it. The paid step is
-  reached on latency — the pool did not finish the answer inside its
-  attempt budget — and on the two things the user asks the better model
-  for by name: a deeper analysis, and rebuilding a card. The free pool is un-metered
+  reached on latency (the pool did not finish the answer inside its
+  attempt budget), on a reverse lookup asked before anything else that the
+  pool's main model did not answer, and on the two things the user asks the
+  better model for by name: a deeper analysis, and rebuilding a card. The free pool is un-metered
   and the paid step is capped and optional, so **no metered API is ever
   required**. How good each step is per language was settled by a
   benchmark that ran *before* the build (`spec/decision-llm-backend.md`).
@@ -207,7 +208,8 @@ The four requirements every design decision is weighed against:
    alone still takes a rare word of the tab spelled like a common target word
    for the target's. The selected language's answer is kept in hand meanwhile
    and is the floor: when the lookup finds no target word, or no model answers
-   it, that answer goes on exactly as it would have, with nothing asked twice.
+   it, or only a pool model other than the main one does, that answer goes on
+   exactly as it would have, with nothing asked twice.
 
    **Where the answer names another language the reader has a tab for**, the
    entry moves to that tab and is asked again there, once, by that language's
@@ -266,9 +268,16 @@ The four requirements every design decision is weighed against:
    because then there is nothing on the page and nothing to judge.
    A reverse lookup asked before anything else is the same case and takes the
    same step: an answer the pool cannot make usable is bought from the paid
-   model without asking, because nothing is on the page yet. A lookup asked
-   because the answer named the target language is not: the selected
-   language's answer is in hand, so it buys nothing.
+   model without asking, because nothing is on the page yet. **Which pool model
+   answered a lookup matters too**: the pool's other models card wrong words
+   where its main one does not, so a lookup asked before anything else that one
+   of them answered is set aside unseen and bought from the paid model the same
+   way. The set-aside answer stands only when the paid step is unavailable or
+   gives no usable lookup. A lookup asked because the answer named the target language
+   buys nothing: the selected language's answer is in hand, so a lookup another
+   pool model answered counts as none, and a refused word is still offered the
+   target reading with one tap. Which pool models are main is the operator's
+   setting; by default it is the one model the lookup was measured on.
    **Nothing already written is cleared to make room for a step that has
    produced nothing yet.** A paid answer reaches the page only once it has
    arrived whole and can be read, and it replaces what was there in one
@@ -859,13 +868,15 @@ same prompt is not how a weak answer gets fixed.
   once.
 - **Cost**: **no metered API is ever required.** Every answer starts on
   the free-tier `llmbroker` model pool, which is un-metered. A paid
-  per-token model is reached in exactly two situations, both bounded by a
+  per-token model is reached in three situations, all bounded by a
   daily cap (`ECHOWORDS_API_DAILY_CAP`): when the pool fails to deliver a
-  complete and usable answer within its attempt budget, and when the user
-  explicitly asks for a deeper analysis. With no paid key configured, or with the cap spent,
-  both simply do not happen — the pool timing out then reports a failure
-  instead, and the deeper analysis says it is unavailable. The design
-  must run fully on the un-metered pool.
+  complete and usable answer within its attempt budget, when a reverse
+  lookup asked before anything else was not answered by the pool's main
+  model, and when the user explicitly asks for a deeper analysis. With no
+  paid key configured, or with the cap spent, none of them happens — the
+  pool timing out then reports a failure instead, a reverse lookup another
+  pool model answered keeps that answer, and the deeper analysis says it is
+  unavailable. The design must run fully on the un-metered pool.
 - **Safety**: both LLM backends are plain text→text API calls — no
   shell, no filesystem, and no arbitrary network reach — so a prompt
   hijacked by malicious input has nothing to exfiltrate with: the

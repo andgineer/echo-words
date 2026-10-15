@@ -1,10 +1,10 @@
 """Application settings, read from the environment with the ``ECHOWORDS_`` prefix."""
 
 from pathlib import Path
-from typing import Literal, Self
+from typing import Annotated, Literal, Self
 
 from pydantic import Field, ValidationInfo, field_validator, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from echo_words.languages import DEFAULT_TARGET_LANGUAGE
 
@@ -53,6 +53,10 @@ class Settings(BaseSettings):
     detail_params: dict[str, str | int | float | bool] = Field(
         default_factory=lambda: {"reasoning_effort": "none", "service_tier": "priority"},
     )
+    # The pool models whose reverse lookups are kept; empty keeps every model's.
+    reverse_pool_models: Annotated[list[str], NoDecode] = Field(
+        default_factory=lambda: ["google-gemini-3.5-flash-lite"],
+    )
 
     ankiweb_user: str = ""
     ankiweb_password: str = ""
@@ -69,6 +73,13 @@ class Settings(BaseSettings):
         # The documented default is the ISO code, while the LLM contract requires
         # a display name. Other target languages may be configured by display name.
         return DEFAULT_TARGET_LANGUAGE if value == "ru" else value
+
+    @field_validator("reverse_pool_models", mode="before")
+    @classmethod
+    def _comma_separated(cls, value: object) -> object:
+        if isinstance(value, str):
+            return [name.strip() for name in value.split(",") if name.strip()]
+        return value
 
     @field_validator("languages_config", "llmbroker_home", mode="before")
     @classmethod

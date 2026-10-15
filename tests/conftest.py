@@ -360,6 +360,8 @@ def settings(languages_file: Path, static_dir: Path, tmp_path: Path) -> Settings
         static_dir=static_dir,
         anki_sync=False,
         provider_keys_file=tmp_path / "no-keys.env",
+        # The fake pool's own model stands for the main one, so a lookup it answers is kept.
+        reverse_pool_models=["pool-model"],
     )
 
 
