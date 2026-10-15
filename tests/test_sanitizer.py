@@ -32,3 +32,40 @@ def test_a_table_tag_carrying_an_attribute_is_escaped():
 
 def test_an_unclosed_table_is_closed_in_order():
     assert sanitize_html("<table><tr><td>x") == "<table><tr><td>x</td></tr></table>"
+
+
+def test_markdown_bold_reads_as_bold():
+    assert sanitize_html("**x**") == "<b>x</b>"
+    assert sanitize_html("**Sve mi se čini da …** x") == "<b>Sve mi se čini da …</b> x"
+
+
+def test_an_unclosed_markdown_bold_stays_literal_until_its_pair_arrives():
+    assert sanitize_html("word **bo") == "word **bo"
+    assert sanitize_html("word **bold*") == "word **bold*"
+    assert sanitize_html("word **bold**") == "word <b>bold</b>"
+
+
+def test_a_lone_asterisk_survives():
+    assert sanitize_html("от *or-* и *prъzъrcъ") == "от *or-* и *prъzъrcъ"
+    assert sanitize_html("a ** b") == "a ** b"
+
+
+def test_markdown_bold_does_not_span_a_line_break():
+    assert sanitize_html("**one\ntwo**") == "**one\ntwo**"
+
+
+def test_markdown_bold_keeps_the_lone_asterisks_inside_it():
+    assert sanitize_html("1. **Артикль *the***: x") == "1. <b>Артикль *the*</b>: x"
+
+
+def test_a_markdown_bold_nested_in_another_is_read():
+    assert sanitize_html("2. **Предлог **on****: x") == "2. <b>Предлог <b>on</b></b>: x"
+
+
+def test_a_bracket_doubling_a_bold_tag_is_dropped():
+    assert sanitize_html("<<b>x</b>> y") == "<b>x</b> y"
+
+
+def test_a_bracket_away_from_a_bold_tag_stays():
+    assert sanitize_html("a < b") == "a &lt; b"
+    assert sanitize_html("<b>x</b> > y") == "<b>x</b> &gt; y"

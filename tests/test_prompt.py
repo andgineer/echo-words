@@ -295,6 +295,35 @@ def test_a_string_value_missing_its_opening_quote_is_still_read(languages):
     )
 
 
+def test_a_string_value_in_typographic_quotes_is_read(languages):
+    raw = (
+        '{"verdict": "word", "read_as": "мир", "equivalents": [{"word": "mir", '
+        '"example": „Posle dugih pregovora konačno je sklopljen mir između dve zemlje.”, '
+        '"form": "mir"}, {"word": "svet", '
+        '"example": „Ovaj čovek želi da promeni svet na bolje.”, "form": "svet"}]}'
+    )
+
+    answer = parse_reverse(raw, languages["sr"], "Russian")
+
+    assert answer == ReverseAnswer(
+        "word",
+        "мир",
+        (
+            Equivalent("mir", "Posle dugih pregovora konačno je sklopljen mir između dve zemlje."),
+            Equivalent("svet", "Ovaj čovek želi da promeni svet na bolje."),
+        ),
+    )
+
+
+def test_a_straight_quoted_value_holding_typographic_quotes_is_read_as_written(languages):
+    sentence = "Na zidu je pisalo „mir” velikim slovima."
+    raw = _reverse(_equivalent("mir", sentence, "mir"), read_as="мир")
+
+    answer = parse_reverse(raw, languages["sr"], "Russian")
+
+    assert answer == ReverseAnswer("word", "мир", (Equivalent("mir", sentence),))
+
+
 def test_a_bare_literal_is_not_taken_for_a_missing_quote():
     # Repairing the note must leave the literal before it alone.
     assert parse_attestation('{"used": true, "note": rare but attested"}') == Verdict(True)

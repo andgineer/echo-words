@@ -1,5 +1,6 @@
 """Server-side sanitizing for the small HTML subset accepted from the LLM."""
 
+import re
 from html import escape
 
 # Matched as whole literals, so no tag can ever carry an attribute — the answer
@@ -8,6 +9,20 @@ _ALLOWED = ("b", "i", "table", "tr", "td")
 _OPEN_TAGS = {f"<{name}>": name for name in _ALLOWED}
 _CLOSE_TAGS = {f"</{name}>": name for name in _ALLOWED}
 _TAGS = (*_OPEN_TAGS, *_CLOSE_TAGS)
+# Only a doubled pair is bold: a lone `*` is an etymology's reconstructed form
+# (`*or-*`) or an italic the answer was told not to write, and both print as written.
+_MARKDOWN_BOLD = re.compile(
+    r"(?<!\*)\*\*(?=\S)((?:[^*\n]|(?<!\*)\*(?!\*))+?\*?)(?<=\S)\*\*(?!\*(?!\*))",
+)
+_STRAY_BRACKET = re.compile(r"<(?=<b>)|(?<=</b>)>")
+
+
+def normalize_emphasis(text: str) -> str:
+    """Write Markdown bold as `<b>` and drop a bracket doubling a bold tag's own."""
+    # Repeated, so a pair nested in another is read from the inside out.
+    while (bolded := _MARKDOWN_BOLD.sub(r"<b>\1</b>", text)) != text:
+        text = bolded
+    return _STRAY_BRACKET.sub("", text)
 
 
 def sanitize_html(text: str) -> str:
@@ -17,6 +32,7 @@ def sanitize_html(text: str) -> str:
     important during streaming: a ``<b>`` split between deltas is escaped while
     incomplete, then becomes an allowed tag in the next replacement update.
     """
+    text = normalize_emphasis(text)
     result: list[str] = []
     stack: list[str] = []
     position = 0

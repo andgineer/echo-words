@@ -40,6 +40,8 @@ _WORD_TOKEN = re.compile(r"[^\W\d_]+", re.UNICODE)
 # A model can drop a string value's opening quote («"example": Potpisali su…"»), and
 # asked again it drops it again.
 _UNQUOTED_VALUE = re.compile(r'(":\s*)(?!true\b|false\b|null\b)(?=[^\W\d_])')
+# Or delimit one with the quotes its sentence would be printed in («"example": „…”»).
+_TYPOGRAPHIC_VALUE = re.compile(r'(":\s*)[„“]([^"„“”\n]*)[”“]')
 # The deeper article is read on a phone, right after the short one. Asked for "every
 # sense, in depth" and given no bound, it came back as a dissertation; this is the
 # length a reader spends a couple of minutes on, and the prompt names it.
@@ -631,12 +633,21 @@ def _plain(value: Any) -> str:
 
 
 def json_object(raw: str) -> dict | None:
-    """The JSON object the text opens with, read past a string value missing its opening quote."""
+    """The JSON object the text opens with, read past a string value's missing or curly quotes.
+
+    Each repair is tried only once the text has failed as written, so a well-formed
+    string that merely contains „…” is never rewritten.
+    """
     start = raw.find("{")
     if start < 0:
         return None
     text = raw[start:]
-    for candidate in (text, _UNQUOTED_VALUE.sub(r'\1"', text)):
+    candidates = (
+        text,
+        _UNQUOTED_VALUE.sub(r'\1"', text),
+        _TYPOGRAPHIC_VALUE.sub(r'\1"\2"', text),
+    )
+    for candidate in candidates:
         try:
             value, _consumed = json.JSONDecoder().raw_decode(candidate)
         except ValueError:

@@ -17,7 +17,7 @@ from echo_words.languages import (
     sentence_is_source_language,
     validate_word,
 )
-from echo_words.sanitizer import sanitize_html
+from echo_words.sanitizer import normalize_emphasis, sanitize_html
 from echo_words.segments import Segment, fill_text_segments, parse_component_segments
 
 MAX_EXAMPLES_PER_MEANING = 2
@@ -336,7 +336,7 @@ def _parse_example(value: Any, request: "_Request") -> Example | None:
         return None
     translation = _plain(value.get("translation"))
     highlighted_raw = value.get("highlighted")
-    marked = _plain(highlighted_raw) if isinstance(highlighted_raw, str) else ""
+    marked = normalize_emphasis(_plain(highlighted_raw)) if isinstance(highlighted_raw, str) else ""
     # The sentence is the highlight without its marks, so no other markup may appear
     # there: sanitizing it away would leave the escaped residue inside the sentence.
     if not translation or not marked or any(char in _BOLD_TAG.sub("", marked) for char in "<>"):

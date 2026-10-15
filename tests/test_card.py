@@ -716,6 +716,51 @@ def test_a_sentence_marked_word_by_word_is_marked_again_around_the_unit(language
     assert parsed.note.meaning.examples[0].highlighted == "The <b>bank</b> opens."
 
 
+def test_a_bracket_doubling_the_unit_mark_is_dropped_from_the_card():
+    bulgarian = Language(
+        code="bg",
+        name="Български",
+        deck="Bulgarian::Vocabulary",
+        script="cyrillic",
+    )
+    sentence = example()
+    sentence.update(highlighted="<<b>разказвам</b>> ти интересна история.")
+
+    parsed = parse_answer_payload(
+        payload(word="разказвам", meanings=[meaning(examples=[sentence])]),
+        "разказвам",
+        bulgarian,
+        unit_intent=True,
+    )
+
+    assert isinstance(parsed, ParsedUnit)
+    assert parsed.note.meaning.examples[0] == Example(
+        "разказвам ти интересна история.",
+        "Перевод.",
+        "<b>разказвам</b> ти интересна история.",
+        "___ ти интересна история.",
+    )
+
+
+def test_markdown_bold_in_an_example_is_the_unit_mark(languages):
+    sentence = example()
+    sentence.update(highlighted="The **bank** opens.")
+
+    parsed = parse_answer_payload(
+        payload(meanings=[meaning(examples=[sentence])]),
+        "bank",
+        languages["en"],
+    )
+
+    assert isinstance(parsed, ParsedUnit)
+    assert parsed.note.meaning.examples[0] == Example(
+        "The bank opens.",
+        "Перевод.",
+        "The <b>bank</b> opens.",
+        "The ___ opens.",
+    )
+
+
 def test_markup_other_than_the_unit_mark_makes_the_example_unusable(languages):
     varied = example()
     varied["highlighted"] = "<script>x</script>The <b>bank</b> opens."
