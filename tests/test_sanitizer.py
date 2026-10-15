@@ -1,6 +1,15 @@
+import json
+from pathlib import Path
+
 import pytest
 
 from echo_words.sanitizer import sanitize_html
+
+# Article lines as models wrote them in recorded bench answers, with what the reader is shown;
+# every clause of the bold rule that changes a recorded answer changes one of these lines.
+_RECORDED_LINES = json.loads(
+    (Path(__file__).parent / "data" / "markdown_bold_recorded.json").read_text(encoding="utf-8")
+)
 
 
 def test_stray_markup_characters_are_escaped():
@@ -71,6 +80,7 @@ def test_a_bracket_doubling_a_bold_tag_is_dropped():
 def test_a_bracket_away_from_a_bold_tag_stays():
     assert sanitize_html("a < b") == "a &lt; b"
     assert sanitize_html("<b>x</b> > y") == "<b>x</b> &gt; y"
+    assert sanitize_html("<<i>x</i>> y") == "&lt;<i>x</i>&gt; y"
 
 
 def test_a_markdown_bold_never_crosses_an_allowed_tag():
@@ -83,6 +93,7 @@ def test_a_markdown_bold_never_crosses_an_allowed_tag():
     assert sanitize_html("<td>**x</td><td>y**</td>") == "<td>**x</td><td>y**</td>"
     assert sanitize_html("**x <i>y**</i>") == "**x <i>y**</i>"
     assert sanitize_html("<i>**x</b> y**</i>") == "<i>**x&lt;/b&gt; y**</i>"
+    assert sanitize_html("**a <i>b</b> c** d</i>") == "**a <i>b&lt;/b&gt; c** d</i>"
     assert sanitize_html("**a <i>**b c****</i>") == "**a <i><b>b c</b>**</i>"
     assert sanitize_html("**a <i>b***c**</i>") == "**a <i>b***c**</i>"
 
@@ -119,3 +130,12 @@ def test_a_bracket_beside_a_markdown_bold_stays():
 )
 def test_markdown_bold_keeps_the_recorded_shapes(text, html):
     assert sanitize_html(text) == html
+
+
+@pytest.mark.parametrize(
+    "recorded",
+    _RECORDED_LINES,
+    ids=[f"{line['run']} {line['item']} line {line['line']}" for line in _RECORDED_LINES],
+)
+def test_a_recorded_article_line_reads_as_the_reader_sees_it(recorded):
+    assert sanitize_html(recorded["text"]) == recorded["html"]

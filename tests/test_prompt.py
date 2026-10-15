@@ -16,6 +16,7 @@ from echo_words.prompt import (
     build_prompt,
     build_reverse_prompt,
     extract_answer,
+    json_object,
     parse_attestation,
     parse_reverse,
     parse_submission_language,
@@ -313,6 +314,17 @@ def test_a_string_value_in_typographic_quotes_is_read(languages):
             Equivalent("svet", "Ovaj čovek želi da promeni svet na bolje."),
         ),
     )
+
+
+@pytest.mark.parametrize(
+    ("raw", "example"),
+    [
+        ('{"example": “Peace came at last.”}', "Peace came at last."),
+        ('{"example": „Endlich Frieden.“}', "Endlich Frieden."),
+    ],
+)
+def test_a_string_value_in_english_or_german_typographic_quotes_is_read(raw, example):
+    assert json_object(raw) == {"example": example}
 
 
 def test_a_straight_quoted_value_holding_typographic_quotes_is_read_as_written(languages):
