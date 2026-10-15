@@ -742,6 +742,19 @@ def test_a_bracket_doubling_the_unit_mark_is_dropped_from_the_card():
     )
 
 
+def test_a_bracket_the_answer_wrote_beside_a_markdown_bold_is_kept_on_the_card(languages):
+    # Kept, it is a `<` of the sentence, and that leaves the example unusable.
+    arrow = example()
+    arrow.update(highlighted="The 2 <**bank** opens.")
+
+    with pytest.raises(CardParseError, match="no usable meaning"):
+        parse_answer_payload(
+            payload(meanings=[meaning(examples=[arrow])]),
+            "bank",
+            languages["en"],
+        )
+
+
 def test_markdown_bold_in_an_example_is_the_unit_mark(languages):
     sentence = example()
     sentence.update(highlighted="The **bank** opens.")

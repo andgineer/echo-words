@@ -1,3 +1,5 @@
+import pytest
+
 from echo_words.sanitizer import sanitize_html
 
 
@@ -69,3 +71,40 @@ def test_a_bracket_doubling_a_bold_tag_is_dropped():
 def test_a_bracket_away_from_a_bold_tag_stays():
     assert sanitize_html("a < b") == "a &lt; b"
     assert sanitize_html("<b>x</b> > y") == "<b>x</b> &gt; y"
+
+
+def test_a_markdown_bold_never_crosses_an_allowed_tag():
+    table = "<table><tr><td>**x*</td><td>**y**</td></tr></table>"
+    assert sanitize_html(table) == "<table><tr><td>**x*</td><td><b>y</b></td></tr></table>"
+    assert sanitize_html("<i>**x</i> y**") == "<i>**x</i> y**"
+    assert sanitize_html("**<b>Bank</b>**") == "<b><b>Bank</b></b>"
+    assert sanitize_html("**<i>x</i>**") == "<b><i>x</i></b>"
+
+
+def test_an_unclosed_markdown_bold_does_not_pair_with_one_after_punctuation():
+    assert sanitize_html("Слово **ništa* в родительном падеже (**ničega**)") == (
+        "Слово **ništa* в родительном падеже (<b>ničega</b>)"
+    )
+
+
+def test_a_bracket_beside_a_markdown_bold_stays():
+    assert sanitize_html("*mirъ* <**мир**") == "*mirъ* &lt;<b>мир</b>"
+    assert sanitize_html("**мир**> *mirъ*") == "<b>мир</b>&gt; *mirъ*"
+
+
+@pytest.mark.parametrize(
+    ("text", "html"),
+    [
+        ("рачун**а**", "рачун<b>а</b>"),
+        ("**\\*iti**", "<b>\\*iti</b>"),
+        ("*vъditi* и *rač‑*, далее **водити**", "*vъditi* и *rač‑*, далее <b>водити</b>"),
+        ("***x***", "***x***"),
+        ("***x**", "***x**"),
+        ("2 ** 3", "2 ** 3"),
+        ("x ** y ** z", "x ** y ** z"),
+        ("** x **", "** x **"),
+        ("* **x** and *y*", "* <b>x</b> and *y*"),
+    ],
+)
+def test_markdown_bold_keeps_the_recorded_shapes(text, html):
+    assert sanitize_html(text) == html

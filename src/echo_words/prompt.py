@@ -633,11 +633,7 @@ def _plain(value: Any) -> str:
 
 
 def json_object(raw: str) -> dict | None:
-    """The JSON object the text opens with, read past a string value's missing or curly quotes.
-
-    Each repair is tried only once the text has failed as written, so a well-formed
-    string that merely contains „…” is never rewritten.
-    """
+    """The JSON object the text opens with, read past a string value's missing or curly quotes."""
     start = raw.find("{")
     if start < 0:
         return None
