@@ -47,6 +47,122 @@ the code and does not apply to those.
 
 ---
 
+## How anything is implemented — the orchestration loop
+
+**Every change to the product goes through this loop, whatever its size**:
+code under `src/` and `webapp/`, tests, prompts and their parsers,
+`experiments/one_note_bench.py`, `tasks.py`. The session the operator
+talks to is the **orchestrator**. It never writes product code itself: it
+briefs fresh agents, verifies and triages what they report, and decides
+when the work has converged. Editing a spec or a plan only to record an
+operator decision is not implementation and is done directly.
+
+A **fresh agent** inherits none of the orchestrator's context: in Claude
+Code, the Agent tool with a general-purpose agent and `model: opus`.
+Never `fork` (it inherits context), never a cheaper model (a blocked Opus
+is a reason to stop and ask), never `isolation: worktree` (the recorded
+bench runs under `experiments/.bench*/` are git-ignored and a worktree
+lacks them). Agents run one at a time in this checkout. The unit of work
+is one plan step, or one request where there is no plan; record its base
+commit before round 1. Tell the operator in one line which agent is
+running and why, each time one starts.
+
+### 1. Implement
+
+Brief a fresh **implementer** with the plan file and the step: do only
+this step, as this file requires; write the tests the step lists; where
+the step touches the model path, run its measurement (a free-pool bench
+follows the quota rules below; a paid run is money, so it comes back to
+the orchestrator to ask the operator); run `inv pre` until it converges
+and `inv test` until green; commit locally; report the commits, the gate
+results, the measurement's state, and anything in the plan found wrong or
+ambiguous. When a bench ran, a separate fresh agent reviews its packet
+semantically before the step goes to review.
+
+### 2. Review
+
+Brief a fresh **reviewer** that wrote none of the code with the plan step,
+the commit range `base..HEAD` and this file. It reads and runs; it never
+edits or commits. It checks that the diff does what the step says and
+nothing more; correctness, each finding naming a concrete input or state
+and the wrong result it produces, verified by reading the code or running
+a test, never speculated; conformance to the functional description and
+the decision specs, and that the specs the step names were updated to
+current state without implementation detail; this file's rules (tests
+shipped with the code, browser-only behaviour in an e2e test, imports,
+comments, no re-export shims, no real network in tests); and, where the
+model path changed, that the bench ran and its packet was reviewed by an
+agent that did not run it.
+
+From round 2 it also gets the findings fixed so far, to confirm each one,
+and the **settled list** — findings rejected with their reasons, re-raised
+only with new evidence. It reports one item per finding: id; severity
+(`must-fix`: wrong behaviour, a spec or rule violated, a missing test, a
+failed gate; `should-fix`; `nit`); component (the file or module); the
+failure scenario; the evidence; and whether it is a regression from a
+fix, missed earlier, or new.
+
+### 3. Triage — the orchestrator
+
+Verify every finding yourself — read the code, run the test — before
+deciding; never accept or reject on the reviewer's word. Then:
+
+- **fix**: verified, and inside the step or a rule of this file;
+- **reject**: not reproducible, outside the step, contradicting a decision
+  spec, an accepted limitation, or preference. The reason joins the settled
+  list. A real product defect outside the step goes into the final report;
+- **operator**: needs money, a push or a deploy, or a change to a decision
+  spec or a project invariant. Collected for the final report, never
+  decided here.
+
+A `nit` never starts a round by itself: it rides with a round that happens
+anyway, or it is dropped. Keep a ledger in the session scratchpad, not in
+the repo: round × finding × severity × component × verdict.
+
+### 4. Fix
+
+Brief a fresh **fixer** with the plan step, the commit range and only the
+findings triaged **fix**, each with its evidence: fix these and nothing
+else; add a test that fails without the fix wherever the finding is
+behavioural; `inv pre` and `inv test` to green; commit locally; report
+what changed per finding. A fix that changes what the model is asked
+re-opens the step's measurement. Then back to 2, with a new reviewer.
+
+### Converged, and done
+
+Converged: a review round yields no verified `must-fix` and no `should-fix`
+triaged **fix**. The step is done only once the orchestrator has itself run
+`inv pre` and `inv test` green on the final commit, the measurement and
+its fresh review are finished, and the plan and specs are updated as the
+step says. Then report to the operator — rounds and verified findings per
+round in one table, and every **operator** item — and ask to push. Local
+commits need no approval; a push or a deploy always does.
+
+### Not converging — stop and come back
+
+Stop the loop and return to the operator when any of these holds:
+
+- a round's verified `must-fix` count is not lower than the round before,
+  twice running;
+- one component draws verified `must-fix` findings in three rounds;
+- a finding fixed in one round comes back in a later one;
+- the step would need a second bench run (the free quota does not stretch
+  to re-measuring every fix);
+- five review rounds pass without convergence.
+
+Before returning, find the cause in the ledger: tally findings by component
+and category across rounds and name the hotspot. Say which it is: the plan
+is ambiguous or contradicts itself; two specs or invariants pull against
+each other; the mechanism costs more than its value; a test seam is
+missing; or reviewers keep re-raising settled points. Then propose
+specific simplifications — of the plan, of the product's behaviour, or of
+a project invariant — each described as what the person using the app
+sees, side by side with its cost, with one recommendation. The right cut
+is usually the hotspot itself: the component that keeps producing
+findings is removed or narrowed, not patched a sixth time.
+
+---
+
 ## Key commands
 
 | Task | Command |
