@@ -48,7 +48,9 @@ def _markdown_bold(text: str) -> str:
             # the walk escapes, would leave the walk escaping the tags around it.
             if tags and tags[-1] == _CLOSE_TAGS[value]:
                 tags.pop()
-                openers = [opener for opener in openers if opener[1] <= len(tags)]
+                # Openers stack in depth order, so the ones inside the closed tag are on top.
+                while openers and openers[-1][1] > len(tags):
+                    openers.pop()
             else:
                 openers.clear()
         elif len(value) >= len(_BOLD):
