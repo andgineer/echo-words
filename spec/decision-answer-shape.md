@@ -77,6 +77,41 @@ has attributes. JSON sentence strings use only the allowed emphasis and blank
 marker required for the four cards. The sanitizer matches whole literals, so
 the model has no general HTML surface.
 
+### Markdown bold reads as bold
+
+The prompt asks for bold as a tag, and some models write it the Markdown way
+anyway, the words between doubled asterisks. The pool's main model
+(gemini-3.5-flash-lite) and the paid model never do. The pool's other models do
+in 281 articles of the 6,880 recorded bench answers: gpt-oss-120b 117,
+nemotron-3-ultra 99, glm-4.7-flash 45, laguna-s-2.1 20. Those models write about
+one production answer in seven, so about one article in thirty would show the
+reader its asterisks.
+
+Such a pair is shown as bold, in the article and in a card's example alike, on
+rules the reader can rely on:
+
+- Only a doubled pair is bold. A single asterisk prints as written, because it is
+  how an etymology writes a reconstructed form (`*or-*`) or an answer writes an
+  italic.
+- A pair still open prints as written — while the answer streams, until its
+  closing pair arrives, and for good if it never does.
+- A bold never crosses a table cell or another tag, and never spans a line break.
+- A mark left open never pairs with a later bold across punctuation: in
+  `**ništa* … (**ničega**)` only `ničega` is bold.
+- A bold may hold an italic or another bold.
+- A bracket the answer wrote beside a bold stays (`*mirъ* <**мир**`). A bracket
+  doubling the answer's own bold tag (`<<b>разказвам</b>>`) is dropped, in the
+  article and in a card's example.
+
+Measured on 2026-10-15 by re-reading all 6,880 recorded answers through this
+reading, with no model called. All 281 articles show bold where they showed
+asterisks, and in none of them is a word added, lost or moved. A fresh reviewer
+read all 1,170 new bold spans, and every one is what the model meant. One recorded
+article leaves a pair unclosed, and it prints as written. The doubled bracket
+occurred once, on a Bulgarian card that used to drop the example for it; the
+example is now kept, and the card is better for it, because the two examples it
+carded instead both put the verb in the wrong person.
+
 ### Two prompts, because half of one of them could never apply
 
 A chip tap was asked with 8,787 characters, of which the text branch, the

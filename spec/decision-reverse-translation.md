@@ -223,6 +223,13 @@ every recorded reverse answer and 4,840 recorded answers of other benches with t
 tolerance changed only the broken ones, each to its right reading. The same break was
 found once in a recorded article answer, which the article's own reader still refuses.
 
+An answer is read, too, when it sets a string value between typographic quotes („…”,
+“…”), the way its sentence would be printed, instead of straight ones. That reading is
+tried last, after the answer as written and the missing-quote reading, so a
+straight-quoted string that merely contains „…” is read as written. Of the 6,880
+recorded answers one carries the break, a Serbian answer for мир, and reading it changed
+no other answer.
+
 ## Measured on the free pool, Russian target
 
 The fixtures were fixed before each run, each Russian wording asked into English,
@@ -424,8 +431,8 @@ On the workhorse's answers:
 | English, wrong chips | 4 of 22 | 1 of 19 | 2 of 20 |
 | German, first card right | 13 of 15 | 9 of 9 | 12 of 13 |
 | German, wrong chips | 3 of 19 | 1 of 11 | 2 of 17 |
-| Serbian, first card right | 15 of 16 | 13 of 13 | 11 of 12 |
-| Serbian, wrong chips | 3 of 11 | 3 of 12 | 0 of 6 |
+| Serbian, first card right | 15 of 16 | 13 of 13 | 12 of 13 |
+| Serbian, wrong chips | 3 of 11 | 3 of 12 | 0 of 7 |
 | Sentences translated right, all tabs | 12 of 12 | 12 of 12 | 10 of 10 |
 
 The three samples agree. Every translation is faithful, natural and in the tab's
@@ -455,11 +462,12 @@ What the workhorse repeats across the samples:
 - Serbian в конце концов is carded as «konačno», the word for наконец; «na kraju
   krajeva» is never offered. Serbian ключ repeats «ključ» for every meaning, so the
   reader gets one card, no chips and never «izvor».
-- An answer the parser cannot read: four of the 78 Serbian answers as first given. The
-  sentences of тоска came twice with both quotes missing, those of мир once inside
-  typographic quotes („…”), and собака once with the bare word Description where each
-  sentence belongs. Asked again, as production does, тоска and собака came back
-  readable.
+- An answer the parser cannot read: three of the 78 Serbian answers as first given. The
+  sentences of тоска came twice with both quotes missing, and собака once with the bare
+  word Description where each sentence belongs. Asked again, as production does, тоска
+  and собака came back readable. Sample c's answer for мир, its sentences set inside
+  typographic quotes („…”), is read: «mir» with «svet» a chip, both sentences right, so
+  sample c reads 67 of its 68 answers.
 
 Seen once on the workhorse: «halsüberkopf» misspelt in the German headword and its
 front sentence (a); йош on the Serbian tab read as ещё and carded as još, so the reader
@@ -473,8 +481,8 @@ samples b and c, split by who answered:
 
 | | Workhorse | Other pool models |
 |---|---|---|
-| First card right | 66 of 71 | 15 of 20 |
-| Wrong chips | 9 of 85 | 17 of 30 |
+| First card right | 67 of 72 | 15 of 20 |
+| Wrong chips | 9 of 86 | 17 of 30 |
 | Sentences | 22 of 22 translated right | 2 of 2 carded as a word |
 
 The other models' wrong cards are of a kind the workhorse never gave: коса answered
@@ -607,7 +615,7 @@ inputs per sample the line misses. On 2026-10-13 the operator accepted one more 
 same kind as йош: ньега read as него and carded as «nego». On 2026-10-15 the operator
 accepted the faults of the ordinary article the same reviews found: look-alikes carded
 with the Russian sense, recorded with the other card faults in
-`decision-answer-shape.md`, and answers broken past reading — 4 of 78 Serbian reverse
+`decision-answer-shape.md`, and answers broken past reading — 3 of 78 Serbian reverse
 answers, every one from gemini-flash-lite — which are asked again at the cost of a few
 seconds' wait.
 

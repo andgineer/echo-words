@@ -443,7 +443,8 @@ raised of its own accord.
 
 - `sonnet` writes **markdown** — `**word**`, `*example*` — instead of
   the `<b>`/`<i>` the prompt demands, on 100% of answers in all three
-  languages. Rendered in the app that is literal asterisks. It also
+  languages. In the app its bold reads as bold, but its italics print
+  as literal asterisks. It also
   offered a correction for only half the Serbian misspellings, and it
   is the weakest of the three on content.
 - `gpt` is contract-perfect everywhere and the strongest on content
