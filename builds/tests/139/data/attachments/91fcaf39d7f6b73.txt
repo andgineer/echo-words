@@ -1,0 +1,5 @@
+WARNING echo_words.prompt: unusable answer block for en/'Schlüssel' in context '': answer.meanings contains no usable meaning; payload '{"kind": "unit", "word": "Schlüssel", "word_relation": "same", "suggestion": "", "meanings": [{"label": "", "translations": ["ключ"], "examples": []}], "segments": []}'
+WARNING echo_words.prompt: unusable answer block for en/'Schlüssel' in context '': answer.meanings contains no usable meaning; payload '{"kind": "unit", "word": "Schlüssel", "word_relation": "same", "suggestion": "", "meanings": [{"label": "", "translations": ["ключ"], "examples": []}], "segments": []}'
+INFO echo_words.backend: the pool answer from pool-model stands for en — the payload cannot be read and the pool has no other answer; the card is left failed
+WARNING echo_words.prompt: unusable answer block for en/'Schlüssel' in context '': answer.meanings contains no usable meaning; payload '{"kind": "unit", "word": "Schlüssel", "word_relation": "same", "suggestion": "", "meanings": [{"label": "", "translations": ["ключ"], "examples": []}], "segments": []}'
+INFO echo_words.backend: the paid model gpt-fast: first token after 0.0 s, ended after 0.0 s
