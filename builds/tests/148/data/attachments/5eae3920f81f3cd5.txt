@@ -1,0 +1,1 @@
+WARNING echo_words.backend: no answer for sr after 0.0 s from the pool model unnamed (trace 9d6e0b2c778241df951be34a29b56dcf-reverse): the pool missed the answer budget (NoLLMAvailableError: pool exhausted)

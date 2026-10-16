@@ -1,0 +1,2 @@
+INFO echo_words.backend: the paid model gpt-fast: first token after 0.0 s, ended after 0.0 s
+INFO echo_words.pipeline: the pool answer from groq-gpt-oss-120b stands for the reverse lookup for en: the paid model gave none
