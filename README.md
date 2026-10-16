@@ -18,8 +18,9 @@ echo-words explains; Anki makes you remember.
 </tr>
 </table>
 
-* **Understand the word.** Explore meanings, register, collocations, and translated
-  examples. Choose the sense you want to learn.
+* **Look up a word.** Type a foreign word, or one in your own language to find the
+  foreign one. Explore meanings, usage, and translated examples. Choose the sense
+  you want to learn.
 * **Learn from a sentence.** Get a translation and an explanation of the difficult
   parts, then tap a word or expression to explore it.
 * **Keep it in Anki.** Each selected sense becomes four cards covering recognition

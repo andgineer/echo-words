@@ -17,6 +17,8 @@ makes you remember.
   examples, and the sense you choose to learn.
 - **Learn from a sentence**: a translation, the hard parts explained, and every
   word one tap away.
+- **Look up in your own language**: type a word in your language and get how to
+  say it in the one you are learning
 - **Keep it in Anki**: four cards for each sense, with a real voice, in the decks
   you already review.
 
