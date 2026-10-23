@@ -38,7 +38,8 @@ evaluated. The owner's requirements that frame it:
    shows no answer either). The product's value is the immediate answer,
    so an answer hours later is worth little. The card half is covered in
    the PWA by a small local resend queue (words that failed to send are
-   kept in browser storage and re-sent on the next successful open).
+   kept in browser storage, named on the words screen while they wait,
+   and re-sent as soon as the server is seen answering again).
 3. **Mobile push.** Push mattered when answers took tens of seconds
    through CLI coding agents. The llmbroker pool answers in seconds while
    the user is looking at the screen; push is not needed for the core
@@ -85,11 +86,21 @@ headless Anki integration, and the audio chain are interface-agnostic.
   whose submission is still on its way when the stream opens counts as
   known: the catch-up waits for its receipt, because a stream that opened
   after the server finished the answer has no other way to learn of it —
-  the queue resent on opening the app is the ordinary case. There is no
-  catch-up with history accumulated by other devices while closed.
+  the queue resent on opening or returning to the app is the ordinary
+  case. There is no catch-up with history accumulated by other devices
+  while closed.
 - **Backend down ⇒ new answers unavailable.** Saved history and directories
   still render. The local resend queue turns words submitted during an
-  outage into cards after connectivity returns. The browser cannot see why
+  outage into cards as soon as the server is seen answering again: on
+  opening or returning to the app, on the device coming back online, on
+  any other answered request, and by a re-check about every 30 seconds
+  while the app is on screen and words wait. A phone that kept its own
+  network while the server dropped off the tailnet sees no online event,
+  and a home-screen app is returned to rather than reopened, so neither
+  of those alone would ever send the word. The waiting words stay named
+  on the words screen until the server accepts them; one the server
+  refuses outright leaves the queue with its refusal shown, rather than
+  holding back every word behind it. The browser cannot see why
   the server is gone, but the ways it goes are distinguishable from the
   page: with Tailscale off the server's name does not resolve and the
   request fails at once; with Tailscale on and the VM stopped the request

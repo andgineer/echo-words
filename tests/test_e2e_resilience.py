@@ -28,6 +28,7 @@ ARTICLE = "<b>the finished analysis</b>"
 RECONNECT_TIMEOUT_MS = 15_000
 SUBMIT_TIMEOUT_MS = 15_000
 STATUS_TIMEOUT_MS = 10_000
+RECHECK_INTERVAL_MS = 30_000
 
 
 @pytest.fixture(params=["chromium", "webkit"])
@@ -56,6 +57,25 @@ def _bring_server_back(page: Page) -> None:
 
 def _articles(app) -> int:
     return len(app.broker.stream_calls) - len(app.broker.attestation_calls)
+
+
+def _queue_word_out_of_reach(page: Page, url: str) -> None:
+    """The phone keeps its network while the server drops off the tailnet: its name no
+    longer resolves, and nothing tells the browser it went offline."""
+    page.goto(url)
+    expect(page.get_by_role("tab", name="English", exact=True)).to_be_visible()
+    page.route("**/api/words", lambda route: route.abort("namenotresolved"))
+    _type_word(page)
+    expect(page.locator(".hint")).to_contain_text("the word is saved and will be sent later")
+
+
+def _leave_and_return(page: Page) -> None:
+    page.evaluate("""() => {
+        for (const state of ['hidden', 'visible']) {
+            Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => state });
+            document.dispatchEvent(new Event('visibilitychange'));
+        }
+    }""")
 
 
 def test_cached_startup_shows_languages_and_history_without_downloading_them(
@@ -432,3 +452,85 @@ def test_a_word_whose_receipt_came_too_late_is_one_entry_after_the_resend(
         )
         expect(page.locator(".chips .chip")).to_have_count(1)
         assert _articles(app) == 1
+
+
+def test_a_word_waiting_on_an_unreachable_server_is_sent_when_the_app_is_returned_to(
+    unrouted_worker_page: Page,
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An app on the home screen is returned to, not reopened, and the phone never went
+    offline, so neither an open nor an online event comes. The waiting word is named on
+    the words screen until the server has taken it, whatever the reader types meanwhile."""
+    page = unrouted_worker_page
+    with live_app(settings, monkeypatch, handles=[FakeHandle([answer(ARTICLE)])]) as app:
+        _queue_word_out_of_reach(page, app.url)
+        waiting = page.get_by_test_id("waiting-words")
+        expect(waiting).to_have_text(f"Waiting to send: {WORD}")
+        page.locator("#word").fill("something else")
+        expect(waiting).to_have_text(f"Waiting to send: {WORD}")
+
+        page.unroute_all(behavior="ignoreErrors")
+        _leave_and_return(page)
+
+        expect(page.locator(".entry-text")).to_contain_text(
+            "the finished analysis",
+            timeout=RECONNECT_TIMEOUT_MS,
+        )
+        expect(waiting).to_have_count(0)
+        expect(page.locator(".chips .chip")).to_have_count(1)
+        assert _articles(app) == 1
+
+
+def test_a_word_waiting_on_an_app_left_open_is_sent_once_the_server_answers(
+    unrouted_worker_page: Page,
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Nothing need happen on the page at all: while a word waits and the app is on
+    screen, it asks the server again by itself, and the first answer sends the word."""
+    page = unrouted_worker_page
+    with live_app(settings, monkeypatch, handles=[FakeHandle([answer(ARTICLE)])]) as app:
+        page.clock.install()
+        _queue_word_out_of_reach(page, app.url)
+        waiting = page.get_by_test_id("waiting-words")
+
+        with page.expect_request("**/api/words"):
+            page.clock.run_for(RECHECK_INTERVAL_MS)
+        expect(waiting).to_have_text(f"Waiting to send: {WORD}")
+
+        page.unroute_all(behavior="ignoreErrors")
+        page.clock.run_for(RECHECK_INTERVAL_MS)
+
+        expect(page.locator(".entry-text")).to_contain_text(
+            "the finished analysis",
+            timeout=RECONNECT_TIMEOUT_MS,
+        )
+        expect(waiting).to_have_count(0)
+        assert _articles(app) == 1
+
+
+def test_a_word_typed_once_the_server_is_back_goes_out_behind_the_one_waiting(
+    unrouted_worker_page: Page,
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The first word typed after the outage would otherwise reach the server before the
+    one saved during it, and the cards would come out of the order they were typed in."""
+    page = unrouted_worker_page
+    later = "Fenster"
+    with live_app(
+        settings,
+        monkeypatch,
+        handles=[FakeHandle([answer(ARTICLE)]), FakeHandle([answer(ARTICLE, word=later)])],
+    ) as app:
+        _queue_word_out_of_reach(page, app.url)
+
+        page.unroute_all(behavior="ignoreErrors")
+        page.locator("#word").fill(later)
+        page.get_by_role("button", name="Analyse").click()
+
+        expect(page.locator(".chips .chip")).to_have_count(2)
+        expect(page.get_by_test_id("waiting-words")).to_have_count(0)
+        recent = page.request.get(f"{app.url}/api/words/recent").json()
+        assert [entry["word"] for entry in recent] == [later, WORD]

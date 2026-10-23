@@ -1,14 +1,17 @@
-import { ref } from "vue";
+import { onScopeDispose, ref, watch } from "vue";
 import { apiRequest } from "../api/_request.js";
 import { applyReceipt } from "./useEntries.js";
-import { ServerUnreachable } from "./useServerReach.js";
+import { serverReach, ServerUnreachable } from "./useServerReach.js";
 
 const STORAGE_KEY = "echo-words-resend-queue";
+const REFUSED_KEY = "echo-words-resend-refused";
 // Submitting only registers the word; the answer arrives over the event stream.
 export const SUBMIT_TIMEOUT_MS = 15_000;
+export const RECHECK_INTERVAL_MS = 30_000;
 
 export const queuedWords = ref([]);
-let inFlight = false;
+export const refusedWords = ref([]);
+let flushing = null;
 
 function loadQueue() {
   try {
@@ -24,6 +27,19 @@ function loadQueue() {
 
 function saveQueue() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(queuedWords.value));
+}
+
+function loadRefused() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(REFUSED_KEY) || "[]");
+    refusedWords.value = Array.isArray(saved) ? saved : [];
+  } catch {
+    refusedWords.value = [];
+  }
+}
+
+function saveRefused() {
+  localStorage.setItem(REFUSED_KEY, JSON.stringify(refusedWords.value));
 }
 
 function createRequestId() {
@@ -53,6 +69,12 @@ export function enqueueWord(body) {
   saveQueue();
 }
 
+export function clearRefusedWords() {
+  if (!refusedWords.value.length) return;
+  refusedWords.value = [];
+  saveRefused();
+}
+
 // Receipts still on their way. A stream that opens meanwhile may have missed the whole
 // answer, and only the receipt names the entry its catch-up has to fetch.
 export const receiptsInFlight = new Set();
@@ -78,45 +100,92 @@ export function isRetryableWordError(error) {
   return error instanceof ServerUnreachable || error?.status >= 500;
 }
 
-export async function flushQueue() {
-  if (inFlight) return;
-  inFlight = true;
-  loadQueue();
+// Sent again, a refused word is refused again, and it would hold back every word behind it.
+function isRefusal(error) {
+  return error?.status >= 400 && error.status < 500;
+}
+
+function refuse(item, reason) {
+  loadRefused();
+  refusedWords.value.push({ word: item.body.word, reason });
+  saveRefused();
+}
+
+async function sendHead() {
+  const item = queuedWords.value[0];
   try {
-    while (queuedWords.value.length) {
-      const item = queuedWords.value[0];
-      try {
-        await submitWord(item.body, (accepted) => {
-          // The POST can finish before SSE connects. Keep its receipt so reconnect
-          // can recover this one answer without downloading a server history.
-          if (!accepted?.entry_id) return;
-          applyReceipt({
-            entry_id: accepted.entry_id,
-            word: accepted.word ?? item.body.word,
-            lang: item.body.lang,
-            lookup_only: accepted.lookup_only ?? item.body.lookup_only,
-            context: item.body.context || "",
-            requested_shape: item.body.shape ?? null,
-            requested_reverse: accepted.reverse ?? null,
-          });
-        });
-        queuedWords.value.shift();
-        saveQueue();
-      } catch (error) {
-        break;
-      }
-    }
-  } finally {
-    inFlight = false;
+    await submitWord(item.body, (accepted) => {
+      // The POST can finish before SSE connects. Keep its receipt so reconnect
+      // can recover this one answer without downloading a server history.
+      if (!accepted?.entry_id) return;
+      applyReceipt({
+        entry_id: accepted.entry_id,
+        word: accepted.word ?? item.body.word,
+        lang: item.body.lang,
+        lookup_only: accepted.lookup_only ?? item.body.lookup_only,
+        context: item.body.context || "",
+        requested_shape: item.body.shape ?? null,
+        requested_reverse: accepted.reverse ?? null,
+      });
+    });
+  } catch (error) {
+    if (!isRefusal(error)) throw error;
+    refuse(item, error.message);
   }
+  queuedWords.value.shift();
+  saveQueue();
+}
+
+async function sendQueued() {
+  try {
+    loadQueue();
+    while (queuedWords.value.length) await sendHead();
+    return null;
+  } catch (error) {
+    return error;
+  } finally {
+    flushing = null;
+  }
+}
+
+// One flush at a time, settling on what stopped it or on null. It starts a tick late so
+// the guard is up before its first send: that send's answer, noted on the way, would
+// otherwise start a second flush of the same words.
+export function flushQueue() {
+  flushing ??= Promise.resolve().then(sendQueued);
+  return flushing;
+}
+
+// Any answer, whatever asked for it, says the server is back; a page left on screen
+// asks again by itself, so a word saved during an outage never waits for the next open.
+export function resendWhileWaiting(visible) {
+  let recheck = null;
+  watch(
+    serverReach,
+    (reach) => {
+      if (!reach.failure && queuedWords.value.length) void flushQueue();
+    },
+    { flush: "sync" },
+  );
+  watch(
+    () => queuedWords.value.length > 0 && visible.value,
+    (waiting) => {
+      clearInterval(recheck);
+      recheck = waiting ? setInterval(flushQueue, RECHECK_INTERVAL_MS) : null;
+    },
+    { immediate: true },
+  );
+  onScopeDispose(() => clearInterval(recheck));
 }
 
 export function useResendQueue() {
   loadQueue();
-  return { queuedWords, enqueueWord, flushQueue };
+  loadRefused();
+  return { queuedWords, refusedWords, clearRefusedWords };
 }
 
 export function _resetForTest() {
-  inFlight = false;
+  flushing = null;
   queuedWords.value = [];
+  refusedWords.value = [];
 }

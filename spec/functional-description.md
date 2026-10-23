@@ -894,13 +894,24 @@ same prompt is not how a weak answer gets fixed.
   free-tier instance may be reclaimed). When it is unreachable the app
   cannot answer — accepted: the product's value is the immediate
   explanation, and an answer hours later is worth little. Words
-  submitted while unreachable are kept in the app's local queue and
-  re-sent automatically, in order, on the next successful open — so
-  they still become cards. The collection is a local file: cards added
-  while AnkiWeb sync was failing survive restarts and reach the devices
-  on the next successful sync. Nothing else on the backend is durable
-  by design — a restart clears server-side job state, the card controls and
-  counters.
+  submitted while unreachable are kept in the app's local queue, and
+  the words screen names them until the server has accepted each one;
+  typing, switching language or screen, and reloading the app leave
+  that line in place. They are re-sent automatically, in order, as soon
+  as the server is seen answering again — on opening the app, on
+  returning to it, on the device coming back online, when any other
+  request is answered, and, while the app is on screen and words wait,
+  by a re-check about every 30 seconds — so they still become cards
+  without the app being reopened. A word typed while older ones wait is
+  sent after them, and joins the queue behind them while the server
+  still cannot be reached. A waiting word the server refuses outright is
+  taken off the queue, since sent again it would only be refused again
+  and would hold back every word behind it; the words screen says which
+  word was refused and why until the next word is sent. The collection
+  is a local file: cards added while AnkiWeb sync was failing survive
+  restarts and reach the devices on the next successful sync. Nothing
+  else on the backend is durable by design — a restart clears
+  server-side job state, the card controls and counters.
   The PWA's saved history and reference data remain on the device and can be
   read while the backend is unreachable.
   An unreachable backend is never reported as a generic lost connection. A

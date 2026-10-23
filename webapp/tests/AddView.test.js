@@ -5,6 +5,11 @@ vi.mock("../src/api/_request.js", () => ({ apiRequest: vi.fn() }));
 
 import { apiRequest } from "../src/api/_request.js";
 import { entries } from "../src/composables/useEntries.js";
+import {
+  _resetForTest as resetQueue,
+  enqueueWord,
+  flushQueue,
+} from "../src/composables/useResendQueue.js";
 import { ServerUnreachable } from "../src/composables/useServerReach.js";
 import { languages, selected } from "../src/composables/useLanguage.js";
 import { catalog, target } from "../src/composables/useTarget.js";
@@ -26,6 +31,7 @@ beforeEach(async () => {
   target.value = null;
   locale.value = "en";
   localStorage.clear();
+  resetQueue();
   apiRequest.mockReset();
   apiRequest.mockImplementation(async (path) => {
     if (path === "/api/languages") return OPTIONS;
@@ -1043,6 +1049,181 @@ describe("AddView", () => {
       await flushPromises();
 
       expect(entries.value[0]).toMatchObject({ lang: "de", language: "Deutsch" });
+    });
+  });
+
+  describe("words waiting to be sent", () => {
+    const LATIN = "“English” needs the Latin script.";
+
+    function sentWords() {
+      return apiRequest.mock.calls
+        .filter(([path]) => path === "/api/words")
+        .map(([, init]) => init.body.word);
+    }
+
+    function wordsAnswer(answer) {
+      apiRequest.mockImplementation(async (path, init) => {
+        if (path === "/api/languages") return OPTIONS;
+        if (path === "/api/words") return answer(init.body);
+        throw new Error(`Unexpected request: ${path}`);
+      });
+    }
+
+    function acceptEach(body) {
+      return { entry_id: `entry-${body.word}`, word: body.word, lookup_only: false };
+    }
+
+    function mark(wrapper) {
+      return wrapper.find('[data-testid="waiting-words"]');
+    }
+
+    it("names every waiting word near the input, whatever its language", async () => {
+      enqueueWord({ word: "revolting", lang: "en", lookup_only: false });
+      enqueueWord({ word: "ledig", lang: "de", lookup_only: false });
+      const wrapper = mount(AddView);
+      await flushPromises();
+
+      expect(mark(wrapper).text()).toBe("Waiting to send: revolting, ledig");
+      locale.value = "ru";
+      await flushPromises();
+      expect(mark(wrapper).text()).toBe("Ждут отправки: revolting, ledig");
+    });
+
+    it("keeps the mark through typing, a language switch, another screen and a reload", async () => {
+      enqueueWord({ word: "revolting", lang: "en", lookup_only: false });
+      let wrapper = mount(AddView);
+      await flushPromises();
+
+      await wrapper.get("#word").setValue("something else");
+      expect(mark(wrapper).text()).toContain("revolting");
+      await wrapper.get('[data-testid="lang-de"]').trigger("click");
+      expect(mark(wrapper).text()).toContain("revolting");
+
+      wrapper.unmount();
+      wrapper = mount(AddView);
+      await flushPromises();
+      expect(mark(wrapper).text()).toContain("revolting");
+
+      wrapper.unmount();
+      resetQueue();
+      wrapper = mount(AddView);
+      await flushPromises();
+      expect(mark(wrapper).text()).toContain("revolting");
+    });
+
+    it("takes a word off the mark exactly when the server accepts it", async () => {
+      enqueueWord({ word: "one", lang: "en", lookup_only: false });
+      enqueueWord({ word: "two", lang: "en", lookup_only: false });
+      let release;
+      const first = new Promise((resolve) => (release = resolve));
+      wordsAnswer((body) => {
+        if (body.word === "one") return first;
+        throw new ServerUnreachable("unreachable");
+      });
+      const wrapper = mount(AddView);
+      await flushPromises();
+
+      const flushing = flushQueue();
+      await flushPromises();
+      expect(sentWords()).toEqual(["one"]);
+      expect(mark(wrapper).text()).toBe("Waiting to send: one, two");
+
+      release({ entry_id: "entry-one" });
+      await flushing;
+      await flushPromises();
+
+      expect(sentWords()).toEqual(["one", "two"]);
+      expect(mark(wrapper).text()).toBe("Waiting to send: two");
+    });
+
+    it("drops the mark once the last waiting word is accepted", async () => {
+      enqueueWord({ word: "one", lang: "en", lookup_only: false });
+      wordsAnswer(acceptEach);
+      const wrapper = mount(AddView);
+      await flushPromises();
+
+      await flushQueue();
+      await flushPromises();
+
+      expect(mark(wrapper).exists()).toBe(false);
+    });
+
+    it("sends the words waiting from an outage before a newly typed one", async () => {
+      enqueueWord({ word: "house", lang: "en", lookup_only: false });
+      wordsAnswer(acceptEach);
+      const wrapper = mount(AddView);
+      await flushPromises();
+
+      await wrapper.get("#word").setValue("window");
+      await wrapper.get(".submit").trigger("click");
+      await flushPromises();
+
+      expect(sentWords()).toEqual(["house", "window"]);
+      expect(mark(wrapper).exists()).toBe(false);
+      expect(wrapper.findAll(".chips .chip").map((chip) => chip.text())).toEqual([
+        "window",
+        "house",
+      ]);
+      expect(wrapper.get(".entry-title").text()).toBe("window");
+    });
+
+    it("puts a new word behind the waiting ones while the server cannot be reached", async () => {
+      enqueueWord({ word: "house", lang: "en", lookup_only: false });
+      wordsAnswer(() => {
+        throw new ServerUnreachable("unreachable");
+      });
+      const wrapper = mount(AddView);
+      await flushPromises();
+
+      await wrapper.get("#word").setValue("window");
+      await wrapper.get(".submit").trigger("click");
+      await flushPromises();
+
+      expect(sentWords()).toEqual(["house"]);
+      expect(mark(wrapper).text()).toBe("Waiting to send: house, window");
+      expect(wrapper.get(".hint").text()).toContain(
+        "The server isn't answering — the word is saved and will be sent later.",
+      );
+      expect(wrapper.get("#word").element.value).toBe("");
+    });
+
+    it("says which waiting word the server refused, until the next word is sent", async () => {
+      enqueueWord({ word: "слово", lang: "en", lookup_only: false });
+      wordsAnswer((body) => {
+        if (body.word === "слово") throw Object.assign(new Error(LATIN), { status: 400 });
+        return acceptEach(body);
+      });
+      const wrapper = mount(AddView);
+      await flushPromises();
+
+      await wrapper.get("#word").setValue("window");
+      await wrapper.get(".submit").trigger("click");
+      await flushPromises();
+
+      expect(sentWords()).toEqual(["слово", "window"]);
+      expect(mark(wrapper).exists()).toBe(false);
+      const refused = () => wrapper.findAll('[data-testid="refused-word"]').map((line) => line.text());
+      expect(refused()).toEqual([`The server did not accept “слово”: ${LATIN}`]);
+      expect(wrapper.get(".entry-title").text()).toBe("window");
+
+      await wrapper.get("#word").setValue("door");
+      expect(refused()).toHaveLength(1);
+      await wrapper.get(".submit").trigger("click");
+      await flushPromises();
+      expect(refused()).toEqual([]);
+    });
+
+    it("shows a refusal the queue met while the words screen was closed", async () => {
+      localStorage.setItem(
+        "echo-words-resend-refused",
+        JSON.stringify([{ word: "слово", reason: LATIN }]),
+      );
+      const wrapper = mount(AddView);
+      await flushPromises();
+
+      expect(wrapper.get('[data-testid="refused-word"]').text()).toBe(
+        `The server did not accept “слово”: ${LATIN}`,
+      );
     });
   });
 

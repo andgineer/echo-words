@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { nextTick } from "vue";
 import { flushPromises, mount } from "@vue/test-utils";
 
-vi.mock("../src/composables/useResendQueue.js", () => ({ flushQueue: vi.fn() }));
 vi.mock("../src/views/StatsView.vue", () => ({ default: { template: "<div />" } }));
 vi.mock("../src/views/StatusView.vue", () => ({ default: { template: "<div />" } }));
 vi.mock("../src/api/_request.js", () => ({ apiRequest: vi.fn() }));

@@ -2,7 +2,7 @@
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useI18n } from "./i18n/index.js";
 import { apiRequest } from "./api/_request.js";
-import { flushQueue } from "./composables/useResendQueue.js";
+import { flushQueue, resendWhileWaiting } from "./composables/useResendQueue.js";
 import { serverReach } from "./composables/useServerReach.js";
 import { refreshReferences } from "./composables/useLanguage.js";
 import HeaderNav from "./components/HeaderNav.vue";
@@ -37,27 +37,32 @@ function recheckServer() {
   void apiRequest("/api/health", { timeoutMs: HEALTH_TIMEOUT_MS }).catch(() => {});
 }
 
+const visible = ref(document.visibilityState === "visible");
+
 function retryQueuedWords() {
   recheckServer();
   void flushQueue();
   void refreshReferences();
 }
 
-function refreshVisibleReferences() {
-  if (document.visibilityState !== "visible") return;
-  recheckServer();
-  void refreshReferences();
+// A home-screen app is mostly returned to rather than opened, and the phone may never
+// have gone offline while the server was out of reach.
+function followVisibility() {
+  visible.value = document.visibilityState === "visible";
+  if (visible.value) retryQueuedWords();
 }
+
+resendWhileWaiting(visible);
 
 onMounted(() => {
   retryQueuedWords();
   window.addEventListener("online", retryQueuedWords);
-  document.addEventListener("visibilitychange", refreshVisibleReferences);
+  document.addEventListener("visibilitychange", followVisibility);
 });
 
 onUnmounted(() => {
   window.removeEventListener("online", retryQueuedWords);
-  document.removeEventListener("visibilitychange", refreshVisibleReferences);
+  document.removeEventListener("visibilitychange", followVisibility);
 });
 </script>
 

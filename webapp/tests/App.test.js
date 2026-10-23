@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { mount } from "@vue/test-utils";
 
-vi.mock("../src/composables/useResendQueue.js", () => ({ flushQueue: vi.fn() }));
+vi.mock("../src/composables/useResendQueue.js", () => ({
+  flushQueue: vi.fn(),
+  resendWhileWaiting: vi.fn(),
+}));
 vi.mock("../src/composables/useLanguage.js", () => ({ refreshReferences: vi.fn() }));
 vi.mock("../src/api/_request.js", () => ({ apiRequest: vi.fn(async () => ({ status: "ok" })) }));
 vi.mock("../src/views/AddView.vue", () => ({
@@ -29,14 +32,20 @@ vi.mock("../src/views/LanguageDetailView.vue", () => ({
 import { nextTick } from "vue";
 import App from "../src/App.vue";
 import { apiRequest } from "../src/api/_request.js";
-import { flushQueue } from "../src/composables/useResendQueue.js";
+import { flushQueue, resendWhileWaiting } from "../src/composables/useResendQueue.js";
 import { serverReach } from "../src/composables/useServerReach.js";
 import { EPIC, FEATURE, labelBehavior } from "./allure-taxonomy.js";
 
 afterEach(() => {
   vi.clearAllMocks();
+  delete document.visibilityState;
   serverReach.value = { answeredAt: null, failure: null };
 });
+
+function turnPage(state) {
+  Object.defineProperty(document, "visibilityState", { configurable: true, get: () => state });
+  document.dispatchEvent(new Event("visibilitychange"));
+}
 
 describe("App", () => {
   it("flushes saved words on open and on each online event", async () => {
@@ -50,6 +59,35 @@ describe("App", () => {
     wrapper.unmount();
     window.dispatchEvent(new Event("online"));
     expect(flushQueue).toHaveBeenCalledTimes(2);
+  });
+
+  // A home-screen app is returned to, not reopened, and the phone kept its network.
+  it("flushes saved words each time the page is returned to, and not when it is left", async () => {
+    await labelBehavior(EPIC.APPLICATION_PLATFORM, FEATURE.PWA_RESILIENCE, "Offline resend queue");
+    const wrapper = mount(App);
+
+    turnPage("hidden");
+    expect(flushQueue).toHaveBeenCalledTimes(1);
+    turnPage("visible");
+    expect(flushQueue).toHaveBeenCalledTimes(2);
+
+    wrapper.unmount();
+    turnPage("visible");
+    expect(flushQueue).toHaveBeenCalledTimes(2);
+  });
+
+  it("lets the resend follow whether the page is on screen", async () => {
+    await labelBehavior(EPIC.APPLICATION_PLATFORM, FEATURE.PWA_RESILIENCE, "Offline resend queue");
+    const wrapper = mount(App);
+    const [visible] = resendWhileWaiting.mock.calls[0];
+
+    expect(resendWhileWaiting).toHaveBeenCalledTimes(1);
+    expect(visible.value).toBe(true);
+    turnPage("hidden");
+    expect(visible.value).toBe(false);
+    turnPage("visible");
+    expect(visible.value).toBe(true);
+    wrapper.unmount();
   });
 
   it("switches views from the icon navigation", async () => {

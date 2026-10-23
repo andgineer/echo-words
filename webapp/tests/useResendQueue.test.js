@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { effectScope, nextTick, ref } from "vue";
 
 vi.mock("../src/api/_request.js", () => ({ apiRequest: vi.fn() }));
 
@@ -9,7 +10,15 @@ import {
   enqueueWord,
   flushQueue,
   queuedWords,
+  refusedWords,
+  resendWhileWaiting,
 } from "../src/composables/useResendQueue.js";
+import {
+  _resetForTest as resetReach,
+  noteAnswer,
+  noteFailure,
+  ServerUnreachable,
+} from "../src/composables/useServerReach.js";
 import { EPIC, FEATURE, labelBehavior } from "./allure-taxonomy.js";
 
 const first = { word: "one", lang: "en", lookup_only: false };
@@ -21,7 +30,24 @@ beforeEach(async () => {
   entries.value = [];
   apiRequest.mockReset();
   _resetForTest();
+  resetReach();
 });
+
+function posts() {
+  return apiRequest.mock.calls.filter(([path]) => path === "/api/words").length;
+}
+
+// What a real request does on its way: the server's answer is noted before it is read.
+function answeredWith(entryId) {
+  return async () => {
+    noteAnswer();
+    return { entry_id: entryId };
+  };
+}
+
+async function unreachable() {
+  throw noteFailure("unreachable");
+}
 
 describe("resend queue", () => {
   it("resends under the same time limit as a fresh submission", async () => {
@@ -156,14 +182,201 @@ describe("resend queue", () => {
     expect(queuedWords.value).toEqual([]);
   });
 
-  it("keeps a conflicting request-id response for fail-closed inspection", async () => {
+  it.each([400, 409, 422])(
+    "takes a word the server refuses (%s) off the queue, keeps why, and sends the rest",
+    async (status) => {
+      enqueueWord(first);
+      enqueueWord(second);
+      apiRequest
+        .mockRejectedValueOnce(Object.assign(new Error("“English” needs the Latin script."), { status }))
+        .mockResolvedValueOnce({ entry_id: "accepted" });
+
+      expect(await flushQueue()).toBeNull();
+
+      expect(apiRequest).toHaveBeenCalledTimes(2);
+      expect(queuedWords.value).toEqual([]);
+      expect(refusedWords.value).toEqual([
+        { word: "one", reason: "“English” needs the Latin script." },
+      ]);
+      expect(JSON.parse(localStorage.getItem("echo-words-resend-refused"))).toEqual(
+        refusedWords.value,
+      );
+    },
+  );
+
+  it.each([
+    ["a server out of reach", new ServerUnreachable("unreachable")],
+    ["a server error", Object.assign(new Error("Internal Server Error"), { status: 500 })],
+  ])("keeps a word and what follows it on %s, and settles on that failure", async (_, error) => {
     enqueueWord(first);
     enqueueWord(second);
-    apiRequest.mockRejectedValueOnce(Object.assign(new Error("conflict"), { status: 409 }));
+    apiRequest.mockRejectedValueOnce(error);
 
-    await flushQueue();
+    expect(await flushQueue()).toBe(error);
 
     expect(apiRequest).toHaveBeenCalledTimes(1);
     expect(queuedWords.value).toHaveLength(2);
+    expect(refusedWords.value).toEqual([]);
+  });
+
+  it("hands a flush asked for while one runs that same one, so no word goes twice", async () => {
+    enqueueWord(first);
+    enqueueWord(second);
+    let release;
+    apiRequest
+      .mockImplementationOnce(() => new Promise((resolve) => (release = resolve)))
+      .mockResolvedValueOnce({ entry_id: "second" });
+
+    const running = flushQueue();
+    expect(flushQueue()).toBe(running);
+    await vi.waitFor(() => expect(apiRequest).toHaveBeenCalledTimes(1));
+    const asked = flushQueue();
+    release({ entry_id: "first" });
+
+    expect(asked).toBe(running);
+    expect(await asked).toBeNull();
+    expect(apiRequest).toHaveBeenCalledTimes(2);
+    expect(queuedWords.value).toEqual([]);
+  });
+});
+
+describe("resend while words wait", () => {
+  let scope;
+  const visible = ref(true);
+
+  function install() {
+    scope = effectScope();
+    scope.run(() => resendWhileWaiting(visible));
+  }
+
+  beforeEach(() => {
+    visible.value = true;
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    scope?.stop();
+    scope = null;
+    vi.useRealTimers();
+  });
+
+  it("sends the waiting words as soon as any request is answered", async () => {
+    install();
+    enqueueWord(first);
+    apiRequest.mockImplementation(answeredWith("accepted"));
+
+    noteAnswer();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(posts()).toBe(1);
+    expect(queuedWords.value).toEqual([]);
+  });
+
+  it("asks nothing of an answer while no word waits, nor of a failure while one does", async () => {
+    install();
+    noteAnswer();
+    enqueueWord(first);
+    noteFailure("unreachable");
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(apiRequest).not.toHaveBeenCalled();
+  });
+
+  it("starts no other flush on the answers its own sends get", async () => {
+    install();
+    enqueueWord(first);
+    enqueueWord(second);
+    apiRequest.mockImplementation(answeredWith("accepted"));
+
+    noteAnswer();
+    await flushQueue();
+    await vi.advanceTimersByTimeAsync(0);
+
+    const sent = apiRequest.mock.calls.map(([, options]) => options.body.word);
+    expect(sent).toEqual(["one", "two"]);
+    expect(queuedWords.value).toEqual([]);
+  });
+
+  it("starts no other flush on the answer that refuses a word", async () => {
+    install();
+    enqueueWord(first);
+    apiRequest.mockImplementation(async () => {
+      noteAnswer();
+      throw Object.assign(new Error("conflict"), { status: 409 });
+    });
+
+    noteAnswer();
+    await flushQueue();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(posts()).toBe(1);
+    expect(refusedWords.value).toEqual([{ word: "one", reason: "conflict" }]);
+  });
+
+  it("asks again every 30 seconds while a word waits, and sends it on the first answer", async () => {
+    install();
+    apiRequest.mockImplementation(unreachable);
+    enqueueWord(first);
+    await nextTick();
+
+    await vi.advanceTimersByTimeAsync(29_999);
+    expect(posts()).toBe(0);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(posts()).toBe(1);
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(posts()).toBe(2);
+    expect(queuedWords.value).toHaveLength(1);
+
+    apiRequest.mockImplementation(answeredWith("accepted"));
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(posts()).toBe(3);
+    expect(queuedWords.value).toEqual([]);
+
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(posts()).toBe(3);
+  });
+
+  it("never asks while the page is hidden, and asks again once it is back on screen", async () => {
+    install();
+    apiRequest.mockImplementation(unreachable);
+    enqueueWord(first);
+    await nextTick();
+    visible.value = false;
+    await nextTick();
+
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(posts()).toBe(0);
+
+    visible.value = true;
+    await nextTick();
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(posts()).toBe(1);
+  });
+
+  it("never overlaps one check with the next while the server keeps it waiting", async () => {
+    install();
+    let release;
+    apiRequest.mockImplementation(() => new Promise((resolve) => (release = resolve)));
+    enqueueWord(first);
+    await nextTick();
+
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(posts()).toBe(1);
+
+    release({ entry_id: "accepted" });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(queuedWords.value).toEqual([]);
+  });
+
+  it("stops asking once the app is gone", async () => {
+    install();
+    apiRequest.mockImplementation(unreachable);
+    enqueueWord(first);
+    await nextTick();
+    scope.stop();
+
+    noteAnswer();
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(posts()).toBe(0);
   });
 });

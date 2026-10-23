@@ -13,6 +13,8 @@ export default {
   "add.queuedNoAnswer": "The server isn't answering — the word is saved and will be sent later.",
   "add.queuedAppDown": "echo-words isn't running on the server — the word is saved and will be sent later.",
   "add.queuedServerError": "The server ran into an error — the word is saved and will be sent later.",
+  "add.waiting": "Waiting to send: {words}",
+  "add.refused": "The server did not accept “{word}”: {reason}",
   "add.whatToCheck": "What to check",
   "add.empty": "Word analyses will appear here.",
   "add.revert": "↩︎ Go back to a card for “{word}”",

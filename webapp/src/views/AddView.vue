@@ -8,8 +8,10 @@ import { useI18n } from "../i18n/index.js";
 import { placeholder } from "../i18n/languageWording.js";
 import {
   enqueueWord,
+  flushQueue,
   isRetryableWordError,
   submitWord,
+  useResendQueue,
   withRequestId,
 } from "../composables/useResendQueue.js";
 import { ServerUnreachable } from "../composables/useServerReach.js";
@@ -24,6 +26,7 @@ const {
   start: startEventStream,
   stop: stopEventStream,
 } = useEventStream({ onMoved: followMoved });
+const { queuedWords, refusedWords, clearRefusedWords } = useResendQueue();
 
 const emit = defineEmits(["navigate"]);
 
@@ -52,6 +55,8 @@ const selectedId = computed(() => {
 const selectedEntry = computed(
   () => railEntries.value.find((entry) => entry.entry_id === selectedId.value) || null,
 );
+
+const waitingWords = computed(() => queuedWords.value.map((item) => item.body.word).join(", "));
 
 watch([word, selected], () => {
   hint.value = "";
@@ -155,6 +160,7 @@ async function sendWord(
   hint.value = "";
   hintChecks.value = false;
   removedId.value = "";
+  clearRefusedWords();
   const body = withRequestId({
     word: submittedWord,
     lang,
@@ -163,6 +169,10 @@ async function sendWord(
   if (context) body.context = context;
   if (shape) body.shape = shape;
   try {
+    // Words saved during an outage go out first, so the cards keep the order they were
+    // typed in; a server the first of them could not reach would not take this one.
+    const stopped = await flushQueue();
+    if (stopped instanceof ServerUnreachable) throw stopped;
     const accepted = await submitWord(body, (receipt) => {
       // What the entry holds is the submission as the server read it — the `?` shortcut
       // stripped and the wording normalized. Guessing it here would put the reader's
@@ -320,6 +330,17 @@ async function requestDetail(entry) {
         {{ t("add.whatToCheck") }}
       </button>
     </p>
+    <p v-if="waitingWords" class="waiting" data-testid="waiting-words">
+      {{ t("add.waiting", { words: waitingWords }) }}
+    </p>
+    <p
+      v-for="(refused, index) in refusedWords"
+      :key="index"
+      class="hint"
+      data-testid="refused-word"
+    >
+      {{ t("add.refused", { word: refused.word, reason: refused.reason }) }}
+    </p>
   </section>
 
   <section class="switcher">
@@ -358,6 +379,12 @@ async function requestDetail(entry) {
   margin-top: 0.75rem;
   font-size: 0.85rem;
   color: var(--warning);
+}
+
+.waiting {
+  margin-top: 0.75rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
 }
 
 .what-to-check {
