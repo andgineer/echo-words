@@ -11,11 +11,13 @@ with empty history. PWA updates retain the same database.
 ## Words submitted with no connection
 
 A word submitted while the server is unreachable stays in a local FIFO queue, and
-the waiting words are named under the input. They are sent as soon as the server
+the waiting words are named under the input, each by its first few characters. They
+are sent as soon as the server
 answers again: on opening the app or returning to it, on the browser's `online`
 event, on any other request the server answers, and by a re-check about every
 30 seconds while the app is on screen. A word the server refuses outright is
-dropped from the queue, and the reason it was refused is shown under the input.
+dropped from the queue; the word and the reason it was refused stay under the input
+until you dismiss them with ×.
 
 Each submission carries a UUID that is stored with the queue item. If the server
 accepted a POST but its response was lost, retrying that UUID returns the

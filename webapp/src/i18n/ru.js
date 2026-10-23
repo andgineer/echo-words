@@ -15,6 +15,7 @@ export default {
   "add.queuedServerError": "На сервере произошла ошибка — слово сохранено и будет отправлено позже.",
   "add.waiting": "Ждут отправки: {words}",
   "add.refused": "Сервер не принял «{word}»: {reason}",
+  "add.dismiss": "Скрыть",
   "add.whatToCheck": "Что проверить",
   "add.empty": "Здесь появятся разборы слов.",
   "add.revert": "↩︎ Вернуть карточку для «{word}»",

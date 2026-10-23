@@ -69,11 +69,20 @@ export function enqueueWord(body) {
   saveQueue();
 }
 
-// Refusals are kept in the order they were met, so the first `count` are the oldest.
-export function clearRefusedWords(count) {
-  if (!count) return;
-  refusedWords.value = refusedWords.value.slice(count);
+export function dismissRefusal(index) {
+  refusedWords.value = refusedWords.value.filter((_, at) => at !== index);
   saveRefused();
+}
+
+// A passage cut to 16 and a short word behind it fit a 360px phone's line in either
+// interface language; cut to 24 they need 390px.
+const PREVIEW_LENGTH = 16;
+const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+
+export function preview(text) {
+  const characters = Array.from(graphemes.segment(text), ({ segment }) => segment);
+  if (characters.length <= PREVIEW_LENGTH) return text;
+  return `${characters.slice(0, PREVIEW_LENGTH).join("").trimEnd()}…`;
 }
 
 // Receipts still on their way. A stream that opens meanwhile may have missed the whole
@@ -181,7 +190,7 @@ export function resendWhileWaiting(visible) {
 export function useResendQueue() {
   loadQueue();
   loadRefused();
-  return { queuedWords, refusedWords, clearRefusedWords };
+  return { queuedWords, refusedWords, dismissRefusal };
 }
 
 export function _resetForTest() {

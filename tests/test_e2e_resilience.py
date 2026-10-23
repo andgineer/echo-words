@@ -18,7 +18,7 @@ from pathlib import Path
 import pytest
 from e2e_app import BUILT_PWA, WORD, Gate, answer, live_app, submit, wait_for_server_entry
 from fakes import FakeHandle
-from playwright.sync_api import Page, Playwright, Route, expect
+from playwright.sync_api import Locator, Page, Playwright, Route, expect
 
 from echo_words.config import Settings
 
@@ -30,6 +30,8 @@ SUBMIT_TIMEOUT_MS = 15_000
 STATUS_TIMEOUT_MS = 10_000
 RECHECK_INTERVAL_MS = 30_000
 KEEP_ALIVE_SECONDS = 0.5
+# A small phone's width that still leaves room for the wider fonts a Linux browser has.
+PHONE = {"width": 375, "height": 740}
 
 
 @pytest.fixture(params=["chromium", "webkit"])
@@ -537,33 +539,88 @@ def test_a_word_typed_once_the_server_is_back_goes_out_behind_the_one_waiting(
         assert [entry["word"] for entry in recent] == [later, WORD]
 
 
+def _rendered_lines(element: Locator) -> int:
+    return element.evaluate("""element => {
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        return new Set([...range.getClientRects()].map((rect) => Math.round(rect.top))).size;
+    }""")
+
+
+def _queue_passage_out_of_reach(page: Page, url: str, passage: str) -> None:
+    page.set_viewport_size(PHONE)
+    page.goto(url)
+    expect(page.get_by_role("tab", name="English", exact=True)).to_be_visible()
+    page.route("**/api/words", lambda route: route.abort("namenotresolved"))
+    page.locator("#word").fill(passage)
+    page.get_by_role("button", name="Analyse").click()
+    expect(page.get_by_test_id("waiting-words")).to_be_visible()
+
+
 def test_a_long_passage_waiting_to_be_sent_is_named_on_one_line(
     unrouted_worker_page: Page,
     settings: Settings,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A waiting passage can run to hundreds of characters, and the line naming it sits
-    between the input and the cards: it stays one line, cut short, with the whole of it
-    kept for whoever asks."""
+    between the input and the cards: it stays one line, and a phone shows no title, so a
+    word queued behind the passage is still in sight."""
     page = unrouted_worker_page
     passage = " ".join(["Er steht jeden Morgen um sechs auf."] * 12)
     with live_app(settings, monkeypatch) as app:
-        page.goto(app.url)
-        expect(page.get_by_role("tab", name="English", exact=True)).to_be_visible()
-        page.route("**/api/words", lambda route: route.abort("namenotresolved"))
-        page.locator("#word").fill(passage)
-        with page.expect_request("**/api/words"):
-            page.get_by_role("button", name="Analyse").click()
+        _queue_passage_out_of_reach(page, app.url, passage)
+        page.locator("#word").fill("ledig")
+        page.get_by_role("button", name="Analyse").click()
 
         waiting = page.get_by_test_id("waiting-words")
-        expect(waiting).to_have_attribute("title", f"Waiting to send: {passage}")
-        lines = waiting.evaluate("""line => {
-            const range = document.createRange();
-            range.selectNodeContents(line);
-            return new Set([...range.getClientRects()].map((rect) => Math.round(rect.top))).size;
-        }""")
-        assert lines == 1
-        assert waiting.evaluate("line => line.scrollWidth > line.clientWidth")
+        expect(waiting).to_have_attribute("title", f"Waiting to send: {passage}, ledig")
+        expect(waiting).to_have_text("Waiting to send: Er steht jeden M…, ledig")
+        assert _rendered_lines(waiting) == 1
+        assert waiting.evaluate("line => line.scrollWidth <= line.clientWidth")
+
+
+def test_a_refused_long_passage_is_named_on_one_line_until_it_is_dismissed(
+    unrouted_worker_page: Page,
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A passage over the length limit is refused only once the queue sends it. Its
+    refusal sits between the input and the cards like the waiting line, so it takes one
+    line with the button that dismisses it, and nothing but that button takes it away."""
+    page = unrouted_worker_page
+    passage = " ".join(["Er steht jeden Morgen um sechs auf."] * 15)
+    too_long = "This text is too long: no more than 500 characters."
+    with live_app(settings, monkeypatch) as app:
+        _queue_passage_out_of_reach(page, app.url, passage)
+        page.unroute_all(behavior="ignoreErrors")
+        _leave_and_return(page)
+
+        refusal = page.get_by_test_id("refused-word")
+        said = refusal.locator(".refused-text")
+        expect(said).to_have_attribute(
+            "title", f"The server did not accept “{passage}”: {too_long}"
+        )
+        expect(said).to_contain_text("The server did not accept “Er steht jeden M…”")
+        expect(page.get_by_test_id("waiting-words")).to_have_count(0)
+        assert _rendered_lines(said) == 1
+        dismiss = refusal.get_by_role("button", name="Dismiss")
+        expect(dismiss).to_be_visible()
+        row, button, text = refusal.bounding_box(), dismiss.bounding_box(), said.bounding_box()
+        assert row and button and text
+        assert button["x"] + button["width"] <= row["x"] + row["width"] + 0.5
+        assert (
+            button["y"] < text["y"] + text["height"] and text["y"] < button["y"] + button["height"]
+        )
+
+        page.reload()
+        expect(page.get_by_role("tab", name="English", exact=True)).to_be_visible()
+        expect(refusal).to_have_count(1)
+
+        dismiss.click()
+        expect(refusal).to_have_count(0)
+        page.reload()
+        expect(page.get_by_role("tab", name="English", exact=True)).to_be_visible()
+        expect(refusal).to_have_count(0)
 
 
 @pytest.mark.parametrize("server_seen_back", ["app-returned-to", "next-word-answered"])

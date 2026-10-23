@@ -7,11 +7,14 @@ import { apiRequest } from "../src/api/_request.js";
 import { entries } from "../src/composables/useEntries.js";
 import {
   _resetForTest,
+  dismissRefusal,
   enqueueWord,
   flushQueue,
+  preview,
   queuedWords,
   refusedWords,
   resendWhileWaiting,
+  useResendQueue,
 } from "../src/composables/useResendQueue.js";
 import {
   _resetForTest as resetReach,
@@ -389,5 +392,46 @@ describe("resend while words wait", () => {
     noteAnswer();
     await vi.advanceTimersByTimeAsync(120_000);
     expect(posts()).toBe(0);
+  });
+});
+
+describe("refused words", () => {
+  const LATIN = "“English” needs the Latin script.";
+  const met = [
+    { word: "слово", reason: LATIN },
+    { word: "дом", reason: LATIN },
+    { word: "слово", reason: LATIN },
+  ];
+
+  it("takes away only the refusal dismissed, and storage forgets it too", () => {
+    localStorage.setItem("echo-words-resend-refused", JSON.stringify(met));
+    useResendQueue();
+
+    dismissRefusal(1);
+
+    expect(refusedWords.value).toEqual([met[0], met[2]]);
+    expect(JSON.parse(localStorage.getItem("echo-words-resend-refused"))).toEqual([met[0], met[2]]);
+    _resetForTest();
+    useResendQueue();
+    expect(refusedWords.value).toEqual([met[0], met[2]]);
+  });
+});
+
+describe("a submission's preview", () => {
+  it("leaves a word that fits untouched", () => {
+    expect(preview("ledig")).toBe("ledig");
+    expect(preview("Bundesverfassung")).toBe("Bundesverfassung");
+  });
+
+  it("cuts a passage to its first sixteen characters, without a space before the dots", () => {
+    expect(preview("Er steht jeden Morgen um sechs auf.")).toBe("Er steht jeden M…");
+    expect(preview("Wir gehen heute nach Hause.")).toBe("Wir gehen heute…");
+  });
+
+  it("never splits a character written with more than one code point", () => {
+    const accented = `${"x".repeat(15)}e\u0301tc`;
+    expect(preview(accented)).toBe(`${"x".repeat(15)}e\u0301…`);
+    const waving = `${"x".repeat(15)}👋🏽 hello`;
+    expect(preview(waving)).toBe(`${"x".repeat(15)}👋🏽…`);
   });
 });

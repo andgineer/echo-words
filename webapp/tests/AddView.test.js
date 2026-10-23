@@ -1187,30 +1187,59 @@ describe("AddView", () => {
       expect(wrapper.get("#word").element.value).toBe("");
     });
 
-    it("says which waiting word the server refused, until the next word is sent", async () => {
+    function refusals(wrapper) {
+      return wrapper.findAll('[data-testid="refused-word"] .refused-text').map((line) => line.text());
+    }
+
+    function storedRefusals() {
+      return JSON.parse(localStorage.getItem("echo-words-resend-refused") || "[]");
+    }
+
+    it("keeps naming a refused word through typing, a language switch, accepted words and reloads", async () => {
+      const said = `The server did not accept “слово”: ${LATIN}`;
       enqueueWord({ word: "слово", lang: "en", lookup_only: false });
       wordsAnswer((body) => {
         if (body.word === "слово") throw Object.assign(new Error(LATIN), { status: 400 });
         return acceptEach(body);
       });
-      const wrapper = mount(AddView);
+      let wrapper = mount(AddView);
       await flushPromises();
 
       await wrapper.get("#word").setValue("window");
       await wrapper.get(".submit").trigger("click");
       await flushPromises();
-
       expect(sentWords()).toEqual(["слово", "window"]);
       expect(mark(wrapper).exists()).toBe(false);
-      const refused = () => wrapper.findAll('[data-testid="refused-word"]').map((line) => line.text());
-      expect(refused()).toEqual([`The server did not accept “слово”: ${LATIN}`]);
+      expect(refusals(wrapper)).toEqual([said]);
       expect(wrapper.get(".entry-title").text()).toBe("window");
 
       await wrapper.get("#word").setValue("door");
-      expect(refused()).toHaveLength(1);
+      expect(refusals(wrapper)).toEqual([said]);
       await wrapper.get(".submit").trigger("click");
       await flushPromises();
-      expect(refused()).toEqual([]);
+      expect(wrapper.get(".entry-title").text()).toBe("door");
+      expect(refusals(wrapper)).toEqual([said]);
+
+      await wrapper.get('[data-testid="lang-de"]').trigger("click");
+      expect(refusals(wrapper)).toEqual([said]);
+
+      enqueueWord({ word: "Haus", lang: "de", lookup_only: false });
+      await flushQueue();
+      await flushPromises();
+      expect(sentWords()).toEqual(["слово", "window", "door", "Haus"]);
+      expect(mark(wrapper).exists()).toBe(false);
+      expect(refusals(wrapper)).toEqual([said]);
+
+      wrapper.unmount();
+      wrapper = mount(AddView);
+      await flushPromises();
+      expect(refusals(wrapper)).toEqual([said]);
+
+      wrapper.unmount();
+      resetQueue();
+      wrapper = mount(AddView);
+      await flushPromises();
+      expect(refusals(wrapper)).toEqual([said]);
     });
 
     it("shows a refusal the queue met while the words screen was closed", async () => {
@@ -1221,28 +1250,44 @@ describe("AddView", () => {
       const wrapper = mount(AddView);
       await flushPromises();
 
-      expect(wrapper.get('[data-testid="refused-word"]').text()).toBe(
-        `The server did not accept “слово”: ${LATIN}`,
-      );
+      expect(refusals(wrapper)).toEqual([`The server did not accept “слово”: ${LATIN}`]);
     });
 
-    it("keeps a refusal on screen while the next word is only saved for later", async () => {
-      localStorage.setItem(
-        "echo-words-resend-refused",
-        JSON.stringify([{ word: "слово", reason: LATIN }]),
-      );
-      wordsAnswer(() => {
-        throw new ServerUnreachable("unreachable");
-      });
-      const wrapper = mount(AddView);
+    it("takes away exactly the refusal dismissed, on screen and in storage", async () => {
+      const met = [
+        { word: "слово", reason: LATIN },
+        { word: "дом", reason: LATIN },
+        { word: "слово", reason: LATIN },
+      ];
+      localStorage.setItem("echo-words-resend-refused", JSON.stringify(met));
+      let wrapper = mount(AddView);
       await flushPromises();
+      const dismiss = () => wrapper.findAll('[data-testid="dismiss-refusal"]');
+      expect(dismiss().map((button) => button.attributes("aria-label"))).toEqual([
+        "Dismiss",
+        "Dismiss",
+        "Dismiss",
+      ]);
 
-      await wrapper.get("#word").setValue("window");
-      await wrapper.get(".submit").trigger("click");
+      await dismiss()[1].trigger("click");
+
+      expect(refusals(wrapper)).toEqual([
+        `The server did not accept “слово”: ${LATIN}`,
+        `The server did not accept “слово”: ${LATIN}`,
+      ]);
+      expect(storedRefusals()).toEqual([met[0], met[2]]);
+      wrapper.unmount();
+      resetQueue();
+      wrapper = mount(AddView);
       await flushPromises();
+      expect(refusals(wrapper)).toHaveLength(2);
 
-      expect(mark(wrapper).text()).toBe("Waiting to send: window");
-      expect(wrapper.findAll('[data-testid="refused-word"]')).toHaveLength(1);
+      locale.value = "ru";
+      await flushPromises();
+      expect(dismiss()[0].attributes("aria-label")).toBe("Скрыть");
+      await dismiss()[0].trigger("click");
+      expect(refusals(wrapper)).toEqual([`Сервер не принял «слово»: ${LATIN}`]);
+      expect(storedRefusals()).toEqual([met[2]]);
     });
 
     it("drops the hint about a saved word once the queue has sent the last one", async () => {
@@ -1297,14 +1342,39 @@ describe("AddView", () => {
       expect(wrapper.get(".hint").text()).toBe(LATIN);
     });
 
-    it("carries the whole waiting line where a cut-off one can still be read in full", async () => {
+    it("names each waiting word by a short preview, and the whole of each in the title", async () => {
       const passage = "Er steht jeden Morgen um sechs auf und geht vor der Arbeit spazieren.";
+      const another = "Wir gehen heute nach Hause.";
       enqueueWord({ word: passage, lang: "de", lookup_only: false });
+      enqueueWord({ word: another, lang: "de", lookup_only: false });
       enqueueWord({ word: "ledig", lang: "de", lookup_only: false });
       const wrapper = mount(AddView);
       await flushPromises();
 
-      expect(mark(wrapper).attributes("title")).toBe(`Waiting to send: ${passage}, ledig`);
+      expect(mark(wrapper).text()).toBe(
+        "Waiting to send: Er steht jeden M…, Wir gehen heute…, ledig",
+      );
+      expect(mark(wrapper).attributes("title")).toBe(
+        `Waiting to send: ${passage}, ${another}, ledig`,
+      );
+    });
+
+    it("names a refused passage by a short preview, and the whole of it and why in the title", async () => {
+      const passage = "Er steht jeden Morgen um sechs auf. ".repeat(15).trim();
+      const tooLong = "This text is too long: no more than 500 characters.";
+      localStorage.setItem(
+        "echo-words-resend-refused",
+        JSON.stringify([{ word: passage, reason: tooLong }]),
+      );
+      const wrapper = mount(AddView);
+      await flushPromises();
+
+      expect(refusals(wrapper)).toEqual([
+        `The server did not accept “Er steht jeden M…”: ${tooLong}`,
+      ]);
+      expect(wrapper.get('[data-testid="refused-word"] .refused-text').attributes("title")).toBe(
+        `The server did not accept “${passage}”: ${tooLong}`,
+      );
     });
   });
 

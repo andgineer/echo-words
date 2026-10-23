@@ -897,7 +897,10 @@ same prompt is not how a weak answer gets fixed.
   submitted while unreachable are kept in the app's local queue, and
   the words screen names them until the server has accepted each one;
   typing, switching language or screen, and reloading the app leave
-  that line in place. They are re-sent automatically, in order, as soon
+  that line in place. The line stays one line and names every waiting
+  word by its first few characters, so a long passage never pushes the
+  words typed after it out of sight; the whole of each is in the line's
+  tooltip where the device shows one. They are re-sent automatically, in order, as soon
   as the server is seen answering again — on opening the app, on
   returning to it, on the device coming back online, when any other
   request is answered, and, while the app is on screen and words wait,
@@ -913,9 +916,13 @@ same prompt is not how a weak answer gets fixed.
   fails on stays waiting, and the new word is still sent. A waiting
   word the server refuses outright is taken off the queue, since sent
   again it would only be refused again and would hold back every word
-  behind it; the words screen says which word was refused and why
-  until the next word is sent. The collection
-  is a local file: cards added while AnkiWeb sync was failing survive
+  behind it. The words screen then names the refused word, by its
+  first few characters, and says why, on one line beside a button that
+  dismisses it. The note stays — through words sent and accepted
+  afterwards, typing, switching language or screen, and reloads —
+  until the reader dismisses it: a refusal can be met while the app is
+  closed or on another screen, and a note that left by itself could go
+  unread. The collection is a local file: cards added while AnkiWeb sync was failing survive
   restarts and reach the devices on the next successful sync. Nothing
   else on the backend is durable by design — a restart clears
   server-side job state, the card controls and counters.

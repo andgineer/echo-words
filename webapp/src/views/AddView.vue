@@ -1,5 +1,6 @@
 <script setup>
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
+import { X } from "lucide-vue-next";
 import { apiRequest } from "../api/_request.js";
 import { applyReceipt, upsertEntry } from "../composables/useEntries.js";
 import { useEventStream } from "../composables/useEventStream.js";
@@ -10,6 +11,7 @@ import {
   enqueueWord,
   flushQueue,
   isRetryableWordError,
+  preview,
   submitWord,
   useResendQueue,
   withRequestId,
@@ -26,7 +28,7 @@ const {
   start: startEventStream,
   stop: stopEventStream,
 } = useEventStream({ onMoved: followMoved });
-const { queuedWords, refusedWords, clearRefusedWords } = useResendQueue();
+const { queuedWords, refusedWords, dismissRefusal } = useResendQueue();
 
 const emit = defineEmits(["navigate"]);
 
@@ -57,11 +59,11 @@ const selectedEntry = computed(
   () => railEntries.value.find((entry) => entry.entry_id === selectedId.value) || null,
 );
 
-const waitingLine = computed(() =>
-  queuedWords.value.length
-    ? t("add.waiting", { words: queuedWords.value.map((item) => item.body.word).join(", ") })
-    : "",
-);
+const waitingWords = computed(() => queuedWords.value.map((item) => item.body.word));
+
+function waitingLine(words) {
+  return t("add.waiting", { words: words.join(", ") });
+}
 
 function clearHint() {
   hint.value = "";
@@ -175,7 +177,6 @@ async function sendWord(
   busy.value = true;
   clearHint();
   removedId.value = "";
-  const refusalsSeen = refusedWords.value.length;
   const body = withRequestId({
     word: submittedWord,
     lang,
@@ -205,8 +206,6 @@ async function sendWord(
         requested_reverse: receipt.reverse ?? null,
       });
     });
-    // A refusal the queue met on this word's way out is news, and stays on screen.
-    clearRefusedWords(refusalsSeen);
     selectNewest(lang, accepted.entry_id);
     // A move read before this reply found the tab still showing the word picked before
     // the send, so the reader was left behind and is taken along here.
@@ -348,16 +347,35 @@ async function requestDetail(entry) {
         {{ t("add.whatToCheck") }}
       </button>
     </p>
-    <p v-if="waitingLine" class="waiting" data-testid="waiting-words" :title="waitingLine">
-      {{ waitingLine }}
+    <p
+      v-if="queuedWords.length"
+      class="waiting"
+      data-testid="waiting-words"
+      :title="waitingLine(waitingWords)"
+    >
+      {{ waitingLine(waitingWords.map(preview)) }}
     </p>
     <p
       v-for="(refused, index) in refusedWords"
       :key="index"
-      class="hint"
+      class="refused"
       data-testid="refused-word"
     >
-      {{ t("add.refused", { word: refused.word, reason: refused.reason }) }}
+      <span
+        class="refused-text"
+        :title="t('add.refused', { word: refused.word, reason: refused.reason })"
+      >
+        {{ t("add.refused", { word: preview(refused.word), reason: refused.reason }) }}
+      </span>
+      <button
+        class="btn-inline dismiss"
+        :title="t('add.dismiss')"
+        :aria-label="t('add.dismiss')"
+        data-testid="dismiss-refusal"
+        @click="dismissRefusal(index)"
+      >
+        <X :size="14" aria-hidden="true" />
+      </button>
     </p>
   </section>
 
@@ -406,6 +424,33 @@ async function requestDetail(entry) {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.refused {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  font-size: 0.85rem;
+  color: var(--warning);
+}
+
+.refused-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dismiss {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  min-height: 32px;
+  padding: 0;
 }
 
 .what-to-check {

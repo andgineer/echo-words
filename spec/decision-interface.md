@@ -103,9 +103,13 @@ headless Anki integration, and the audio chain are interface-agnostic.
   network while the server dropped off the tailnet sees no online event,
   and a home-screen app is returned to rather than reopened, so neither
   of those alone would ever send the word. The waiting words stay named
-  on the words screen until the server accepts them; one the server
-  refuses outright leaves the queue with its refusal shown, rather than
-  holding back every word behind it. The browser cannot see why
+  on the words screen, each by a short preview so every one fits the
+  single line a phone shows without a tooltip, until the server accepts
+  them. One the server refuses outright leaves the queue rather than
+  holding back every word behind it, and its refusal stays named, with
+  the reason, until the reader dismisses it: the queue sends words while
+  the reader looks elsewhere, so no later action of theirs proves the
+  refusal was read. The browser cannot see why
   the server is gone, but the ways it goes are distinguishable from the
   page: with Tailscale off the server's name does not resolve and the
   request fails at once; with Tailscale on and the VM stopped the request
