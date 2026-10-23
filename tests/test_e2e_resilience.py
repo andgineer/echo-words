@@ -29,6 +29,7 @@ RECONNECT_TIMEOUT_MS = 15_000
 SUBMIT_TIMEOUT_MS = 15_000
 STATUS_TIMEOUT_MS = 10_000
 RECHECK_INTERVAL_MS = 30_000
+KEEP_ALIVE_SECONDS = 0.5
 
 
 @pytest.fixture(params=["chromium", "webkit"])
@@ -534,3 +535,74 @@ def test_a_word_typed_once_the_server_is_back_goes_out_behind_the_one_waiting(
         expect(page.get_by_test_id("waiting-words")).to_have_count(0)
         recent = page.request.get(f"{app.url}/api/words/recent").json()
         assert [entry["word"] for entry in recent] == [later, WORD]
+
+
+def test_a_long_passage_waiting_to_be_sent_is_named_on_one_line(
+    unrouted_worker_page: Page,
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A waiting passage can run to hundreds of characters, and the line naming it sits
+    between the input and the cards: it stays one line, cut short, with the whole of it
+    kept for whoever asks."""
+    page = unrouted_worker_page
+    passage = " ".join(["Er steht jeden Morgen um sechs auf."] * 12)
+    with live_app(settings, monkeypatch) as app:
+        page.goto(app.url)
+        expect(page.get_by_role("tab", name="English", exact=True)).to_be_visible()
+        page.route("**/api/words", lambda route: route.abort("namenotresolved"))
+        page.locator("#word").fill(passage)
+        with page.expect_request("**/api/words"):
+            page.get_by_role("button", name="Analyse").click()
+
+        waiting = page.get_by_test_id("waiting-words")
+        expect(waiting).to_have_attribute("title", f"Waiting to send: {passage}")
+        lines = waiting.evaluate("""line => {
+            const range = document.createRange();
+            range.selectNodeContents(line);
+            return new Set([...range.getClientRects()].map((rect) => Math.round(rect.top))).size;
+        }""")
+        assert lines == 1
+        assert waiting.evaluate("line => line.scrollWidth > line.clientWidth")
+
+
+@pytest.mark.parametrize("server_seen_back", ["app-returned-to", "next-word-answered"])
+def test_an_event_stream_given_up_while_the_app_was_down_is_opened_again(
+    unrouted_worker_page: Page,
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+    server_seen_back: str,
+) -> None:
+    """Tailscale serve answers the event stream 502 while echo-words is down, and the
+    browser gives up on a stream answered so, for good. Answers reach the page over
+    nothing else: once the server is seen answering, the stream is opened again, or the
+    card waits on an answer the server finished long ago."""
+    # WebKit reports a stream open only on its first bytes, and the catch-up waits on that.
+    monkeypatch.setattr("echo_words.api.SSE_KEEP_ALIVE_SECONDS", KEEP_ALIVE_SECONDS)
+    page = unrouted_worker_page
+    with live_app(settings, monkeypatch, handles=[FakeHandle([answer(ARTICLE)])]) as app:
+        refused: list[Route] = []
+
+        def app_down(route: Route) -> None:
+            route.fulfill(status=502, body="")
+            refused.append(route)
+
+        page.route("**/api/events", app_down)
+        page.goto(app.url)
+        expect(page.get_by_role("tab", name="English", exact=True)).to_be_visible()
+        assert refused
+        if server_seen_back == "app-returned-to":
+            page.route("**/api/words", lambda route: route.abort("namenotresolved"))
+            _type_word(page)
+            expect(page.get_by_test_id("waiting-words")).to_have_text(f"Waiting to send: {WORD}")
+            page.unroute_all(behavior="ignoreErrors")
+            _leave_and_return(page)
+        else:
+            page.unroute_all(behavior="ignoreErrors")
+            _type_word(page)
+
+        expect(page.locator(".delete-card")).to_be_visible(timeout=RECONNECT_TIMEOUT_MS)
+        expect(page.locator(".entry-text")).to_contain_text("the finished analysis")
+        expect(page.locator(".working.pending")).to_have_count(0)
+        expect(page.get_by_test_id("waiting-words")).to_have_count(0)
+        assert _articles(app) == 1

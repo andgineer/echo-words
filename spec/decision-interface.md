@@ -87,8 +87,13 @@ headless Anki integration, and the audio chain are interface-agnostic.
   known: the catch-up waits for its receipt, because a stream that opened
   after the server finished the answer has no other way to learn of it —
   the queue resent on opening or returning to the app is the ordinary
-  case. There is no catch-up with history accumulated by other devices
-  while closed.
+  case. A stream answered with anything but success — Tailscale serve's
+  502 while the app is down — is given up by the browser for good rather
+  than retried, so the page opens it again itself at the moments the
+  resend queue is flushed (returning to the app, coming back online, any
+  answered request), and only when the browser has given it up: a stream
+  the browser is still reconnecting is left to it. There is no catch-up
+  with history accumulated by other devices while closed.
 - **Backend down ⇒ new answers unavailable.** Saved history and directories
   still render. The local resend queue turns words submitted during an
   outage into cards as soon as the server is seen answering again: on

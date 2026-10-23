@@ -219,6 +219,17 @@ describe("resend queue", () => {
     expect(refusedWords.value).toEqual([]);
   });
 
+  it("sends what is queued after a flush that found nothing to send", async () => {
+    expect(await flushQueue()).toBeNull();
+    enqueueWord(first);
+    apiRequest.mockResolvedValue({ entry_id: "accepted" });
+
+    expect(await flushQueue()).toBeNull();
+
+    expect(posts()).toBe(1);
+    expect(queuedWords.value).toEqual([]);
+  });
+
   it("hands a flush asked for while one runs that same one, so no word goes twice", async () => {
     enqueueWord(first);
     enqueueWord(second);

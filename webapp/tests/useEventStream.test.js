@@ -1,4 +1,4 @@
-import { beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { apiRequest } from "../src/api/_request.js";
 
 vi.mock("../src/api/_request.js", () => ({ apiRequest: vi.fn() }));
@@ -6,7 +6,16 @@ vi.mock("../src/api/_request.js", () => ({ apiRequest: vi.fn() }));
 import { entries, replaceEntries } from "../src/composables/useEntries.js";
 import { useEventStream } from "../src/composables/useEventStream.js";
 import { submitWord } from "../src/composables/useResendQueue.js";
+import {
+  _resetForTest as resetReach,
+  noteAnswer,
+  noteFailure,
+} from "../src/composables/useServerReach.js";
 import { EPIC, FEATURE, labelBehavior } from "./allure-taxonomy.js";
+
+const CONNECTING = 0;
+const OPEN = 1;
+const CLOSED = 2;
 
 class FakeEventSource {
   static instances = [];
@@ -15,6 +24,7 @@ class FakeEventSource {
     this.url = url;
     this.listeners = new Map();
     this.closed = false;
+    this.readyState = CONNECTING;
     FakeEventSource.instances.push(this);
   }
 
@@ -31,6 +41,7 @@ class FakeEventSource {
 
   close() {
     this.closed = true;
+    this.readyState = CLOSED;
   }
 }
 
@@ -40,6 +51,7 @@ beforeEach(async () => {
   localStorage.clear();
   apiRequest.mockReset();
   FakeEventSource.instances = [];
+  resetReach();
 });
 
 it("replaces accumulated text when an update arrives", () => {
@@ -412,4 +424,128 @@ it("moves nothing when a reconnect finds the entry where it was", async () => {
 
   expect(onMoved).not.toHaveBeenCalled();
   expect(entries.value[0].moved).toBeUndefined();
+});
+
+describe("a stream the browser has given up on", () => {
+  let stream;
+
+  function opened(options = {}) {
+    stream = useEventStream({ EventSourceClass: FakeEventSource, ...options });
+    stream.start();
+    return FakeEventSource.instances[0];
+  }
+
+  // What the browser does with any answer but 200, such as Tailscale's 502.
+  function refuse(source) {
+    source.readyState = CLOSED;
+    source.emit("error");
+  }
+
+  function turnPage(state) {
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => state });
+    document.dispatchEvent(new Event("visibilitychange"));
+  }
+
+  afterEach(() => {
+    stream?.stop();
+    stream = null;
+    delete document.visibilityState;
+  });
+
+  it("is opened again on the first answer the server gives, and catches up on the way", async () => {
+    replaceEntries([{ entry_id: "sent", status: "pending", text: "" }]);
+    const fetchEntry = vi.fn(async () => ({ entry_id: "sent", status: "done", text: "the answer" }));
+    refuse(opened({ fetchEntry }));
+
+    noteFailure("app-down");
+    expect(FakeEventSource.instances).toHaveLength(1);
+    noteAnswer();
+    expect(FakeEventSource.instances).toHaveLength(2);
+
+    FakeEventSource.instances[1].emit("open");
+    await vi.waitFor(() =>
+      expect(entries.value[0]).toMatchObject({ status: "done", text: "the answer" }),
+    );
+    expect(fetchEntry).toHaveBeenCalledWith("sent");
+  });
+
+  it.each([
+    ["the page is returned to", () => turnPage("visible")],
+    ["the device comes back online", () => window.dispatchEvent(new Event("online"))],
+  ])("is opened again when %s", (_, moment) => {
+    refuse(opened());
+
+    moment();
+
+    expect(FakeEventSource.instances).toHaveLength(2);
+    expect(FakeEventSource.instances[1].url).toBe("/api/events");
+  });
+
+  it("is not opened again when the page is only left", () => {
+    refuse(opened());
+
+    turnPage("hidden");
+
+    expect(FakeEventSource.instances).toHaveLength(1);
+  });
+
+  it.each([
+    ["still reconnecting", CONNECTING],
+    ["open", OPEN],
+  ])("leaves a stream %s to the browser", (_, state) => {
+    opened().readyState = state;
+
+    noteAnswer();
+    turnPage("visible");
+    window.dispatchEvent(new Event("online"));
+
+    expect(FakeEventSource.instances).toHaveLength(1);
+  });
+
+  it("opens a single stream however many moments say the server is back", () => {
+    refuse(opened());
+
+    noteAnswer();
+    turnPage("visible");
+    window.dispatchEvent(new Event("online"));
+    noteAnswer();
+
+    expect(FakeEventSource.instances).toHaveLength(2);
+  });
+
+  it("opens nothing once the words screen has stopped it", () => {
+    refuse(opened());
+    stream.stop();
+
+    noteAnswer();
+    turnPage("visible");
+    window.dispatchEvent(new Event("online"));
+
+    expect(FakeEventSource.instances).toHaveLength(1);
+  });
+
+  it("waits, once opened again, for the receipt whose answer opened it", async () => {
+    // The server's answer is noted before its receipt is read, so the new stream can
+    // open while the word it is there for is still unknown to the page.
+    let receive;
+    apiRequest.mockImplementation(() => {
+      noteAnswer();
+      return new Promise((resolve) => { receive = resolve; });
+    });
+    const fetchEntry = vi.fn(async () => ({ entry_id: "late", status: "done", text: "the answer" }));
+    refuse(opened({ fetchEntry }));
+
+    const sending = submitWord({ word: "late", lang: "en" }, (receipt) => {
+      entries.value = [{ entry_id: receipt.entry_id, status: "pending" }];
+    });
+    expect(FakeEventSource.instances).toHaveLength(2);
+    FakeEventSource.instances[1].emit("open");
+    receive({ entry_id: "late" });
+    await sending;
+
+    await vi.waitFor(() =>
+      expect(entries.value[0]).toMatchObject({ status: "done", text: "the answer" }),
+    );
+    expect(fetchEntry).toHaveBeenCalledWith("late");
+  });
 });

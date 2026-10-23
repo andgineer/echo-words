@@ -69,9 +69,10 @@ export function enqueueWord(body) {
   saveQueue();
 }
 
-export function clearRefusedWords() {
-  if (!refusedWords.value.length) return;
-  refusedWords.value = [];
+// Refusals are kept in the order they were met, so the first `count` are the oldest.
+export function clearRefusedWords(count) {
+  if (!count) return;
+  refusedWords.value = refusedWords.value.slice(count);
   saveRefused();
 }
 
@@ -148,9 +149,8 @@ async function sendQueued() {
   }
 }
 
-// One flush at a time, settling on what stopped it or on null. It starts a tick late so
-// the guard is up before its first send: that send's answer, noted on the way, would
-// otherwise start a second flush of the same words.
+// One flush at a time, settling on what stopped it or on null. It starts a tick late: run
+// at once, an empty queue's flush clears the guard before `??=` sets it, which then stays.
 export function flushQueue() {
   flushing ??= Promise.resolve().then(sendQueued);
   return flushing;

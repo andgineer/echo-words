@@ -1,6 +1,10 @@
+import { watch } from "vue";
 import { apiRequest } from "../api/_request.js";
 import { entries, upsertEntry } from "./useEntries.js";
 import { receiptsInFlight } from "./useResendQueue.js";
+import { serverReach } from "./useServerReach.js";
+
+const CLOSED = 2;
 
 function detailOf(entry) {
   return {
@@ -56,6 +60,7 @@ export function useEventStream({
 } = {}) {
   let source = null;
   let activeRefresh = null;
+  let stopFollowingReach = null;
 
   async function refresh() {
     if (activeRefresh) return;
@@ -151,8 +156,7 @@ export function useEventStream({
     activeRefresh?.events.push({ name, data });
   }
 
-  function start() {
-    if (source || typeof EventSourceClass !== "function") return source;
+  function open() {
     source = new EventSourceClass("/api/events");
     source.addEventListener("open", () => {
       void refresh().catch(() => {});
@@ -169,12 +173,40 @@ export function useEventStream({
     ]) {
       source.addEventListener(name, (event) => apply(name, event));
     }
+  }
+
+  // The browser gives a stream up for good on any answer but 200, such as Tailscale's 502
+  // while the app is down; one still connecting or open is the browser's to keep.
+  function reopen() {
+    if (source?.readyState === CLOSED) open();
+  }
+
+  function reopenOnReturn() {
+    if (document.visibilityState === "visible") reopen();
+  }
+
+  function start() {
+    if (source || typeof EventSourceClass !== "function") return source;
+    open();
+    stopFollowingReach = watch(
+      serverReach,
+      (reach) => {
+        if (!reach.failure) reopen();
+      },
+      { flush: "sync" },
+    );
+    window.addEventListener("online", reopen);
+    document.addEventListener("visibilitychange", reopenOnReturn);
     return source;
   }
 
   function stop() {
     source?.close();
     source = null;
+    stopFollowingReach?.();
+    stopFollowingReach = null;
+    window.removeEventListener("online", reopen);
+    document.removeEventListener("visibilitychange", reopenOnReturn);
   }
 
   return { entries, refresh, start, stop };

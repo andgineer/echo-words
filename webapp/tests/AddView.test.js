@@ -1225,6 +1225,87 @@ describe("AddView", () => {
         `The server did not accept “слово”: ${LATIN}`,
       );
     });
+
+    it("keeps a refusal on screen while the next word is only saved for later", async () => {
+      localStorage.setItem(
+        "echo-words-resend-refused",
+        JSON.stringify([{ word: "слово", reason: LATIN }]),
+      );
+      wordsAnswer(() => {
+        throw new ServerUnreachable("unreachable");
+      });
+      const wrapper = mount(AddView);
+      await flushPromises();
+
+      await wrapper.get("#word").setValue("window");
+      await wrapper.get(".submit").trigger("click");
+      await flushPromises();
+
+      expect(mark(wrapper).text()).toBe("Waiting to send: window");
+      expect(wrapper.findAll('[data-testid="refused-word"]')).toHaveLength(1);
+    });
+
+    it("drops the hint about a saved word once the queue has sent the last one", async () => {
+      enqueueWord({ word: "house", lang: "en", lookup_only: false });
+      wordsAnswer(() => {
+        throw new ServerUnreachable("unreachable");
+      });
+      const wrapper = mount(AddView);
+      await flushPromises();
+      await wrapper.get("#word").setValue("window");
+      await wrapper.get(".submit").trigger("click");
+      await flushPromises();
+      expect(wrapper.get(".hint").text()).toContain("the word is saved and will be sent later");
+
+      wordsAnswer((body) => {
+        if (body.word === "house") return acceptEach(body);
+        throw Object.assign(new Error("Internal Server Error"), { status: 500 });
+      });
+      await flushQueue();
+      await flushPromises();
+      expect(mark(wrapper).text()).toBe("Waiting to send: window");
+      expect(wrapper.find('[data-testid="what-to-check"]').exists()).toBe(true);
+
+      wordsAnswer(acceptEach);
+      await flushQueue();
+      await flushPromises();
+      expect(mark(wrapper).exists()).toBe(false);
+      expect(wrapper.find(".hint").exists()).toBe(false);
+      expect(wrapper.find('[data-testid="what-to-check"]').exists()).toBe(false);
+    });
+
+    it("keeps a hint about the word just typed when the queue empties after it", async () => {
+      enqueueWord({ word: "house", lang: "en", lookup_only: false });
+      wordsAnswer((body) => {
+        if (body.word === "house") {
+          throw Object.assign(new Error("Internal Server Error"), { status: 500 });
+        }
+        throw Object.assign(new Error(LATIN), { status: 400 });
+      });
+      const wrapper = mount(AddView);
+      await flushPromises();
+      await wrapper.get("#word").setValue("слово");
+      await wrapper.get(".submit").trigger("click");
+      await flushPromises();
+      expect(wrapper.get(".hint").text()).toBe(LATIN);
+
+      wordsAnswer(acceptEach);
+      await flushQueue();
+      await flushPromises();
+
+      expect(mark(wrapper).exists()).toBe(false);
+      expect(wrapper.get(".hint").text()).toBe(LATIN);
+    });
+
+    it("carries the whole waiting line where a cut-off one can still be read in full", async () => {
+      const passage = "Er steht jeden Morgen um sechs auf und geht vor der Arbeit spazieren.";
+      enqueueWord({ word: passage, lang: "de", lookup_only: false });
+      enqueueWord({ word: "ledig", lang: "de", lookup_only: false });
+      const wrapper = mount(AddView);
+      await flushPromises();
+
+      expect(mark(wrapper).attributes("title")).toBe(`Waiting to send: ${passage}, ledig`);
+    });
   });
 
   it("has no help panel under the rail", async () => {

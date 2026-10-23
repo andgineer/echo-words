@@ -902,12 +902,19 @@ same prompt is not how a weak answer gets fixed.
   returning to it, on the device coming back online, when any other
   request is answered, and, while the app is on screen and words wait,
   by a re-check about every 30 seconds — so they still become cards
-  without the app being reopened. A word typed while older ones wait is
-  sent after them, and joins the queue behind them while the server
-  still cannot be reached. A waiting word the server refuses outright is
-  taken off the queue, since sent again it would only be refused again
-  and would hold back every word behind it; the words screen says which
-  word was refused and why until the next word is sent. The collection
+  without the app being reopened. Their answers reach the words screen
+  as promptly: answers arrive over a live connection, which the browser
+  abandons for good once the server answers it with an error while the
+  app is down; the app opens it again at those same moments, and on
+  opening it fetches the answers of every word still unfinished on this
+  device. When a word is typed while older ones wait, the waiting words
+  are tried first. While the server still cannot be reached, the new
+  word joins the queue behind them; a waiting word the server itself
+  fails on stays waiting, and the new word is still sent. A waiting
+  word the server refuses outright is taken off the queue, since sent
+  again it would only be refused again and would hold back every word
+  behind it; the words screen says which word was refused and why
+  until the next word is sent. The collection
   is a local file: cards added while AnkiWeb sync was failing survive
   restarts and reach the devices on the next successful sync. Nothing
   else on the backend is durable by design — a restart clears

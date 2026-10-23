@@ -33,6 +33,7 @@ const emit = defineEmits(["navigate"]);
 const word = ref("");
 const hint = ref("");
 const hintChecks = ref(false);
+let hintQueued = false;
 const busy = ref(false);
 // Which entry each language is showing, so switching back to a language returns to
 // the word it was left on rather than to its newest.
@@ -56,12 +57,27 @@ const selectedEntry = computed(
   () => railEntries.value.find((entry) => entry.entry_id === selectedId.value) || null,
 );
 
-const waitingWords = computed(() => queuedWords.value.map((item) => item.body.word).join(", "));
+const waitingLine = computed(() =>
+  queuedWords.value.length
+    ? t("add.waiting", { words: queuedWords.value.map((item) => item.body.word).join(", ") })
+    : "",
+);
 
-watch([word, selected], () => {
+function clearHint() {
   hint.value = "";
   hintChecks.value = false;
-});
+  hintQueued = false;
+}
+
+watch([word, selected], clearHint);
+
+// A hint that the word is saved for later is stale once no word is left waiting.
+watch(
+  () => queuedWords.value.length,
+  (waiting) => {
+    if (!waiting && hintQueued) clearHint();
+  },
+);
 
 const QUEUED_HINTS = {
   offline: "add.queued",
@@ -157,10 +173,9 @@ async function sendWord(
   { context = "", shape = null, lang = selected.value, lookupOnly = false } = {},
 ) {
   busy.value = true;
-  hint.value = "";
-  hintChecks.value = false;
+  clearHint();
   removedId.value = "";
-  clearRefusedWords();
+  const refusalsSeen = refusedWords.value.length;
   const body = withRequestId({
     word: submittedWord,
     lang,
@@ -190,6 +205,8 @@ async function sendWord(
         requested_reverse: receipt.reverse ?? null,
       });
     });
+    // A refusal the queue met on this word's way out is news, and stays on screen.
+    clearRefusedWords(refusalsSeen);
     selectNewest(lang, accepted.entry_id);
     // A move read before this reply found the tab still showing the word picked before
     // the send, so the reader was left behind and is taken along here.
@@ -203,6 +220,7 @@ async function sendWord(
       await nextTick();
       hint.value = t(queuedHint(e));
       hintChecks.value = e instanceof ServerUnreachable && e.kind !== "offline";
+      hintQueued = true;
     } else {
       hint.value = e.message;
     }
@@ -330,8 +348,8 @@ async function requestDetail(entry) {
         {{ t("add.whatToCheck") }}
       </button>
     </p>
-    <p v-if="waitingWords" class="waiting" data-testid="waiting-words">
-      {{ t("add.waiting", { words: waitingWords }) }}
+    <p v-if="waitingLine" class="waiting" data-testid="waiting-words" :title="waitingLine">
+      {{ waitingLine }}
     </p>
     <p
       v-for="(refused, index) in refusedWords"
@@ -385,6 +403,9 @@ async function requestDetail(entry) {
   margin-top: 0.75rem;
   font-size: 0.85rem;
   color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .what-to-check {
