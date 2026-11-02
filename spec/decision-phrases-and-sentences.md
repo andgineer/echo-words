@@ -510,16 +510,65 @@ a case-labelled table scores as morphology — the most common real defect in th
 invisible to every gate. The review packet should also carry the screen's own counts
 and thresholds, which it does not.
 
-### Typed fixed formulas: a baseline of the open prompt
+### Typed formulas and the punctuation copied with them
 
-Measured on the free pool on 2026-11-02, with one model answering
-(`google-gemini-3.5-flash-lite`) and one answer per fixture, so a hint rather than
-a rate. Typed into the submit box, `Gute Nacht!`, `Bis bald!` and `Laku noć!` were
-read as units and carded. `Bis gleich!` and `Good night!` were read as text; each
-offered its whole formula as a chip, which cards in one tap because a chip whose
-context holds nothing beyond its own words is asked as a bare lookup. Both text
-verdicts miss what the functional description asks of a conventional fixed
-formula: its whole wording is reusable as-is, so it is a unit, not text.
+Punctuation that comes with a submission decides nothing about its branch. The open
+prompt tells the model to judge the words alone: a closing `!`, `?` or full stop,
+quotation marks or a trailing comma never make a submission text, and a greeting,
+farewell, thanks, congratulation or set reply is a unit with or without its
+punctuation, however many words it has. The model still sees exactly what was typed,
+since a real question keeps its `?`, and nothing in code reads the punctuation. The
+rule is there because the open prompt read pasted formulas such as `Bis gleich!` and
+`Good night!` as text, which cards nothing, and one such answer gave as its reason
+that the formula was a fixed phrase rather than a single word.
+
+It is measured on 29 typed submissions held outside every tier: sixteen formulas
+with the punctuation they were copied with (seven German, five English, four Serbian;
+among them a closing `?`, full stops and two in quotation marks), three fixed
+expressions with a copied comma or full stop, four of those formulas without their
+punctuation, and six clauses reporting a situation that end in `!` or `?` and must
+stay text. One free-pool answer per fixture, on 2026-11-02, before and after the rule
+— a hint per item rather than a rate:
+
+| class | expected | before the rule | with the rule |
+|---|---|---:|---:|
+| formula with its punctuation | unit | 11 of 16 (3 text, 2 unusable) | 13 of 16 (none text, 3 unusable) |
+| expression with a copied comma or full stop | unit | 3 of 3 | 3 of 3 |
+| formula without punctuation | unit | 4 of 4 | 3 of 4 (1 unusable) |
+| clause reporting a situation, ending in `!` or `?` | text | 6 of 6 | 6 of 6 |
+
+Before the rule `Alles klar?`, `Good night!` and `See you soon!` were read as text
+while `Good night` and `See you soon` typed bare were units, so the copied mark alone
+decided those two. With it no formula is read as text. Every unusable answer chose
+the unit branch and then broke its own card: `Gute Nacht!` and `Happy birthday!`
+(and `Thank you very much.` before the rule) copied the punctuation into the
+headword, which no card can carry, and `Herzlichen Glückwunsch!` and `Laku noć` gave
+an example that is the formula alone, leaving the gapped front no word beside its
+blank. An unusable payload sends the request back to the pool for another answer; a
+text verdict ends it with no card.
+
+The full tier on the same prompt passes every deterministic contract and every
+quality threshold. Against the last full tier of the prompt before the rule, taken on
+2026-10-12:
+
+| | before the rule | with the rule |
+|---|---:|---:|
+| usable initial results | 156 of 159 | 155 of 159 |
+| usable verdicts | 120 of 123 | 121 of 123 |
+| raw `unit→unit / unit→text / text→unit / text→text` | 60 / 3 / 1 / 56 | 62 / 3 / 5 / 51 |
+| `correct / ambiguous / hard / unusable` | 116 / 0 / 4 / 3 | 113 / 2 / 6 / 2 |
+| known texts reaching text | 27 of 27 | 25 of 27 |
+| registered units cardable | 20 of 22 | 19 of 22 |
+| clicks / expressions | 5 of 6 / 2 of 3 | 6 of 6 / 3 of 3 |
+
+Every verdict fixture that changed branch moved from text to unit: `I have no idea`
+and `Не знам`, defensible on either branch, and `turned out quite differently` and
+`völlig durcheinander gebracht`, which are hard errors; the word list `Ampel links`
+moved the same way. Two full runs of one prompt differ by three to ten verdicts on
+this matrix, so one run cannot tell a lean towards unit from a draw. All four were
+units in most of the six full runs of earlier prompts and text only in the single
+run before the rule. The two known texts that missed the text branch were unusable
+answers, not unit verdicts.
 
 ### Two experiments that were not run, and why
 
