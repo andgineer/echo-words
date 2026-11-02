@@ -32,6 +32,17 @@ those answers happen to need. `report` screens whichever of the two a directory 
     uv run python experiments/one_note_bench.py run-reverse --resume \
       --wait 180 --pace 2 --concurrency 1 --out experiments/.bench-reverse
     uv run python experiments/one_note_bench.py report --out experiments/.bench-reverse
+
+A chip whose carried text is nothing but its own wording, and the typed formulas such a
+chip comes from, are measured on demand and outside every tier: they are asked only by
+id, and `report` screens them on their own wherever a directory holds them.
+    uv run python experiments/one_note_bench.py run-clicks --resume --pace 2 \
+      --concurrency 1 --out experiments/.bench-whole-text-chip \
+      --shot whole-chip-de-bis-gleich whole-chip-en-good-night whole-chip-sr-laku-noc
+    uv run python experiments/one_note_bench.py run --resume --pace 2 --concurrency 1 \
+      --out experiments/.bench-whole-text-chip --shot formula-de-bis-gleich \
+      formula-de-gute-nacht formula-de-bis-bald formula-en-good-night formula-sr-laku-noc
+    uv run python experiments/one_note_bench.py report --out experiments/.bench-whole-text-chip
 """
 
 import argparse
@@ -64,15 +75,17 @@ from backend_bench import (  # noqa: E402
     split_answer,
 )
 from bench_items import SENTENCES  # noqa: E402
-from echo_words.card import ParsedAnswer, ParsedText, ParsedUnit  # noqa: E402
+from echo_words.card import ParsedAnswer, ParsedText, ParsedUnit, unit_context  # noqa: E402
 from echo_words.language_catalog import catalog_language  # noqa: E402
 from echo_words.languages import (  # noqa: E402
     Language,
     fold_for_match,
     load_languages,
+    plain_text,
     plain_unit,
     sentence_is_source_language,
     split_words,
+    validate_text,
     validate_word,
 )
 from echo_words.llm_backend import POOL_FASTEST_OF  # noqa: E402
@@ -242,6 +255,42 @@ CLICK_CASES = [
 ]
 CLICK_BY_ID = {case.shot_id: case for case in CLICK_CASES}
 CLICK_IDS = set(CLICK_BY_ID)
+
+# A tap on the chip that is a formula's whole wording, and the typed formulas themselves.
+# Asked only by id and screened on their own: no tier counts them and no gate reads them.
+WHOLE_CHIP_KIND = "whole-chip"
+FORMULA_KIND = "formula"
+WHOLE_TEXT_BENCH_KINDS = frozenset({WHOLE_CHIP_KIND, FORMULA_KIND})
+
+
+@dataclass(frozen=True)
+class WholeTextChipCase:
+    """The chip a formula read as text offers for its whole wording, with the text it
+    carries: that same wording, so the context holds no word beyond the chip's own."""
+
+    shot_id: str
+    lang: str
+    label: str
+    carried: str
+
+
+WHOLE_TEXT_CHIP_CASES = (
+    WholeTextChipCase("whole-chip-de-bis-gleich", "de", "bis gleich", "Bis gleich!"),
+    WholeTextChipCase("whole-chip-en-good-night", "en", "good night", "Good night!"),
+    WholeTextChipCase("whole-chip-sr-laku-noc", "sr", "laku noć", "Laku noć!"),
+)
+WHOLE_TEXT_CHIP_BY_ID = {case.shot_id: case for case in WHOLE_TEXT_CHIP_CASES}
+WHOLE_TEXT_CHIP_IDS = frozenset(WHOLE_TEXT_CHIP_BY_ID)
+# Typed into the submit box, where the answer decides unit or text: a baseline of the
+# verdict the canonical prompt gives each, recorded for a decision still to be taken.
+TYPED_FORMULAS = (
+    ("formula-de-bis-gleich", "de", "Bis gleich!"),
+    ("formula-de-gute-nacht", "de", "Gute Nacht!"),
+    ("formula-de-bis-bald", "de", "Bis bald!"),
+    ("formula-en-good-night", "en", "Good night!"),
+    ("formula-sr-laku-noc", "sr", "Laku noć!"),
+)
+FORMULA_IDS = frozenset(shot_id for shot_id, _lang, _text in TYPED_FORMULAS)
 
 TYPO_CASES = (
     TypoCase("typo-en-recieve", "en", "recieve", "receive"),
@@ -660,7 +709,7 @@ def _unit_intent(shot: Shot) -> bool:
     # same instruction. Measuring it on the open-branch prompt would measure a prompt
     # the app never sends for that input, and the selected-unit prompt has no text
     # branch at all, which is the very thing the split has to be scored on.
-    return shot.kind in {"context", "typo"} or len(split_words(shot.source)) == 1
+    return shot.kind in {"context", "typo", WHOLE_CHIP_KIND} or len(split_words(shot.source)) == 1
 
 
 def prompt_for(shot: Shot) -> str:
@@ -683,7 +732,7 @@ def prompt_for(shot: Shot) -> str:
         context=shot.context,
         unit_intent=_unit_intent(shot),
         # A chip comes from the app's own answer; everything else the reader typed.
-        typed=shot.kind != "context",
+        typed=shot.kind not in {"context", WHOLE_CHIP_KIND},
     )
 
 
@@ -803,6 +852,40 @@ def neighbour_shots() -> list[Shot]:
     ]
     if invalid:
         raise RuntimeError("invalid registered neighbour inputs: " + ", ".join(invalid))
+    return rows
+
+
+def whole_text_chip_shots() -> list[Shot]:
+    """Each tap as production asks it: the carried text decided as the endpoint decides
+    it, which for these chips leaves no context at all."""
+    for case in WHOLE_TEXT_CHIP_CASES:
+        language = LANGUAGES[case.lang]
+        whole = tokens(case.carried, case.lang) == tokens(case.label, case.lang)
+        if not whole or validate_word(case.label, language) is not None:
+            raise RuntimeError(f"{case.shot_id} is not a chip for its whole carried text")
+        if validate_text(case.carried, language) is not None or len(split_words(case.carried)) < 2:
+            raise RuntimeError(f"{case.shot_id} carries no text the answer could read as text")
+    return [
+        Shot(
+            case.shot_id,
+            WHOLE_CHIP_KIND,
+            case.lang,
+            case.label,
+            context=unit_context(case.carried, case.label),
+            expected_kind="unit",
+        )
+        for case in WHOLE_TEXT_CHIP_CASES
+    ]
+
+
+def formula_shots() -> list[Shot]:
+    rows = [Shot(shot_id, FORMULA_KIND, lang, text) for shot_id, lang, text in TYPED_FORMULAS]
+    for shot in rows:
+        # What the submit box sends: unchanged by normalization, and more than one word,
+        # so the prompt leaves the branch to the answer.
+        typed = plain_text(shot.source) == shot.source and len(split_words(shot.source)) > 1
+        if not typed or validate_text(shot.source, LANGUAGES[shot.lang]) is not None:
+            raise RuntimeError(f"{shot.shot_id} is not a submission the answer decides")
     return rows
 
 
@@ -1063,6 +1146,8 @@ def read(out: Path, attempts: list[Shot] | None = None) -> dict[str, Shot]:
             *neighbour_shots(),
             *wordlist_shots(),
             *cyrillic_shots(),
+            *whole_text_chip_shots(),
+            *formula_shots(),
         )
     }
     rows = _select_canonical(recorded, initial)
@@ -2090,6 +2175,7 @@ async def run(args, out: Path) -> None:
                     *neighbour_shots(),
                     *wordlist_shots(),
                     *cyrillic_shots(),
+                    *formula_shots(),
                 )
                 if shot.shot_id in requested
             ]
@@ -2103,19 +2189,25 @@ async def run(args, out: Path) -> None:
         await broker.aclose()
 
 
+def click_jobs(recorded: dict[str, Shot], requested_ids: list[str]) -> list[Shot]:
+    """The tier's clicks, or the clicks asked for by id; a whole-text chip only by id."""
+    jobs = context_shots(recorded)
+    if not requested_ids:
+        return jobs
+    requested = set(requested_ids)
+    unknown = requested - CLICK_IDS - WHOLE_TEXT_CHIP_IDS
+    if unknown:
+        raise SystemExit("unknown click ids: " + ", ".join(sorted(unknown)))
+    return [shot for shot in (*jobs, *whole_text_chip_shots()) if shot.shot_id in requested]
+
+
 async def run_clicks(args, out: Path) -> None:
     assert_no_prompt_drift()
     os.environ.update(load_keys())
     broker = AsyncBroker(home=out / "llmbroker")
     try:
         recorded = read(out)
-        jobs = context_shots(recorded)
-        if args.shot:
-            requested = set(args.shot)
-            unknown = requested - CLICK_IDS
-            if unknown:
-                raise SystemExit("unknown click ids: " + ", ".join(sorted(unknown)))
-            jobs = [shot for shot in jobs if shot.shot_id in requested]
+        jobs = click_jobs(recorded, args.shot)
         unavailable = CLICK_IDS - {job.shot_id for job in jobs}
         if unavailable:
             log("click sources unavailable: " + ", ".join(sorted(unavailable)))
@@ -2524,6 +2616,151 @@ def report_reverse(out: Path, attempts: list[Shot]) -> list[str]:
     print("AUTOMATED SCREEN ONLY — semantic acceptance is not auto-proven.\n")
     failed = [name for name, passed in gates.items() if not passed]
     return ["reverse lookup: " + ", ".join(failed)] if failed else []
+
+
+def _whole_text_chips(shot: Shot) -> list[dict[str, object]]:
+    """The chips a text answer offers, and whether a tap on each is a bare lookup."""
+    parsed = extract_answer(shot.text, shot.source, LANGUAGES[shot.lang])
+    if not isinstance(parsed, ParsedText):
+        return []
+    return [
+        {"chip": segment.label, "bare": not unit_context(segment.context, segment.label)}
+        for segment in parsed.segments
+    ]
+
+
+def whole_text_review_packet(rows: dict[str, Shot]) -> dict[str, object]:
+    items = []
+    for expected_shot in (*whole_text_chip_shots(), *formula_shots()):
+        shot = rows.get(expected_shot.shot_id)
+        chip = WHOLE_TEXT_CHIP_BY_ID.get(expected_shot.shot_id)
+        expected: dict[str, object] = (
+            {
+                "kind": "unit",
+                "carried_context": chip.carried,
+                "asked_as": (
+                    "a bare lookup of the chip's wording: the text it carries holds no "
+                    "word beyond the chip's own, so the app asks with no context"
+                ),
+                "read_the_card": (
+                    "the card is built from the answer's own examples: judge the sense, "
+                    "the translations and each example sentence as a card front"
+                ),
+            }
+            if chip is not None
+            else {
+                "kind": None,
+                "baseline": (
+                    "typed into the submit box, where the answer decides unit or text; "
+                    "no branch is expected, the verdict is recorded for a later decision"
+                ),
+            }
+        )
+        if shot is None:
+            items.append(
+                _review_item(
+                    expected_shot,
+                    {"provider_miss"},
+                    expected=expected,
+                    actual={"attempt": "missing"},
+                ),
+            )
+            continue
+        categories = {"whole_text_chip" if chip is not None else "typed_formula"}
+        if not shot.metrics.get("answered"):
+            categories.add("provider_miss")
+        elif not shot.metrics.get("payload_valid"):
+            categories.add("unusable")
+        actual: dict[str, object] = {
+            "kind": shot.metrics.get("actual_kind"),
+            "provider": shot.answered_by,
+            "payload_valid": shot.metrics.get("payload_valid"),
+            "headword": shot.payload.get("word"),
+            "carded": bool(shot.metrics.get("four_cards_ready")),
+            "card_fronts": shot.metrics.get("card_fronts"),
+        }
+        if shot.metrics.get("actual_kind") == "text":
+            actual["chips"] = _whole_text_chips(shot)
+        items.append(_review_item(shot, categories, expected=expected, actual=actual))
+    expected_ids = WHOLE_TEXT_CHIP_IDS | FORMULA_IDS
+    return {
+        "screen": {},
+        "tier": "whole-text",
+        "prompt_status": (
+            "pending_semantic_review" if expected_ids <= set(rows) else "unmeasured"
+        ),
+        "semantic_review_required": True,
+        "acceptance_instruction": (
+            "A fresh agent must semantically review every concrete item and record "
+            "the prompt-bound decision in a checked-in decision spec before acceptance."
+        ),
+        "items": items,
+    }
+
+
+def report_whole_text(out: Path, attempts: list[Shot]) -> None:
+    """Screen the whole-text chips and the typed formulas, which gate nothing."""
+    current = read(out, attempts)
+    rows = {
+        shot_id: row
+        for shot_id, row in current.items()
+        if shot_id in WHOLE_TEXT_CHIP_IDS or shot_id in FORMULA_IDS
+    }
+    chips = [row for row in rows.values() if row.kind == WHOLE_CHIP_KIND]
+    formulas = [row for row in rows.values() if row.kind == FORMULA_KIND]
+    total = len(WHOLE_TEXT_CHIP_IDS) + len(FORMULA_IDS)
+    calls = [row for row in attempts if row.metrics.get("answered")]
+    tally = Counter(row.answered_by or "none" for row in calls)
+    print("WHOLE-TEXT CHIPS AND TYPED FORMULAS — AUTOMATED SCREEN, outside every tier")
+    print("Fresh-agent semantic review of the concrete review packet is mandatory before acceptance.\n")
+    print("AVAILABILITY")
+    print(f"  recorded fixtures             {len(rows)}/{total}")
+    print(
+        "  provider answers              "
+        f"{sum(bool(row.metrics.get('answered')) for row in rows.values())}/{total}",
+    )
+    print(f"  attempts recorded             {len(attempts)}")
+    print("  answered by                   " + ", ".join(f"{m} {n}" for m, n in tally.most_common()))
+    print()
+    print("WHOLE-TEXT CHIPS — asked as a bare lookup (diagnostic, gates nothing)")
+    print(f"  cards built                   {ratio(chips, 'four_cards_ready')}")
+    for case in WHOLE_TEXT_CHIP_CASES:
+        row = rows.get(case.shot_id)
+        if row is None:
+            print(f"  {case.shot_id:<28} missing")
+            continue
+        fronts = row.metrics.get("card_fronts") or ["", "", "", ""]
+        print(
+            f"  {case.shot_id:<28} {row.answered_by or '?'}: "
+            f"{row.metrics.get('actual_kind')}, carded {bool(row.metrics.get('four_cards_ready'))}"
+            f", headword {row.payload.get('word')!r}, translations {fronts[1]!r}",
+        )
+        if row.metrics.get("four_cards_ready"):
+            print(f"      front {fronts[2]}")
+    print()
+    print("TYPED FORMULAS — the verdict today's prompt gives (baseline, gates nothing)")
+    verdicts = Counter(str(row.metrics.get("actual_kind")) for row in formulas)
+    print("  verdicts                      " + ", ".join(f"{k} {n}" for k, n in sorted(verdicts.items())))
+    for shot_id, _lang, text in TYPED_FORMULAS:
+        row = rows.get(shot_id)
+        if row is None:
+            print(f"  {text:<14} missing")
+            continue
+        detail = ""
+        if row.metrics.get("actual_kind") == "unit":
+            carded = bool(row.metrics.get("four_cards_ready"))
+            detail = f", headword {row.payload.get('word')!r}, carded {carded}"
+        elif row.metrics.get("actual_kind") == "text":
+            offered = _whole_text_chips(row)
+            bare = [item["chip"] for item in offered if item["bare"]]
+            detail = f", chips {[item['chip'] for item in offered]}, whole-text chips {bare}"
+        print(f"  {text:<14} {row.answered_by or '?'}: {row.metrics.get('actual_kind')}{detail}")
+    path = out / "review-packet-whole-text.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    packet = whole_text_review_packet(rows)
+    path.write_text(json.dumps(packet, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    print(f"\nreview packet: {path}")
+    print("AUTOMATED SCREEN ONLY — semantic acceptance is not auto-proven.\n")
 
 
 def ratio(rows: list[Shot], key: str) -> str:
@@ -3133,8 +3370,15 @@ def report(out: Path, tier: str) -> None:
     if not attempts:
         raise SystemExit(f"no answers in {output_path(out)}")
     reverse = [row for row in attempts if row.kind in REVERSE_BENCH_KINDS]
-    tiered = [row for row in attempts if row.kind not in REVERSE_BENCH_KINDS]
+    whole_text = [row for row in attempts if row.kind in WHOLE_TEXT_BENCH_KINDS]
+    tiered = [
+        row
+        for row in attempts
+        if row.kind not in REVERSE_BENCH_KINDS and row.kind not in WHOLE_TEXT_BENCH_KINDS
+    ]
     failures = report_reverse(out, reverse) if reverse else []
+    if whole_text:
+        report_whole_text(out, whole_text)
     if tiered:
         failures += report_tier(out, tier, tiered)
     if failures:

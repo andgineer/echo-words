@@ -1,7 +1,12 @@
 import json
 from dataclasses import replace
+from pathlib import Path
 
 import one_note_bench as bench
+import pytest
+
+from echo_words.card import unit_context
+from echo_words.prompt import build_prompt
 
 
 def _shot(shot_id: str, *, expected_kind: str = "text") -> bench.Shot:
@@ -1518,3 +1523,89 @@ def test_a_language_answer_is_read_against_its_tab_and_target():
     )
     assert bench.complete(bench.score(replace(german, text=answer % "en")))
     assert not bench.complete(bench.score(replace(german, text="<b>no card</b>")))
+
+
+def test_a_whole_text_chip_is_asked_exactly_as_a_bare_lookup_of_its_wording():
+    for shot in bench.whole_text_chip_shots():
+        case = bench.WHOLE_TEXT_CHIP_BY_ID[shot.shot_id]
+
+        # The fixture carries the whole text its chip came from, and the endpoint's own
+        # decision is what leaves it no context.
+        assert case.carried != case.label
+        assert unit_context(case.carried, case.label) == ""
+        assert shot.context == ""
+        assert bench.prompt_for(shot) == build_prompt(
+            bench.LANGUAGES[shot.lang],
+            case.label,
+            bench.TARGET_NAME,
+            unit_intent=True,
+        )
+
+
+def test_a_typed_formula_leaves_the_branch_to_the_answer():
+    for shot in bench.formula_shots():
+        assert bench.prompt_for(shot) == build_prompt(
+            bench.LANGUAGES[shot.lang],
+            shot.source,
+            bench.TARGET_NAME,
+            typed=True,
+        )
+
+
+def test_the_whole_text_measurement_is_asked_only_by_id_and_sits_outside_every_tier():
+    extras = bench.WHOLE_TEXT_CHIP_IDS | bench.FORMULA_IDS
+
+    for tier in bench.TIER_NAMES:
+        assert not extras & {shot.shot_id for shot in bench.initial_jobs_for_tier(tier)}
+    assert not extras & bench.CLICK_IDS
+    assert bench.click_jobs({}, []) == []
+    chosen = bench.click_jobs({}, ["whole-chip-de-bis-gleich"])
+    assert [shot.shot_id for shot in chosen] == ["whole-chip-de-bis-gleich"]
+    with pytest.raises(SystemExit, match="unknown click ids: formula-de-bis-gleich"):
+        bench.click_jobs({}, ["formula-de-bis-gleich"])
+
+
+def _recorded_whole_text_answer() -> str:
+    recorded = json.loads(
+        (Path(__file__).parent / "data" / "bis_gleich_recorded.json").read_text(encoding="utf-8"),
+    )
+    return f"<b>bis gleich</b>\n===CARD===\n{recorded['answers'][0]['payload']}"
+
+
+def test_a_directory_of_whole_text_answers_is_screened_without_the_tier_screen(tmp_path, capsys):
+    out = tmp_path / "bench"
+    chip = next(
+        shot for shot in bench.whole_text_chip_shots() if shot.shot_id == "whole-chip-de-bis-gleich"
+    )
+    chip.text = _recorded_whole_text_answer()
+    typed = next(shot for shot in bench.formula_shots() if shot.shot_id == "formula-de-bis-gleich")
+    typed.text = (
+        'Пока!===CARD==={"kind": "text", "combinations": '
+        '[{"label": "bis gleich", "surface": "Bis gleich", "why": "прощание"}]}'
+    )
+    for shot in (chip, typed):
+        shot.prompt_hash = bench.prompt_fingerprint(shot)
+        shot.answered_by = "pool-model"
+        bench.append(out, bench.score(shot))
+
+    bench.report(out, "smoke")
+
+    printed = capsys.readouterr().out
+    assert "WHOLE-TEXT CHIPS" in printed
+    assert "TIER" not in printed
+    assert "pool-model 2" in printed
+    packet = json.loads((out / "review-packet-whole-text.json").read_text(encoding="utf-8"))
+    items = {item["fixture_id"]: item for item in packet["items"]}
+    assert set(items) == bench.WHOLE_TEXT_CHIP_IDS | bench.FORMULA_IDS
+    assert packet["prompt_status"] == "unmeasured"
+    carded = items["whole-chip-de-bis-gleich"]
+    assert carded["expected"]["carried_context"] == "Bis gleich!"
+    assert carded["actual"]["carded"] is True
+    assert carded["input"]["context"] == ""
+    assert items["formula-de-bis-gleich"]["actual"]["kind"] == "text"
+    assert items["formula-de-bis-gleich"]["actual"]["chips"] == [
+        {"chip": "bis gleich", "bare": True},
+        {"chip": "Bis", "bare": False},
+        {"chip": "gleich", "bare": False},
+    ]
+    assert items["formula-de-gute-nacht"]["categories"] == ["provider_miss"]
