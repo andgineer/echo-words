@@ -14,6 +14,7 @@ from urllib.parse import quote_plus
 
 import httpx
 
+from echo_words.__about__ import USER_AGENT
 from echo_words.languages import Language, other_script
 
 # The English wiki documents every language, and the source-language wiki holds what
@@ -22,8 +23,6 @@ UNIVERSAL_WIKI = "en"
 WIKTIONARY_URL = "https://{wiki}.wiktionary.org/w/api.php"
 LOOKUP_TIMEOUT_SECONDS = 4.0
 CACHE_LIMIT = 2048
-# Wikimedia asks for a user agent that identifies the caller.
-USER_AGENT = "echo-words/1 (private vocabulary assistant)"
 WIKIPEDIA_URL = "https://{lang}.wikipedia.org/w/api.php"
 # The reader is sent to a general web search rather than back to the encyclopedia,
 # whose register carries no slang: it is the one source that just answered nought.

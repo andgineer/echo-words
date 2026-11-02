@@ -13,6 +13,7 @@ import httpx
 import pytest
 
 from echo_words import audio
+from echo_words.__about__ import USER_AGENT
 from echo_words.languages import Language
 
 pytestmark = pytest.mark.anyio
@@ -536,7 +537,7 @@ async def test_a_commons_request_names_the_app(languages, settings, monkeypatch)
     async with mock_client(handler) as client:
         await audio.fetch_pronunciation("Haus", languages["de"], settings=settings, client=client)
 
-    assert agents == [audio._USER_AGENT]
+    assert agents == [USER_AGENT]
     assert agents[0].startswith("echo-words/")
     assert "github.com/andgineer/echo-words" in agents[0]
 

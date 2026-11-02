@@ -20,7 +20,7 @@ import edge_tts
 import httpx
 import lameenc  # pyrefly: ignore[missing-import] - compiled extension has no type metadata.
 
-from echo_words.__about__ import __version__
+from echo_words.__about__ import USER_AGENT
 from echo_words.config import Settings
 from echo_words.config import settings as default_settings
 from echo_words.languages import Language
@@ -39,8 +39,6 @@ _RECORDING_EXTENSIONS = ("ogg", "oga", "wav")
 RECORDING_PACE_SECONDS = 1.5
 # Commons publishes its transcodes at the source's rate; the engines are slower.
 _HUMAN_RECORDING_HZ = 32000
-# Wikimedia's policy refuses a generic client agent, and httpx's default is one.
-_USER_AGENT = f"echo-words/{__version__} (https://github.com/andgineer/echo-words)"
 _AUDIO_NAME_PATTERN = re.compile(r"pronunciation-[0-9a-f]{20}\.mp3")
 
 MAX_LOADED_VOICES = 2
@@ -270,7 +268,7 @@ async def _commons_get(
 ) -> httpx.Response:
     return await client.get(
         _commons_url(word, lang, extension),
-        headers={"User-Agent": _USER_AGENT},
+        headers={"User-Agent": USER_AGENT},
         timeout=RECORDING_TIMEOUT_SECONDS,
     )
 

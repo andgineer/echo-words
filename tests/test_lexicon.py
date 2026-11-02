@@ -3,6 +3,7 @@
 import httpx
 import pytest
 
+from echo_words.__about__ import USER_AGENT, __version__
 from echo_words.lexicon import Wikipedia, Wiktionary
 
 pytestmark = pytest.mark.anyio
@@ -237,3 +238,47 @@ async def test_an_empty_wording_is_not_searched_for(languages, wikipedia):
     lookup, _asked = wikipedia({"searchinfo": {"totalhits": 0}, "search": []})
 
     assert await lookup.usage("  ", languages["en"]) is None
+
+
+def agents_sent(monkeypatch, answer):
+    """Every lookup answered with one query result, and the agent each request named."""
+    agents: list[str | None] = []
+    original = httpx.AsyncClient
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        agents.append(request.headers.get("user-agent"))
+        return httpx.Response(200, json={"query": answer})
+
+    def client(**kwargs):
+        return original(transport=httpx.MockTransport(handle), **kwargs)
+
+    monkeypatch.setattr("echo_words.lexicon.httpx.AsyncClient", client)
+    return agents
+
+
+def assert_names_the_app(agents):
+    assert agents
+    assert all(agent == USER_AGENT for agent in agents)
+    assert USER_AGENT.startswith(f"echo-words/{__version__} ")
+    assert "https://github.com/andgineer/echo-words" in USER_AGENT
+
+
+async def test_a_dictionary_lookup_names_the_app_and_where_to_reach_it(languages, monkeypatch):
+    """Wikimedia refuses an agent with no contact, and a refused lookup reads as one
+    that never answered, so the absence warning would silently never appear."""
+    agents = agents_sent(monkeypatch, {"pages": {"-1": {"missing": "", "title": "Fahrradsuppe"}}})
+
+    assert await Wiktionary().documents("Fahrradsuppe", languages["de"]) is False
+    assert len(agents) == 2
+    assert_names_the_app(agents)
+
+
+async def test_an_encyclopedia_search_names_the_app_and_where_to_reach_it(
+    languages,
+    monkeypatch,
+):
+    agents = agents_sent(monkeypatch, {"searchinfo": {"totalhits": 0}, "search": []})
+
+    assert (await Wikipedia().usage("bookshelfy", languages["en"])).hits == 0
+    assert len(agents) == 1
+    assert_names_the_app(agents)
