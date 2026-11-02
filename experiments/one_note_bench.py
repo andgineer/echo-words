@@ -2746,6 +2746,7 @@ def _branch_actual(shot: Shot) -> dict[str, object]:
         "headword": shot.payload.get("word"),
         "carded": bool(shot.metrics.get("four_cards_ready")),
         "card_fronts": shot.metrics.get("card_fronts"),
+        "payload_kind": shot.payload.get("kind"),
     }
     if shot.metrics.get("actual_kind") == "text":
         actual["chips"] = _whole_text_chips(shot)
@@ -2911,13 +2912,16 @@ def report_typed(out: Path, attempts: list[Shot]) -> None:
             print(f"  {case.typed:<36} missing")
             continue
         kind = row.metrics.get("actual_kind")
-        mark = "ok   " if row.metrics.get("verdict_correct") else "WRONG"
+        outcome = row.metrics.get("verdict_outcome")
+        mark = {"correct": "ok   ", "unusable": "UNUSABLE"}.get(str(outcome), "WRONG")
         detail = ""
         if kind == "unit":
             carded = bool(row.metrics.get("four_cards_ready"))
             detail = f", headword {row.payload.get('word')!r}, carded {carded}"
         elif kind == "text":
             detail = f", chips {[item['chip'] for item in _whole_text_chips(row)]}"
+        elif row.payload:
+            detail = f", payload kind {row.payload.get('kind')!r}, headword {row.payload.get('word')!r}"
         print(
             f"  {mark} {case.typed:<36} expected {case.expected_kind}, "
             f"{row.answered_by or '?'}: {kind}{detail}",

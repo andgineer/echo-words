@@ -1739,7 +1739,12 @@ def test_a_directory_of_typed_verdicts_is_screened_against_each_class_s_branch(t
     as_text = replace(_typed("formula-de-bis-gleich"), text=recorded["formula-de-bis-gleich"])
     as_unit = replace(_typed("formula-de-gute-nacht"), text=recorded["formula-de-gute-nacht"])
     guard = replace(_typed("guard-en-keys"), text=_text_answer())
-    _record(out, as_text, as_unit, guard)
+    # A unit answer that copied the full stop into its headword, which no card can carry.
+    unusable = replace(
+        _typed("formula-en-thank-you"),
+        text=RECORDED_TYPED["unusable"][0]["answer"],
+    )
+    _record(out, as_text, as_unit, guard, unusable)
 
     bench.report(out, "smoke")
 
@@ -1747,9 +1752,12 @@ def test_a_directory_of_typed_verdicts_is_screened_against_each_class_s_branch(t
     assert "TYPED VERDICTS" in printed
     assert "TIER" not in printed
     assert "WHOLE-TEXT CHIPS" not in printed
-    assert "pool-model 3" in printed
+    assert "pool-model 4" in printed
     assert "conventional formula with its punctuation → unit" in printed
+    assert "1/16  (1 unusable)" in printed
     assert "WRONG Bis gleich!" in printed
+    assert "UNUSABLE Thank you very much." in printed
+    assert "payload kind 'unit', headword 'Thank you very much.'" in printed
     assert "ok    Gute Nacht!" in printed
     assert "ok    I lost my keys again!" in printed
     packet = json.loads((out / "review-packet-typed.json").read_text(encoding="utf-8"))
@@ -1769,6 +1777,8 @@ def test_a_directory_of_typed_verdicts_is_screened_against_each_class_s_branch(t
     assert items["formula-de-gute-nacht"]["actual"]["carded"] is True
     assert items["guard-en-keys"]["expected"]["kind"] == "text"
     assert items["guard-en-keys"]["categories"] == ["typed_verdict"]
+    assert items["formula-en-thank-you"]["categories"] == ["typed_verdict", "unusable"]
+    assert items["formula-en-thank-you"]["actual"]["payload_kind"] == "unit"
     assert items["formula-sr-laku-noc"]["categories"] == ["provider_miss"]
 
 
