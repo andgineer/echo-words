@@ -124,12 +124,27 @@ card refused.
 
 Such chips are offered under short typed texts. Across the bench's recorded runs,
 42 of 1,895 distinct text answers (35 of the 1,802 from the free pool) offer a
-combination spanning the whole text under a name the text's words do not cover,
-over 22 distinct pairs of text and chip: among them `fährt Rad` with
-`Rad fahren`, `spielt eine Rolle` with `eine Rolle spielen`,
+combination spanning the whole text under a name that does not account for every
+word of the text, over 22 distinct pairs of text and chip: among them `fährt Rad`
+with `Rad fahren`, `spielt eine Rolle` with `eine Rolle spielen`,
 `eine Entscheidung getroffen` with `eine Entscheidung treffen`, `ide pešice` with
 `ići pešice`, `Пада киша` with `падати киша` and `Немам времена за то` with
 `немати времена за то`. Each of them carries no context and is a bare lookup.
+
+In 7 of those 42 the answer's name covers fewer words than the chip spans, and in
+3 of them — `wurde entlassen` under `wurde gestern entlassen`,
+`remarkably shrewd move` under `a remarkably shrewd move` and
+`ziemlich verschlossen` under `wirkt ziemlich verschlossen` — the reader's own
+text could have been the card's sentence. Those chips are bare lookups too: the
+card comes from the answer's own examples, and the entry does not play the text
+beside the unit. The operator accepted that on 2026-11-02 over a second word
+comparison, since every such chip still cards.
+
+A chip named in Latin under a longer Serbian text written in Cyrillic, such as
+`laku noć` under `Лаку ноћ, мама!`, keeps the text as its context, and the card
+finds the unit in it only where the answer also names the Cyrillic words. Latin
+names over Cyrillic text do occur in the recorded runs. The operator accepted on
+2026-11-02 to leave this until a production answer shows it failing.
 
 Measured on the free pool on 2026-11-02, with one model answering
 (`google-gemini-3.5-flash-lite`) and one answer per fixture, so a hint rather than
