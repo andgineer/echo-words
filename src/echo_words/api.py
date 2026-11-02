@@ -27,6 +27,7 @@ from echo_words.audio import (
 )
 from echo_words.backend import Cascade
 from echo_words.broker import BackendError, create_broker
+from echo_words.card import unit_context
 from echo_words.config import Settings
 from echo_words.config import settings as default_settings
 from echo_words.events import EventHub
@@ -370,6 +371,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:  # noqa: C901, PLR0
         if hint:
             raise HTTPException(status_code=400, detail=hint)
         context = sanitize_context(submission.context)
+        if intent == "unit":
+            context = unit_context(context, word)
         fingerprint = (language.code, word, lookup_only, context, intent, reverse, typed)
         try:
             entry_id = await request.app.state.submissions.accept(

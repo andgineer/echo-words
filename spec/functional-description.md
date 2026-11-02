@@ -129,7 +129,12 @@ The four requirements every design decision is weighed against:
    when it fits the 500-character context bound, and otherwise becomes a bare
    lookup; component chips under a set expression preserve every word-shaped
    part in expression order and carry the first example of the expression's
-   carded sense. The model must then return a unit answer. A context unit
+   carded sense. A chip whose context holds no word beyond the chip's own
+   words, whatever their letter case and punctuation, is likewise asked and
+   carded as a bare lookup of that wording: a formula such as `Bis gleich!`
+   read as text offers its whole wording as a chip, and that sentence leaves
+   the card no word outside the unit. A context with even one further word
+   is used as it stands. The model must then return a unit answer. A context unit
    answer leads with the sense used there, keeps the remaining senses below
    it, and cards the named sense (the first retained sense if the index is
    unusable). After a note is successfully saved, its selected sense is omitted

@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 import pytest
 
@@ -9,8 +10,15 @@ from echo_words.card import (
     ParsedUnit,
     context_sentence_forms,
     parse_answer_payload,
+    unit_context,
 )
 from echo_words.languages import Language
+
+# Every answer the pool gave in production to the chip `bis gleich` tapped under the
+# text `Bis gleich!`, each of which the card refused while that text was its context.
+WHOLE_TEXT_CHIP = json.loads(
+    (Path(__file__).parent / "data" / "bis_gleich_recorded.json").read_text(encoding="utf-8"),
+)
 
 
 def example(word="bank"):
@@ -394,6 +402,67 @@ def test_a_unit_that_is_not_in_the_context_it_came_from_cannot_be_carded(languag
             unit_intent=True,
             context="There is no such word here.",
         )
+
+
+@pytest.mark.parametrize(
+    ("context", "unit"),
+    [
+        ("Bis gleich!", "bis gleich"),
+        ("Bis  gleich", "bis gleich"),
+        ("„Bis gleich!“", "Bis gleich"),
+        ("Good night!", "good night"),
+        ("Laku noć!", "laku noć"),
+        ("Gleich bis.", "bis gleich"),
+        ("", "bis gleich"),
+    ],
+)
+def test_a_context_of_nothing_but_the_units_own_words_is_no_context(context, unit):
+    assert unit_context(context, unit) == ""
+
+
+@pytest.mark.parametrize(
+    ("context", "unit"),
+    [
+        ("Bis gleich, Anna!", "bis gleich"),
+        # The second pair stays outside the marked first one, so the sentence cards.
+        ("Bis gleich, bis gleich!", "bis gleich"),
+        # Whole words: the unit's letters inside a longer word are another word.
+        ("Gleichgültig!", "gleich"),
+        ("Er steht auf.", "aufstehen"),
+    ],
+)
+def test_a_context_with_a_word_beyond_the_unit_is_kept_as_it_stands(context, unit):
+    assert unit_context(context, unit) == context
+
+
+@pytest.mark.parametrize(
+    "answer",
+    WHOLE_TEXT_CHIP["answers"],
+    ids=[str(index) for index in range(len(WHOLE_TEXT_CHIP["answers"]))],
+)
+def test_every_recorded_answer_to_a_chip_that_is_its_whole_text_cards_as_a_bare_lookup(
+    languages,
+    answer,
+):
+    submitted = WHOLE_TEXT_CHIP["submitted"]
+
+    parsed = parse_answer_payload(
+        answer["payload"],
+        submitted,
+        languages[WHOLE_TEXT_CHIP["lang"]],
+        unit_intent=True,
+        context=unit_context(WHOLE_TEXT_CHIP["context"], submitted),
+        target="Russian",
+    )
+
+    assert isinstance(parsed, ParsedUnit)
+    assert parsed.note.word == "bis gleich"
+    first = parsed.note.meaning.examples[0]
+    # The card's sentence is the answer's own, with words of its own around the unit.
+    assert first.text != WHOLE_TEXT_CHIP["context"]
+    assert "<b>" in first.highlighted
+    assert "___" in first.gapped
+    assert parsed.note.meaning.translations
 
 
 def test_context_forms_are_built_from_the_exact_selected_surface(languages):

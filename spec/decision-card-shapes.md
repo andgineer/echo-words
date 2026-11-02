@@ -97,12 +97,30 @@ dictionary form or morphology for generated examples. Independently malformed
 examples are dropped; a meaning with no safe example is unusable. No accepted
 note can generate fewer than four cards.
 
+That rule decides the card of a chip whose carried context holds no word beyond
+the chip's own. A formula read as text, such as `Bis gleich!`, offers its whole
+wording as a chip, and the context that chip carries is that same wording: marked
+at the unit, it leaves nothing outside the spans, so no answer could ever card it.
+Such a context is therefore never used. Whether one more word is present is read
+word by word, as the marking reads the sentence, ignoring letter case and
+punctuation; the request is then asked and carded exactly as a bare lookup of the
+same wording, from the answer's own examples. A context with even one further word
+is used as it stands. The rule that a word stays outside the spans is not relaxed
+for this: the gapped front needs a word beside its blank.
+
+Measured in production: the chip `bis gleich` tapped under `Bis gleich!` drew
+fifteen distinct pool answers over four taps and retries, and the card refused
+every one for the unit not standing in its sentence. Replayed through the parser,
+all fifteen card as a bare lookup, and all fifteen card against
+`Bis gleich, Anna!`; the answers were sound, and the sentence was the fault.
+
 ## Which sense the note selects
 
 A bare word selects the first retained meaning, ordered most common first. An
 explicit unit request with context selects the retained meaning the answer
 names as the one used in that context; a missing, malformed or dropped
-selection falls back to the first retained meaning. The context is never discarded.
+selection falls back to the first retained meaning. A bad selection never
+discards the context.
 
 The visible article carries every usable meaning. After a successful save, sense
 chips offer only the meanings other than the one used for that answer's note;

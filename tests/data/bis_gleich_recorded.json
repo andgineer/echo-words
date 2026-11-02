@@ -1,0 +1,67 @@
+{
+ "lang": "de",
+ "submitted": "bis gleich",
+ "context": "Bis gleich!",
+ "answers": [
+  {
+   "logged_at": "2026 Oct 27 06:09:05 UTC",
+   "payload": "{\"kind\": \"unit\", \"word\": \"bis gleich\", \"word_relation\": \"same\", \"suggestion\": \"\", \"meanings\": [{\"label\": \"\", \"translations\": [\"до скорой встречи\", \"до встречи\", \"пока\"], \"examples\": [{\"highlighted\": \"Ich bin gleich zurück, <b>bis gleich</b>!\", \"translation\": \"Я скоро вернусь, до скорой встречи!\"}, {\"highlighted\": \"Wir sehen uns in der Pause, <b>bis gleich</b>.\", \"translation\": \"Увидимся на перемене, до встречи.\"}]}], \"segments\": [{\"label\": \"bis\", \"surface\": \"bis\", \"why\": \"предлог со зн��чением «до»\"}, {\"label\": \"gleich\", \"surface\": \"gleich\", \"why\": \"наречие со значением «сейчас же, скоро»\"}], \"context_sense\": 0, \"context_translation\": \"До скорой встречи!\", \"context_surface\": \"Bis gleich\"}"
+  },
+  {
+   "logged_at": "2026 Oct 27 06:09:07 UTC",
+   "payload": "{\"kind\":\"unit\",\"word\":\"bis gleich\",\"word_relation\":\"same\",\"suggestion\":\"\",\"meanings\":[{\"label\":\"Verabschiedung\",\"translations\":[\"до скорого (разг.)\",\"скоро увидимся (нейтральн.)\",\"встретимся через мгновение (нейтральн.)\"],\"examples\":[{\"highlighted\":\"<b>Bis gleich</b>!\",\"translation\":\"Скоро увидимся!\"},{\"highlighted\":\"Ich muss jetzt los, <b>bis gleich</b>.\",\"translation\":\"Мне нужно идти, до скорого.\"}]}],\"segments\":[{\"label\":\"Präposition\",\"surface\":\"bis\",\"why\":\"означает 'до', указывает на момент времени\"},{\"label\":\"Adverb\",\"surface\":\"gleich\",\"why\":\"означает 'сейчас', 'вскоре'\"}],\"context_sense\":0,\"context_translation\":\"Скоро увидимся!\",\"context_surface\":\"Bis gleich\"}"
+  },
+  {
+   "logged_at": "2026 Oct 27 06:09:20 UTC",
+   "payload": "{\"kind\": \"unit\", \"word\": \"bis gleich\", \"word_relation\": \"same\", \"suggestion\": \"\", \"meanings\": [{\"label\": \"\", \"translations\": [\"До скорой!\", \"До связи!\"], \"examples\": [{\"highlighted\": \"<b>Bis gleich!</b>\", \"translation\": \"До скорой!\"}, {\"highlighted\": \"<b>Wir sehen uns bis gleich.</b>\", \"translation\": \"Мы увидимся — до скорой.\"}]}], \"segments\": [{\"label\": \"bis\", \"surface\": \"bis\", \"why\": \"предлог времени — до\"}, {\"label\": \"gleich\", \"surface\": \"gleich\", \"why\": \"наречие — вот-вот, сейчас\"}], \"context_sense\": 0, \"context_translation\": \"До скорой!\", \"context_surface\": \"Bis gleich!\"}"
+  },
+  {
+   "logged_at": "2026 Oct 27 06:09:25 UTC",
+   "payload": "{\"kind\": \"unit\", \"word\": \"bis gleich\", \"word_relation\": \"same\", \"suggestion\": \"\", \"meanings\": [{\"label\": \"\", \"translations\": [\"увидимся через минуту\", \"до скорого\", \"до встречи совсем скоро\"], \"examples\": [{\"highlighted\": \"Ich muss kurz weg, <b>bis gleich</b>!\", \"translation\": \"Мне нужно на минутку уйти, увидимся через минуту!\"}, {\"highlighted\": \"<b>Bis gleich</b>, ich hole das schnell.\", \"translation\": \"Увидимся через минуту, я быстро это принесу.\"}]}], \"segments\": [{\"label\": \"bis\", \"surface\": \"bis\", \"why\": \"предлог «до», указывает временную границу\"}, {\"label\": \"gleich\", \"surface\": \"gleich\", \"why\": \"наречие «сразу», «в тот же момент», усиливает краткость ожидания\"}], \"context_sense\": 0, \"context_translation\": \"Увидимся через минуту!\", \"context_surface\": \"bis gleich\"}"
+  },
+  {
+   "logged_at": "2026 Oct 27 06:09:26 UTC",
+   "payload": "{\"kind\": \"unit\", \"word\": \"bis gleich\", \"word_relation\": \"same\", \"suggestion\": \"\", \"meanings\": [{\"label\": \"\", \"translations\": [\"увидимся через минуту\", \"до скорого\", \"до встречи совсем скоро\"], \"examples\": [{\"highlighted\": \"Ich muss kurz weg, <b>bis gleich</b>!\", \"translation\": \"Мне нужно на минутку уйти, увидимся через минуту!\"}, {\"highlighted\": \"<b>Bis gleich</b>, ich hole das schnell.\", \"translation\": \"Увидимся через минуту, я быстро это принесу.\"}]}], \"segments\": [{\"label\": \"bis\", \"surface\": \"bis\", \"why\": \"предлог «до», указывае�� временную границу\"}, {\"label\": \"gleich\", \"surface\": \"gleich\", \"why\": \"наречие «сразу», «в тот же момент», усиливает краткость ожидания\"}], \"context_sense\": 0, \"context_translation\": \"Увидимся через минуту!\", \"context_surface\": \"bis gleich\"}"
+  },
+  {
+   "logged_at": "2026 Oct 27 06:09:35 UTC",
+   "payload": "{\"kind\": \"unit\", \"word\": \"bis gleich\", \"word_relation\": \"same\", \"suggestion\": \"\", \"meanings\": [{\"label\": \"\", \"translations\": [\"до скорой встречи\", \"скоро увидимся\"], \"examples\": [{\"highlighted\": \"Wir sehen uns in fünf Minuten wieder, <b>bis</b> <b>gleich</b>!\", \"translation\": \"Мы увидимся снова через пять минут, до скорой встречи!\"}, {\"highlighted\": \"Ich hole nur schnell meine Jacke, <b>bis</b> <b>gleich</b>!\", \"translation\": \"Я только быстро возьму куртку, скоро увидимся!\"}]}], \"segments\": [{\"label\": \"bis\", \"surface\": \"bis\", \"why\": \"предлог со значением предел во времени\"}, {\"label\": \"gleich\", \"surface\": \"gleich\", \"why\": \"наречие со значением немедленно\"}], \"context_sense\": 0, \"context_translation\": \"До скорой встречи!\", \"context_surface\": \"Bis gleich\"}"
+  },
+  {
+   "logged_at": "2026 Oct 27 06:09:37 UTC",
+   "payload": "{\"kind\": \"unit\", \"word\": \"bis gleich\", \"word_relation\": \"same\", \"suggestion\": \"\", \"meanings\": [{\"label\": \"\", \"translations\": [\"скоро\", \"увидимся через мгновение\", \"до скорого\"], \"examples\": [{\"highlighted\": \"<b>Bis gleich</b>!\", \"translation\": \"Скоро увидимся!\"}, {\"highlighted\": \"Ich bin gleich zurück, <b>bis gleich</b>.\", \"translation\": \"Я скоро вернусь, до скорого.\"}]}], \"segments\": [{\"label\": \"Präposition\", \"surface\": \"bis\", \"why\": \"указывает н�� предельный момент времени\"}, {\"label\": \"Adverb\", \"surface\": \"gleich\", \"why\": \"обозначает 'скоро', 'вскоре'\"}], \"context_sense\": 0, \"context_translation\": \"Скоро увидимся!\", \"context_surface\": \"Bis gleich!\"}"
+  },
+  {
+   "logged_at": "2026 Oct 27 06:09:56 UTC",
+   "payload": "{\"kind\": \"unit\", \"word\": \"bis gleich\", \"word_relation\": \"same\", \"suggestion\": \"\", \"meanings\": [{\"label\": \"\", \"translations\": [\"До связи!\", \"До встречи!\", \"Скоро увидимся!\"], \"examples\": [{\"highlighted\": \"– <b>Bis gleich!</b>\", \"translation\": \"— До связи!\"}, {\"highlighted\": \"Der Chef hat gesagt: <b>„Bis gleich!“</b>\", \"translation\": \"Начальник сказал: «До встречи!»\"}], \"segments\": [{\"label\": \"bis\", \"surface\": \"bis\", \"why\": \"предлог, указывающий на момент времени\"}, {\"label\": \"gleich\", \"surface\": \"gleich\", \"why\": \"наиболее ближайший момент\"}]}]}, \"context_sense\": 0, \"context_translation\": \"До связи!\", \"context_surface\": \"Bis gleich!\"}"
+  },
+  {
+   "logged_at": "2026 Oct 27 06:10:29 UTC",
+   "payload": "{\"kind\": \"unit\", \"word\": \"bis gleich\", \"word_relation\": \"same\", \"suggestion\": \"\", \"meanings\": [{\"label\": \"\", \"translations\": [\"до скорого\", \"до встречи\"], \"examples\": [{\"highlighted\": \"Ich gehe kurz Kaffee holen, <b>bis gleich</b>!\", \"translation\": \"Я быстро сгоняю за кофе, до скорого!\"}, {\"highlighted\": \"Warte hier auf mich, <b>bis gleich</b>!\", \"translation\": \"Подожди меня здесь, до встречи!\"}]}], \"segments\": [{\"label\": \"bis\", \"surface\": \"bis\", \"why\": \"предлог, указывающий на временной предел\"}, {\"label\": \"gleich\", \"surface\": \"gleich\", \"why\": \"наречие со значением «сейчас же, в скором времени»\"}], \"context_sense\": 0, \"context_translation\": \"До скорого!\", \"context_surface\": \"Bis gleich\"}"
+  },
+  {
+   "logged_at": "2026 Oct 27 06:10:30 UTC",
+   "payload": "{\n  \"kind\": \"unit\",\n  \"word\": \"bis gleich\",\n  \"word_relation\": \"same\",\n  \"suggestion\": \"\",\n  \"meanings\": [\n    {\n      \"label\": \"\",\n      \"translations\": [\"До скорого!\", \"Скоро увидимся!\"],\n      \"examples\": [\n        {\n          \"highlighted\": \"<b>Bis gleich</b>!\",\n          \"translation\": \"До скорого!\"\n        },\n        {\n          \"highlighted\": \"Ich gehe jetzt, <b>bis gleich</b>!\",\n          \"translation\": \"Я ухожу сейчас, до скорого!\"\n        }\n      ]\n    }\n  ],\n  \"segments\": [\n    {\n      \"label\": \"предлог\",\n      \"surface\": \"bis\",\n      \"why\": \"указывает на конечный момент времени\"\n    },\n    {\n      \"label\": \"наречие\",\n      \"surface\": \"gleich\",\n      \"why\": \"подчеркивает краткость интервала\"\n    }\n  ],\n  \"context_sense\": 0,\n  \"context_translation\": \"До скорого!\",\n  \"context_surface\": \"Bis gleich\"\n}"
+  },
+  {
+   "logged_at": "2026 Oct 27 06:10:50 UTC",
+   "payload": "{\"kind\": \"unit\", \"word\": \"bis gleich\", \"word_relation\": \"same\", \"suggestion\": \"\", \"meanings\": [{\"label\": \"\", \"translations\": [\"увидимся через минуту\", \"до скорой встречи\", \"до встречи\"], \"examples\": [{\"highlighted\": \"<b>Bis gleich!</b>\", \"translation\": \"Увидимся через минуту!\"}, {\"highlighted\": \"Ich gehe kurz zum Bäcker, <b>bis gleich</b>.\", \"translation\": \"Я быстро к пекарю, до скорого.\"}]}], \"segments\": [{\"label\": \"bis\", \"surface\": \"bis\", \"why\": \"предлог «до», указывает на момент встречи\"}, {\"label\": \"gleich\", \"surface\": \"gleich\", \"why\": \"наречие «сразу», «через минуту»; вместе означает «до совсем скоро»\"}], \"context_sense\": 0, \"context_translation\": \"Увидимся через минуту!\", \"context_surface\": \"bis gleich\"}"
+  },
+  {
+   "logged_at": "2026 Oct 27 06:11:23 UTC",
+   "payload": "{\"kind\": \"unit\", \"word\": \"bis gleich\", \"word_relation\": \"same\", \"suggestion\": \"\", \"meanings\": [{\"label\": \"\", \"translations\": [\"до скорой встречи\", \"до встречи\", \"пока\"], \"examples\": [{\"highlighted\": \"Ich bin gleich zurück, <b>bis gleich</b>!\", \"translation\": \"Я скоро вернусь, до встречи!\"}, {\"highlighted\": \"Wir sehen uns später, <b>bis gleich</b>!\", \"translation\": \"Увидимся позже, до скорой встречи!\"}]}], \"segments\": [{\"label\": \"bis\", \"surface\": \"bis\", \"why\": \"указывает на временной предел до предстоящего события\"}, {\"label\": \"gleich\", \"surface\": \"gleich\", \"why\": \"означает непосредственную близость по времени\"}], \"context_sense\": 0, \"context_translation\": \"До скорой встречи!\", \"context_surface\": \"bis gleich\"}"
+  },
+  {
+   "logged_at": "2026 Oct 27 06:11:24 UTC",
+   "payload": "{\"kind\":\"unit\",\"word\":\"bis gleich\",\"word_relation\":\"same\",\"suggestion\":\"\",\"meanings\":[{\"label\":\"Verabschiedung\",\"translations\":[\"до скорого!\",\"увидимся через минуту\",\"вскоре\"],\"examples\":[{\"highlighted\":\"<b>Bis gleich</b>!\",\"translation\":\"До скорого!\"},{\"highlighted\":\"Wir treffen uns später, <b>bis gleich</b>.\",\"translation\":\"Мы встретимся позже, до скорого.\"},{\"highlighted\":\"Ich bin gleich zurück, <b>bis gleich</b>.\",\"translation\":\"Я скоро вернусь, до скорого.\"}]}],\"segments\":[{\"label\":\"Präposition\",\"surface\":\"bis\",\"why\":\"указывает на конечный момент во времени\"},{\"label\":\"Adverb\",\"surface\":\"gleich\",\"why\":\"значит «вскоре, сразу»\"}],\"context_sense\":0,\"context_translation\":\"До скорого!\",\"context_surface\":\"Bis gleich!\"}"
+  },
+  {
+   "logged_at": "2026 Oct 27 06:11:43 UTC",
+   "payload": "{\"kind\": \"unit\", \"word\": \"bis gleich\", \"word_relation\": \"same\", \"suggestion\": \"\", \"meanings\": [{\"label\": \"\", \"translations\": [\"увидимся скоро\", \"до скорой встречи\", \"пока\"], \"examples\": [{\"highlighted\": \"Ich geh kurz zum B\\\\u00e4cker, <b>bis gleich</b>.\", \"translation\": \"Я быстро в пекарню, сейчас вернусь.\"}, {\"highlighted\": \"Leg das Handy weg, <b>bis gleich</b>.\", \"translation\": \"Отложи телефон, увидимся через минуту.\"}, {\"highlighted\": \"Ich muss nur die T\\\\u00fcr schliessen, <b>bis gleich</b>.\", \"translation\": \"Мне только дверь закрыть, до скорого.\"}]}], \"segments\": [{\"label\": \"bis\", \"surface\": \"bis\", \"why\": \"предлог «до», указывает временную границу\"}, {\"label\": \"gleich\", \"surface\": \"gleich\", \"why\": \"наречие «сразу, тотчас», показывает близость момента встречи\"}], \"context_sense\": 0, \"context_translation\": \"Увидимся скоро!\", \"context_surface\": \"bis gleich\"}"
+  },
+  {
+   "logged_at": "2026 Oct 27 06:11:46 UTC",
+   "payload": "{\"kind\": \"unit\", \"word\": \"bis gleich\", \"word_relation\": \"same\", \"suggestion\": \"\", \"meanings\": [{\"label\": \"\", \"translations\": [\"увидимся скоро\", \"до скорой встречи\", \"пока\"], \"examples\": [{\"highlighted\": \"Ich geh kurz zum B\\\\u00e4cker, <b>bis gleich</b>.\", \"translation\": \"Я быстро в пекарню, сейчас вернусь.\"}, {\"highlighted\": \"Leg das Handy weg, <b>bis gleich</b>.\", \"translation\": \"Отложи телефон, увидимся через минуту.\"}, {\"highlighted\": \"Ich muss nur die T\\\\u00fcr schliessen, <b>bis gleich</b>.\", \"translation\": \"Мне только дверь закрыть, до скорого.\"}]}], \"segments\": [{\"label\": \"bis\", \"surface\": \"bis\", \"why\": \"предлог «до», указывает временную границу\"}, {\"label\": \"gleich\", \"surface\": \"gleich\", \"why\": \"наречие «сразу, тотчас», по��азывает близость момента встречи\"}], \"context_sense\": 0, \"context_translation\": \"Увидимся скоро!\", \"context_surface\": \"bis gleich\"}"
+  }
+ ]
+}

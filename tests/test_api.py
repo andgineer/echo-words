@@ -26,6 +26,7 @@ from echo_words.languages import (
     LanguagesConfigError,
     load_languages,
 )
+from echo_words.prompt import CARD_DELIMITER, build_prompt
 
 
 class BlockingHandle:
@@ -1147,6 +1148,81 @@ def test_the_running_app_buys_a_lookup_a_pool_model_it_does_not_keep_answered(
 
     assert broker.direct_calls == ["gpt-fast"]
     assert (entry["status"], entry["word"], entry["card_status"]) == ("done", "table", "added")
+
+
+RECORDED_WHOLE_TEXT_CHIP = json.loads(
+    (Path(__file__).parent / "data" / "bis_gleich_recorded.json").read_text(encoding="utf-8"),
+)
+
+
+def _chip_tapped(
+    monkeypatch: pytest.MonkeyPatch,
+    settings: Settings,
+    context: str,
+) -> tuple[FakeBroker, dict, list[str]]:
+    """Tap the chip `bis gleich` under `context`, answered by a recorded pool answer."""
+    payload = RECORDED_WHOLE_TEXT_CHIP["answers"][0]["payload"]
+    broker = FakeBroker(handles=[FakeHandle([f"<b>bis gleich</b>\n{CARD_DELIMITER}\n{payload}"])])
+    monkeypatch.setattr("echo_words.api.create_broker", lambda *_args: broker)
+    voiced: list[str] = []
+
+    async def nothing(*_args, **_kwargs):
+        return None
+
+    async def voice(text, *_args, **_kwargs):
+        voiced.append(text)
+
+    monkeypatch.setattr("echo_words.api.fetch_pronunciation", voice)
+    monkeypatch.setattr("echo_words.api.Wiktionary", lambda: SimpleNamespace(documents=nothing))
+    monkeypatch.setattr("echo_words.api.Wikipedia", lambda: SimpleNamespace(usage=nothing))
+    with TestClient(create_app(settings)) as live_client:
+        accepted = submit(live_client, word="bis gleich", lang="de", shape="unit", context=context)
+        entry = finished(live_client, accepted.json()["entry_id"])
+    return broker, entry, voiced
+
+
+def _article_prompts(broker: FakeBroker) -> list[str]:
+    return [
+        call["prompt"]
+        for call in broker.stream_calls
+        if call["prompt"] not in broker.attestation_calls
+    ]
+
+
+def test_a_chip_whose_context_is_only_its_own_words_is_asked_and_carded_as_a_bare_lookup(
+    monkeypatch: pytest.MonkeyPatch,
+    settings: Settings,
+):
+    broker, entry, voiced = _chip_tapped(monkeypatch, settings, "Bis gleich!")
+
+    german = load_languages(settings.languages_config)["de"]
+    assert _article_prompts(broker) == [
+        build_prompt(german, "bis gleich", "Russian", unit_intent=True),
+    ]
+    assert (entry["status"], entry["card_status"], entry["context"]) == ("done", "added", "")
+    # Nothing beyond the unit is left to be voiced beside it.
+    assert voiced == ["bis gleich"]
+
+
+def test_a_chip_whose_context_holds_one_more_word_is_still_asked_in_that_context(
+    monkeypatch: pytest.MonkeyPatch,
+    settings: Settings,
+):
+    broker, entry, voiced = _chip_tapped(monkeypatch, settings, "Bis gleich, Anna!")
+
+    german = load_languages(settings.languages_config)["de"]
+    assert _article_prompts(broker) == [
+        build_prompt(
+            german, "bis gleich", "Russian", context="Bis gleich, Anna!", unit_intent=True
+        ),
+    ]
+    assert 'Context: "Bis gleich, Anna!"' in _article_prompts(broker)[0]
+    assert (entry["status"], entry["card_status"], entry["context"]) == (
+        "done",
+        "added",
+        "Bis gleich, Anna!",
+    )
+    assert sorted(voiced) == ["Bis gleich, Anna!", "bis gleich"]
 
 
 def test_the_page_is_told_the_target_language(settings: Settings):
