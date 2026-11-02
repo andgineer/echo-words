@@ -14,14 +14,13 @@ from typing import Any, Literal, Protocol
 from echo_words.anki import Added
 from echo_words.backend import Cascade, Completion
 from echo_words.broker import BackendError
-from echo_words.card import Meaning, Note, ParsedAnswer, ParsedText, ParsedUnit
+from echo_words.card import Meaning, Note, ParsedAnswer, ParsedText, ParsedUnit, same_wording
 from echo_words.events import EventHub
 from echo_words.history import Entry, History, UndoState
 from echo_words.i18n import DEFAULT_LOCALE, message
 from echo_words.languages import (
     MAX_CONTEXT_LENGTH,
     Language,
-    fold_for_match,
     plain_unit,
     split_words,
     validate_text,
@@ -1109,7 +1108,8 @@ class WordPipeline:
         """
         if not isinstance(parsed, ParsedUnit):
             return False, None
-        wording = parsed.note.word
+        # Asked by its words alone: a dictionary titles a formula without the `!` its card keeps.
+        wording = plain_unit(parsed.note.word)
         if await self.dictionary(wording, job.language) is not False:
             return False, None
         found = await self.usage(wording, job.language)
@@ -1689,7 +1689,7 @@ def _analysed_as(job: Job, parsed: ParsedAnswer | None) -> str | None:
     # The spellings are still compared, but only to keep the notice from reading
     # "X instead of X": an answer that calls a wording misspelled and then heads
     # itself with that same wording has announced nothing.
-    if fold_for_match(parsed.note.word, job.language) == fold_for_match(job.word, job.language):
+    if same_wording(parsed.note.word, job.word, job.language):
         return None
     return parsed.note.word
 
@@ -1767,7 +1767,7 @@ def _corrected_headword(parsed: ParsedAnswer | None, job: Job) -> str | None:
     if not isinstance(parsed, ParsedUnit) or parsed.word_relation != "typo":
         return None
     word = parsed.note.word
-    if fold_for_match(word, job.language) == fold_for_match(job.word, job.language):
+    if same_wording(word, job.word, job.language):
         return None
     return word
 
@@ -1783,7 +1783,7 @@ def _kept_the_misspelling(job: Job, parsed: ParsedUnit) -> bool:
     return (
         _declares_a_typo(parsed)
         and parsed.suggestion is not None
-        and fold_for_match(parsed.note.word, job.language) == fold_for_match(job.word, job.language)
+        and same_wording(parsed.note.word, job.word, job.language)
     )
 
 

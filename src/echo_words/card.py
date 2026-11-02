@@ -15,6 +15,7 @@ from echo_words.languages import (
     SOURCE_TOKEN,
     Language,
     fold_for_match,
+    plain_unit,
     sentence_is_source_language,
     validate_word,
 )
@@ -263,9 +264,24 @@ def _headword(value: Any, language: Language) -> str:
     if not isinstance(value, str):
         raise CardParseError("answer.word must be a non-empty string")
     headword = unicodedata.normalize("NFC", value).strip()
-    if not headword or validate_word(headword, language) is not None:
+    if not headword or not _usable_wording(headword, language):
         raise CardParseError("answer.word is not a usable dictionary headword")
     return headword
+
+
+def _usable_wording(wording: str, language: Language) -> bool:
+    # A headword keeps punctuation that belongs to its chunk (`Happy birthday!`), so
+    # it is judged by its words, as a submitted unit is.
+    return validate_word(plain_unit(wording), language) is None
+
+
+def same_wording(first: str, second: str, language: Language) -> bool:
+    """Whether two spellings are one wording: letter case, script and the punctuation at
+    their edges are no part of how a wording is spelled."""
+    return fold_for_match(plain_unit(first), language) == fold_for_match(
+        plain_unit(second),
+        language,
+    )
 
 
 def _parse_meaning(value: Any, request: "_Request") -> Meaning | None:
@@ -537,14 +553,16 @@ def _word_relation(
     """Reconcile the declared relation with the spellings; return the relation and headword."""
     declared = relation_value if relation_value in {"same", "morphology", "typo"} else None
     submitted_spelling = _submitted_spelling(submitted)
-    differs = fold_for_match(headword, language) != fold_for_match(submitted_spelling, language)
+    differs = not same_wording(headword, submitted_spelling, language)
     suggestion = _usable_suggestion(suggestion_value, submitted_spelling, language)
     # A typo claim that put the correction in word instead of suggestion still declares
     # one; the headword stays the wording analysed, since the meanings describe it.
     if suggestion is None and differs and declared == "typo":
-        suggestion = headword if validate_word(headword, language) is None else None
+        suggestion = headword
     # A suggestion repeating the headword would offer the word already being carded.
-    advice = None if suggestion is None or suggestion == headword else suggestion
+    advice = (
+        None if suggestion is None or plain_unit(suggestion) == plain_unit(headword) else suggestion
+    )
     # Only an admitted correction reads as a misspelling. A suggestion beside a same or
     # morphology claim names a more usual spelling for a word the answer did vouch for.
     if declared == "typo" and suggestion is not None:
@@ -556,12 +574,9 @@ def _usable_suggestion(value: Any, submitted_spelling: str, language: Language) 
     if not isinstance(value, str):
         return None
     suggestion = unicodedata.normalize("NFC", value).strip()
-    if not suggestion or fold_for_match(suggestion, language) == fold_for_match(
-        submitted_spelling,
-        language,
-    ):
+    if not suggestion or same_wording(suggestion, submitted_spelling, language):
         return None
-    return suggestion if validate_word(suggestion, language) is None else None
+    return suggestion if _usable_wording(suggestion, language) else None
 
 
 def _submitted_spelling(value: str) -> str:

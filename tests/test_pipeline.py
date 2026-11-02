@@ -1174,6 +1174,47 @@ async def test_a_kept_misspelling_is_caught_however_its_case_or_script_is_writte
         await pipeline.close()
 
 
+async def test_a_kept_misspelling_is_caught_however_its_marks_differ(languages):
+    """`Gute Nact!` typed and `Gute Nact` carded is the misspelling kept: the mark a
+    submission was copied with is no part of its spelling, so neither its card nor a
+    notice reading "Gute Nact instead of Gute Nact!" is made."""
+    anki = RecordingAnki(Added(1, None, ("Recognition",)))
+    cascade = ScriptedCascade([Completion([corrected_card("Gute Nact", "Gute Nacht")])])
+    pipeline = WordPipeline(cascade, target_lang="Russian", anki=anki)
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(languages["de"], "Gute Nact!", False)
+        await pipeline.join()
+
+        assert entry.card_status == MISSPELLED_STATUS
+        assert anki.calls == []
+        assert entry.analysed_as is None
+        assert entry.suggestion == "Gute Nacht"
+    finally:
+        await pipeline.close()
+
+
+async def test_a_correction_that_repeats_the_submission_but_for_its_mark_is_not_asked_again(
+    languages,
+):
+    anki = RecordingAnki(Added(1, None, ("Recognition",)))
+    cascade = ScriptedCascade(
+        [Completion([corrected_card("Gute Nact", "Gute Nacht")])],
+        attestations=[REFUSED],
+    )
+    pipeline = WordPipeline(cascade, target_lang="Russian", anki=anki)
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(languages["de"], "Gute Nact!", False, intent="unit")
+        await pipeline.join()
+
+        assert len(cascade.attested) == 1
+        assert entry.card_status == MISSPELLED_STATUS
+        assert anki.calls == []
+    finally:
+        await pipeline.close()
+
+
 async def test_a_lemma_for_an_inflected_form_is_not_called_a_typo(languages):
     """The card carries the dictionary form of what was typed, which is normalization
     and not a correction. Telling the reader their word does not exist would be a lie
@@ -1343,6 +1384,41 @@ async def test_the_dictionary_is_asked_about_the_wording_the_note_carries(langua
         assert asked == ["receive"]
         assert searched == []
         assert entry.not_in_references is False
+    finally:
+        await pipeline.close()
+
+
+async def test_the_references_are_asked_about_a_headword_without_its_mark(languages):
+    """A card keeps the `!` of `Happy birthday!`; a dictionary titles the formula
+    without it, so asking with it would accuse a real formula of being no word."""
+    anki = RecordingAnki(Added(1, None, ("Recognition",)))
+    asked = []
+    searched = []
+
+    async def dictionary(word, _language):
+        asked.append(word)
+        return False
+
+    async def usage(word, _language):
+        searched.append(word)
+        return Usage(hits=0, examples=[], search_url="https://example.invalid/search")
+
+    cascade = ScriptedCascade([Completion([valid_card("Happy birthday!")])])
+    pipeline = WordPipeline(
+        cascade,
+        target_lang="ru",
+        anki=anki,
+        dictionary=dictionary,
+        usage=usage,
+    )
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(languages["en"], "Happy birthday!", False)
+        await pipeline.join()
+
+        assert [note.word for note, _deck, _audio in anki.calls] == ["Happy birthday!"]
+        assert (asked, searched) == (["Happy birthday"], ["Happy birthday"])
+        assert entry.card_status == ADDED_STATUS
     finally:
         await pipeline.close()
 

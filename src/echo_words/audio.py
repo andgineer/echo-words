@@ -23,7 +23,7 @@ import lameenc  # pyrefly: ignore[missing-import] - compiled extension has no ty
 from echo_words.__about__ import USER_AGENT
 from echo_words.config import Settings
 from echo_words.config import settings as default_settings
-from echo_words.languages import Language
+from echo_words.languages import Language, plain_unit
 from echo_words.voices import PIPER_VOICES, PiperVoiceFiles, VoiceFile
 
 HTTP_TIMEOUT_SECONDS = 10
@@ -94,10 +94,12 @@ async def fetch_pronunciation(
         logger.warning("audio cache is unavailable for %s/%r: %s", lang.code, word, exc)
         return None
 
+    # A recording is named by the word alone, never by the `!` a headword may keep.
+    recorded = plain_unit(word)
     if (
         lang.recordings
-        and len(word.split()) == 1
-        and await _try_commons_recording(word, lang, output, client)
+        and len(recorded.split()) == 1
+        and await _try_commons_recording(recorded, lang, output, client)
     ):
         return output
 

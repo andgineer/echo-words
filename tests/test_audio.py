@@ -521,6 +521,36 @@ async def test_commons_is_not_asked_for_a_phrase(languages, settings, monkeypatc
     assert requested == []
 
 
+async def test_a_recording_is_looked_up_by_the_word_without_the_mark_its_headword_keeps(
+    languages,
+    settings,
+    monkeypatch,
+):
+    """Commons names a recording by the word alone, so `Hallo!` asked as written is a
+    file nobody uploaded, and the card would lose a human voice to a synthetic one."""
+    requested = []
+
+    def handler(request):
+        requested.append(str(request.url))
+        return httpx.Response(200, content=b"commons mp3")
+
+    monkeypatch.setattr(
+        audio,
+        "_piper_audio",
+        AsyncMock(side_effect=AssertionError("Piper must not run after a hit")),
+    )
+    async with mock_client(handler) as client:
+        result = await audio.fetch_pronunciation(
+            "Hallo!",
+            languages["de"],
+            settings=settings,
+            client=client,
+        )
+
+    assert result is not None and result.read_bytes() == b"commons mp3"
+    assert requested == [f"{COMMONS}/6/6c/De-Hallo.ogg/De-Hallo.ogg.mp3"]
+
+
 async def test_a_commons_request_names_the_app(languages, settings, monkeypatch):
     """Wikimedia's policy refuses a generic client agent, and httpx's default is one."""
     agents = []

@@ -1587,6 +1587,15 @@ def test_the_chip_named_in_latin_under_cyrillic_text_is_asked_the_measured_promp
 RECORDED_TYPED = json.loads(
     (Path(__file__).parent / "data" / "typed_verdicts_recorded.json").read_text(encoding="utf-8"),
 )
+_HAPPY_BIRTHDAY = next(
+    answer
+    for answer in json.loads(
+        (Path(__file__).parent / "data" / "headword_punctuation_recorded.json").read_text(
+            encoding="utf-8",
+        ),
+    )["answers"]
+    if answer["shot_id"] == "formula-en-happy-birthday"
+)
 
 
 def _typed(shot_id: str) -> bench.Shot:
@@ -1630,19 +1639,100 @@ def test_every_typed_class_is_instantiated_in_every_language():
         "sr": 4,
     }
     assert all(len(rows) >= 2 for rows in by_class["guard"].values())
-    assert set(by_class["guard"]) == set(by_class["expression"]) == {"de", "en", "sr"}
+    for klass in ("guard", "expression", "chunk", "kept", "free"):
+        assert set(by_class[klass]) == {"de", "en", "sr"}
     # Each copied mark the instruction names reaches the answer at least once.
-    punctuated = [case.typed for case in bench.TYPED_VERDICT_CASES if case.klass != "unpunctuated"]
+    punctuated = [
+        case.typed
+        for case in bench.TYPED_VERDICT_CASES
+        if case.klass not in {"unpunctuated", "free"}
+    ]
     assert all(any(text.endswith(mark) for text in punctuated) for mark in ("!", "?", ".", ","))
     assert any(text.startswith(("„", '"')) for text in punctuated)
     assert all(
         case.typed.endswith(("!", "?")) for rows in by_class["guard"].values() for case in rows
     )
+    # A chunk is copied with each mark, and a formula keeps each of its own.
+    chunks = [case.typed for rows in by_class["chunk"].values() for case in rows]
+    assert all(any(text.endswith(mark) for text in chunks) for mark in ("!", ".", ","))
+    kept = [case.typed for rows in by_class["kept"].values() for case in rows]
+    assert all(any(text.endswith(mark) for text in kept) for mark in ("!", "?"))
+    # A free combination in each language, and a list of two words.
+    assert any(", " in case.typed for rows in by_class["free"].values() for case in rows)
     assert {
         case.shot_id: case.expected_kind
         for case in bench.TYPED_VERDICT_CASES
         if case.expected_kind == "text"
-    } == {case.shot_id: "text" for rows in by_class["guard"].values() for case in rows}
+    } == {
+        case.shot_id: "text"
+        for klass in ("guard", "free")
+        for rows in by_class[klass].values()
+        for case in rows
+    }
+
+
+@pytest.mark.parametrize(
+    ("shot_id", "expected"),
+    [
+        ("kept-de-na-und", "kept"),
+        ("chunk-en-out-of-the-blue", "dropped"),
+        ("expression-en-other-hand", "dropped"),
+        ("formula-de-gern-geschehen", "dropped"),
+        ("formula-de-bis-gleich", ""),
+        ("formula-de-vielen-dank", ""),
+        ("guard-en-keys", ""),
+        ("unpunctuated-de-bis-gleich", ""),
+    ],
+)
+def test_a_headword_is_expected_to_keep_only_a_mark_that_is_its_chunk_s_own(shot_id, expected):
+    assert bench.TYPED_BY_ID[shot_id].headword_mark == expected
+
+
+@pytest.mark.parametrize(
+    ("typed", "mark"),
+    [("„Vielen Dank!“", "!"), ('"Happy birthday!"', "!"), ("Na und?", "?"), ("Bis gleich", "")],
+)
+def test_a_closing_mark_is_read_past_the_quotation_marks_around_it(typed, mark):
+    assert bench.closing_mark(typed) == mark
+
+
+def test_a_recorded_headword_is_scored_by_the_mark_it_kept():
+    recorded = {answer["shot_id"]: answer["answer"] for answer in RECORDED_TYPED["answers"]}
+    kept = bench.score(
+        replace(_typed("kept-en-happy-birthday"), text=_HAPPY_BIRTHDAY["answer"]),
+    )
+    dropped = bench.score(
+        replace(_typed("formula-de-gute-nacht"), text=recorded["formula-de-gute-nacht"])
+    )
+    as_text = bench.score(
+        replace(_typed("formula-de-bis-gleich"), text=recorded["formula-de-bis-gleich"])
+    )
+    quoted = bench.score(
+        replace(_typed("formula-de-vielen-dank"), text=_unit_answer("„Vielen Dank!“"))
+    )
+
+    assert (kept.payload["word"], bench.headword_mark(kept)) == ("Happy birthday!", "kept")
+    assert kept.metrics["four_cards_ready"] is True
+    assert (dropped.payload["word"], bench.headword_mark(dropped)) == ("Gute Nacht", "dropped")
+    assert bench.headword_mark(as_text) == ""
+    assert [bench.headword_quoted(row) for row in (kept, dropped, as_text, quoted)] == [
+        False,
+        False,
+        False,
+        True,
+    ]
+
+
+@pytest.mark.parametrize(
+    ("klass", "typed"),
+    [("kept", "Na und."), ("kept", "Na und"), ("free", "gave up far too easily!")],
+)
+def test_a_new_class_s_fixture_must_carry_the_punctuation_it_names(monkeypatch, klass, typed):
+    stray = bench.TypedVerdictCase(f"{klass}-de-stray", "de", typed, klass)
+    monkeypatch.setattr(bench, "TYPED_VERDICT_CASES", (*bench.TYPED_VERDICT_CASES, stray))
+
+    with pytest.raises(RuntimeError, match=f"{klass}-de-stray does not carry the punctuation"):
+        bench.typed_verdict_shots()
 
 
 def test_a_formula_without_punctuation_must_be_a_measured_formula_s_own_wording(monkeypatch):
@@ -1739,12 +1829,14 @@ def test_a_directory_of_typed_verdicts_is_screened_against_each_class_s_branch(t
     as_text = replace(_typed("formula-de-bis-gleich"), text=recorded["formula-de-bis-gleich"])
     as_unit = replace(_typed("formula-de-gute-nacht"), text=recorded["formula-de-gute-nacht"])
     guard = replace(_typed("guard-en-keys"), text=_text_answer())
-    # A unit answer that copied the full stop into its headword, which no card can carry.
+    # A unit answer whose only example is the formula alone, so no card front has a word
+    # beside its blank.
     unusable = replace(
-        _typed("formula-en-thank-you"),
+        _typed("formula-de-glueckwunsch"),
         text=RECORDED_TYPED["unusable"][0]["answer"],
     )
-    _record(out, as_text, as_unit, guard, unusable)
+    kept = replace(_typed("kept-en-happy-birthday"), text=_HAPPY_BIRTHDAY["answer"])
+    _record(out, as_text, as_unit, guard, unusable, kept)
 
     bench.report(out, "smoke")
 
@@ -1752,14 +1844,20 @@ def test_a_directory_of_typed_verdicts_is_screened_against_each_class_s_branch(t
     assert "TYPED VERDICTS" in printed
     assert "TIER" not in printed
     assert "WHOLE-TEXT CHIPS" not in printed
-    assert "pool-model 4" in printed
+    assert "pool-model 5" in printed
     assert "conventional formula with its punctuation → unit" in printed
     assert "1/16  (1 unusable)" in printed
+    assert "formula whose closing mark is part of it → unit" in printed
     assert "WRONG Bis gleich!" in printed
-    assert "UNUSABLE Thank you very much." in printed
-    assert "payload kind 'unit', headword 'Thank you very much.'" in printed
+    assert "UNUSABLE Herzlichen Glückwunsch!" in printed
+    assert "payload kind 'unit', headword 'Herzlichen Glückwunsch'" in printed
     assert "ok    Gute Nacht!" in printed
+    assert "headword 'Gute Nacht' (mark dropped), carded True" in printed
+    assert "headword 'Happy birthday!' (mark kept), carded True" in printed
     assert "ok    I lost my keys again!" in printed
+    assert "the chunk's own mark kept                    1/1 headwords, 5 fixtures" in printed
+    assert "a copied mark dropped                        0/0 headwords, 12 fixtures" in printed
+    assert "quotation marks kept in a headword           0" in printed
     packet = json.loads((out / "review-packet-typed.json").read_text(encoding="utf-8"))
     items = {item["fixture_id"]: item for item in packet["items"]}
     assert set(items) == bench.TYPED_IDS
@@ -1777,9 +1875,14 @@ def test_a_directory_of_typed_verdicts_is_screened_against_each_class_s_branch(t
     assert items["formula-de-gute-nacht"]["actual"]["carded"] is True
     assert items["guard-en-keys"]["expected"]["kind"] == "text"
     assert items["guard-en-keys"]["categories"] == ["typed_verdict"]
-    assert items["formula-en-thank-you"]["categories"] == ["typed_verdict", "unusable"]
-    assert items["formula-en-thank-you"]["actual"]["payload_kind"] == "unit"
+    assert items["formula-de-glueckwunsch"]["categories"] == ["typed_verdict", "unusable"]
+    assert items["formula-de-glueckwunsch"]["actual"]["payload_kind"] == "unit"
     assert items["formula-sr-laku-noc"]["categories"] == ["provider_miss"]
+    assert items["kept-en-happy-birthday"]["expected"]["headword_mark"] == "kept"
+    assert items["kept-en-happy-birthday"]["actual"]["headword_mark"] == "kept"
+    assert items["formula-de-gute-nacht"]["expected"]["headword_mark"] == "either"
+    assert items["formula-de-gute-nacht"]["actual"]["headword_mark"] == "dropped"
+    assert "headword_mark" not in items["guard-en-keys"]["expected"]
 
 
 def test_the_first_typed_formulas_recorded_without_a_branch_stay_outside_the_tier_screen(
@@ -1799,4 +1902,4 @@ def test_the_first_typed_formulas_recorded_without_a_branch_stay_outside_the_tie
     printed = capsys.readouterr().out
     assert "TYPED VERDICTS" in printed
     assert "TIER" not in printed
-    assert "recorded fixtures             0/29" in printed
+    assert "recorded fixtures             0/46" in printed

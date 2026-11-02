@@ -34,10 +34,11 @@ those answers happen to need. `report` screens whichever of the two a directory 
     uv run python experiments/one_note_bench.py report --out experiments/.bench-reverse
 
 A chip whose carried text is nothing but its own wording, and typed submissions whose
-branch the answer decides — formulas and expressions with the punctuation copied with
-them, the same formulas without it, and clauses that stay text — are measured on demand
-and outside every tier. A chip is asked only by id; the typed set by `run-typed`, 29
-calls. `report` screens each on its own wherever a directory holds it.
+branch the answer decides — formulas, expressions and other ready-made chunks with the
+punctuation copied with them, formulas whose closing mark is their own, formulas without
+punctuation, and clauses, free combinations and a word list that stay text — are
+measured on demand and outside every tier. A chip is asked only by id; the typed set by
+`run-typed`, 46 calls. `report` screens each on its own wherever a directory holds it.
     uv run python experiments/one_note_bench.py run-clicks --resume --pace 2 \
       --concurrency 1 --out experiments/.bench-whole-text-chip \
       --shot whole-chip-de-bis-gleich whole-chip-en-good-night whole-chip-sr-laku-noc
@@ -288,17 +289,32 @@ WHOLE_TEXT_CHIP_BY_ID = {case.shot_id: case for case in WHOLE_TEXT_CHIP_CASES}
 WHOLE_TEXT_CHIP_IDS = frozenset(WHOLE_TEXT_CHIP_BY_ID)
 
 # Typed into the submit box, where the answer decides unit or text. Punctuation copied
-# with the words decides nothing, so only the clauses reporting a situation are text.
+# with the words decides nothing, so only a clause reporting a situation, a free
+# combination and a word list are text.
 PUNCTUATED_FORMULA = "formula"
 PUNCTUATED_EXPRESSION = "expression"
+COPIED_CHUNK = "chunk"
+KEPT_PUNCTUATION = "kept"
 UNPUNCTUATED_FORMULA = "unpunctuated"
 SITUATION_GUARD = "guard"
+FREE_GUARD = "free"
 TYPED_CLASSES = {
     PUNCTUATED_FORMULA: "conventional formula with its punctuation",
     PUNCTUATED_EXPRESSION: "fixed expression with a copied comma or full stop",
+    COPIED_CHUNK: "ready-made chunk, no formula, with copied punctuation",
+    KEPT_PUNCTUATION: "formula whose closing mark is part of it",
     UNPUNCTUATED_FORMULA: "conventional formula without punctuation",
     SITUATION_GUARD: "clause reporting a situation, ending in ! or ?",
+    FREE_GUARD: "free combination or short word list, no punctuation",
 }
+TEXT_CLASSES = frozenset({SITUATION_GUARD, FREE_GUARD})
+_QUOTATION_MARKS = '"„“”«»'
+
+
+def closing_mark(typed: str) -> str:
+    """The mark a submission closes on, read past any quotation marks around it."""
+    inner = typed.strip().rstrip(_QUOTATION_MARKS + "'‚‘’")
+    return inner[-1] if inner and not inner[-1].isalnum() else ""
 
 
 @dataclass(frozen=True)
@@ -310,7 +326,20 @@ class TypedVerdictCase:
 
     @property
     def expected_kind(self) -> str:
-        return "text" if self.klass == SITUATION_GUARD else "unit"
+        return "text" if self.klass in TEXT_CLASSES else "unit"
+
+    @property
+    def headword_mark(self) -> str:
+        """What a unit headword should do with the closing mark: keep it where it is the
+        chunk's own, drop it where it only came with the copied words, or either."""
+        mark = closing_mark(self.typed)
+        if not mark or self.expected_kind != "unit":
+            return ""
+        if self.klass == KEPT_PUNCTUATION:
+            return "kept"
+        if self.klass in {PUNCTUATED_EXPRESSION, COPIED_CHUNK} or mark in ".,":
+            return "dropped"
+        return ""
 
 
 TYPED_VERDICT_CASES = (
@@ -349,6 +378,23 @@ TYPED_VERDICT_CASES = (
     TypedVerdictCase("guard-en-call", "en", "Did you call her yesterday?", SITUATION_GUARD),
     TypedVerdictCase("guard-sr-kisa", "sr", "Danas pada kiša!", SITUATION_GUARD),
     TypedVerdictCase("guard-sr-sinoc", "sr", "Gde si bio sinoć?", SITUATION_GUARD),
+    TypedVerdictCase("chunk-de-im-angebot", "de", "im Angebot sein.", COPIED_CHUNK),
+    TypedVerdictCase("chunk-de-auf-jeden-fall", "de", "auf jeden Fall!", COPIED_CHUNK),
+    TypedVerdictCase("chunk-de-in-frage-kommen", "de", "in Frage kommen,", COPIED_CHUNK),
+    TypedVerdictCase("chunk-en-out-of-the-blue", "en", "out of the blue!", COPIED_CHUNK),
+    TypedVerdictCase("chunk-en-make-ends-meet", "en", "to make ends meet.", COPIED_CHUNK),
+    TypedVerdictCase("chunk-sr-na-kraju-krajeva", "sr", "na kraju krajeva,", COPIED_CHUNK),
+    TypedVerdictCase("kept-en-happy-birthday", "en", "Happy birthday!", KEPT_PUNCTUATION),
+    TypedVerdictCase("kept-en-merry-christmas", "en", "Merry Christmas!", KEPT_PUNCTUATION),
+    TypedVerdictCase("kept-de-na-und", "de", "Na und?", KEPT_PUNCTUATION),
+    TypedVerdictCase("kept-de-wie-bitte", "de", "Wie bitte?", KEPT_PUNCTUATION),
+    TypedVerdictCase("kept-sr-sve-najbolje", "sr", "Sve najbolje!", KEPT_PUNCTUATION),
+    TypedVerdictCase("free-de-frueh-aufgestanden", "de", "heute sehr früh aufgestanden", FREE_GUARD),
+    TypedVerdictCase("free-de-zaun-gestrichen", "de", "den alten Zaun grün gestrichen", FREE_GUARD),
+    TypedVerdictCase("free-en-gave-up-easily", "en", "gave up far too easily", FREE_GUARD),
+    TypedVerdictCase("free-en-walked-slowly", "en", "walked slowly to the old station", FREE_GUARD),
+    TypedVerdictCase("free-sr-vratio-se-kasno", "sr", "vratio se kasno sinoć", FREE_GUARD),
+    TypedVerdictCase("free-de-aepfel-birnen", "de", "Äpfel, Birnen", FREE_GUARD),
 )
 TYPED_BY_ID = {case.shot_id: case for case in TYPED_VERDICT_CASES}
 TYPED_IDS = frozenset(TYPED_BY_ID)
@@ -953,7 +999,14 @@ def typed_verdict_shots() -> list[Shot]:
         if not typed or validate_text(case.typed, LANGUAGES[case.lang]) is not None:
             raise RuntimeError(f"{case.shot_id} is not a submission the answer decides")
         unpunctuated = case.klass == UNPUNCTUATED_FORMULA
-        if (words == case.typed) != unpunctuated:
+        mark = closing_mark(case.typed)
+        carries = {
+            UNPUNCTUATED_FORMULA: words == case.typed,
+            # A list keeps the comma between its words; neither class closes on a mark.
+            FREE_GUARD: plain_unit(case.typed) == case.typed,
+            KEPT_PUNCTUATION: mark in {"!", "?"},
+        }.get(case.klass, bool(mark))
+        if not carries:
             raise RuntimeError(f"{case.shot_id} does not carry the punctuation its class names")
         if unpunctuated and (case.lang, words) not in formulas:
             raise RuntimeError(f"{case.shot_id} is no punctuated formula's own wording")
@@ -2753,6 +2806,24 @@ def _branch_actual(shot: Shot) -> dict[str, object]:
     return actual
 
 
+def headword_mark(shot: Shot) -> str:
+    """Whether a unit headword kept the mark its submission closes on, or nothing where
+    there is no unit headword or no mark."""
+    word = shot.payload.get("word")
+    mark = closing_mark(shot.source)
+    if shot.payload.get("kind") != "unit" or not isinstance(word, str) or not mark:
+        return ""
+    return "kept" if closing_mark(word) == mark else "dropped"
+
+
+def headword_quoted(shot: Shot) -> bool:
+    word = shot.payload.get("word")
+    if shot.payload.get("kind") != "unit" or not isinstance(word, str) or not word.strip():
+        return False
+    word = word.strip()
+    return word[0] in _QUOTATION_MARKS or word[-1] in _QUOTATION_MARKS
+
+
 def _availability_categories(shot: Shot, category: str) -> set[str]:
     categories = {category}
     if not shot.metrics.get("answered"):
@@ -2823,6 +2894,8 @@ def typed_review_packet(rows: dict[str, Shot]) -> dict[str, object]:
                 "where the answer decides unit or text"
             ),
         }
+        if closing_mark(case.typed) and case.expected_kind == "unit":
+            expected["headword_mark"] = case.headword_mark or "either"
         if shot is None:
             items.append(
                 _review_item(
@@ -2836,7 +2909,10 @@ def typed_review_packet(rows: dict[str, Shot]) -> dict[str, object]:
         categories = _availability_categories(shot, "typed_verdict")
         if shot.metrics.get("hard_verdict_error"):
             categories.add("wrong_branch")
-        items.append(_review_item(shot, categories, expected=expected, actual=_branch_actual(shot)))
+        actual = _branch_actual(shot)
+        if headword_mark(shot):
+            actual["headword_mark"] = headword_mark(shot)
+        items.append(_review_item(shot, categories, expected=expected, actual=actual))
     return _extra_packet("typed", rows, TYPED_IDS, items)
 
 
@@ -2917,7 +2993,9 @@ def report_typed(out: Path, attempts: list[Shot]) -> None:
         detail = ""
         if kind == "unit":
             carded = bool(row.metrics.get("four_cards_ready"))
-            detail = f", headword {row.payload.get('word')!r}, carded {carded}"
+            kept = headword_mark(row)
+            detail = f", headword {row.payload.get('word')!r}" + (f" (mark {kept})" if kept else "")
+            detail += f", carded {carded}"
         elif kind == "text":
             detail = f", chips {[item['chip'] for item in _whole_text_chips(row)]}"
         elif row.payload:
@@ -2926,6 +3004,23 @@ def report_typed(out: Path, attempts: list[Shot]) -> None:
             f"  {mark} {case.typed:<36} expected {case.expected_kind}, "
             f"{row.answered_by or '?'}: {kind}{detail}",
         )
+    print()
+    print("HEADWORD PUNCTUATION — unit headwords of a submission closing on a mark (diagnostic)")
+    for wanted, description in (
+        ("kept", "the chunk's own mark kept"),
+        ("dropped", "a copied mark dropped"),
+    ):
+        cases = [case for case in TYPED_VERDICT_CASES if case.headword_mark == wanted]
+        marks = [headword_mark(rows[case.shot_id]) for case in cases if case.shot_id in rows]
+        scored = [mark for mark in marks if mark]
+        right = sum(mark == wanted for mark in scored)
+        print(f"  {description:<44} {right}/{len(scored)} headwords, {len(cases)} fixtures")
+    quoted = [
+        case.typed
+        for case in TYPED_VERDICT_CASES
+        if case.shot_id in rows and headword_quoted(rows[case.shot_id])
+    ]
+    print(f"  quotation marks kept in a headword           {len(quoted)}" + (f"  {quoted}" if quoted else ""))
     _write_extra_packet(out, "typed", typed_review_packet(rows))
 
 

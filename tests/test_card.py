@@ -502,7 +502,133 @@ def test_separated_context_surface_is_marked_in_source_order(languages):
 
 def test_invalid_returned_headword_fails_instead_of_using_the_submission(languages):
     with pytest.raises(CardParseError, match="dictionary headword"):
-        parse_answer_payload(payload(word="bank!"), "banked", languages["en"])
+        parse_answer_payload(payload(word="bank; banks"), "banked", languages["en"])
+
+
+# Formulas whose answer kept punctuation at the headword's edges, refused a card while
+# any punctuation in a headword was.
+HEADWORD_PUNCTUATION = json.loads(
+    (Path(__file__).parent / "data" / "headword_punctuation_recorded.json").read_text(
+        encoding="utf-8",
+    ),
+)
+_CARDED_WITH_THEIR_MARKS = {
+    "formula-de-gute-nacht": (
+        "Gute Nacht!",
+        ["Спокойной ночи!"],
+        "Die Mutter sagte ___ und ging.",
+    ),
+    "formula-en-happy-birthday": (
+        "Happy birthday!",
+        ["С днем рождения!"],
+        "___ I hope you have a wonderful day.",
+    ),
+    "formula-en-thank-you": (
+        "Thank you very much.",
+        ["Большое спасибо", "Премного благодарен"],
+        "___ for your kind help.",
+    ),
+}
+
+
+@pytest.mark.parametrize(
+    "recorded",
+    HEADWORD_PUNCTUATION["answers"],
+    ids=[answer["shot_id"] for answer in HEADWORD_PUNCTUATION["answers"]],
+)
+def test_a_headword_keeps_the_punctuation_its_answer_gave_it(languages, recorded):
+    """Which mark belongs to a chunk is the answer's judgement, so the card carries the
+    headword as written and judges it by its words."""
+    parsed = parse_answer_payload(
+        recorded["answer"].split("===CARD===", 1)[1],
+        recorded["submitted"],
+        languages[recorded["lang"]],
+    )
+
+    word, translations, gapped = _CARDED_WITH_THEIR_MARKS[recorded["shot_id"]]
+    assert isinstance(parsed, ParsedUnit)
+    assert parsed.note.word == word
+    assert parsed.note.meaning.translations == translations
+    assert parsed.note.meaning.examples[0].gapped == gapped
+    assert parsed.word_relation == "same"
+
+
+@pytest.mark.parametrize("word", ["Na, und?", "Gute.Nacht", "bis gleich!!bis bald"])
+def test_punctuation_inside_a_headword_is_still_refused(languages, word):
+    with pytest.raises(CardParseError, match="dictionary headword"):
+        parse_answer_payload(payload(word=word), "Na und?", languages["de"])
+
+
+@pytest.mark.parametrize("word", ["!", "?!", "„“"])
+def test_a_headword_of_punctuation_alone_is_refused(languages, word):
+    with pytest.raises(CardParseError, match="dictionary headword"):
+        parse_answer_payload(payload(word=word), "Na und?", languages["de"])
+
+
+def test_a_typo_claim_about_punctuation_alone_is_no_typo(languages):
+    """`Gute Nacht.` and `Gute Nacht!` are one spelling: a mark is no letter, so an
+    answer calling the difference a misspelling has declared nothing."""
+    parsed = parse_answer_payload(
+        payload(
+            word="Gute Nacht",
+            word_relation="typo",
+            suggestion="Gute Nacht!",
+            meanings=[meaning(examples=[example("Gute Nacht")])],
+        ),
+        "Gute Nacht.",
+        languages["de"],
+    )
+
+    assert isinstance(parsed, ParsedUnit)
+    assert (parsed.word_relation, parsed.suggestion) == ("same", None)
+
+
+def test_a_typo_claim_left_in_the_headword_is_no_typo_where_only_marks_differ(languages):
+    parsed = parse_answer_payload(
+        payload(
+            word="Gute Nacht",
+            word_relation="typo",
+            meanings=[meaning(examples=[example("Gute Nacht")])],
+        ),
+        "Gute Nacht!",
+        languages["de"],
+    )
+
+    assert isinstance(parsed, ParsedUnit)
+    assert (parsed.word_relation, parsed.suggestion) == ("same", None)
+
+
+def test_a_correction_may_keep_the_mark_of_its_chunk(languages):
+    parsed = parse_answer_payload(
+        payload(
+            word="Gute Nact",
+            word_relation="typo",
+            suggestion="Gute Nacht!",
+            meanings=[meaning(examples=[example("Gute Nact")])],
+        ),
+        "Gute Nact!",
+        languages["de"],
+    )
+
+    assert isinstance(parsed, ParsedUnit)
+    assert (parsed.word_relation, parsed.suggestion) == ("typo", "Gute Nacht!")
+
+
+def test_a_correction_repeating_the_headword_but_for_its_mark_is_not_offered(languages):
+    parsed = parse_answer_payload(
+        payload(
+            word="Gute Nacht!",
+            word_relation="typo",
+            suggestion="Gute Nacht",
+            meanings=[meaning(examples=[example("Gute Nacht")])],
+        ),
+        "Gute Nact!",
+        languages["de"],
+    )
+
+    assert isinstance(parsed, ParsedUnit)
+    assert parsed.note.word == "Gute Nacht!"
+    assert (parsed.word_relation, parsed.suggestion) == ("typo", None)
 
 
 def test_a_correct_spelling_suggestion_retains_the_submitted_word(languages):

@@ -69,13 +69,13 @@ its changing context part of a dictionary entry. A clause with its own subject a
 finite verb reports a situation however ordinary a thing it is to say, so it is
 text too. Punctuation around the words — a closing !, ? or full stop, quotation
 marks, a trailing comma — never makes a submission text: judge the words alone.
-A greeting, farewell, thanks, congratulation or set reply is a conventional
-formula and so a unit, with or without its punctuation; having several words is
-no reason to call it text. If uncertain, choose text."""
+If uncertain, choose text."""
 
 _ARTICLE_RULES = """1. Begin with the unit heading in <b> tags, using the dictionary lemma, which is
    also what goes in word; head a suspected misspelling with the correction, never
-   with the submitted spelling.
+   with the submitted spelling. Keep punctuation in the heading only where it is
+   part of the unit itself, as the ! of Happy New Year! is; a full stop, comma or
+   other mark that merely came with the copied words is not.
 2. Give the translations, most frequent in everyday speech first. Never name the
    part of speech. Put a register mark after the translation it qualifies.
 3. Forms only when useful to recognise or produce. Use a table of at most six

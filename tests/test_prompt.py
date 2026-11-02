@@ -110,29 +110,50 @@ def test_open_verdict_defaults_contextual_finite_clauses_to_text(languages):
 
 
 def test_open_verdict_reads_the_words_and_not_the_punctuation_copied_with_them(languages):
-    """A formula pasted with its `!` was read as a sentence and carded nothing; a
-    `Good night!` answer called a fixed phrase text for not being one word."""
+    """A formula pasted with its `!` was read as a sentence and carded nothing."""
     prompt = build_prompt(languages["de"], "Bis gleich!", "Russian", typed=True)
 
     assert 'Analyse this submitted text: "Bis gleich!"' in prompt
     assert (
-        "Punctuation around the words — a closing !, ? or full stop, quotation\n"
-        "marks, a trailing comma — never makes a submission text: judge the words alone."
+        "text too. Punctuation around the words — a closing !, ? or full stop, quotation\n"
+        "marks, a trailing comma — never makes a submission text: judge the words alone.\n"
+        "If uncertain, choose text."
     ) in prompt
+
+
+def test_open_verdict_names_no_kind_of_formula_as_a_unit(languages):
+    """Naming greetings, thanks and set replies as units moved six free combinations and
+    short clauses to the unit branch over a full tier; the general definition of a
+    unit already covers every formula."""
+    prompt = build_prompt(languages["de"], "Bis gleich!", "Russian", typed=True)
+
+    for removed in ("greeting", "farewell", "congratulation", "set reply", "several words"):
+        assert removed not in prompt
+
+
+@pytest.mark.parametrize(
+    ("word", "unit_intent"),
+    [("Happy birthday!", False), ("bis gleich", True)],
+)
+def test_a_heading_keeps_only_the_punctuation_that_is_part_of_its_unit(
+    languages,
+    word,
+    unit_intent,
+):
+    prompt = build_prompt(languages["en"], word, "Russian", unit_intent=unit_intent)
+
     assert (
-        "A greeting, farewell, thanks, congratulation or set reply is a conventional\n"
-        "formula and so a unit, with or without its punctuation"
+        "with the submitted spelling. Keep punctuation in the heading only where it is\n"
+        "   part of the unit itself, as the ! of Happy New Year! is; a full stop, comma or\n"
+        "   other mark that merely came with the copied words is not."
     ) in prompt
-    assert "having several words is\nno reason to call it text" in prompt
-    assert prompt.index("so it is\ntext too") < prompt.index("judge the words alone")
-    assert prompt.index("no reason to call it text") < prompt.index("If uncertain, choose text")
+    assert prompt.index("Keep punctuation in the heading") < prompt.index("2. Give the")
 
 
 def test_a_selected_unit_is_not_told_how_to_read_punctuation(languages):
     prompt = build_prompt(languages["de"], "bis gleich", "Russian", unit_intent=True)
 
     assert "judge the words alone" not in prompt
-    assert "set reply" not in prompt
 
 
 def test_text_combinations_preserve_separate_exact_source_units(languages):

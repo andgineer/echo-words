@@ -234,6 +234,14 @@ def test_label_is_filled_only_when_the_answer_has_several_senses():
     assert card_fields(make_note("bank", meanings=two_meanings()))["Label"] == "money"
 
 
+def test_a_headword_s_marks_reach_the_card_as_text_and_never_as_markup():
+    """The answer keeps whatever marks its chunk carries, and `<<Na und?>>` written raw
+    would open a tag on the card that hides the words."""
+    assert card_fields(make_note("<<Na und?>>"))["Word"] == "&lt;&lt;Na und?&gt;&gt;"
+    assert card_fields(make_note("Happy birthday!"))["Word"] == "Happy birthday!"
+    assert card_fields(make_note("don't"))["Word"] == "don't"
+
+
 def test_the_selected_sense_alone_populates_every_card_field():
     fields = card_fields(make_note("bank", meanings=two_meanings(), sense=1))
 
