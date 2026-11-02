@@ -1584,28 +1584,100 @@ def test_the_chip_named_in_latin_under_cyrillic_text_is_asked_the_measured_promp
     assert asked == bench.prompt_for(measured)
 
 
-def test_a_fixture_with_no_expected_branch_records_no_verdict_outcome():
-    for shot in bench.formula_shots():
-        answers = {"text": _text_answer(), "unit": _unit_answer(shot.source.rstrip("!"))}
-        for kind, text in answers.items():
-            metrics = bench.score(replace(shot, text=text)).metrics
-            assert metrics["actual_kind"] == kind
-            assert metrics["verdict_outcome"] is None
-            assert metrics["hard_verdict_error"] is False
+RECORDED_TYPED = json.loads(
+    (Path(__file__).parent / "data" / "typed_verdicts_recorded.json").read_text(encoding="utf-8"),
+)
 
 
-def test_a_typed_formula_leaves_the_branch_to_the_answer():
-    for shot in bench.formula_shots():
-        assert bench.prompt_for(shot) == build_prompt(
+def _typed(shot_id: str) -> bench.Shot:
+    return next(shot for shot in bench.typed_verdict_shots() if shot.shot_id == shot_id)
+
+
+@pytest.mark.parametrize(
+    "recorded",
+    RECORDED_TYPED["answers"],
+    ids=[answer["shot_id"] for answer in RECORDED_TYPED["answers"]],
+)
+def test_a_recorded_answer_to_a_typed_formula_is_scored_against_the_unit_it_should_be(recorded):
+    shot = replace(_typed(recorded["shot_id"]), text=recorded["answer"])
+
+    metrics = bench.score(shot).metrics
+
+    assert shot.source == recorded["submitted"]
+    assert metrics["payload_valid"] is True
+    assert metrics["verdict_outcome"] == (
+        "correct" if metrics["actual_kind"] == "unit" else "hard_error"
+    )
+
+
+def test_a_guard_is_scored_right_only_on_the_text_branch():
+    guard = _typed("guard-en-keys")
+
+    as_text = bench.score(replace(guard, text=_text_answer())).metrics
+    as_unit = bench.score(replace(guard, text=_unit_answer("lose my keys"))).metrics
+
+    assert (as_text["verdict_outcome"], as_unit["verdict_outcome"]) == ("correct", "hard_error")
+
+
+def test_every_typed_class_is_instantiated_in_every_language():
+    by_class: dict[str, dict[str, list[bench.TypedVerdictCase]]] = {}
+    for case in bench.TYPED_VERDICT_CASES:
+        by_class.setdefault(case.klass, {}).setdefault(case.lang, []).append(case)
+
+    assert {lang: len(rows) for lang, rows in by_class["formula"].items()} == {
+        "de": 7,
+        "en": 5,
+        "sr": 4,
+    }
+    assert all(len(rows) >= 2 for rows in by_class["guard"].values())
+    assert set(by_class["guard"]) == set(by_class["expression"]) == {"de", "en", "sr"}
+    # Each copied mark the instruction names reaches the answer at least once.
+    punctuated = [case.typed for case in bench.TYPED_VERDICT_CASES if case.klass != "unpunctuated"]
+    assert all(any(text.endswith(mark) for text in punctuated) for mark in ("!", "?", ".", ","))
+    assert any(text.startswith(("„", '"')) for text in punctuated)
+    assert all(
+        case.typed.endswith(("!", "?")) for rows in by_class["guard"].values() for case in rows
+    )
+    assert {
+        case.shot_id: case.expected_kind
+        for case in bench.TYPED_VERDICT_CASES
+        if case.expected_kind == "text"
+    } == {case.shot_id: "text" for rows in by_class["guard"].values() for case in rows}
+
+
+def test_a_formula_without_punctuation_must_be_a_measured_formula_s_own_wording(monkeypatch):
+    stray = bench.TypedVerdictCase(
+        "unpunctuated-de-guten-abend", "de", "Guten Abend", "unpunctuated"
+    )
+    monkeypatch.setattr(bench, "TYPED_VERDICT_CASES", (*bench.TYPED_VERDICT_CASES, stray))
+
+    with pytest.raises(RuntimeError, match="unpunctuated-de-guten-abend is no punctuated formula"):
+        bench.typed_verdict_shots()
+
+
+def test_a_fixture_must_carry_the_punctuation_its_class_names(monkeypatch):
+    bare = bench.TypedVerdictCase("formula-de-guten-abend", "de", "Guten Abend", "formula")
+    monkeypatch.setattr(bench, "TYPED_VERDICT_CASES", (*bench.TYPED_VERDICT_CASES, bare))
+
+    with pytest.raises(RuntimeError, match="formula-de-guten-abend does not carry the punctuation"):
+        bench.typed_verdict_shots()
+
+
+def test_a_typed_verdict_is_asked_exactly_as_typed_with_the_branch_left_to_the_answer():
+    for shot in bench.typed_verdict_shots():
+        prompt = bench.prompt_for(shot)
+
+        assert prompt == build_prompt(
             bench.LANGUAGES[shot.lang],
             shot.source,
             bench.TARGET_NAME,
             typed=True,
         )
+        assert f'Analyse this submitted text: "{shot.source}"' in prompt
 
 
-def test_the_whole_text_measurement_is_asked_only_by_id_and_sits_outside_every_tier():
-    extras = bench.WHOLE_TEXT_CHIP_IDS | bench.FORMULA_IDS
+def test_the_extras_are_asked_on_demand_and_sit_outside_every_tier():
+    extras = bench.WHOLE_TEXT_CHIP_IDS | bench.TYPED_IDS
 
     for tier in bench.TIER_NAMES:
         assert not extras & {shot.shot_id for shot in bench.initial_jobs_for_tier(tier)}
@@ -1615,6 +1687,10 @@ def test_the_whole_text_measurement_is_asked_only_by_id_and_sits_outside_every_t
     assert [shot.shot_id for shot in chosen] == ["whole-chip-de-bis-gleich"]
     with pytest.raises(SystemExit, match="unknown click ids: formula-de-bis-gleich"):
         bench.click_jobs({}, ["formula-de-bis-gleich"])
+    assert {shot.shot_id for shot in bench.typed_jobs([])} == bench.TYPED_IDS
+    assert [shot.shot_id for shot in bench.typed_jobs(["guard-en-keys"])] == ["guard-en-keys"]
+    with pytest.raises(SystemExit, match="unknown typed ids: whole-chip-de-bis-gleich"):
+        bench.typed_jobs(["whole-chip-de-bis-gleich"])
 
 
 def _recorded_whole_text_answer() -> str:
@@ -1624,40 +1700,93 @@ def _recorded_whole_text_answer() -> str:
     return f"<b>bis gleich</b>\n===CARD===\n{recorded['answers'][0]['payload']}"
 
 
-def test_a_directory_of_whole_text_answers_is_screened_without_the_tier_screen(tmp_path, capsys):
+def _record(out: Path, *shots: bench.Shot) -> None:
+    for shot in shots:
+        shot.prompt_hash = bench.prompt_fingerprint(shot)
+        shot.answered_by = "pool-model"
+        bench.append(out, bench.score(shot))
+
+
+def test_a_directory_of_whole_text_chips_is_screened_without_the_tier_screen(tmp_path, capsys):
     out = tmp_path / "bench"
     chip = next(
         shot for shot in bench.whole_text_chip_shots() if shot.shot_id == "whole-chip-de-bis-gleich"
     )
     chip.text = _recorded_whole_text_answer()
-    typed = next(shot for shot in bench.formula_shots() if shot.shot_id == "formula-de-bis-gleich")
-    typed.text = (
-        'Пока!===CARD==={"kind": "text", "combinations": '
-        '[{"label": "bis gleich", "surface": "Bis gleich", "why": "прощание"}]}'
-    )
-    for shot in (chip, typed):
-        shot.prompt_hash = bench.prompt_fingerprint(shot)
-        shot.answered_by = "pool-model"
-        bench.append(out, bench.score(shot))
+    _record(out, chip)
 
     bench.report(out, "smoke")
 
     printed = capsys.readouterr().out
     assert "WHOLE-TEXT CHIPS" in printed
     assert "TIER" not in printed
-    assert "pool-model 2" in printed
+    assert "TYPED VERDICTS" not in printed
+    assert "pool-model 1" in printed
     packet = json.loads((out / "review-packet-whole-text.json").read_text(encoding="utf-8"))
     items = {item["fixture_id"]: item for item in packet["items"]}
-    assert set(items) == bench.WHOLE_TEXT_CHIP_IDS | bench.FORMULA_IDS
+    assert set(items) == bench.WHOLE_TEXT_CHIP_IDS
     assert packet["prompt_status"] == "unmeasured"
     carded = items["whole-chip-de-bis-gleich"]
     assert carded["expected"]["carried_context"] == "Bis gleich!"
     assert carded["actual"]["carded"] is True
     assert carded["input"]["context"] == ""
-    assert items["formula-de-bis-gleich"]["actual"]["kind"] == "text"
-    assert items["formula-de-bis-gleich"]["actual"]["chips"] == [
+    assert items["whole-chip-en-good-night"]["categories"] == ["provider_miss"]
+
+
+def test_a_directory_of_typed_verdicts_is_screened_against_each_class_s_branch(tmp_path, capsys):
+    out = tmp_path / "bench"
+    recorded = {answer["shot_id"]: answer["answer"] for answer in RECORDED_TYPED["answers"]}
+    as_text = replace(_typed("formula-de-bis-gleich"), text=recorded["formula-de-bis-gleich"])
+    as_unit = replace(_typed("formula-de-gute-nacht"), text=recorded["formula-de-gute-nacht"])
+    guard = replace(_typed("guard-en-keys"), text=_text_answer())
+    _record(out, as_text, as_unit, guard)
+
+    bench.report(out, "smoke")
+
+    printed = capsys.readouterr().out
+    assert "TYPED VERDICTS" in printed
+    assert "TIER" not in printed
+    assert "WHOLE-TEXT CHIPS" not in printed
+    assert "pool-model 3" in printed
+    assert "conventional formula with its punctuation → unit" in printed
+    assert "WRONG Bis gleich!" in printed
+    assert "ok    Gute Nacht!" in printed
+    assert "ok    I lost my keys again!" in printed
+    packet = json.loads((out / "review-packet-typed.json").read_text(encoding="utf-8"))
+    items = {item["fixture_id"]: item for item in packet["items"]}
+    assert set(items) == bench.TYPED_IDS
+    assert packet["prompt_status"] == "unmeasured"
+    wrong = items["formula-de-bis-gleich"]
+    assert wrong["categories"] == ["typed_verdict", "wrong_branch"]
+    assert wrong["expected"]["kind"] == "unit"
+    assert wrong["actual"]["kind"] == "text"
+    assert wrong["actual"]["chips"] == [
         {"chip": "bis gleich", "bare": True},
         {"chip": "Bis", "bare": False},
         {"chip": "gleich", "bare": False},
     ]
-    assert items["formula-de-gute-nacht"]["categories"] == ["provider_miss"]
+    assert items["formula-de-gute-nacht"]["categories"] == ["typed_verdict"]
+    assert items["formula-de-gute-nacht"]["actual"]["carded"] is True
+    assert items["guard-en-keys"]["expected"]["kind"] == "text"
+    assert items["guard-en-keys"]["categories"] == ["typed_verdict"]
+    assert items["formula-sr-laku-noc"]["categories"] == ["provider_miss"]
+
+
+def test_the_first_typed_formulas_recorded_without_a_branch_stay_outside_the_tier_screen(
+    tmp_path,
+    capsys,
+):
+    out = tmp_path / "bench"
+    first = replace(
+        _typed("formula-de-bis-gleich"),
+        expected_kind=None,
+        text=RECORDED_TYPED["answers"][0]["answer"],
+    )
+    _record(out, first)
+
+    bench.report(out, "smoke")
+
+    printed = capsys.readouterr().out
+    assert "TYPED VERDICTS" in printed
+    assert "TIER" not in printed
+    assert "recorded fixtures             0/29" in printed
