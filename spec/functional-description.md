@@ -153,6 +153,17 @@ The four requirements every design decision is weighed against:
    separated chip such as `gave up` become a note for `give up` without
    rewriting what the user submitted. Spelling correction remains a separate,
    advisory control.
+   A headword keeps punctuation that is part of its chunk — the `!` of
+   `Happy birthday!`, the `?` of `Na und?` — and drops a mark that merely came
+   with the copied words, such as the full stop of `im Angebot sein.`. Which is
+   which is the answer's judgement: the backend neither strips nor classifies
+   it, and the card shows the headword as the answer wrote it. Whatever the
+   backend checks or looks up about a headword reads its words without the
+   punctuation at its edges. A mark there never costs the card, while
+   punctuation inside a headword still does; a headword and a submission that
+   differ only by such marks are one spelling, never a correction; and the
+   dictionary, the encyclopedia and the recordings are asked about the words
+   alone.
 
 2. The backend validates the input against the selected language's
    allowed script (Latin with accented letters — café, naïve, Straße —

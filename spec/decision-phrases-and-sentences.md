@@ -514,44 +514,74 @@ and thresholds, which it does not.
 
 Punctuation that comes with a submission decides nothing about its branch. The open
 prompt tells the model to judge the words alone: a closing `!`, `?` or full stop,
-quotation marks or a trailing comma never make a submission text, and a greeting,
-farewell, thanks, congratulation or set reply is a unit with or without its
-punctuation, however many words it has. The model still sees exactly what was typed,
-since a real question keeps its `?`, and nothing in code reads the punctuation. The
-rule is there because the open prompt read pasted formulas such as `Bis gleich!` and
-`Good night!` as text, which cards nothing, and one such answer gave as its reason
-that the formula was a fixed phrase rather than a single word.
+quotation marks or a trailing comma never make a submission text. No kind of chunk is
+named as a unit beyond the general definition — an idiom, collocation, phrasal or
+separable verb or conventional formula whose whole wording is the lookup target —
+which already covers every ready-made chunk, formulas included. The model still sees
+exactly what was typed, since a real question keeps its `?`, and nothing in code reads
+the punctuation to decide the branch. Where the heading is asked for, on both unit
+paths, the answer is told to keep a mark only where it is part of the unit itself and
+not one that merely came with the copied words; the card carries the headword as the
+answer wrote it and judges it by its words (`functional-description.md`, item 1).
 
-It is measured on 29 typed submissions held outside every tier: sixteen formulas
-with the punctuation they were copied with (seven German, five English, four Serbian;
-among them a closing `?`, full stops and two in quotation marks), three fixed
-expressions with a copied comma or full stop, four of those formulas without their
-punctuation, and six clauses reporting a situation that end in `!` or `?` and must
-stay text. One free-pool answer per fixture, on 2026-11-02, before and after the rule
-— a hint per item rather than a rate:
+It is measured on 46 typed submissions held outside every tier, one free-pool answer
+per fixture on 2026-11-02 — a hint per item rather than a rate: sixteen formulas with
+the punctuation they were copied with (seven German, five English, four Serbian; among
+them a closing `?`, full stops and two in quotation marks); three fixed expressions
+with a copied comma or full stop; six other ready-made chunks with copied punctuation
+(`im Angebot sein.`, `auf jeden Fall!`, `in Frage kommen,`, `out of the blue!`,
+`to make ends meet.`, `na kraju krajeva,`); five formulas whose closing mark is their
+own (`Happy birthday!`, `Merry Christmas!`, `Na und?`, `Wie bitte?`, `Sve najbolje!`);
+four formulas without punctuation; six clauses reporting a situation that end in `!`
+or `?`; and five free combinations and a two-word list that must stay text
+(`heute sehr früh aufgestanden`, `den alten Zaun grün gestrichen`,
+`gave up far too easily`, `walked slowly to the old station`, `vratio se kasno sinoć`,
+`Äpfel, Birnen`). Three prompts were asked: one with no word about punctuation; one
+whose punctuation sentence was followed by a second naming greetings, farewells,
+thanks, congratulations and set replies as units however many words they have, asked
+only the first 29 fixtures; and the current one. A fixture counts when its answer
+takes the expected branch and, for a unit, builds a card:
 
-| class | expected | before the rule | with the rule |
-|---|---|---:|---:|
-| formula with its punctuation | unit | 11 of 16 (3 text, 2 unusable) | 13 of 16 (none text, 3 unusable) |
-| expression with a copied comma or full stop | unit | 3 of 3 | 3 of 3 |
-| formula without punctuation | unit | 4 of 4 | 3 of 4 (1 unusable) |
-| clause reporting a situation, ending in `!` or `?` | text | 6 of 6 | 6 of 6 |
+| class | expected | no punctuation rule | with the formula sentence | current |
+|---|---|---:|---:|---:|
+| formula with its punctuation | unit | 13 of 16 (3 text) | 15 of 16 (1 unusable) | 16 of 16 |
+| expression with a copied comma or full stop | unit | 3 of 3 | 3 of 3 | 3 of 3 |
+| other chunk with copied punctuation | unit | 6 of 6 | — | 5 of 6 (1 unusable) |
+| formula whose closing mark is its own | unit | 1 of 5 (4 text) | — | 4 of 5 (1 unusable) |
+| formula without punctuation | unit | 4 of 4 | 3 of 4 (1 unusable) | 4 of 4 |
+| clause reporting a situation, ending in `!` or `?` | text | 6 of 6 | 6 of 6 | 6 of 6 |
+| free combination or two-word list | text | 6 of 6 | — | 5 of 6 (1 unit) |
 
-Before the rule `Alles klar?`, `Good night!` and `See you soon!` were read as text
-while `Good night` and `See you soon` typed bare were units, so the copied mark alone
-decided those two. With it no formula is read as text. Every unusable answer chose
-the unit branch and then broke its own card: `Gute Nacht!` and `Happy birthday!`
-(and `Thank you very much.` before the rule) copied the punctuation into the
-headword, which no card can carry, and `Herzlichen Glückwunsch!` and `Laku noć` gave
-an example that is the formula alone, leaving the gapped front no word beside its
-blank. An unusable payload sends the request back to the pool for another answer; a
-text verdict ends it with no card.
+With no rule `Alles klar?`, `Good night!` and `See you soon!` were read as text while
+`Good night` and `See you soon` typed bare were units, and so were four of the five
+formulas whose mark is their own, so the copied mark alone decided them. With the
+current prompt no formula and no chunk is read as text. Its two unusable answers chose
+the unit branch and broke their card for reasons that have nothing to do with
+punctuation: `in Frage kommen,` bolded every example sentence whole, and `Na und?`
+wrote its examples in Russian around the German formula. An unusable payload sends
+the request back to the pool for another answer; a text verdict ends it with no card.
+`gave up far too easily`, a free combination holding a phrasal verb, came back as a
+unit carding `give up`.
 
-The full tier on the same prompt passes every deterministic contract and every
-quality threshold. Against the last full tier of the prompt before the rule, taken on
-2026-10-12:
+The headwords follow the instruction on most items. Four of the five formulas whose
+mark is their own kept it in the headword, and `Sve najbolje!` dropped it. Of twelve
+submissions whose mark only came with the words — a closing full stop or comma, or any
+mark after an expression or chunk — eleven headwords dropped it and `Gern geschehen.`
+kept its full stop. On the formulas closing in `!` the answers kept the mark for every
+German and English one but `No way!` and dropped it for every Serbian one. The prompt
+with no punctuation rule, which also has no word about the heading's punctuation,
+dropped the mark from every such headword except `Happy birthday!` and
+`Thank you very much.`. A headword is judged by its words, so a mark at its edges
+costs no card: re-scored without a single new call over every answer recorded by
+every bench run, the only answers that change are four that carded nothing for such a
+mark — `Happy birthday!` twice, `Gute Nacht!` and `Thank you very much.` — and now
+card, while no answer that carded before changes its card.
 
-| | before the rule | with the rule |
+The formula sentence is rejected by the full tier. Against the last full tier of the
+prompt with no punctuation rule, taken on 2026-10-12, the prompt that carried it
+passed every deterministic contract and every quality threshold:
+
+| | no punctuation rule | with the formula sentence |
 |---|---:|---:|
 | usable initial results | 156 of 159 | 155 of 159 |
 | usable verdicts | 120 of 123 | 121 of 123 |
@@ -564,11 +594,11 @@ quality threshold. Against the last full tier of the prompt before the rule, tak
 Every verdict fixture that changed branch moved from text to unit: `I have no idea`
 and `Не знам`, defensible on either branch, and `turned out quite differently` and
 `völlig durcheinander gebracht`, which are hard errors; the word list `Ampel links`
-moved the same way. Two full runs of one prompt differ by three to ten verdicts on
-this matrix, so one run cannot tell a lean towards unit from a draw. All four were
-units in most of the six full runs of earlier prompts and text only in the single
-run before the rule. The two known texts that missed the text branch were unusable
-answers, not unit verdicts.
+moved the same way, and `Das stimmt` broke its card. None of them carries any
+punctuation, so the sentence naming formulas, not the punctuation sentence, is what
+moved them. Two full runs of one prompt differ by three to ten verdicts on this
+matrix, so one run cannot tell a lean towards unit from a draw. The current prompt
+has not been run over the full tier.
 
 ### Two experiments that were not run, and why
 

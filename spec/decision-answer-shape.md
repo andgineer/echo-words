@@ -327,6 +327,10 @@ wording in 31: `иде ми се`, a colloquial clause the encyclopedia has no r
 Against the dictionary alone that is twelve false warnings reduced to one, with all
 four coinages still caught.
 
+**Both are asked about the headword's words.** A card keeps the `!` of `Happy
+birthday!`, and no dictionary titles the formula with it, so the punctuation at a
+headword's edges is left out of the question.
+
 **The check warns and never withholds.** Withholding on absence would refuse the
 false alarm that remains, and the product's own rule is that a false refusal costs
 the reader more than a warning they can act on. An unreachable wiki is not a miss,

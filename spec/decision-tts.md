@@ -188,7 +188,9 @@ the one deployment target — the 1 GB (+ swap) micro instance:
 - **Only single words are asked for.** A headword carded with its
   article is not one word, and the recording of the bare noun would
   speak a text the card does not show; a phrase has no recording to find
-  either. Both are left to the engines.
+  either. Both are left to the engines. A recording is named by the word
+  alone, so a headword that keeps a mark of its own, such as `Hallo!`, is
+  looked up without it; the engines speak the headword as written.
 - **Nothing is attributed on the card.** The recordings are CC-BY-SA or
   CC0, and the app is private and tailnet-only: it publishes nothing and
   redistribution is not in question.
