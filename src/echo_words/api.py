@@ -372,7 +372,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:  # noqa: C901, PLR0
             raise HTTPException(status_code=400, detail=hint)
         context = sanitize_context(submission.context)
         if intent == "unit":
-            context = unit_context(context, word)
+            context = unit_context(context, word, language)
         fingerprint = (language.code, word, lookup_only, context, intent, reverse, typed)
         try:
             entry_id = await request.app.state.submissions.accept(

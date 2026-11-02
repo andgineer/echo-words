@@ -1532,7 +1532,7 @@ def test_a_whole_text_chip_is_asked_exactly_as_a_bare_lookup_of_its_wording():
         # The fixture carries the whole text its chip came from, and the endpoint's own
         # decision is what leaves it no context.
         assert case.carried != case.label
-        assert unit_context(case.carried, case.label) == ""
+        assert unit_context(case.carried, case.label, bench.LANGUAGES[shot.lang]) == ""
         assert shot.context == ""
         assert bench.prompt_for(shot) == build_prompt(
             bench.LANGUAGES[shot.lang],
@@ -1540,6 +1540,33 @@ def test_a_whole_text_chip_is_asked_exactly_as_a_bare_lookup_of_its_wording():
             bench.TARGET_NAME,
             unit_intent=True,
         )
+
+
+def test_the_chip_named_in_latin_under_cyrillic_text_is_asked_the_measured_prompt():
+    serbian = bench.LANGUAGES["sr"]
+    measured = next(
+        shot for shot in bench.whole_text_chip_shots() if shot.shot_id == "whole-chip-sr-laku-noc"
+    )
+
+    asked = build_prompt(
+        serbian,
+        "laku noć",
+        bench.TARGET_NAME,
+        context=unit_context("Лаку ноћ!", "laku noć", serbian),
+        unit_intent=True,
+    )
+
+    assert asked == bench.prompt_for(measured)
+
+
+def test_a_fixture_with_no_expected_branch_records_no_verdict_outcome():
+    for shot in bench.formula_shots():
+        answers = {"text": _text_answer(), "unit": _unit_answer(shot.source.rstrip("!"))}
+        for kind, text in answers.items():
+            metrics = bench.score(replace(shot, text=text)).metrics
+            assert metrics["actual_kind"] == kind
+            assert metrics["verdict_outcome"] is None
+            assert metrics["hard_verdict_error"] is False
 
 
 def test_a_typed_formula_leaves_the_branch_to_the_answer():

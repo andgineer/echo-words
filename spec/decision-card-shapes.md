@@ -102,17 +102,28 @@ the chip's own. A formula read as text, such as `Bis gleich!`, offers its whole
 wording as a chip, and the context that chip carries is that same wording: marked
 at the unit, it leaves nothing outside the spans, so no answer could ever card it.
 Such a context is therefore never used. Whether one more word is present is read
-word by word, as the marking reads the sentence, ignoring letter case and
-punctuation; the request is then asked and carded exactly as a bare lookup of the
-same wording, from the answer's own examples. A context with even one further word
-is used as it stands. The rule that a word stays outside the spans is not relaxed
-for this: the gapped front needs a word beside its blank.
+word by word, ignoring letter case and punctuation, taking a Serbian word in
+Cyrillic and in Latin as the same word, and counting a repeated word once: an
+answer may name a Serbian chip in Latin under a text written in Cyrillic, and a
+repeat such as `Danke, danke!` would leave the unit's own word on the gapped front
+beside the blank it answers. The request is then asked and carded exactly as a
+bare lookup of the same wording, from the answer's own examples. A context with
+even one further word is used as it stands. The rule that a word stays outside the
+spans is not relaxed for this: the gapped front needs a word beside its blank.
 
 Measured in production: the chip `bis gleich` tapped under `Bis gleich!` drew
-fifteen distinct pool answers over four taps and retries, and the card refused
+thirteen distinct pool answers over four taps and retries, and the card refused
 every one for the unit not standing in its sentence. Replayed through the parser,
-all fifteen card as a bare lookup, and all fifteen card against
-`Bis gleich, Anna!`; the answers were sound, and the sentence was the fault.
+all thirteen card as a bare lookup, and all thirteen card against
+`Bis gleich, Anna!`: the sentence, not the answers' content, was what the card
+refused.
+
+Measured on the free pool on 2026-11-02, with one model answering
+(`google-gemini-3.5-flash-lite`) and one answer per fixture, so a hint rather than
+a rate: the three whole-text chips `bis gleich` under `Bis gleich!`, `good night`
+under `Good night!` and `laku noć` under `Laku noć!` were asked as bare lookups,
+and all three carded. A fresh semantic review accepted all three cards; the faults
+it found were in the article prose only.
 
 ## Which sense the note selects
 

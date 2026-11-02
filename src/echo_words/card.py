@@ -451,12 +451,12 @@ def _marked_sentence_usable(
     )
 
 
-def unit_context(context: str, unit: str) -> str:
+def unit_context(context: str, unit: str, language: Language) -> str:
     """The context, or nothing where it holds no word beyond the unit's own: a card's
     sentence must keep a word outside the unit, so such a context could never card."""
-    beyond = Counter(_fold(match.group()) for match in _SOURCE_TOKEN.finditer(context))
-    beyond.subtract(_fold(match.group()) for match in _SOURCE_TOKEN.finditer(unit))
-    return context if any(count > 0 for count in beyond.values()) else ""
+    own = {fold_for_match(match.group(), language) for match in _SOURCE_TOKEN.finditer(unit)}
+    words = {fold_for_match(match.group(), language) for match in _SOURCE_TOKEN.finditer(context)}
+    return context if words - own else ""
 
 
 def context_sentence_forms(

@@ -871,7 +871,7 @@ def whole_text_chip_shots() -> list[Shot]:
             WHOLE_CHIP_KIND,
             case.lang,
             case.label,
-            context=unit_context(case.carried, case.label),
+            context=unit_context(case.carried, case.label, LANGUAGES[case.lang]),
             expected_kind="unit",
         )
         for case in WHOLE_TEXT_CHIP_CASES
@@ -1817,7 +1817,9 @@ def _first_lookup_exact(shot: Shot) -> bool:
     return bool(items) and normalize(items[0].get("label", ""), shot.lang) in accepted
 
 
-def _verdict_outcome(shot: Shot, actual_kind: str | None) -> str:
+def _verdict_outcome(shot: Shot, actual_kind: str | None) -> str | None:
+    if shot.expected_kind is None:
+        return None
     if actual_kind not in {"unit", "text"}:
         return "unusable"
     if actual_kind == shot.expected_kind:
@@ -2620,11 +2622,12 @@ def report_reverse(out: Path, attempts: list[Shot]) -> list[str]:
 
 def _whole_text_chips(shot: Shot) -> list[dict[str, object]]:
     """The chips a text answer offers, and whether a tap on each is a bare lookup."""
-    parsed = extract_answer(shot.text, shot.source, LANGUAGES[shot.lang])
+    language = LANGUAGES[shot.lang]
+    parsed = extract_answer(shot.text, shot.source, language)
     if not isinstance(parsed, ParsedText):
         return []
     return [
-        {"chip": segment.label, "bare": not unit_context(segment.context, segment.label)}
+        {"chip": segment.label, "bare": not unit_context(segment.context, segment.label, language)}
         for segment in parsed.segments
     ]
 

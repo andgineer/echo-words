@@ -14,8 +14,8 @@ from echo_words.card import (
 )
 from echo_words.languages import Language
 
-# Every answer the pool gave in production to the chip `bis gleich` tapped under the
-# text `Bis gleich!`, each of which the card refused while that text was its context.
+# Every distinct answer the pool gave in production to the chip `bis gleich` tapped under
+# the text `Bis gleich!`, each of which the card refused while that text was its context.
 WHOLE_TEXT_CHIP = json.loads(
     (Path(__file__).parent / "data" / "bis_gleich_recorded.json").read_text(encoding="utf-8"),
 )
@@ -405,34 +405,46 @@ def test_a_unit_that_is_not_in_the_context_it_came_from_cannot_be_carded(languag
 
 
 @pytest.mark.parametrize(
-    ("context", "unit"),
+    ("lang", "context", "unit"),
     [
-        ("Bis gleich!", "bis gleich"),
-        ("Bis  gleich", "bis gleich"),
-        ("„Bis gleich!“", "Bis gleich"),
-        ("Good night!", "good night"),
-        ("Laku noć!", "laku noć"),
-        ("Gleich bis.", "bis gleich"),
-        ("", "bis gleich"),
+        ("de", "Bis gleich!", "bis gleich"),
+        ("de", "Bis  gleich", "bis gleich"),
+        ("de", "„Bis gleich!“", "Bis gleich"),
+        ("en", "Good night!", "good night"),
+        ("sr", "Laku noć!", "laku noć"),
+        # A Serbian answer may name its chip in the other alphabet from the text's.
+        ("sr", "Лаку ноћ!", "laku noć"),
+        ("sr", "Laku noć!", "Лаку ноћ"),
+        # A repeat is the unit's own word again, and would stand beside its own blank.
+        ("de", "Bis gleich, bis gleich!", "bis gleich"),
+        ("de", "Danke, danke!", "danke"),
+        ("de", "Gleich bis.", "bis gleich"),
+        ("de", "", "bis gleich"),
     ],
 )
-def test_a_context_of_nothing_but_the_units_own_words_is_no_context(context, unit):
-    assert unit_context(context, unit) == ""
+def test_a_context_of_nothing_but_the_units_own_words_is_no_context(languages, lang, context, unit):
+    assert unit_context(context, unit, languages[lang]) == ""
 
 
 @pytest.mark.parametrize(
-    ("context", "unit"),
+    ("lang", "context", "unit"),
     [
-        ("Bis gleich, Anna!", "bis gleich"),
-        # The second pair stays outside the marked first one, so the sentence cards.
-        ("Bis gleich, bis gleich!", "bis gleich"),
+        ("de", "Bis gleich, Anna!", "bis gleich"),
+        ("sr", "Лаку ноћ, мама!", "laku noć"),
         # Whole words: the unit's letters inside a longer word are another word.
-        ("Gleichgültig!", "gleich"),
-        ("Er steht auf.", "aufstehen"),
+        ("de", "Gleichgültig!", "gleich"),
+        ("de", "Er steht auf.", "aufstehen"),
     ],
 )
-def test_a_context_with_a_word_beyond_the_unit_is_kept_as_it_stands(context, unit):
-    assert unit_context(context, unit) == context
+def test_a_context_with_a_word_beyond_the_unit_is_kept_as_it_stands(languages, lang, context, unit):
+    assert unit_context(context, unit, languages[lang]) == context
+
+
+def test_the_recorded_answers_are_the_thirteen_the_pool_sent_decoded_exactly():
+    payloads = [answer["payload"] for answer in WHOLE_TEXT_CHIP["answers"]]
+
+    assert len(set(payloads)) == len(payloads) == 13
+    assert not any("\ufffd" in payload for payload in payloads)
 
 
 @pytest.mark.parametrize(
@@ -451,7 +463,11 @@ def test_every_recorded_answer_to_a_chip_that_is_its_whole_text_cards_as_a_bare_
         submitted,
         languages[WHOLE_TEXT_CHIP["lang"]],
         unit_intent=True,
-        context=unit_context(WHOLE_TEXT_CHIP["context"], submitted),
+        context=unit_context(
+            WHOLE_TEXT_CHIP["context"],
+            submitted,
+            languages[WHOLE_TEXT_CHIP["lang"]],
+        ),
         target="Russian",
     )
 

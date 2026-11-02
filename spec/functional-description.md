@@ -130,8 +130,10 @@ The four requirements every design decision is weighed against:
    lookup; component chips under a set expression preserve every word-shaped
    part in expression order and carry the first example of the expression's
    carded sense. A chip whose context holds no word beyond the chip's own
-   words, whatever their letter case and punctuation, is likewise asked and
-   carded as a bare lookup of that wording: a formula such as `Bis gleich!`
+   words, however often they repeat and whatever their letter case,
+   punctuation or script (a Serbian word is the same word in Cyrillic and in
+   Latin), is likewise asked and carded as a bare lookup of that wording: a
+   formula such as `Bis gleich!`
    read as text offers its whole wording as a chip, and that sentence leaves
    the card no word outside the unit. A context with even one further word
    is used as it stands. The model must then return a unit answer. A context unit

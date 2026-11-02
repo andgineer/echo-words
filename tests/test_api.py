@@ -1153,16 +1153,33 @@ def test_the_running_app_buys_a_lookup_a_pool_model_it_does_not_keep_answered(
 RECORDED_WHOLE_TEXT_CHIP = json.loads(
     (Path(__file__).parent / "data" / "bis_gleich_recorded.json").read_text(encoding="utf-8"),
 )
+# The pool's answer to the chip `laku noć` asked as a bare lookup, recorded by the bench.
+RECORDED_LAKU_NOC = (
+    '{"kind": "unit", "word": "laku noć", "word_relation": "same", "suggestion": "", '
+    '"meanings": [{"label": "", "translations": ["спокойной ночи", "доброй ночи"], '
+    '"examples": [{"highlighted": "Spavaću sobu sam spremio, <b>laku noć</b> i prijatan san.", '
+    '"translation": "Я приготовил спальню, спокойной ночи и приятного сна."}, '
+    '{"highlighted": "Tata je ušao u sobu da poželi detetu <b>laku noć</b>.", '
+    '"translation": "Папа вошел в комнату, чтобы пожелать ребенку спокойной ночи."}, '
+    '{"highlighted": "Vreme je za spavanje, <b>laku noć</b> svima.", '
+    '"translation": "Время спать, спокойной ночи всем."}]}], '
+    '"segments": [{"label": "lak", "surface": "laku", '
+    '"why": "прилагательное в винительном падеже женского рода"}, '
+    '{"label": "noć", "surface": "noć", "why": "существительное в винительном падеже"}]}'
+)
 
 
 def _chip_tapped(
     monkeypatch: pytest.MonkeyPatch,
     settings: Settings,
     context: str,
+    *,
+    chip: str = "bis gleich",
+    lang: str = "de",
+    payload: str = RECORDED_WHOLE_TEXT_CHIP["answers"][0]["payload"],
 ) -> tuple[FakeBroker, dict, list[str]]:
-    """Tap the chip `bis gleich` under `context`, answered by a recorded pool answer."""
-    payload = RECORDED_WHOLE_TEXT_CHIP["answers"][0]["payload"]
-    broker = FakeBroker(handles=[FakeHandle([f"<b>bis gleich</b>\n{CARD_DELIMITER}\n{payload}"])])
+    """Tap `chip` under `context`, answered by a recorded pool answer."""
+    broker = FakeBroker(handles=[FakeHandle([f"<b>{chip}</b>\n{CARD_DELIMITER}\n{payload}"])])
     monkeypatch.setattr("echo_words.api.create_broker", lambda *_args: broker)
     voiced: list[str] = []
 
@@ -1176,7 +1193,7 @@ def _chip_tapped(
     monkeypatch.setattr("echo_words.api.Wiktionary", lambda: SimpleNamespace(documents=nothing))
     monkeypatch.setattr("echo_words.api.Wikipedia", lambda: SimpleNamespace(usage=nothing))
     with TestClient(create_app(settings)) as live_client:
-        accepted = submit(live_client, word="bis gleich", lang="de", shape="unit", context=context)
+        accepted = submit(live_client, word=chip, lang=lang, shape="unit", context=context)
         entry = finished(live_client, accepted.json()["entry_id"])
     return broker, entry, voiced
 
@@ -1202,6 +1219,27 @@ def test_a_chip_whose_context_is_only_its_own_words_is_asked_and_carded_as_a_bar
     assert (entry["status"], entry["card_status"], entry["context"]) == ("done", "added", "")
     # Nothing beyond the unit is left to be voiced beside it.
     assert voiced == ["bis gleich"]
+
+
+def test_a_latin_chip_under_cyrillic_serbian_text_is_asked_as_the_measured_bare_lookup(
+    monkeypatch: pytest.MonkeyPatch,
+    settings: Settings,
+):
+    broker, entry, voiced = _chip_tapped(
+        monkeypatch,
+        settings,
+        "Лаку ноћ!",
+        chip="laku noć",
+        lang="sr",
+        payload=RECORDED_LAKU_NOC,
+    )
+
+    serbian = load_languages(settings.languages_config)["sr"]
+    assert _article_prompts(broker) == [
+        build_prompt(serbian, "laku noć", "Russian", unit_intent=True),
+    ]
+    assert (entry["status"], entry["card_status"], entry["context"]) == ("done", "added", "")
+    assert voiced == ["laku noć"]
 
 
 def test_a_chip_whose_context_holds_one_more_word_is_still_asked_in_that_context(

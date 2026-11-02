@@ -95,9 +95,10 @@ judge than the model.
 A unit answer keeps the full article: translations first, useful forms shown as
 live phrases, usage, origin and examples. It creates one note about its selected
 sense and four cards. A bare input selects the most common retained sense; a
-chip with context selects the contextual sense. After a successful save, chips
-offer the other senses for separate notes; otherwise every sense remains
-available.
+chip with context selects the contextual sense, unless that context holds no
+word beyond the chip's own: such a chip is asked as a bare input and selects the
+most common retained sense. After a successful save, chips offer the other senses
+for separate notes; otherwise every sense remains available.
 
 A set expression is analysed whole and additionally offers every word-shaped
 component in expression order, preserving its submitted surface form. Those
@@ -506,6 +507,17 @@ and `morphology` are presence regexes, so a false etymology scores as an etymolo
 a case-labelled table scores as morphology — the most common real defect in the run is
 invisible to every gate. The review packet should also carry the screen's own counts
 and thresholds, which it does not.
+
+### Typed fixed formulas: a baseline of the open prompt
+
+Measured on the free pool on 2026-11-02, with one model answering
+(`google-gemini-3.5-flash-lite`) and one answer per fixture, so a hint rather than
+a rate. Typed into the submit box, `Gute Nacht!`, `Bis bald!` and `Laku noć!` were
+read as units and carded. `Bis gleich!` and `Good night!` were read as text; each
+offered its whole formula as a chip, which cards in one tap because a chip whose
+context holds nothing beyond its own words is asked as a bare lookup. Both text
+verdicts miss what the functional description asks of a conventional fixed
+formula: its whole wording is reusable as-is, so it is a unit, not text.
 
 ### Two experiments that were not run, and why
 
