@@ -67,7 +67,11 @@ that reports a particular situation is text, even when a fixed expression fills
 most of it — return that expression separately in combinations rather than making
 its changing context part of a dictionary entry. A clause with its own subject and
 finite verb reports a situation however ordinary a thing it is to say, so it is
-text too. If uncertain, choose text."""
+text too. Punctuation around the words — a closing !, ? or full stop, quotation
+marks, a trailing comma — never makes a submission text: judge the words alone.
+A greeting, farewell, thanks, congratulation or set reply is a conventional
+formula and so a unit, with or without its punctuation; having several words is
+no reason to call it text. If uncertain, choose text."""
 
 _ARTICLE_RULES = """1. Begin with the unit heading in <b> tags, using the dictionary lemma, which is
    also what goes in word; head a suspected misspelling with the correction, never
