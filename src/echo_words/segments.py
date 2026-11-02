@@ -12,6 +12,7 @@ from echo_words.languages import (
     reflexive_forms,
     reflexive_markers,
     split_words,
+    unit_context,
     unit_excluded_words,
     validate_word,
 )
@@ -64,24 +65,25 @@ def fill_text_segments(value: Any, text: str, language: Language) -> list[Segmen
             )
             else ""
         )
-        spanned = [words[index] for index in source_order]
+        spanned = " ".join(words[index] for index in source_order)
         # The only fallback is a name the submission endpoint would refuse, which is
         # no lookup the reader can make. Whether the name is a real form of what it
         # spans is not decided here: comparing written forms cannot tell `ићи се` from
         # `ћи се` — it rejects both, and `fahren` over `fährt` with them. A name that
         # is not a word is caught where it can be, by the judgement a tap already asks.
         if not label or validate_word(label, language) is not None:
-            label = " ".join(spanned)
+            label = spanned
         if validate_word(label, language) is not None:
             continue
         reason = display_text(proposal.get("why"), MAX_REASON_LENGTH)
+        # Read against the words it spans, which only this chip knows: its name may be
+        # a dictionary form (`Rad fahren` over `fährt Rad`) the endpoint cannot match.
+        context = unit_context(text, spanned, language)
         placed.append(
             (
                 source_order[0],
                 0,
-                Segment(
-                    label, reason, text, "" if " ".join(spanned) == label else " ".join(spanned)
-                ),
+                Segment(label, reason, context, "" if spanned == label else spanned),
             ),
         )
     # A word stays clickable in its own right even when a combination also claims it,

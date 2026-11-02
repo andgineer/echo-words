@@ -97,26 +97,39 @@ dictionary form or morphology for generated examples. Independently malformed
 examples are dropped; a meaning with no safe example is unusable. No accepted
 note can generate fewer than four cards.
 
-That rule decides the card of a chip whose carried context holds no word beyond
-the chip's own. A formula read as text, such as `Bis gleich!`, offers its whole
-wording as a chip, and the context that chip carries is that same wording: marked
-at the unit, it leaves nothing outside the spans, so no answer could ever card it.
-Such a context is therefore never used. Whether one more word is present is read
-word by word, ignoring letter case and punctuation, taking a Serbian word in
-Cyrillic and in Latin as the same word, and counting a repeated word once: an
-answer may name a Serbian chip in Latin under a text written in Cyrillic, and a
-repeat such as `Danke, danke!` would leave the unit's own word on the gapped front
-beside the blank it answers. The request is then asked and carded exactly as a
-bare lookup of the same wording, from the answer's own examples. A context with
-even one further word is used as it stands. The rule that a word stays outside the
-spans is not relaxed for this: the gapped front needs a word beside its blank.
+That rule decides the card of a chip whose carried context holds no word beyond the
+chip's own. A formula read as text, such as `Bis gleich!`, offers its whole wording
+as a chip, and the context that chip carries is that same wording: marked at the
+unit, it leaves nothing outside the spans, so no answer could ever card it. Such a
+context is therefore never used. A combination spanning the whole text under its
+dictionary form, such as `Rad fahren` under `fährt Rad`, is the same case: its name
+is not the text's wording, so it is the words the chip spans that show the text
+holds nothing beyond them, and such a chip carries no context at all. Whether one
+more word is present is read word by word, ignoring letter case and punctuation,
+taking a Serbian word in Cyrillic and in Latin as the same word, and counting a
+repeated word once: an answer may name a Serbian chip in Latin under a text written
+in Cyrillic, and a repeat such as `Danke, danke!` would leave the unit's own word
+on the gapped front beside the blank it answers. The request is then asked and
+carded exactly as a bare lookup of the chip's name, from the answer's own
+examples. A context with even one further word is used as it stands. The rule that
+a word stays outside the spans is not relaxed for this: the gapped front needs a
+word beside its blank.
 
 Measured in production: the chip `bis gleich` tapped under `Bis gleich!` drew
 thirteen distinct pool answers over four taps and retries, and the card refused
-every one for the unit not standing in its sentence. Replayed through the parser,
-all thirteen card as a bare lookup, and all thirteen card against
-`Bis gleich, Anna!`: the sentence, not the answers' content, was what the card
-refused.
+every one: marking the unit in that sentence left no word outside it. Replayed
+through the parser, all thirteen card as a bare lookup, and all thirteen card
+against `Bis gleich, Anna!`: the sentence, not the answers' content, was what the
+card refused.
+
+Such chips are offered under short typed texts. Across the bench's recorded runs,
+42 of 1,895 distinct text answers (35 of the 1,802 from the free pool) offer a
+combination spanning the whole text under a name the text's words do not cover,
+over 22 distinct pairs of text and chip: among them `fährt Rad` with
+`Rad fahren`, `spielt eine Rolle` with `eine Rolle spielen`,
+`eine Entscheidung getroffen` with `eine Entscheidung treffen`, `ide pešice` with
+`ići pešice`, `Пада киша` with `падати киша` and `Немам времена за то` with
+`немати времена за то`. Each of them carries no context and is a bare lookup.
 
 Measured on the free pool on 2026-11-02, with one model answering
 (`google-gemini-3.5-flash-lite`) and one answer per fixture, so a hint rather than

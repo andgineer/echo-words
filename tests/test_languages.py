@@ -21,6 +21,7 @@ from echo_words.languages import (
     save_languages,
     script_route,
     sentence_is_source_language,
+    unit_context,
     unit_excluded_words,
     unknown_language_hint,
     validate_text,
@@ -769,3 +770,39 @@ def test_one_letter_the_tab_does_not_write_leaves_only_the_target_reading(
 def test_input_with_no_letters_is_left_to_the_tab(languages: dict[str, Language]):
     assert script_route("123", languages["en"], "Russian") == "source"
     assert script_route("ねこ", languages["en"], "Russian") == "source"
+
+
+@pytest.mark.parametrize(
+    ("lang", "context", "unit"),
+    [
+        ("de", "Bis gleich!", "bis gleich"),
+        ("de", "Bis  gleich", "bis gleich"),
+        ("de", "„Bis gleich!“", "Bis gleich"),
+        ("en", "Good night!", "good night"),
+        ("sr", "Laku noć!", "laku noć"),
+        # A Serbian answer may name its chip in the other alphabet from the text's.
+        ("sr", "Лаку ноћ!", "laku noć"),
+        ("sr", "Laku noć!", "Лаку ноћ"),
+        # A repeat is the unit's own word again, and would stand beside its own blank.
+        ("de", "Bis gleich, bis gleich!", "bis gleich"),
+        ("de", "Danke, danke!", "danke"),
+        ("de", "Gleich bis.", "bis gleich"),
+        ("de", "", "bis gleich"),
+    ],
+)
+def test_a_context_of_nothing_but_the_units_own_words_is_no_context(languages, lang, context, unit):
+    assert unit_context(context, unit, languages[lang]) == ""
+
+
+@pytest.mark.parametrize(
+    ("lang", "context", "unit"),
+    [
+        ("de", "Bis gleich, Anna!", "bis gleich"),
+        ("sr", "Лаку ноћ, мама!", "laku noć"),
+        # Whole words: the unit's letters inside a longer word are another word.
+        ("de", "Gleichgültig!", "gleich"),
+        ("de", "Er steht auf.", "aufstehen"),
+    ],
+)
+def test_a_context_with_a_word_beyond_the_unit_is_kept_as_it_stands(languages, lang, context, unit):
+    assert unit_context(context, unit, languages[lang]) == context

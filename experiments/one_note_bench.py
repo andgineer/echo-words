@@ -75,7 +75,7 @@ from backend_bench import (  # noqa: E402
     split_answer,
 )
 from bench_items import SENTENCES  # noqa: E402
-from echo_words.card import ParsedAnswer, ParsedText, ParsedUnit, unit_context  # noqa: E402
+from echo_words.card import ParsedAnswer, ParsedText, ParsedUnit  # noqa: E402
 from echo_words.language_catalog import catalog_language  # noqa: E402
 from echo_words.languages import (  # noqa: E402
     Language,
@@ -85,6 +85,7 @@ from echo_words.languages import (  # noqa: E402
     plain_unit,
     sentence_is_source_language,
     split_words,
+    unit_context,
     validate_text,
     validate_word,
 )
@@ -103,7 +104,7 @@ from echo_words.prompt import (  # noqa: E402
     reverse_example_issue,
 )
 from echo_words.sanitizer import sanitize_html  # noqa: E402
-from echo_words.segments import fill_text_segments  # noqa: E402
+from echo_words.segments import Segment, fill_text_segments  # noqa: E402
 from llmbroker import AsyncBroker, StreamReplacementError  # noqa: E402
 from llmbroker.direct import AsyncDirectClient  # noqa: E402
 from language_items import LANGUAGE_CASES, LanguageCase  # noqa: E402
@@ -266,7 +267,7 @@ WHOLE_TEXT_BENCH_KINDS = frozenset({WHOLE_CHIP_KIND, FORMULA_KIND})
 @dataclass(frozen=True)
 class WholeTextChipCase:
     """The chip a formula read as text offers for its whole wording, with the text it
-    carries: that same wording, so the context holds no word beyond the chip's own."""
+    came from: that same wording, so the context holds no word beyond the chip's own."""
 
     shot_id: str
     lang: str
@@ -1207,6 +1208,15 @@ def _match_label(label: str, source: list[str], claimed: set[int], lang: str) ->
     return sorted(matched)
 
 
+def _carried_context(shot: Shot, segment: Segment) -> str:
+    """The text, except for a combination that leaves it no further word, which
+    carries none."""
+    spans = segment.surface or segment.label
+    if len(split_words(spans)) > 1:
+        return unit_context(shot.source, spans, LANGUAGES[shot.lang])
+    return shot.source
+
+
 def coverage(shot: Shot, parsed: ParsedText) -> dict:
     source = split_words(shot.source)
     claimed: set[int] = set()
@@ -1255,7 +1265,9 @@ def coverage(shot: Shot, parsed: ParsedText) -> dict:
         "source_order": len(claimed) == len(source),
         "function_total": len(function_indices),
         "function_covered": len(function_indices & claimed),
-        "contexts_exact": all(segment.context == shot.source for segment in parsed.segments),
+        "contexts_exact": all(
+            segment.context == _carried_context(shot, segment) for segment in parsed.segments
+        ),
         "labels_valid": all(bool(segment.label) for segment in parsed.segments),
         "expected_found": registered["exact"],
         "expected_total": len(expected),

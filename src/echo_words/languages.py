@@ -46,6 +46,7 @@ _ALLOWED_SCRIPTS: dict[str, frozenset[str]] = {
 _EXTRA_WORD_CHARS = frozenset(" -'’")
 
 _WORD_EDGES = re.compile(r"^[^\w]+|[^\w]+$", re.UNICODE)
+SOURCE_TOKEN = re.compile(r"[^\W\d_]+(?:[-'’][^\W\d_]+)*", re.UNICODE)
 
 _REQUIRED_FIELDS = ("name", "deck", "script")
 # What the editor itself has to supply. Neither `name` nor `script` is among them:
@@ -544,6 +545,14 @@ def plain_text(text: str) -> str:
 def sanitize_context(text: str) -> str:
     """Reduce a pasted phrase to plain single-spaced text of bounded length."""
     return plain_text(text)[:MAX_CONTEXT_LENGTH]
+
+
+def unit_context(context: str, unit: str, language: Language) -> str:
+    """The context, or nothing where it holds no word beyond the unit's own: a card's
+    sentence must keep a word outside the unit, so such a context could never card."""
+    own = {fold_for_match(match.group(), language) for match in SOURCE_TOKEN.finditer(unit)}
+    words = {fold_for_match(match.group(), language) for match in SOURCE_TOKEN.finditer(context)}
+    return context if words - own else ""
 
 
 def validate_word(word: str, language: Language, locale: str = DEFAULT_LOCALE) -> str | None:

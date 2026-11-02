@@ -27,7 +27,6 @@ from echo_words.audio import (
 )
 from echo_words.backend import Cascade
 from echo_words.broker import BackendError, create_broker
-from echo_words.card import unit_context
 from echo_words.config import Settings
 from echo_words.config import settings as default_settings
 from echo_words.events import EventHub
@@ -47,6 +46,7 @@ from echo_words.languages import (
     save_languages,
     script_route,
     split_words,
+    unit_context,
     unknown_language_hint,
     validate_text,
     validate_word,

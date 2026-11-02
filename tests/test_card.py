@@ -10,9 +10,8 @@ from echo_words.card import (
     ParsedUnit,
     context_sentence_forms,
     parse_answer_payload,
-    unit_context,
 )
-from echo_words.languages import Language
+from echo_words.languages import Language, unit_context
 
 # Every distinct answer the pool gave in production to the chip `bis gleich` tapped under
 # the text `Bis gleich!`, each of which the card refused while that text was its context.
@@ -402,42 +401,6 @@ def test_a_unit_that_is_not_in_the_context_it_came_from_cannot_be_carded(languag
             unit_intent=True,
             context="There is no such word here.",
         )
-
-
-@pytest.mark.parametrize(
-    ("lang", "context", "unit"),
-    [
-        ("de", "Bis gleich!", "bis gleich"),
-        ("de", "Bis  gleich", "bis gleich"),
-        ("de", "„Bis gleich!“", "Bis gleich"),
-        ("en", "Good night!", "good night"),
-        ("sr", "Laku noć!", "laku noć"),
-        # A Serbian answer may name its chip in the other alphabet from the text's.
-        ("sr", "Лаку ноћ!", "laku noć"),
-        ("sr", "Laku noć!", "Лаку ноћ"),
-        # A repeat is the unit's own word again, and would stand beside its own blank.
-        ("de", "Bis gleich, bis gleich!", "bis gleich"),
-        ("de", "Danke, danke!", "danke"),
-        ("de", "Gleich bis.", "bis gleich"),
-        ("de", "", "bis gleich"),
-    ],
-)
-def test_a_context_of_nothing_but_the_units_own_words_is_no_context(languages, lang, context, unit):
-    assert unit_context(context, unit, languages[lang]) == ""
-
-
-@pytest.mark.parametrize(
-    ("lang", "context", "unit"),
-    [
-        ("de", "Bis gleich, Anna!", "bis gleich"),
-        ("sr", "Лаку ноћ, мама!", "laku noć"),
-        # Whole words: the unit's letters inside a longer word are another word.
-        ("de", "Gleichgültig!", "gleich"),
-        ("de", "Er steht auf.", "aufstehen"),
-    ],
-)
-def test_a_context_with_a_word_beyond_the_unit_is_kept_as_it_stands(languages, lang, context, unit):
-    assert unit_context(context, unit, languages[lang]) == context
 
 
 def test_the_recorded_answers_are_the_thirteen_the_pool_sent_decoded_exactly():

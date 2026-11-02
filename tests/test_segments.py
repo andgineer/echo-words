@@ -1,7 +1,21 @@
+import json
+from pathlib import Path
+
+import pytest
+
+from echo_words.card import ParsedText
+from echo_words.prompt import extract_answer
 from echo_words.segments import (
     Segment,
     fill_text_segments,
     parse_component_segments,
+)
+
+# Pool answers copied verbatim from the bench's recorded runs, each naming the chip it pins.
+RECORDED = json.loads(
+    (Path(__file__).parent / "data" / "whole_text_combinations_recorded.json").read_text(
+        encoding="utf-8",
+    ),
 )
 
 
@@ -289,3 +303,45 @@ def test_an_untouched_boundary_keeps_the_reason_and_the_source_order(languages):
         Segment("izvinuti se", "Возвратный глагол.", "On se juče izvinio svima.", "se izvinio")
         in segments
     )
+
+
+def _recorded_chips(recorded: dict, languages) -> tuple[Segment, list[Segment]]:
+    parsed = extract_answer(
+        recorded["answer"],
+        recorded["submitted"],
+        languages[recorded["lang"]],
+    )
+    assert isinstance(parsed, ParsedText)
+    (chip,) = [segment for segment in parsed.segments if segment.label == recorded["chip"]]
+    single = [
+        segment for segment in parsed.segments if not segment.surface and " " not in segment.label
+    ]
+    assert single
+    return chip, single
+
+
+@pytest.mark.parametrize(
+    "recorded",
+    RECORDED["whole_text"],
+    ids=[item["submitted"] for item in RECORDED["whole_text"]],
+)
+def test_a_combination_spanning_every_word_of_the_text_carries_no_context(languages, recorded):
+    """Its name is a dictionary form, so only the words it spans show that the text
+    holds nothing beyond it: a tap on it is a bare lookup of that name."""
+    chip, single = _recorded_chips(recorded, languages)
+
+    assert chip.context == ""
+    assert chip.surface
+    assert all(segment.context == recorded["submitted"] for segment in single)
+
+
+@pytest.mark.parametrize(
+    "recorded",
+    RECORDED["leaves_a_word"],
+    ids=[item["submitted"] for item in RECORDED["leaves_a_word"]],
+)
+def test_a_combination_that_leaves_a_word_of_the_text_keeps_the_text(languages, recorded):
+    chip, single = _recorded_chips(recorded, languages)
+
+    assert chip.context == recorded["submitted"]
+    assert all(segment.context == recorded["submitted"] for segment in single)

@@ -83,12 +83,13 @@ already has the structural bound `floor(N / 2)`. The prompt asks for every
 clearly qualifying unit, explicitly accepts an empty list, and tells the model
 not to pad it.
 
-Every text chip owns the complete submitted text as its context. Tapping its
-visible source form submits that form with explicit unit intent; the resulting
-unit answer supplies the dictionary headword used by the note. A false-positive
-combination therefore costs only an optional chip. Deleting a coherent proposal
-would make a real lookup impossible, and the backend has no better lexical
-judge than the model.
+Every text chip owns the complete submitted text as its context, except a
+combination that leaves the text no further word: it carries none, so a tap on
+it is a bare lookup of its name. Tapping its visible source form submits that
+form with explicit unit intent; the resulting unit answer supplies the
+dictionary headword used by the note. A false-positive combination therefore
+costs only an optional chip. Deleting a coherent proposal would make a real
+lookup impossible, and the backend has no better lexical judge than the model.
 
 ## What a unit produces
 
@@ -105,7 +106,8 @@ component in expression order, preserving its submitted surface form. Those
 chips carry the first example sentence of the selected sense, not the bare
 expression, because their contextual cards require a sentence.
 A word or sense chip carries its own example; a chip from text carries the
-source text. The frontend submits this chip-owned context directly.
+source text, or nothing where it is a combination spanning all of it. The
+frontend submits this chip-owned context directly.
 
 ## The pre-merge verdict measurement
 

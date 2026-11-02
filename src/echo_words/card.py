@@ -12,6 +12,7 @@ from typing import Any, Literal
 
 from echo_words.languages import (
     DEFAULT_TARGET_LANGUAGE,
+    SOURCE_TOKEN,
     Language,
     fold_for_match,
     sentence_is_source_language,
@@ -103,7 +104,6 @@ _BOLD_TAG = re.compile(r"</?b>")
 _BARE_VALUE = re.compile(r'(?<=")(:\s*)(?![\s"\[{\d-]|true|false|null)([^,}\]\n"]*[^\s,}\]\n"])')
 _FULL_STOP_SEPARATOR = re.compile(r'([}\]])\s*\.\s*(")')
 _NON_ESCAPE = re.compile(r'\\(?=[^\\"/bfnrtu])')
-_SOURCE_TOKEN = re.compile(r"[^\W\d_]+(?:[-'’][^\W\d_]+)*", re.UNICODE)
 
 
 def parse_answer_payload(  # noqa: C901, PLR0912, PLR0913 - the answer discriminator.
@@ -312,9 +312,9 @@ def usable_sense_label(
     answered = {
         fold_for_match(match.group(), language)
         for translation in translations
-        for match in _SOURCE_TOKEN.finditer(translation)
+        for match in SOURCE_TOKEN.finditer(translation)
     }
-    cued = {fold_for_match(match.group(), language) for match in _SOURCE_TOKEN.finditer(cue)}
+    cued = {fold_for_match(match.group(), language) for match in SOURCE_TOKEN.finditer(cue)}
     return "" if cued & answered else cue
 
 
@@ -451,14 +451,6 @@ def _marked_sentence_usable(
     )
 
 
-def unit_context(context: str, unit: str, language: Language) -> str:
-    """The context, or nothing where it holds no word beyond the unit's own: a card's
-    sentence must keep a word outside the unit, so such a context could never card."""
-    own = {fold_for_match(match.group(), language) for match in _SOURCE_TOKEN.finditer(unit)}
-    words = {fold_for_match(match.group(), language) for match in _SOURCE_TOKEN.finditer(context)}
-    return context if words - own else ""
-
-
 def context_sentence_forms(
     context: str,
     selected_surface: str,
@@ -469,10 +461,10 @@ def context_sentence_forms(
 
     Whole tokens, so «сто» is never found inside «место».
     """
-    wanted = [_fold(match.group()) for match in _SOURCE_TOKEN.finditer(selected_surface)]
+    wanted = [_fold(match.group()) for match in SOURCE_TOKEN.finditer(selected_surface)]
     if not wanted:
         return None
-    matches = list(_SOURCE_TOKEN.finditer(context))
+    matches = list(SOURCE_TOKEN.finditer(context))
     selected = []
     cursor = 0
     for token in wanted:
@@ -510,17 +502,17 @@ def _generated_target_covers_submitted_tokens(
     selected_surface: str,
     target_lexeme: str,
 ) -> bool:
-    target_tokens = {_fold(match.group()) for match in _SOURCE_TOKEN.finditer(target_lexeme)}
+    target_tokens = {_fold(match.group()) for match in SOURCE_TOKEN.finditer(target_lexeme)}
     submitted = Counter(
         token
-        for match in _SOURCE_TOKEN.finditer(selected_surface)
+        for match in SOURCE_TOKEN.finditer(selected_surface)
         if (token := _fold(match.group())) in target_tokens
     )
-    in_text = Counter(_fold(match.group()) for match in _SOURCE_TOKEN.finditer(text))
+    in_text = Counter(_fold(match.group()) for match in SOURCE_TOKEN.finditer(text))
     in_target = Counter(
         _fold(token.group())
         for span in _BOLD_SPAN.findall(highlighted)
-        for token in _SOURCE_TOKEN.finditer(unescape(span))
+        for token in SOURCE_TOKEN.finditer(unescape(span))
     )
     return all(
         in_target[token] >= min(count, in_text[token])

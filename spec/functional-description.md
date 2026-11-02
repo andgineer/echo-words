@@ -125,18 +125,22 @@ The four requirements every design decision is weighed against:
    non-overlapping lexical combination alongside them.
    Tapping any chip submits the chip's visible label with explicit unit intent
    and the context stored on that chip. A chip under text carries the complete
-   submitted text; a sense chip carries one of that sense's examples exactly
-   when it fits the 500-character context bound, and otherwise becomes a bare
-   lookup; component chips under a set expression preserve every word-shaped
-   part in expression order and carry the first example of the expression's
-   carded sense. A chip whose context holds no word beyond the chip's own
-   words, however often they repeat and whatever their letter case,
-   punctuation or script (a Serbian word is the same word in Cyrillic and in
-   Latin), is likewise asked and carded as a bare lookup of that wording: a
-   formula such as `Bis gleich!`
-   read as text offers its whole wording as a chip, and that sentence leaves
-   the card no word outside the unit. A context with even one further word
-   is used as it stands. The model must then return a unit answer. A context unit
+   submitted text, except a combination that leaves the text no further word,
+   which carries none and is a bare lookup; a sense chip carries one of that
+   sense's examples exactly when it fits the 500-character context bound, and
+   otherwise becomes a bare lookup; component chips under a set expression
+   preserve every word-shaped part in expression order and carry the first
+   example of the expression's carded sense. A chip whose context holds no
+   word beyond the chip's own words is likewise asked and carded as a bare
+   lookup of its label. A combination's own words are the words of the text it
+   spans, whatever name the answer gives it, and words are compared however
+   often they repeat and whatever their letter case, punctuation or script (a
+   Serbian word is the same word in Cyrillic and in Latin). A formula such as
+   `Bis gleich!` read as text offers its whole wording as a chip, and a text
+   such as `fährt Rad` offers a chip spanning all of it named by its
+   dictionary form, `Rad fahren`: either sentence would leave the card no word
+   outside the unit. A context with even one further word is used as it
+   stands. The model must then return a unit answer. A context unit
    answer leads with the sense used there, keeps the remaining senses below
    it, and cards the named sense (the first retained sense if the index is
    unusable). After a note is successfully saved, its selected sense is omitted

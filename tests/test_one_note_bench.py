@@ -5,7 +5,7 @@ from pathlib import Path
 import one_note_bench as bench
 import pytest
 
-from echo_words.card import unit_context
+from echo_words.languages import unit_context
 from echo_words.prompt import build_prompt
 
 
@@ -1523,6 +1523,31 @@ def test_a_language_answer_is_read_against_its_tab_and_target():
     )
     assert bench.complete(bench.score(replace(german, text=answer % "en")))
     assert not bench.complete(bench.score(replace(german, text="<b>no card</b>")))
+
+
+RECORDED_COMBINATIONS = json.loads(
+    (Path(__file__).parent / "data" / "whole_text_combinations_recorded.json").read_text(
+        encoding="utf-8",
+    ),
+)
+
+
+@pytest.mark.parametrize(
+    "recorded",
+    [*RECORDED_COMBINATIONS["whole_text"], *RECORDED_COMBINATIONS["leaves_a_word"]],
+    ids=lambda recorded: f"{recorded['recorded_in']}:{recorded['shot_id']}:{recorded['chip']}",
+)
+def test_a_recorded_text_answer_reads_contexts_exact_whatever_its_combination_spans(recorded):
+    shot = bench.Shot(
+        recorded["shot_id"],
+        "verdict",
+        recorded["lang"],
+        recorded["submitted"],
+        expected_kind="text",
+        text=recorded["answer"],
+    )
+
+    assert bench.score(shot).metrics["contexts_exact"] is True
 
 
 def test_a_whole_text_chip_is_asked_exactly_as_a_bare_lookup_of_its_wording():

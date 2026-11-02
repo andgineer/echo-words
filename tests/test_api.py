@@ -1169,17 +1169,8 @@ RECORDED_LAKU_NOC = (
 )
 
 
-def _chip_tapped(
-    monkeypatch: pytest.MonkeyPatch,
-    settings: Settings,
-    context: str,
-    *,
-    chip: str = "bis gleich",
-    lang: str = "de",
-    payload: str = RECORDED_WHOLE_TEXT_CHIP["answers"][0]["payload"],
-) -> tuple[FakeBroker, dict, list[str]]:
-    """Tap `chip` under `context`, answered by a recorded pool answer."""
-    broker = FakeBroker(handles=[FakeHandle([f"<b>{chip}</b>\n{CARD_DELIMITER}\n{payload}"])])
+def _answered_by(monkeypatch: pytest.MonkeyPatch, broker: FakeBroker) -> list[str]:
+    """Route the app's model calls to `broker` and its lookups nowhere; return what it voices."""
     monkeypatch.setattr("echo_words.api.create_broker", lambda *_args: broker)
     voiced: list[str] = []
 
@@ -1192,6 +1183,21 @@ def _chip_tapped(
     monkeypatch.setattr("echo_words.api.fetch_pronunciation", voice)
     monkeypatch.setattr("echo_words.api.Wiktionary", lambda: SimpleNamespace(documents=nothing))
     monkeypatch.setattr("echo_words.api.Wikipedia", lambda: SimpleNamespace(usage=nothing))
+    return voiced
+
+
+def _chip_tapped(
+    monkeypatch: pytest.MonkeyPatch,
+    settings: Settings,
+    context: str,
+    *,
+    chip: str = "bis gleich",
+    lang: str = "de",
+    payload: str = RECORDED_WHOLE_TEXT_CHIP["answers"][0]["payload"],
+) -> tuple[FakeBroker, dict, list[str]]:
+    """Tap `chip` under `context`, answered by a recorded pool answer."""
+    broker = FakeBroker(handles=[FakeHandle([f"<b>{chip}</b>\n{CARD_DELIMITER}\n{payload}"])])
+    voiced = _answered_by(monkeypatch, broker)
     with TestClient(create_app(settings)) as live_client:
         accepted = submit(live_client, word=chip, lang=lang, shape="unit", context=context)
         entry = finished(live_client, accepted.json()["entry_id"])
@@ -1261,6 +1267,62 @@ def test_a_chip_whose_context_holds_one_more_word_is_still_asked_in_that_context
         "Bis gleich, Anna!",
     )
     assert sorted(voiced) == ["Bis gleich, Anna!", "bis gleich"]
+
+
+RECORDED_COMBINATIONS = json.loads(
+    (Path(__file__).parent / "data" / "whole_text_combinations_recorded.json").read_text(
+        encoding="utf-8",
+    ),
+)
+
+
+def _recorded(group: str, submitted: str) -> dict:
+    return next(item for item in RECORDED_COMBINATIONS[group] if item["submitted"] == submitted)
+
+
+@pytest.mark.parametrize(
+    ("typed", "tapped"),
+    [
+        ("eine Entscheidung getroffen", "eine Entscheidung treffen"),
+        ("ide pešice", "ići pešice"),
+    ],
+)
+def test_a_combination_spanning_a_typed_text_is_tapped_as_a_bare_lookup_of_its_name(
+    monkeypatch: pytest.MonkeyPatch,
+    settings: Settings,
+    typed: str,
+    tapped: str,
+):
+    """The chip is named by its dictionary form, which the text does not hold: asked in
+    that text, the card would have nothing outside the unit and refuse every answer."""
+    text = _recorded("whole_text", typed)
+    broker = FakeBroker(
+        handles=[
+            FakeHandle([text["answer"]]),
+            FakeHandle([_recorded("bare_lookups", tapped)["answer"]]),
+        ],
+    )
+    _answered_by(monkeypatch, broker)
+    with TestClient(create_app(settings)) as live_client:
+        accepted = submit(live_client, word=typed, lang=text["lang"])
+        typed_entry = finished(live_client, accepted.json()["entry_id"])
+        (chip,) = [item for item in typed_entry["segments"] if item["label"] == tapped]
+        # What the page sends for a tap: the label, and the chip's context where it has one.
+        tap = {"word": chip["label"], "lang": text["lang"], "shape": "unit"}
+        if chip["context"]:
+            tap["context"] = chip["context"]
+        entry = finished(live_client, submit(live_client, **tap).json()["entry_id"])
+
+    language = load_languages(settings.languages_config)[text["lang"]]
+    assert _article_prompts(broker)[1:] == [
+        build_prompt(language, tapped, "Russian", unit_intent=True),
+    ]
+    assert (entry["status"], entry["word"], entry["card_status"], entry["context"]) == (
+        "done",
+        tapped,
+        "added",
+        "",
+    )
 
 
 def test_the_page_is_told_the_target_language(settings: Settings):
