@@ -636,6 +636,10 @@ inside the ceiling of a tenth of the usable verdicts.
 time. So the lean towards unit is measured with the punctuation sentence in both
 runs, not with the formula sentence. Two full runs of one prompt differ by three to
 ten verdicts on this matrix, so one run of each cannot separate a lean from a draw.
+The operator accepted that lean with the punctuation sentence on 2026-11-03: a short
+reply that may be carded or chipped, or now and then a descriptive fragment carded
+whole and undone by the reader, is the price of every formula and chunk carding
+whatever punctuation was copied with it.
 
 Registered units cardable fell from 20 with no punctuation rule to 16 with the
 current prompt because of where chips are cut inside text answers, not because any
