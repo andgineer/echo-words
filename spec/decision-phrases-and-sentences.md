@@ -649,6 +649,73 @@ something else: `freue mich` for `freue mich auf`, `habe die Nase voll von`,
 `müssen uns beschränken`, `Sve mi se čini` and `nešto u redu`. `ми се иде` was
 missed, as it was with no punctuation rule.
 
+### A formula's own comma between its words
+
+A formula's wording can carry a comma between its words — `No, thanks`,
+`Danke, gleichfalls`, `Auf die Plätze, fertig, los!` — and the heading rule already
+keeps punctuation that is part of the unit, so such a headword cards. What refusing a
+mark inside a headword protects against is a headword that is not one wording: two
+alternatives (`bank; banks`, `give up / give in`), dictionary notation (`Hund, der`,
+`der Hund, -e`, `laufen, lief, gelaufen`) or a mark glued between letters
+(`Gute.Nacht`). A semicolon, a slash, a comma opening an ending and a glued mark stay
+refused whatever the answer says. A comma between two words is taken as part of the
+wording only where one of the card's examples marks it, comma included: a formula is
+said in its own sentences, and notation is never what a sentence marks — an answer
+headed `Hund, der` marks `Hund`, even in a sentence whose relative clause writes the
+letters `Hund, der`. So no list of formulas and no kind of chunk decides it, only the
+comma's place and the answer's own sentences. A chip named with such a comma is asked
+with it, a reader's sentence that marks the formula is enough for a chip named without
+it, and a comma alone is never a different spelling, so it is never offered as a
+correction.
+
+Nothing beyond the comma is admitted because nothing beyond it was found. Every
+recorded answer — 6,541 of them, 5,902 articles and 639 reverse lookups across every
+bench run and the recorded test answers, in English, German, Serbian, Bulgarian and
+Ukrainian — was re-scored without a call both with every inner mark refused and with
+the comma admitted, and not one result changes. No recorded headword or suggestion
+ever carried a comma or a semicolon between its words, so no model has written the
+notation a comma between words would let through; the one inner mark any headword
+carried was an ellipsis, `sein ... gewesen`, still refused. Names of combinations and
+components carried `+`, `_`, `/`, brackets and ellipses — grammar notation, never a
+wording — and no comma between words. An abbreviation with inner full stops (`z. B.`)
+cards nothing and was not measured.
+
+It is measured on the unchanged prompts, one free-pool answer per fixture on
+2026-11-03 — a hint per item rather than a rate. Typed into the submit box: eight
+formulas whose own wording has a comma between its words (`Danke, gleichfalls!`,
+`Nein, danke.`, `Auf die Plätze, fertig, los!`, `No, thanks.`, `Oh, well`,
+`Well, well, well`, `Ne, hvala.`, `Хвала, такође!`); six clauses and free combinations
+a comma runs through, which must stay text (`Nein, ich habe heute keine Zeit.`,
+`Oh, I missed the bus again.`, `Ne, nisam gledao taj film.`,
+`ein großes, helles Zimmer`, `a long, cold winter`, `велики, светли стан`); and the
+word list `Äpfel, Birnen`. Tapped as a bare lookup: three chips named with a formula's
+comma (`danke, gleichfalls`, `no, thanks`, `ne, hvala`), each with the judgement a tap
+asks beside its article, whether the wording is used at all, since a refusal there
+ends the tap with no card. Every article came from the pool's workhorse model, and one
+tap first timed out on another model and was asked again; the three judgements came
+from the pool model that answers 127 of the 411 judgements every bench run recorded.
+
+| class | expected | answered |
+|---|---|---:|
+| formula with a comma between its words | unit, carded | 8 of 8 |
+| clause or free combination with such a comma | text | 5 of 6 (1 unit) |
+| word list | text | 1 of 1 |
+| chip named with a formula's comma | unit, carded, judged used | 3 of 3 |
+
+Six of the eight formulas kept the comma in their headword (`nein, danke`,
+`Auf die Plätze, fertig, los!`, `no, thanks`, `oh, well`, `Well, well, well`,
+`ne, hvala`), and every chip kept it. `Danke, gleichfalls!` and `Хвала, такође!` were
+headed by their last word, `gleichfalls` and `такође`, and carded under it with the
+rest of the formula around the blank (`Guten Appetit! — Danke, ___!`). Ten of the
+eighteen answers card only because the comma is admitted; with every inner mark
+refused each would be sent back to the pool for another answer. Nine of them are the
+six formulas and three chips that kept the comma. The tenth is `a long, cold winter`,
+which came back a unit headed `long, cold winter` and marked in "We survived <b>a
+long, cold winter</b> in the mountains.", so it is carded whole: nothing in the
+wording tells a free combination's comma from a formula's, and the card it builds is
+the answer's branch error, which a refusal of the comma would send back to the pool
+instead. The other five guards were read as text.
+
 ### Two experiments that were not run, and why
 
 Worked examples in the prompt — one positive and one negative instead of restating
