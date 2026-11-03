@@ -713,7 +713,10 @@ both in the answer entry and on the flashcard.
 - The visible article remains the full dictionary explanation with all retained
   senses, forms where useful, usage, origin and examples. The six Anki fields
   contain only the selected sense's word, audio, optional label, translations,
-  highlighted sentence and gapped sentence.
+  highlighted sentence and gapped sentence. The translations are listed with
+  commas between them, or with semicolons where one of them holds a comma
+  itself (`нет, спасибо; спасибо, не надо`), and a sense chip names its sense
+  by the same list.
 - Deleting the card removes the note with all four cards.
 
 - **One deck per source language**, set in the languages configuration

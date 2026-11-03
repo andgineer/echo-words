@@ -1451,13 +1451,13 @@ async def test_the_references_are_asked_about_a_headword_without_its_mark(langua
         await pipeline.close()
 
 
-_NEIN_DANKE = next(
-    answer
+_INNER_COMMA = {
+    answer["shot_id"]: answer
     for answer in json.loads(
         (Path(__file__).parent / "data" / "inner_comma_recorded.json").read_text(encoding="utf-8"),
     )["carded_with_their_comma"]
-    if answer["shot_id"] == "inner-de-nein-danke"
-)
+}
+_NEIN_DANKE = _INNER_COMMA["inner-de-nein-danke"]
 
 
 async def test_a_typed_formula_is_carded_and_looked_up_with_the_comma_between_its_words(
@@ -1480,6 +1480,23 @@ async def test_a_typed_formula_is_carded_and_looked_up_with_the_comma_between_it
         assert [note.word for note, _deck, _audio in anki.calls] == ["nein, danke"]
         assert asked == ["nein, danke"]
         assert (entry.card_status, entry.suggestion) == (ADDED_STATUS, None)
+    finally:
+        await pipeline.close()
+
+
+async def test_a_sense_chip_parts_translations_a_comma_runs_through_with_semicolons(languages):
+    anki = RecordingAnki(Added(1, None, ("Recognition",)))
+    recorded = _INNER_COMMA["whole-chip-en-no-thanks"]
+    cascade = ScriptedCascade([Completion([recorded["answer"]])])
+    pipeline = WordPipeline(cascade, target_lang="ru", anki=anki)
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(languages["en"], "no, thanks", False, intent="unit")
+        await pipeline.join()
+
+        assert [segment["reason"] for segment in entry.segments] == [
+            "нет, спасибо; спасибо, не надо",
+        ]
     finally:
         await pipeline.close()
 

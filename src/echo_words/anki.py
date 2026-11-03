@@ -26,7 +26,7 @@ from anki.sync import SyncAuth
 from anki.sync_pb2 import SyncCollectionResponse, SyncStatusResponse
 
 from echo_words.audio import RECORDING_PACE_SECONDS, fetch_pronunciation, is_human_recording
-from echo_words.card import Note, usable_sense_label
+from echo_words.card import Note, joined_translations, usable_sense_label
 from echo_words.config import Settings
 from echo_words.languages import Language, load_languages
 
@@ -1251,7 +1251,7 @@ def _created_kinds(model: dict, note: AnkiNote) -> tuple[str, ...]:
 
 def render_translations(note: Note) -> str:
     """Render the selected sense's target-language translations."""
-    return ", ".join(html.escape(value) for value in note.meaning.translations)
+    return joined_translations([html.escape(value) for value in note.meaning.translations])
 
 
 def _add_media(collection: Collection, word: str, audio_path: Path | None) -> str | None:

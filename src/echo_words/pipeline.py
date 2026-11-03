@@ -14,7 +14,15 @@ from typing import Any, Literal, Protocol
 from echo_words.anki import Added
 from echo_words.backend import Cascade, Completion
 from echo_words.broker import BackendError
-from echo_words.card import Meaning, Note, ParsedAnswer, ParsedText, ParsedUnit, same_wording
+from echo_words.card import (
+    Meaning,
+    Note,
+    ParsedAnswer,
+    ParsedText,
+    ParsedUnit,
+    joined_translations,
+    same_wording,
+)
 from echo_words.events import EventHub
 from echo_words.history import Entry, History, UndoState
 from echo_words.i18n import DEFAULT_LOCALE, message
@@ -1660,7 +1668,7 @@ def _sense_segments(parsed: ParsedUnit) -> list[Segment]:
     return [
         Segment(
             label=parsed.note.word,
-            reason=", ".join(meaning.translations),
+            reason=joined_translations(meaning.translations),
             context=_sense_sentence(meaning),
         )
         for meaning in parsed.note.meanings

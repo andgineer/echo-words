@@ -60,6 +60,13 @@ class Meaning:
     examples: list[Example]
 
 
+def joined_translations(translations: list[str]) -> str:
+    """The translations on one line, parted by semicolons where one of them holds a comma
+    (`нет, спасибо; спасибо, не надо`), so that comma never reads as a separator."""
+    separator = "; " if any("," in translation for translation in translations) else ", "
+    return separator.join(translations)
+
+
 @dataclass(frozen=True)
 class Note:
     word: str

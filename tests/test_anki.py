@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+import json
 import logging
 import threading
 import time
@@ -37,7 +38,7 @@ from echo_words.anki import (
     rebuild_note_type,
     render_translations,
 )
-from echo_words.card import Example, Meaning, Note
+from echo_words.card import Example, Meaning, Note, ParsedUnit, parse_answer_payload
 from echo_words.config import Settings
 from echo_words.languages import Language
 
@@ -278,6 +279,26 @@ def test_rendered_translations_use_only_the_selected_sense_and_escape_them():
     )
 
     assert render_translations(note) == "x &lt; y, say &quot;yes&quot; &amp; go"
+
+
+def test_translations_a_comma_runs_through_are_parted_by_semicolons(languages):
+    recorded = next(
+        answer
+        for answer in json.loads(
+            (Path(__file__).parent / "data" / "inner_comma_recorded.json").read_text(
+                encoding="utf-8",
+            ),
+        )["carded_with_their_comma"]
+        if answer["shot_id"] == "inner-en-no-thanks"
+    )
+    parsed = parse_answer_payload(
+        recorded["answer"].split("===CARD===", 1)[1],
+        recorded["submitted"],
+        languages["en"],
+    )
+
+    assert isinstance(parsed, ParsedUnit)
+    assert render_translations(parsed.note) == "нет, спасибо; спасибо, не надо"
 
 
 @pytest.mark.parametrize("wrong_part", ["fields", "templates"])

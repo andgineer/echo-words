@@ -9,6 +9,7 @@ from echo_words.card import (
     ParsedText,
     ParsedUnit,
     context_sentence_forms,
+    joined_translations,
     parse_answer_payload,
     same_wording,
 )
@@ -935,6 +936,16 @@ def test_a_decomposed_accent_is_part_of_the_wording_not_an_edge_mark(languages):
     assert same_wording(decomposed, composed, languages["en"])
     assert same_wording(f"{decomposed}!", composed, languages["en"])
     assert not same_wording(decomposed, "cafe", languages["en"])
+
+
+def test_translations_are_parted_by_semicolons_only_where_one_holds_a_comma():
+    assert joined_translations(["банк", "берег"]) == "банк, берег"
+    assert joined_translations(["нет, спасибо", "спасибо, не надо"]) == (
+        "нет, спасибо; спасибо, не надо"
+    )
+    assert joined_translations(["взаимно", "спасибо, и вам того же"]) == (
+        "взаимно; спасибо, и вам того же"
+    )
 
 
 def test_a_comma_between_two_words_is_no_part_of_a_spelling(languages):
