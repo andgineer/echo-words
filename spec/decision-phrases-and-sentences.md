@@ -659,26 +659,43 @@ alternatives (`bank; banks`, `give up / give in`), dictionary notation (`Hund, d
 `der Hund, -e`, `laufen, lief, gelaufen`) or a mark glued between letters
 (`Gute.Nacht`). A semicolon, a slash, a comma opening an ending and a glued mark stay
 refused whatever the answer says. A comma between two words is taken as part of the
-wording only where one of the card's examples marks it, comma included: a formula is
-said in its own sentences, and notation is never what a sentence marks — an answer
-headed `Hund, der` marks `Hund`, even in a sentence whose relative clause writes the
-letters `Hund, der`. So no list of formulas and no kind of chunk decides it, only the
-comma's place and the answer's own sentences. A chip named with such a comma is asked
-with it, a reader's sentence that marks the formula is enough for a chip named without
-it, and a comma alone is never a different spelling, so it is never offered as a
-correction.
+wording only where one stretch the answer itself marked in one of the card's examples
+holds the whole wording, comma included: a formula is said in its own sentences, and
+notation is never what a sentence marks — an answer headed `Hund, der` marks `Hund`,
+even in a sentence whose relative clause writes the letters `Hund, der`. Words standing
+between two separate marks are not marked. Nor are marks the backend puts in a sentence
+itself — where the answer's own marks miss the submission, and in the reader's own
+sentence — any evidence: they mark what was submitted word by word, so a pasted
+`Hund, der` would have its own letters marked in that relative clause, and a reader's
+sentence would vouch for whatever comma it happens to hold. So no list of formulas and
+no kind of chunk decides it, only the comma's place and the answer's own marks. A
+wording asked about as a unit with such a comma is asked with it, a chip tapped in a
+sentence cards the formula only where one of the answer's own examples marks it, and a
+comma alone is never a different spelling, so it is never offered as a correction.
+
+The comma is admitted on the two paths it was measured on — a unit's headword, and a
+wording asked about as a unit — and nowhere else. The names the answer proposes for a
+text's chips and an expression's parts, the words a reverse lookup finds and a
+correction the answer suggests refuse it like any other inner mark. No recorded answer
+has carried such a comma in any of them, so nothing measures what admitting it there
+would bring, while what it would let through is plain: a correction `Hund, der` offered
+for `Hnud`, or a reverse lookup's `laufen, lief, gelaufen` becoming the word looked up.
+A text's chip that the answer names `danke, gleichfalls` is therefore named by the words
+it spans, `Danke gleichfalls`, and a tap on it asks that wording.
 
 Nothing beyond the comma is admitted because nothing beyond it was found. Every
 recorded answer — 6,541 of them, 5,902 articles and 639 reverse lookups across every
 bench run and the recorded test answers, in English, German, Serbian, Bulgarian and
 Ukrainian — was re-scored without a call both with every inner mark refused and with
-the comma admitted, and not one result changes. No recorded headword or suggestion
-ever carried a comma or a semicolon between its words, so no model has written the
-notation a comma between words would let through; the one inner mark any headword
-carried was an ellipsis, `sein ... gewesen`, still refused. Names of combinations and
-components carried `+`, `_`, `/`, brackets and ellipses — grammar notation, never a
-wording — and no comma between words. An abbreviation with inner full stops (`z. B.`)
-cards nothing and was not measured.
+the comma admitted, and not one result changes. No recorded headword or suggestion in
+the current answer shape ever carried a comma or a semicolon between its words — the
+one suggestion on record that does, `упркос киши, дошао`, is a paid answer in an older
+shape — so no model has written the notation a comma between words would let through;
+the one inner mark any headword carried was an ellipsis, `sein ... gewesen`, still
+refused. Names of combinations and components carried `+`, `_`, `/`, brackets and
+ellipses — grammar notation, never a wording — and no comma between words, and no word
+a reverse lookup found carried one either. An abbreviation with inner full stops
+(`z. B.`) cards nothing and was not measured.
 
 It is measured on the unchanged prompts, one free-pool answer per fixture on
 2026-11-03 — a hint per item rather than a rate. Typed into the submit box: eight
@@ -693,7 +710,10 @@ comma (`danke, gleichfalls`, `no, thanks`, `ne, hvala`), each with the judgement
 asks beside its article, whether the wording is used at all, since a refusal there
 ends the tap with no card. Every article came from the pool's workhorse model, and one
 tap first timed out on another model and was asked again; the three judgements came
-from the pool model that answers 127 of the 411 judgements every bench run recorded.
+from the pool model that answers about a third of the judgements the bench runs record.
+These taps measure the wording asked about as a unit, as the endpoint takes it; since a
+text's chips are named without the comma, no chip a text answer offers asks it in this
+form, and a chip that asks about a carded formula again carries a sentence.
 
 | class | expected | answered |
 |---|---|---:|

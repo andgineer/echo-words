@@ -272,18 +272,23 @@ def test_digits_and_punctuation_are_rejected(languages):
     assert validate_word("word!", languages["en"]) == hint
 
 
-@pytest.mark.parametrize(
-    ("code", "unit"),
-    [
-        ("en", "no, thanks"),
-        ("en", "Well, well, well"),
-        ("de", "Auf die Plätze, fertig, los"),
-        ("sr", "Хвала, такође"),
-        ("sr", "ne, hvala"),
-    ],
-)
-def test_a_comma_between_two_words_of_a_unit_passes(languages, code, unit):
-    assert validate_word(unit, languages[code]) is None
+FORMULAS_WITH_A_COMMA = [
+    ("en", "no, thanks"),
+    ("en", "Well, well, well"),
+    ("de", "Auf die Plätze, fertig, los"),
+    ("sr", "Хвала, такође"),
+    ("sr", "ne, hvala"),
+]
+
+
+@pytest.mark.parametrize(("code", "unit"), FORMULAS_WITH_A_COMMA)
+def test_a_comma_between_two_words_passes_where_it_is_admitted(languages, code, unit):
+    assert validate_word(unit, languages[code], comma_between_words=True) is None
+
+
+@pytest.mark.parametrize(("code", "unit"), FORMULAS_WITH_A_COMMA)
+def test_a_comma_between_two_words_is_refused_where_it_is_not_admitted(languages, code, unit):
+    assert validate_word(unit, languages[code]) == "Letters, spaces, hyphens and apostrophes only."
 
 
 @pytest.mark.parametrize(
@@ -291,7 +296,9 @@ def test_a_comma_between_two_words_of_a_unit_passes(languages, code, unit):
     ["bank; banks", "give up / give in", "der Hund, -e", "Gute.Nacht", "Gute,Nacht", "no,  thanks"],
 )
 def test_any_other_mark_between_words_is_refused(languages, unit):
-    assert validate_word(unit, languages["de"]) == "Letters, spaces, hyphens and apostrophes only."
+    hint = validate_word(unit, languages["de"], comma_between_words=True)
+
+    assert hint == "Letters, spaces, hyphens and apostrophes only."
 
 
 def test_a_comma_is_read_as_the_space_after_it_only_between_two_words():

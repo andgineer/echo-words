@@ -569,13 +569,20 @@ def unit_context(context: str, unit: str, language: Language) -> str:
     return context if words - own else ""
 
 
-def validate_word(word: str, language: Language, locale: str = DEFAULT_LOCALE) -> str | None:
+def validate_word(
+    word: str,
+    language: Language,
+    locale: str = DEFAULT_LOCALE,
+    *,
+    comma_between_words: bool = False,
+) -> str | None:
     """Return a short hint for the user when the word is unusable, or ``None`` when it is fine."""
     if not word:
         return message("word.empty", locale)
     if len(word) > MAX_WORD_LENGTH:
         return message("word.too_long", locale, limit=MAX_WORD_LENGTH)
-    return _validate_script(without_word_commas(word), language, locale)
+    letters = without_word_commas(word) if comma_between_words else word
+    return _validate_script(letters, language, locale)
 
 
 def validate_text(text: str, language: Language, locale: str = DEFAULT_LOCALE) -> str | None:

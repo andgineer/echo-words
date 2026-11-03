@@ -50,6 +50,7 @@ class Example:
     translation: str
     highlighted: str
     gapped: str
+    marked_by_answer: bool = False
 
 
 @dataclass(frozen=True)
@@ -268,15 +269,18 @@ def _headword(value: Any, language: Language) -> str:
     if not isinstance(value, str):
         raise CardParseError("answer.word must be a non-empty string")
     headword = unicodedata.normalize("NFC", value).strip()
-    if not headword or not _usable_wording(headword, language):
+    if not headword or not _usable_wording(headword, language, comma_between_words=True):
         raise CardParseError("answer.word is not a usable dictionary headword")
     return headword
 
 
-def _usable_wording(wording: str, language: Language) -> bool:
+def _usable_wording(wording: str, language: Language, *, comma_between_words: bool = False) -> bool:
     # A headword keeps punctuation that belongs to its chunk (`Happy birthday!`), so
     # it is judged by its words, as a submitted unit is.
-    return validate_word(plain_unit(wording), language) is None
+    return (
+        validate_word(plain_unit(wording), language, comma_between_words=comma_between_words)
+        is None
+    )
 
 
 def same_wording(first: str, second: str, language: Language) -> bool:
@@ -289,23 +293,19 @@ def same_wording(first: str, second: str, language: Language) -> bool:
 
 
 def _marked_in_an_example(headword: str, meanings: list[Meaning], language: Language) -> bool:
-    """Whether an example marks a headword a comma runs through, comma and all: a formula's
-    marks do (`<b>Danke, gleichfalls</b>!`), notation's (`Hund, der`) never do."""
+    """Whether one span the answer itself marked holds a headword a comma runs through, comma
+    and all: a formula's does (`<b>Danke, gleichfalls</b>!`), notation's (`Hund, der`) never."""
     wording = " ".join(unit_wording(headword).split())
     if without_word_commas(wording) == wording:
         return True
-    marked = re.compile(rf"(?<!\w){re.escape(fold_for_match(wording, language))}(?!\w)")
+    held = re.compile(rf"(?<!\w){re.escape(fold_for_match(wording, language))}(?!\w)")
     return any(
-        marked.search(fold_for_match(_marked_stretch(example.highlighted), language))
+        held.search(fold_for_match(" ".join(unescape(span).split()), language))
         for meaning in meanings
         for example in meaning.examples
+        if example.marked_by_answer
+        for span in _BOLD_SPAN.findall(example.highlighted)
     )
-
-
-def _marked_stretch(highlighted: str) -> str:
-    """The sentence from its first mark to its last, as plain single-spaced text."""
-    stretch = highlighted[highlighted.find("<b>") : highlighted.rfind("</b>")]
-    return " ".join(unescape(_BOLD_TAG.sub("", stretch)).split())
 
 
 def _parse_meaning(value: Any, request: "_Request") -> Meaning | None:
@@ -390,8 +390,9 @@ def _parse_example(value: Any, request: "_Request") -> Example | None:
     return Example(text, translation, *forms)
 
 
-def _example_forms(text: str, marked: str, request: "_Request") -> tuple[str, str] | None:
-    """The marking the card carries: the model's where it is sound, ours where it is not.
+def _example_forms(text: str, marked: str, request: "_Request") -> tuple[str, str, bool] | None:
+    """The marking the card carries, and whether it is the model's: the model's where it
+    is sound, ours where it is not.
 
     A whole-sentence bold and a two-token surface with one token marked are the same
     fault — the sentence is right and the marking of it is wrong — and both used to cost
@@ -413,13 +414,14 @@ def _example_forms(text: str, marked: str, request: "_Request") -> tuple[str, st
             request.target_lexeme,
         )
     ):
-        return sentence_forms
-    return context_sentence_forms(
+        return *sentence_forms, True
+    forms = context_sentence_forms(
         text,
         request.selected_surface,
         request.language,
         request.target,
     )
+    return None if forms is None else (*forms, False)
 
 
 def _with_context_example(

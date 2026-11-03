@@ -353,7 +353,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:  # noqa: C901, PLR0
         intent = submission.shape
         if intent == "unit":
             word = plain_unit(word)
-            hint = validate_word(word, language, locale)
+            hint = validate_word(word, language, locale, comma_between_words=True)
         else:
             word = plain_text(word)
             hint = validate_text(word, language, locale)

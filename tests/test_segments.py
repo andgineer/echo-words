@@ -120,7 +120,7 @@ def test_first_overlapping_proposal_wins(languages):
     assert [item.label for item in segments] == ["take care", "take", "care", "of", "it"]
 
 
-def test_a_formula_s_comma_between_its_words_stays_in_the_chip_s_name(languages):
+def test_a_chip_name_with_any_mark_between_its_words_falls_back_to_the_words(languages):
     segments = fill_text_segments(
         [
             {"label": "danke, gleichfalls", "surface": "Danke, gleichfalls", "why": "Ответ."},
@@ -130,10 +130,21 @@ def test_a_formula_s_comma_between_its_words_stays_in_the_chip_s_name(languages)
         languages["de"],
     )
 
-    assert [item.label for item in segments[:2]] == ["danke, gleichfalls", "Danke"]
-    assert segments[0].surface == "Danke gleichfalls"
-    # A name that joins alternatives is no lookup, so the chip falls back to its words.
-    assert "schönen Abend" in [item.label for item in segments]
+    named = [(item.label, item.surface) for item in segments if " " in item.label]
+    assert named == [("Danke gleichfalls", ""), ("schönen Abend", "")]
+
+
+def test_a_component_named_with_a_comma_between_its_words_is_dropped(languages):
+    segments = parse_component_segments(
+        [
+            {"label": "nein, danke", "surface": "Nein, danke", "why": "Отказ."},
+            {"label": "danke", "surface": "danke", "why": "Спасибо."},
+        ],
+        languages["de"],
+        context="Nein, danke, ich bin satt.",
+    )
+
+    assert [item.label for item in segments] == ["danke"]
 
 
 def test_an_unusable_internal_label_does_not_delete_a_surface_match(languages):

@@ -405,19 +405,21 @@ def test_a_reverse_answer_carries_its_equivalents_and_the_reading(languages):
     )
 
 
-def test_a_formula_found_for_a_typed_one_keeps_the_comma_between_its_words(languages):
+def test_an_equivalent_with_any_mark_between_its_words_is_dropped(languages):
     raw = _reverse(
-        _equivalent("Danke, gleichfalls", "Guten Appetit! — Danke, gleichfalls!", ""),
+        _equivalent("Hund, der", "Der Hund bellt laut.", "Hund"),
+        _equivalent("laufen, lief, gelaufen", "Ich laufe gern.", "laufe"),
         _equivalent("Gleichfalls; Ebenso", "Schönes Wochenende! — Ebenso!", "Ebenso"),
-        read_as="спасибо, взаимно",
+        _equivalent("Hündin", "Die Hündin schläft.", "Hündin"),
+        read_as="собака",
     )
 
     answer = parse_reverse(raw, languages["de"], "Russian")
 
     assert answer == ReverseAnswer(
         "word",
-        "спасибо, взаимно",
-        (Equivalent("Danke, gleichfalls", "Guten Appetit! — Danke, gleichfalls!"),),
+        "собака",
+        (Equivalent("Hündin", "Die Hündin schläft."),),
     )
 
 

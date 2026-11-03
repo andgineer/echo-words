@@ -1010,7 +1010,7 @@ def whole_text_chip_shots() -> list[Shot]:
     for case in WHOLE_TEXT_CHIP_CASES:
         language = LANGUAGES[case.lang]
         whole = tokens(case.carried, case.lang) == tokens(case.label, case.lang)
-        if not whole or validate_word(case.label, language) is not None:
+        if not whole or validate_word(case.label, language, comma_between_words=True) is not None:
             raise RuntimeError(f"{case.shot_id} is not a chip for its whole carried text")
         if validate_text(case.carried, language) is not None or len(split_words(case.carried)) < 2:
             raise RuntimeError(f"{case.shot_id} carries no text the answer could read as text")

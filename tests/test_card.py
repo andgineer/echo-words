@@ -68,6 +68,7 @@ def test_a_unit_uses_the_validated_returned_dictionary_headword(languages):
         "Перевод.",
         "The <b>gave up</b> opens.",
         "The ___ opens.",
+        marked_by_answer=True,
     )
 
 
@@ -226,6 +227,7 @@ def test_invalid_examples_do_not_spend_the_two_retained_example_slots(languages)
             valid["translation"],
             valid["highlighted"],
             valid["gapped"],
+            marked_by_answer=True,
         ),
     ]
 
@@ -554,8 +556,6 @@ def test_a_headword_keeps_the_punctuation_its_answer_gave_it(languages, recorded
     assert parsed.word_relation == "same"
 
 
-# Formulas whose own wording has a comma between its words, refused a card while any
-# punctuation inside a headword was.
 INNER_COMMA = json.loads(
     (Path(__file__).parent / "data" / "inner_comma_recorded.json").read_text(encoding="utf-8"),
 )
@@ -600,9 +600,8 @@ def test_a_formula_s_own_comma_between_its_words_is_carded(languages, recorded):
     assert parsed.note.meaning.examples[0].gapped == gapped
 
 
-def test_a_chip_named_without_the_comma_cards_the_formula_its_sentence_marks(languages):
-    """The reader's own sentence is the card's first example, so it is enough that it
-    marks the formula with its comma, and a comma alone is no different spelling."""
+def test_a_chip_in_a_sentence_cards_a_formula_its_answer_marks_with_the_comma(languages):
+    """The reader's sentence leads the card, and a comma alone is no different spelling."""
     recorded = next(
         answer
         for answer in INNER_COMMA["carded_with_their_comma"]
@@ -618,9 +617,28 @@ def test_a_chip_named_without_the_comma_cards_the_formula_its_sentence_marks(lan
 
     assert isinstance(parsed, ParsedUnit)
     assert (parsed.note.word, parsed.word_relation) == ("danke, gleichfalls", "same")
-    assert parsed.note.meaning.examples[0].highlighted == (
-        "Sie lächelte: <b>Danke</b>, <b>gleichfalls</b>! Dann ging sie."
-    )
+    assert [example.highlighted for example in parsed.note.meaning.examples] == [
+        "Sie lächelte: <b>Danke</b>, <b>gleichfalls</b>! Dann ging sie.",
+        "Schönen Feierabend! — <b>Danke, gleichfalls</b>.",
+    ]
+
+
+def test_the_reader_s_sentence_is_no_evidence_of_a_comma_the_answer_never_marked(languages):
+    with pytest.raises(CardParseError, match="comma between words no example marks"):
+        parse_answer_payload(
+            payload(
+                word="danke, gleichfalls",
+                meanings=[
+                    meaning(examples=[_marked("Guten Appetit! — <b>Danke</b>, gleichfalls.")])
+                ],
+                context_sense=0,
+                context_translation="Она улыбнулась: спасибо, взаимно!",
+            ),
+            "danke gleichfalls",
+            languages["de"],
+            unit_intent=True,
+            context="Sie lächelte: Danke, gleichfalls! Dann ging sie.",
+        )
 
 
 def _marked(highlighted: str) -> dict[str, str]:
@@ -628,19 +646,54 @@ def _marked(highlighted: str) -> dict[str, str]:
 
 
 @pytest.mark.parametrize(
-    ("word", "marked"),
+    ("word", "marked", "submitted", "code"),
     [
-        ("Hund, der", "Der <b>Hund</b> schläft."),
+        ("Hund, der", "Der <b>Hund</b> schläft.", "Hund", "de"),
         # A relative clause writes the notation's letters, and still marks only the noun.
-        ("Hund, der", "Das ist der <b>Hund</b>, der immer bellt."),
-        ("laufen, lief, gelaufen", "Ich <b>laufe</b> jeden Morgen."),
+        ("Hund, der", "Das ist der <b>Hund</b>, der immer bellt.", "Hund", "de"),
+        ("laufen, lief, gelaufen", "Ich <b>laufe</b> jeden Morgen.", "Hund", "de"),
+        ("run, ran, run", "I <b>run</b> every day.", "run, ran, run", "en"),
+        # Marks the backend redid from the notation the reader pasted are not the answer's.
+        ("Hund, der", "Das ist der <b>Hund</b>, der immer bellt.", "Hund, der", "de"),
+        ("Haus, das", "Das ist das <b>Haus</b>, das ich kaufe.", "Haus, das", "de"),
+        ("Frau, die", "Ich kenne die <b>Frau</b>, die dort wohnt.", "Frau, die", "de"),
+        (
+            "go, went, gone",
+            "We go, went, gone — he <b>listed</b> the forms.",
+            "go, went, gone",
+            "en",
+        ),
+        # Words between two marks are not marked.
+        (
+            "Hund, der",
+            "Der <b>Hund</b>, der bellt, beißt den <b>Hund</b> des Nachbarn.",
+            "Hund",
+            "de",
+        ),
     ],
 )
-def test_dictionary_notation_a_comma_runs_through_is_no_headword(languages, word, marked):
+def test_dictionary_notation_a_comma_runs_through_is_no_headword(
+    languages,
+    word,
+    marked,
+    submitted,
+    code,
+):
     with pytest.raises(CardParseError, match="comma between words no example marks"):
         parse_answer_payload(
             payload(word=word, meanings=[meaning(examples=[_marked(marked)])]),
-            "Hund",
+            submitted,
+            languages[code],
+        )
+
+
+def test_notation_the_sentence_cannot_be_marked_for_is_no_card(languages):
+    with pytest.raises(CardParseError, match="no usable meaning"):
+        parse_answer_payload(
+            payload(
+                word="Hund, der", meanings=[meaning(examples=[_marked("Der <b>Hund</b> bellt.")])]
+            ),
+            "Hund, der",
             languages["de"],
         )
 
@@ -667,6 +720,22 @@ def test_any_other_mark_inside_a_headword_is_still_refused(languages, word):
             "Gute Nacht",
             languages["de"],
         )
+
+
+def test_a_correction_written_as_notation_is_not_offered(languages):
+    parsed = parse_answer_payload(
+        payload(
+            word="Hund",
+            word_relation="typo",
+            suggestion="Hund, der",
+            meanings=[meaning(examples=[_marked("Der <b>Hund</b> bellt.")])],
+        ),
+        "Hnud",
+        languages["de"],
+    )
+
+    assert isinstance(parsed, ParsedUnit)
+    assert (parsed.note.word, parsed.word_relation, parsed.suggestion) == ("Hund", "typo", None)
 
 
 def test_a_typo_claim_about_a_missing_comma_is_no_typo(languages):
@@ -1055,6 +1124,7 @@ def test_a_bracket_doubling_the_unit_mark_is_dropped_from_the_card():
         "Перевод.",
         "<b>разказвам</b> ти интересна история.",
         "___ ти интересна история.",
+        marked_by_answer=True,
     )
 
 
@@ -1087,6 +1157,7 @@ def test_markdown_bold_in_an_example_is_the_unit_mark(languages):
         "Перевод.",
         "The <b>bank</b> opens.",
         "The ___ opens.",
+        marked_by_answer=True,
     )
 
 
