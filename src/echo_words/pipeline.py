@@ -160,6 +160,12 @@ class Job:
     # The other source-language words a reverse lookup found beside the one carded.
     equivalents: tuple[Segment, ...] = ()
 
+    @property
+    def asked(self) -> str:
+        # A switch or a rebuild queues a stored spelling that may keep its `!`, while the
+        # API sends every unit by its words; the model is asked the API's shape.
+        return _unit_wording(self.word) if self.intent == "unit" else self.word
+
 
 @dataclass(frozen=True)
 class DetailJob:
@@ -850,7 +856,7 @@ class WordPipeline:
                 return None
             prompt = build_prompt(
                 job.language,
-                job.word,
+                job.asked,
                 self.target_lang,
                 context=job.context,
                 unit_intent=job.intent == "unit",
@@ -862,7 +868,7 @@ class WordPipeline:
                 nonlocal parsed
                 parsed = extract_answer(
                     answer,
-                    job.word,
+                    job.asked,
                     job.language,
                     unit_intent=job.intent == "unit",
                     context=job.context,
@@ -1138,7 +1144,8 @@ class WordPipeline:
         answer = ""
         try:
             completion = self.cascade.stream_completion(
-                build_attestation_prompt(job.language, word),
+                # A unit is judged by its words, and a corrected headword may keep its `!`.
+                build_attestation_prompt(job.language, _unit_wording(word)),
                 job.language,
                 trace_id=f"{job.entry_id}-attestation{suffix}",
                 pool_only=True,
@@ -1795,6 +1802,11 @@ def _kept_previous_note(job: Job, stored: StoreResult) -> bool:
 def _voiced_context(job: Job) -> str:
     """The text a unit came from, when the unit's own audio does not already cover it."""
     return job.context if job.context and job.context != job.word else ""
+
+
+def _unit_wording(text: str) -> str:
+    # Composed first, as the API does, so a combining accent is never stripped as an edge mark.
+    return plain_unit(unicodedata.normalize("NFC", text))
 
 
 def _same_text(left: str, right: str) -> bool:

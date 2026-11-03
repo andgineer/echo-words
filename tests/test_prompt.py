@@ -122,9 +122,6 @@ def test_open_verdict_reads_the_words_and_not_the_punctuation_copied_with_them(l
 
 
 def test_open_verdict_names_no_kind_of_formula_as_a_unit(languages):
-    """Naming greetings, thanks and set replies as units moved six free combinations and
-    short clauses to the unit branch over a full tier; the general definition of a
-    unit already covers every formula."""
     prompt = build_prompt(languages["de"], "Bis gleich!", "Russian", typed=True)
 
     for removed in ("greeting", "farewell", "congratulation", "set reply", "several words"):

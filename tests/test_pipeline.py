@@ -27,7 +27,12 @@ from echo_words.pipeline import (
     DetailSubject,
     WordPipeline,
 )
-from echo_words.prompt import MAX_COMPLETE_ANSWER_CHARS, build_extended_prompt
+from echo_words.prompt import (
+    MAX_COMPLETE_ANSWER_CHARS,
+    build_attestation_prompt,
+    build_extended_prompt,
+    build_prompt,
+)
 
 POOL_MISSED = NoLLMAvailableError("pool exhausted", reason="timeout")
 
@@ -1215,6 +1220,28 @@ async def test_a_correction_that_repeats_the_submission_but_for_its_mark_is_not_
         await pipeline.close()
 
 
+async def test_a_correction_that_keeps_its_mark_is_judged_by_its_words(languages):
+    anki = RecordingAnki(Added(1, None, ("Recognition",)))
+    cascade = ScriptedCascade(
+        [Completion([typo_card("Gute Nacht!")])],
+        attestations=[REFUSED, ScriptedCascade.VOUCHED],
+    )
+    pipeline = WordPipeline(cascade, target_lang="Russian", anki=anki)
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(languages["de"], "Gute Nact", False, intent="unit")
+        await pipeline.join()
+
+        assert cascade.attested == [
+            build_attestation_prompt(languages["de"], "Gute Nact"),
+            build_attestation_prompt(languages["de"], "Gute Nacht"),
+        ]
+        assert [note.word for note, _deck, _audio in anki.calls] == ["Gute Nacht!"]
+        assert entry.card_status == ADDED_STATUS
+    finally:
+        await pipeline.close()
+
+
 async def test_a_lemma_for_an_inflected_form_is_not_called_a_typo(languages):
     """The card carries the dictionary form of what was typed, which is normalization
     and not a correction. Telling the reader their word does not exist would be a lie
@@ -2091,6 +2118,22 @@ async def test_an_nfc_equivalent_headword_reuses_submitted_audio(languages, tmp_
     assert stored_audio == submitted_audio
 
 
+async def test_a_decomposed_unit_keeps_its_accent_in_what_the_model_is_asked(languages):
+    decomposed = "cafe\N{COMBINING ACUTE ACCENT}"
+    composed = "caf\N{LATIN SMALL LETTER E WITH ACUTE}"
+    cascade = ScriptedCascade([Completion([valid_card(composed)])])
+    pipeline = WordPipeline(cascade, target_lang="Russian")
+    pipeline.start()
+    try:
+        await pipeline.enqueue(languages["en"], decomposed, False, intent="unit")
+        await pipeline.join()
+    finally:
+        await pipeline.close()
+
+    assert cascade.prompts == [build_prompt(languages["en"], composed, "Russian", unit_intent=True)]
+    assert cascade.attested == [build_attestation_prompt(languages["en"], composed)]
+
+
 async def test_a_case_changed_headword_fetches_distinct_card_audio(languages, tmp_path):
     submitted_audio = tmp_path / "submitted.mp3"
     card_audio = tmp_path / "card.mp3"
@@ -2550,6 +2593,32 @@ def corrected_card(word, suggestion="", *, context=None, word_relation="same"):
     if suggestion:
         value = value.replace('"suggestion": ""', f'"suggestion": "{suggestion}"', 1)
     return value.replace("analysis", f"analysis for {word}", 1)
+
+
+async def test_a_rebuild_asks_about_a_headword_by_its_words_as_its_chip_did(languages):
+    cascade = ScriptedCascade(
+        [
+            Completion([valid_card("Happy birthday!")]),
+            Completion([corrected_card("Happy birthday!")]),
+        ],
+    )
+    anki = MutableAnki([Added(1, "old.mp3"), Added(2, "new.mp3")])
+    pipeline = WordPipeline(cascade, target_lang="Russian", anki=anki)
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(languages["en"], "Happy birthday", False, intent="unit")
+        await pipeline.join()
+        await pipeline.request_rebuild(entry.entry_id)
+        await pipeline.join()
+
+        chip = build_prompt(languages["en"], "Happy birthday", "Russian", unit_intent=True)
+        assert cascade.prompts == [chip, chip]
+        assert [(note_id, note.word) for note_id, note, *_ in anki.replaced] == [
+            (1, "Happy birthday!"),
+        ]
+        assert entry.word == "Happy birthday"
+    finally:
+        await pipeline.close()
 
 
 async def test_a_rebuild_keeps_the_audio_of_the_unit_and_of_its_text(languages, tmp_path):
@@ -3020,6 +3089,43 @@ async def test_correction_switch_is_reversible_replaces_notes_and_updates_undo(
         # The recording of the spelling switched away from stays in the cache, where
         # the next send of that word finds it.
         assert paths["Strasse"].exists()
+    finally:
+        await pipeline.close()
+
+
+async def test_a_switch_asks_about_a_suggestion_by_its_words_and_shows_it_as_written(
+    languages,
+):
+    anki = RecordingAnki(Added(1, None, ("Recognition",)))
+    cascade = ScriptedCascade(
+        [
+            Completion([corrected_card("Gute Nact!", "Gute Nacht!")]),
+            Completion([typo_card("Gute Nacht!")]),
+        ],
+    )
+    pipeline = WordPipeline(cascade, target_lang="Russian", anki=anki)
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(languages["de"], "Gute Nact!", False, typed=True)
+        await pipeline.join()
+        assert (entry.card_status, entry.suggestion) == (MISSPELLED_STATUS, "Gute Nacht!")
+
+        await pipeline.request_switch(entry.entry_id)
+        await pipeline.join()
+
+        assert cascade.attested == [build_attestation_prompt(languages["de"], "Gute Nacht")]
+        assert cascade.prompts[-1] == build_prompt(
+            languages["de"],
+            "Gute Nacht",
+            "Russian",
+            unit_intent=True,
+        )
+        assert [note.word for note, _deck, _audio in anki.calls] == ["Gute Nacht!"]
+        assert (entry.word, entry.shown_spelling, entry.suggestion) == (
+            "Gute Nacht!",
+            "Gute Nacht!",
+            "Gute Nact!",
+        )
     finally:
         await pipeline.close()
 
