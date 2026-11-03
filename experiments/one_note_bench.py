@@ -36,9 +36,12 @@ those answers happen to need. `report` screens whichever of the two a directory 
 A chip whose carried text is nothing but its own wording, and typed submissions whose
 branch the answer decides — formulas, expressions and other ready-made chunks with the
 punctuation copied with them, formulas whose closing mark is their own, formulas without
-punctuation, and clauses, free combinations and a word list that stay text — are
-measured on demand and outside every tier. A chip is asked only by id; the typed set by
-`run-typed`, 46 calls. `report` screens each on its own wherever a directory holds it.
+punctuation, formulas whose own wording has a comma between its words, and clauses,
+free combinations and word lists that stay text, some with such a comma — are measured
+on demand and outside every tier. A chip is asked only by id, and so is the judgement a
+tap asks beside it (`attestation-` and the chip's id); the typed set by `run-typed`,
+60 calls, or any part of it by id. `report` screens each on its own wherever a
+directory holds it, over the fixtures that directory asked.
     uv run python experiments/one_note_bench.py run-clicks --resume --pace 2 \
       --concurrency 1 --out experiments/.bench-whole-text-chip \
       --shot whole-chip-de-bis-gleich whole-chip-en-good-night whole-chip-sr-laku-noc
@@ -90,6 +93,7 @@ from echo_words.languages import (  # noqa: E402
     unit_context,
     validate_text,
     validate_word,
+    without_word_commas,
 )
 from echo_words.llm_backend import POOL_FASTEST_OF  # noqa: E402
 from echo_words.prompt import (  # noqa: E402
@@ -215,7 +219,11 @@ OFFER_KIND = "offer"
 OFFER_ARTICLE_KIND = "offer-article"
 OFFER_CORRECTION_KIND = "offer-correction"
 REVERSE_BENCH_KINDS = frozenset({REVERSE_KIND, OFFER_KIND, OFFER_ARTICLE_KIND, OFFER_CORRECTION_KIND})
-JUDGEMENT_KINDS = frozenset({"attestation", "correction", OFFER_KIND, OFFER_CORRECTION_KIND})
+# The judgement production asks in parallel with a whole-text chip's article.
+WHOLE_CHIP_JUDGEMENT_KIND = "whole-chip-judgement"
+JUDGEMENT_KINDS = frozenset(
+    {"attestation", "correction", OFFER_KIND, OFFER_CORRECTION_KIND, WHOLE_CHIP_JUDGEMENT_KIND},
+)
 REVERSE_FIXTURES = 68
 OFFER_FIXTURES = 4
 MIN_REVERSE_USABLE = 61
@@ -266,7 +274,7 @@ WHOLE_CHIP_KIND = "whole-chip"
 # Every typed verdict is recorded under the kind the first typed formulas were, so the
 # directories holding those still screen them apart from any tier.
 TYPED_KIND = "formula"
-WHOLE_TEXT_BENCH_KINDS = frozenset({WHOLE_CHIP_KIND, TYPED_KIND})
+WHOLE_TEXT_BENCH_KINDS = frozenset({WHOLE_CHIP_KIND, WHOLE_CHIP_JUDGEMENT_KIND, TYPED_KIND})
 
 
 @dataclass(frozen=True)
@@ -284,6 +292,12 @@ WHOLE_TEXT_CHIP_CASES = (
     WholeTextChipCase("whole-chip-de-bis-gleich", "de", "bis gleich", "Bis gleich!"),
     WholeTextChipCase("whole-chip-en-good-night", "en", "good night", "Good night!"),
     WholeTextChipCase("whole-chip-sr-laku-noc", "sr", "laku noć", "Laku noć!"),
+    # Named with the comma the formula's own wording has between its words.
+    WholeTextChipCase(
+        "whole-chip-de-danke-gleichfalls", "de", "danke, gleichfalls", "Danke, gleichfalls!"
+    ),
+    WholeTextChipCase("whole-chip-en-no-thanks", "en", "no, thanks", "No, thanks."),
+    WholeTextChipCase("whole-chip-sr-ne-hvala", "sr", "ne, hvala", "Ne, hvala."),
 )
 WHOLE_TEXT_CHIP_BY_ID = {case.shot_id: case for case in WHOLE_TEXT_CHIP_CASES}
 WHOLE_TEXT_CHIP_IDS = frozenset(WHOLE_TEXT_CHIP_BY_ID)
@@ -296,19 +310,29 @@ PUNCTUATED_EXPRESSION = "expression"
 COPIED_CHUNK = "chunk"
 KEPT_PUNCTUATION = "kept"
 UNPUNCTUATED_FORMULA = "unpunctuated"
+INNER_COMMA = "inner"
 SITUATION_GUARD = "guard"
 FREE_GUARD = "free"
+COMMA_GUARD = "comma"
 TYPED_CLASSES = {
     PUNCTUATED_FORMULA: "conventional formula with its punctuation",
     PUNCTUATED_EXPRESSION: "fixed expression with a copied comma or full stop",
     COPIED_CHUNK: "ready-made chunk, no formula, with copied punctuation",
     KEPT_PUNCTUATION: "formula whose closing mark is part of it",
     UNPUNCTUATED_FORMULA: "conventional formula without punctuation",
+    INNER_COMMA: "formula whose own wording has a comma between its words",
     SITUATION_GUARD: "clause reporting a situation, ending in ! or ?",
     FREE_GUARD: "free combination or short word list, no punctuation",
+    COMMA_GUARD: "clause or free combination with a comma between its words",
 }
-TEXT_CLASSES = frozenset({SITUATION_GUARD, FREE_GUARD})
+TEXT_CLASSES = frozenset({SITUATION_GUARD, FREE_GUARD, COMMA_GUARD})
 _QUOTATION_MARKS = '"„“”«»'
+
+
+def has_word_comma(text: str) -> bool:
+    """Whether a comma stands between two of the words, read past the marks at the edges."""
+    words = plain_unit(text)
+    return without_word_commas(words) != words
 
 
 def closing_mark(typed: str) -> str:
@@ -395,6 +419,24 @@ TYPED_VERDICT_CASES = (
     TypedVerdictCase("free-en-walked-slowly", "en", "walked slowly to the old station", FREE_GUARD),
     TypedVerdictCase("free-sr-vratio-se-kasno", "sr", "vratio se kasno sinoć", FREE_GUARD),
     TypedVerdictCase("free-de-aepfel-birnen", "de", "Äpfel, Birnen", FREE_GUARD),
+    TypedVerdictCase("inner-de-danke-gleichfalls", "de", "Danke, gleichfalls!", INNER_COMMA),
+    TypedVerdictCase("inner-de-nein-danke", "de", "Nein, danke.", INNER_COMMA),
+    TypedVerdictCase(
+        "inner-de-auf-die-plaetze", "de", "Auf die Plätze, fertig, los!", INNER_COMMA
+    ),
+    TypedVerdictCase("inner-en-no-thanks", "en", "No, thanks.", INNER_COMMA),
+    TypedVerdictCase("inner-en-oh-well", "en", "Oh, well", INNER_COMMA),
+    TypedVerdictCase("inner-en-well-well-well", "en", "Well, well, well", INNER_COMMA),
+    TypedVerdictCase("inner-sr-ne-hvala", "sr", "Ne, hvala.", INNER_COMMA),
+    TypedVerdictCase("inner-sr-hvala-takodje", "sr", "Хвала, такође!", INNER_COMMA),
+    TypedVerdictCase(
+        "comma-de-keine-zeit", "de", "Nein, ich habe heute keine Zeit.", COMMA_GUARD
+    ),
+    TypedVerdictCase("comma-en-missed-the-bus", "en", "Oh, I missed the bus again.", COMMA_GUARD),
+    TypedVerdictCase("comma-sr-nisam-gledao", "sr", "Ne, nisam gledao taj film.", COMMA_GUARD),
+    TypedVerdictCase("comma-de-helles-zimmer", "de", "ein großes, helles Zimmer", COMMA_GUARD),
+    TypedVerdictCase("comma-en-cold-winter", "en", "a long, cold winter", COMMA_GUARD),
+    TypedVerdictCase("comma-sr-svetli-stan", "sr", "велики, светли стан", COMMA_GUARD),
 )
 TYPED_BY_ID = {case.shot_id: case for case in TYPED_VERDICT_CASES}
 TYPED_IDS = frozenset(TYPED_BY_ID)
@@ -985,6 +1027,14 @@ def whole_text_chip_shots() -> list[Shot]:
     ]
 
 
+def whole_text_judgement_shots() -> list[Shot]:
+    """The judgement a tap asks beside the article: whether the chip's wording is used."""
+    return [
+        Shot(attestation_id(case.shot_id), WHOLE_CHIP_JUDGEMENT_KIND, case.lang, case.label)
+        for case in WHOLE_TEXT_CHIP_CASES
+    ]
+
+
 def typed_verdict_shots() -> list[Shot]:
     formulas = {
         (case.lang, " ".join(split_words(case.typed)))
@@ -1005,6 +1055,8 @@ def typed_verdict_shots() -> list[Shot]:
             # A list keeps the comma between its words; neither class closes on a mark.
             FREE_GUARD: plain_unit(case.typed) == case.typed,
             KEPT_PUNCTUATION: mark in {"!", "?"},
+            INNER_COMMA: has_word_comma(case.typed),
+            COMMA_GUARD: has_word_comma(case.typed),
         }.get(case.klass, bool(mark))
         if not carries:
             raise RuntimeError(f"{case.shot_id} does not carry the punctuation its class names")
@@ -1274,6 +1326,7 @@ def read(out: Path, attempts: list[Shot] | None = None) -> dict[str, Shot]:
             *wordlist_shots(),
             *cyrillic_shots(),
             *whole_text_chip_shots(),
+            *whole_text_judgement_shots(),
             *typed_verdict_shots(),
         )
     }
@@ -2334,10 +2387,15 @@ def click_jobs(recorded: dict[str, Shot], requested_ids: list[str]) -> list[Shot
     if not requested_ids:
         return jobs
     requested = set(requested_ids)
-    unknown = requested - CLICK_IDS - WHOLE_TEXT_CHIP_IDS
+    judgements = {shot.shot_id for shot in whole_text_judgement_shots()}
+    unknown = requested - CLICK_IDS - WHOLE_TEXT_CHIP_IDS - judgements
     if unknown:
         raise SystemExit("unknown click ids: " + ", ".join(sorted(unknown)))
-    return [shot for shot in (*jobs, *whole_text_chip_shots()) if shot.shot_id in requested]
+    return [
+        shot
+        for shot in (*jobs, *whole_text_chip_shots(), *whole_text_judgement_shots())
+        if shot.shot_id in requested
+    ]
 
 
 async def run_clicks(args, out: Path) -> None:
@@ -2816,6 +2874,21 @@ def headword_mark(shot: Shot) -> str:
     return "kept" if closing_mark(word) == mark else "dropped"
 
 
+def headword_comma(shot: Shot) -> str:
+    """Whether a unit headword kept the comma its submission has between two words, or
+    nothing where there is no unit headword or no such comma."""
+    word = shot.payload.get("word")
+    if shot.payload.get("kind") != "unit" or not isinstance(word, str) or not has_word_comma(shot.source):
+        return ""
+    return "kept" if has_word_comma(word) else "dropped"
+
+
+def asked_here(ids: frozenset[str], attempts: list[Shot]) -> frozenset[str]:
+    """The fixtures a directory asked: each of these sets is asked on demand, in part, so
+    one never asked there is not measured there rather than missed."""
+    return ids & {row.shot_id for row in attempts}
+
+
 def headword_quoted(shot: Shot) -> bool:
     word = shot.payload.get("word")
     if shot.payload.get("kind") != "unit" or not isinstance(word, str) or not word.strip():
@@ -2849,9 +2922,28 @@ def _extra_packet(tier: str, rows: dict[str, Shot], expected_ids: frozenset[str]
     }
 
 
-def whole_text_review_packet(rows: dict[str, Shot]) -> dict[str, object]:
+def _judged(row: Shot | None) -> dict[str, object] | str:
+    """What the judgement a tap asks beside its article said, where this directory asked it."""
+    if row is None:
+        return "not asked"
+    verdict = parse_attestation(row.text)
+    return {
+        "used": verdict.used if verdict is not None else None,
+        "answered_by": row.answered_by,
+        "error": row.error,
+        "answer": row.text,
+    }
+
+
+def whole_text_review_packet(
+    rows: dict[str, Shot],
+    asked: frozenset[str],
+    judgements: dict[str, Shot],
+) -> dict[str, object]:
     items = []
     for expected_shot in whole_text_chip_shots():
+        if expected_shot.shot_id not in asked:
+            continue
         shot = rows.get(expected_shot.shot_id)
         chip = WHOLE_TEXT_CHIP_BY_ID[expected_shot.shot_id]
         expected: dict[str, object] = {
@@ -2866,6 +2958,9 @@ def whole_text_review_packet(rows: dict[str, Shot]) -> dict[str, object]:
                 "the translations and each example sentence as a card front"
             ),
         }
+        judged = _judged(judgements.get(attestation_id(expected_shot.shot_id)))
+        if judged != "not asked":
+            expected["judgement"] = "used: a refusal ends the tap with no card"
         if shot is None:
             items.append(
                 _review_item(
@@ -2877,13 +2972,18 @@ def whole_text_review_packet(rows: dict[str, Shot]) -> dict[str, object]:
             )
             continue
         categories = _availability_categories(shot, "whole_text_chip")
-        items.append(_review_item(shot, categories, expected=expected, actual=_branch_actual(shot)))
-    return _extra_packet("whole-text", rows, WHOLE_TEXT_CHIP_IDS, items)
+        actual = _branch_actual(shot)
+        if judged != "not asked":
+            actual["judgement"] = judged
+        items.append(_review_item(shot, categories, expected=expected, actual=actual))
+    return _extra_packet("whole-text", rows, asked, items)
 
 
-def typed_review_packet(rows: dict[str, Shot]) -> dict[str, object]:
+def typed_review_packet(rows: dict[str, Shot], asked: frozenset[str]) -> dict[str, object]:
     items = []
     for expected_shot in typed_verdict_shots():
+        if expected_shot.shot_id not in asked:
+            continue
         shot = rows.get(expected_shot.shot_id)
         case = TYPED_BY_ID[expected_shot.shot_id]
         expected: dict[str, object] = {
@@ -2896,6 +2996,8 @@ def typed_review_packet(rows: dict[str, Shot]) -> dict[str, object]:
         }
         if closing_mark(case.typed) and case.expected_kind == "unit":
             expected["headword_mark"] = case.headword_mark or "either"
+        if case.klass == INNER_COMMA:
+            expected["headword_comma"] = "kept"
         if shot is None:
             items.append(
                 _review_item(
@@ -2912,8 +3014,10 @@ def typed_review_packet(rows: dict[str, Shot]) -> dict[str, object]:
         actual = _branch_actual(shot)
         if headword_mark(shot):
             actual["headword_mark"] = headword_mark(shot)
+        if headword_comma(shot):
+            actual["headword_comma"] = headword_comma(shot)
         items.append(_review_item(shot, categories, expected=expected, actual=actual))
-    return _extra_packet("typed", rows, TYPED_IDS, items)
+    return _extra_packet("typed", rows, asked, items)
 
 
 def _print_availability(rows: dict[str, Shot], attempts: list[Shot], total: int) -> None:
@@ -2941,38 +3045,54 @@ def _write_extra_packet(out: Path, name: str, packet: dict[str, object]) -> None
 def report_whole_text(out: Path, attempts: list[Shot]) -> None:
     """Screen the whole-text chips, which gate nothing."""
     current = read(out, attempts)
-    rows = {shot_id: row for shot_id, row in current.items() if shot_id in WHOLE_TEXT_CHIP_IDS}
+    asked = asked_here(WHOLE_TEXT_CHIP_IDS, attempts)
+    rows = {shot_id: row for shot_id, row in current.items() if shot_id in asked}
+    judgements = {
+        shot_id: row for shot_id, row in current.items() if row.kind == WHOLE_CHIP_JUDGEMENT_KIND
+    }
     print("WHOLE-TEXT CHIPS — AUTOMATED SCREEN, outside every tier")
     print("Fresh-agent semantic review of the concrete review packet is mandatory before acceptance.\n")
-    _print_availability(rows, attempts, len(WHOLE_TEXT_CHIP_IDS))
+    _print_availability(rows, attempts, len(asked))
     print("WHOLE-TEXT CHIPS — asked as a bare lookup (diagnostic, gates nothing)")
     print(f"  cards built                   {ratio(list(rows.values()), 'four_cards_ready')}")
+    if judgements:
+        verdicts = [parse_attestation(row.text) for row in judgements.values()]
+        used = sum(verdict is not None and verdict.used for verdict in verdicts)
+        print(f"  judged used                   {used}/{len(judgements)}")
     for case in WHOLE_TEXT_CHIP_CASES:
+        if case.shot_id not in asked:
+            continue
         row = rows.get(case.shot_id)
         if row is None:
             print(f"  {case.shot_id:<28} missing")
             continue
         fronts = row.metrics.get("card_fronts") or ["", "", "", ""]
+        judged = _judged(judgements.get(attestation_id(case.shot_id)))
         print(
             f"  {case.shot_id:<28} {row.answered_by or '?'}: "
             f"{row.metrics.get('actual_kind')}, carded {bool(row.metrics.get('four_cards_ready'))}"
-            f", headword {row.payload.get('word')!r}, translations {fronts[1]!r}",
+            f", headword {row.payload.get('word')!r}, translations {fronts[1]!r}"
+            + (f", judged used {judged['used']}" if isinstance(judged, dict) else ""),
         )
         if row.metrics.get("four_cards_ready"):
             print(f"      front {fronts[2]}")
-    _write_extra_packet(out, "whole-text", whole_text_review_packet(rows))
+    _write_extra_packet(out, "whole-text", whole_text_review_packet(rows, asked, judgements))
 
 
 def report_typed(out: Path, attempts: list[Shot]) -> None:
     """Screen the typed verdicts against the branch each class should take; gates nothing."""
     current = read(out, attempts)
-    rows = {shot_id: row for shot_id, row in current.items() if shot_id in TYPED_IDS}
+    asked = asked_here(TYPED_IDS, attempts)
+    held = [case for case in TYPED_VERDICT_CASES if case.shot_id in asked]
+    rows = {shot_id: row for shot_id, row in current.items() if shot_id in asked}
     print("TYPED VERDICTS — AUTOMATED SCREEN, outside every tier")
     print("Fresh-agent semantic review of the concrete review packet is mandatory before acceptance.\n")
-    _print_availability(rows, attempts, len(TYPED_IDS))
+    _print_availability(rows, attempts, len(asked))
     print("VERDICTS — the branch each class should take (diagnostic, gates nothing)")
     for klass, description in TYPED_CLASSES.items():
-        cases = [case for case in TYPED_VERDICT_CASES if case.klass == klass]
+        cases = [case for case in held if case.klass == klass]
+        if not cases:
+            continue
         answered = [rows[case.shot_id] for case in cases if case.shot_id in rows]
         right = sum(bool(row.metrics.get("verdict_correct")) for row in answered)
         unusable = sum(row.metrics.get("verdict_outcome") == "unusable" for row in answered)
@@ -2982,7 +3102,7 @@ def report_typed(out: Path, attempts: list[Shot]) -> None:
             + (f"  ({unusable} unusable)" if unusable else ""),
         )
     print()
-    for case in TYPED_VERDICT_CASES:
+    for case in held:
         row = rows.get(case.shot_id)
         if row is None:
             print(f"  {case.typed:<36} missing")
@@ -3010,18 +3130,24 @@ def report_typed(out: Path, attempts: list[Shot]) -> None:
         ("kept", "the chunk's own mark kept"),
         ("dropped", "a copied mark dropped"),
     ):
-        cases = [case for case in TYPED_VERDICT_CASES if case.headword_mark == wanted]
+        cases = [case for case in held if case.headword_mark == wanted]
         marks = [headword_mark(rows[case.shot_id]) for case in cases if case.shot_id in rows]
         scored = [mark for mark in marks if mark]
         right = sum(mark == wanted for mark in scored)
         print(f"  {description:<44} {right}/{len(scored)} headwords, {len(cases)} fixtures")
     quoted = [
-        case.typed
-        for case in TYPED_VERDICT_CASES
-        if case.shot_id in rows and headword_quoted(rows[case.shot_id])
+        case.typed for case in held if case.shot_id in rows and headword_quoted(rows[case.shot_id])
     ]
     print(f"  quotation marks kept in a headword           {len(quoted)}" + (f"  {quoted}" if quoted else ""))
-    _write_extra_packet(out, "typed", typed_review_packet(rows))
+    inner = [case for case in held if case.klass == INNER_COMMA]
+    if inner:
+        commas = [headword_comma(rows[case.shot_id]) for case in inner if case.shot_id in rows]
+        scored = [comma for comma in commas if comma]
+        print(
+            f"  {'a comma between its words kept':<44} "
+            f"{sum(comma == 'kept' for comma in scored)}/{len(scored)} headwords, {len(inner)} fixtures",
+        )
+    _write_extra_packet(out, "typed", typed_review_packet(rows, asked))
 
 
 def ratio(rows: list[Shot], key: str) -> str:
@@ -3631,7 +3757,7 @@ def report(out: Path, tier: str) -> None:
     if not attempts:
         raise SystemExit(f"no answers in {output_path(out)}")
     reverse = [row for row in attempts if row.kind in REVERSE_BENCH_KINDS]
-    chips = [row for row in attempts if row.kind == WHOLE_CHIP_KIND]
+    chips = [row for row in attempts if row.kind in {WHOLE_CHIP_KIND, WHOLE_CHIP_JUDGEMENT_KIND}]
     typed = [row for row in attempts if row.kind == TYPED_KIND]
     tiered = [
         row

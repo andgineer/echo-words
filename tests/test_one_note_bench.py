@@ -1,4 +1,5 @@
 import json
+import unicodedata
 from dataclasses import replace
 from pathlib import Path
 
@@ -6,7 +7,7 @@ import one_note_bench as bench
 import pytest
 
 from echo_words.languages import unit_context
-from echo_words.prompt import build_prompt
+from echo_words.prompt import build_attestation_prompt, build_prompt
 
 
 def _shot(shot_id: str, *, expected_kind: str = "text") -> bench.Shot:
@@ -1628,6 +1629,11 @@ def test_a_guard_is_scored_right_only_on_the_text_branch():
     assert (as_text["verdict_outcome"], as_unit["verdict_outcome"]) == ("correct", "hard_error")
 
 
+def _alphabet(text: str) -> str:
+    (alphabet,) = {unicodedata.name(char).split()[0] for char in text if char.isalpha()}
+    return alphabet
+
+
 def test_every_typed_class_is_instantiated_in_every_language():
     by_class: dict[str, dict[str, list[bench.TypedVerdictCase]]] = {}
     for case in bench.TYPED_VERDICT_CASES:
@@ -1639,13 +1645,13 @@ def test_every_typed_class_is_instantiated_in_every_language():
         "sr": 4,
     }
     assert all(len(rows) >= 2 for rows in by_class["guard"].values())
-    for klass in ("guard", "expression", "chunk", "kept", "free"):
+    for klass in ("guard", "expression", "chunk", "kept", "free", "inner", "comma"):
         assert set(by_class[klass]) == {"de", "en", "sr"}
     # Each copied mark the instruction names reaches the answer at least once.
     punctuated = [
         case.typed
         for case in bench.TYPED_VERDICT_CASES
-        if case.klass not in {"unpunctuated", "free"}
+        if case.klass not in {"unpunctuated", "free", "inner", "comma"}
     ]
     assert all(any(text.endswith(mark) for text in punctuated) for mark in ("!", "?", ".", ","))
     assert any(text.startswith(("„", '"')) for text in punctuated)
@@ -1659,13 +1665,28 @@ def test_every_typed_class_is_instantiated_in_every_language():
     assert all(any(text.endswith(mark) for text in kept) for mark in ("!", "?"))
     # A free combination in each language, and a list of two words.
     assert any(", " in case.typed for rows in by_class["free"].values() for case in rows)
+    # A formula's own comma, with and without a mark copied after it, in both of
+    # Serbian's alphabets; and clauses and free combinations a comma runs through.
+    inner = [case.typed for rows in by_class["inner"].values() for case in rows]
+    assert any(text.endswith(".") for text in inner)
+    assert any(text[-1].isalpha() for text in inner)
+    assert any(text.count(", ") > 1 for text in inner)
+    for klass in ("inner", "comma"):
+        scripts = {_alphabet(case.typed) for case in by_class[klass]["sr"]}
+        assert scripts == {"LATIN", "CYRILLIC"}
+    assert all(
+        bench.has_word_comma(case.typed)
+        for klass in ("inner", "comma")
+        for rows in by_class[klass].values()
+        for case in rows
+    )
     assert {
         case.shot_id: case.expected_kind
         for case in bench.TYPED_VERDICT_CASES
         if case.expected_kind == "text"
     } == {
         case.shot_id: "text"
-        for klass in ("guard", "free")
+        for klass in ("guard", "free", "comma")
         for rows in by_class[klass].values()
         for case in rows
     }
@@ -1723,9 +1744,45 @@ def test_a_recorded_headword_is_scored_by_the_mark_it_kept():
     ]
 
 
+RECORDED_INNER_COMMA = json.loads(
+    (Path(__file__).parent / "data" / "inner_comma_recorded.json").read_text(encoding="utf-8"),
+)
+
+
+def test_a_recorded_formula_s_comma_is_scored_as_kept_and_carded():
+    recorded = next(
+        answer
+        for answer in RECORDED_INNER_COMMA["carded_with_their_comma"]
+        if answer["shot_id"] == "inner-en-no-thanks"
+    )
+    kept = bench.score(replace(_typed("inner-en-no-thanks"), text=recorded["answer"]))
+    dropped = bench.score(
+        replace(_typed("inner-de-danke-gleichfalls"), text=_unit_answer("gleichfalls")),
+    )
+    guard = bench.score(replace(_typed("comma-de-helles-zimmer"), text=_text_answer()))
+
+    assert (kept.metrics["verdict_outcome"], kept.metrics["four_cards_ready"]) == ("correct", True)
+    assert [bench.headword_comma(row) for row in (kept, dropped, guard)] == ["kept", "dropped", ""]
+
+
+def test_a_free_combination_with_a_comma_carded_as_a_unit_is_a_hard_error():
+    """A comma decides no branch, so the card it now builds is the answer's misjudgement."""
+    (recorded,) = RECORDED_INNER_COMMA["free_combination_as_a_unit"]
+
+    metrics = bench.score(replace(_typed(recorded["shot_id"]), text=recorded["answer"])).metrics
+
+    assert (metrics["verdict_outcome"], metrics["four_cards_ready"]) == ("hard_error", True)
+
+
 @pytest.mark.parametrize(
     ("klass", "typed"),
-    [("kept", "Na und."), ("kept", "Na und"), ("free", "gave up far too easily!")],
+    [
+        ("kept", "Na und."),
+        ("kept", "Na und"),
+        ("free", "gave up far too easily!"),
+        ("inner", "Nein danke."),
+        ("comma", "Nein ich habe keine Zeit."),
+    ],
 )
 def test_a_new_class_s_fixture_must_carry_the_punctuation_it_names(monkeypatch, klass, typed):
     stray = bench.TypedVerdictCase(f"{klass}-de-stray", "de", typed, klass)
@@ -1767,7 +1824,8 @@ def test_a_typed_verdict_is_asked_exactly_as_typed_with_the_branch_left_to_the_a
 
 
 def test_the_extras_are_asked_on_demand_and_sit_outside_every_tier():
-    extras = bench.WHOLE_TEXT_CHIP_IDS | bench.TYPED_IDS
+    judgements = {shot.shot_id for shot in bench.whole_text_judgement_shots()}
+    extras = bench.WHOLE_TEXT_CHIP_IDS | bench.TYPED_IDS | judgements
 
     for tier in bench.TIER_NAMES:
         assert not extras & {shot.shot_id for shot in bench.initial_jobs_for_tier(tier)}
@@ -1803,7 +1861,11 @@ def test_a_directory_of_whole_text_chips_is_screened_without_the_tier_screen(tmp
         shot for shot in bench.whole_text_chip_shots() if shot.shot_id == "whole-chip-de-bis-gleich"
     )
     chip.text = _recorded_whole_text_answer()
-    _record(out, chip)
+    silent = next(
+        shot for shot in bench.whole_text_chip_shots() if shot.shot_id == "whole-chip-en-good-night"
+    )
+    silent.error = "TimeoutError: no provider answered"
+    _record(out, chip, silent)
 
     bench.report(out, "smoke")
 
@@ -1812,15 +1874,53 @@ def test_a_directory_of_whole_text_chips_is_screened_without_the_tier_screen(tmp
     assert "TIER" not in printed
     assert "TYPED VERDICTS" not in printed
     assert "pool-model 1" in printed
+    assert "recorded fixtures             2/2" in printed
+    assert "whole-chip-sr-laku-noc" not in printed
     packet = json.loads((out / "review-packet-whole-text.json").read_text(encoding="utf-8"))
     items = {item["fixture_id"]: item for item in packet["items"]}
-    assert set(items) == bench.WHOLE_TEXT_CHIP_IDS
-    assert packet["prompt_status"] == "unmeasured"
+    # A chip this directory never asked is not measured here, so it is not listed.
+    assert set(items) == {"whole-chip-de-bis-gleich", "whole-chip-en-good-night"}
+    assert packet["prompt_status"] == "pending_semantic_review"
     carded = items["whole-chip-de-bis-gleich"]
     assert carded["expected"]["carried_context"] == "Bis gleich!"
     assert carded["actual"]["carded"] is True
     assert carded["input"]["context"] == ""
-    assert items["whole-chip-en-good-night"]["categories"] == ["provider_miss"]
+    assert items["whole-chip-en-good-night"]["categories"] == ["provider_miss", "whole_text_chip"]
+
+
+def test_a_whole_text_chip_s_judgement_is_asked_by_id_and_screened_beside_its_card(
+    tmp_path,
+    capsys,
+):
+    out = tmp_path / "bench"
+    recorded = next(
+        answer
+        for answer in RECORDED_INNER_COMMA["carded_with_their_comma"]
+        if answer["shot_id"] == "whole-chip-en-no-thanks"
+    )
+    (judgement,) = [
+        answer
+        for answer in RECORDED_INNER_COMMA["chip_judgements"]
+        if answer["shot_id"] == "attestation-whole-chip-en-no-thanks"
+    ]
+    (chip, judge) = bench.click_jobs(
+        {},
+        ["whole-chip-en-no-thanks", "attestation-whole-chip-en-no-thanks"],
+    )
+    assert bench.prompt_for(judge) == build_attestation_prompt(bench.LANGUAGES["en"], "no, thanks")
+    _record(out, replace(chip, text=recorded["answer"]), replace(judge, text=judgement["answer"]))
+
+    bench.report(out, "smoke")
+
+    printed = capsys.readouterr().out
+    assert "TIER" not in printed
+    assert "judged used                   1/1" in printed
+    assert "headword 'no, thanks'" in printed
+    packet = json.loads((out / "review-packet-whole-text.json").read_text(encoding="utf-8"))
+    (item,) = packet["items"]
+    assert item["actual"]["carded"] is True
+    assert item["actual"]["judgement"]["used"] is True
+    assert item["actual"]["judgement"]["answer"] == judgement["answer"]
 
 
 def test_a_directory_of_typed_verdicts_is_screened_against_each_class_s_branch(tmp_path, capsys):
@@ -1846,7 +1946,10 @@ def test_a_directory_of_typed_verdicts_is_screened_against_each_class_s_branch(t
     assert "WHOLE-TEXT CHIPS" not in printed
     assert "pool-model 5" in printed
     assert "conventional formula with its punctuation → unit" in printed
-    assert "1/16  (1 unusable)" in printed
+    assert "1/3  (1 unusable)" in printed
+    # Only the classes and fixtures this directory asked are screened.
+    assert "fixed expression with a copied comma or full stop" not in printed
+    assert "Laku noć!" not in printed
     assert "formula whose closing mark is part of it → unit" in printed
     assert "WRONG Bis gleich!" in printed
     assert "UNUSABLE Herzlichen Glückwunsch!" in printed
@@ -1855,13 +1958,13 @@ def test_a_directory_of_typed_verdicts_is_screened_against_each_class_s_branch(t
     assert "headword 'Gute Nacht' (mark dropped), carded True" in printed
     assert "headword 'Happy birthday!' (mark kept), carded True" in printed
     assert "ok    I lost my keys again!" in printed
-    assert "the chunk's own mark kept                    1/1 headwords, 5 fixtures" in printed
-    assert "a copied mark dropped                        0/0 headwords, 12 fixtures" in printed
+    assert "the chunk's own mark kept                    1/1 headwords, 1 fixtures" in printed
+    assert "a copied mark dropped                        0/0 headwords, 0 fixtures" in printed
     assert "quotation marks kept in a headword           0" in printed
     packet = json.loads((out / "review-packet-typed.json").read_text(encoding="utf-8"))
     items = {item["fixture_id"]: item for item in packet["items"]}
-    assert set(items) == bench.TYPED_IDS
-    assert packet["prompt_status"] == "unmeasured"
+    assert set(items) == {shot.shot_id for shot in (as_text, as_unit, guard, unusable, kept)}
+    assert packet["prompt_status"] == "pending_semantic_review"
     wrong = items["formula-de-bis-gleich"]
     assert wrong["categories"] == ["typed_verdict", "wrong_branch"]
     assert wrong["expected"]["kind"] == "unit"
@@ -1877,12 +1980,37 @@ def test_a_directory_of_typed_verdicts_is_screened_against_each_class_s_branch(t
     assert items["guard-en-keys"]["categories"] == ["typed_verdict"]
     assert items["formula-de-glueckwunsch"]["categories"] == ["typed_verdict", "unusable"]
     assert items["formula-de-glueckwunsch"]["actual"]["payload_kind"] == "unit"
-    assert items["formula-sr-laku-noc"]["categories"] == ["provider_miss"]
     assert items["kept-en-happy-birthday"]["expected"]["headword_mark"] == "kept"
     assert items["kept-en-happy-birthday"]["actual"]["headword_mark"] == "kept"
     assert items["formula-de-gute-nacht"]["expected"]["headword_mark"] == "either"
     assert items["formula-de-gute-nacht"]["actual"]["headword_mark"] == "dropped"
     assert "headword_mark" not in items["guard-en-keys"]["expected"]
+
+
+def test_a_directory_of_inner_commas_is_screened_for_the_comma_each_headword_kept(
+    tmp_path,
+    capsys,
+):
+    out = tmp_path / "bench"
+    recorded = {
+        answer["shot_id"]: answer["answer"]
+        for answer in RECORDED_INNER_COMMA["carded_with_their_comma"]
+    }
+    kept = replace(_typed("inner-en-no-thanks"), text=recorded["inner-en-no-thanks"])
+    dropped = replace(_typed("inner-de-danke-gleichfalls"), text=_unit_answer("gleichfalls"))
+    _record(out, kept, dropped)
+
+    bench.report(out, "smoke")
+
+    printed = capsys.readouterr().out
+    assert "formula whose own wording has a comma between its words → unit 2/2" in printed
+    assert "a comma between its words kept               1/2 headwords, 2 fixtures" in printed
+    packet = json.loads((out / "review-packet-typed.json").read_text(encoding="utf-8"))
+    items = {item["fixture_id"]: item for item in packet["items"]}
+    assert set(items) == {"inner-en-no-thanks", "inner-de-danke-gleichfalls"}
+    assert items["inner-en-no-thanks"]["expected"]["headword_comma"] == "kept"
+    assert items["inner-en-no-thanks"]["actual"]["headword_comma"] == "kept"
+    assert items["inner-de-danke-gleichfalls"]["actual"]["headword_comma"] == "dropped"
 
 
 def test_the_first_typed_formulas_recorded_without_a_branch_stay_outside_the_tier_screen(
@@ -1902,4 +2030,4 @@ def test_the_first_typed_formulas_recorded_without_a_branch_stay_outside_the_tie
     printed = capsys.readouterr().out
     assert "TYPED VERDICTS" in printed
     assert "TIER" not in printed
-    assert "recorded fixtures             0/46" in printed
+    assert "recorded fixtures             0/1" in printed
