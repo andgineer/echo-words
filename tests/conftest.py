@@ -176,6 +176,7 @@ _NORMALIZATION_TESTS = frozenset(
         "test_normalize_submission_composes_accents",
         "test_plain_unit_drops_the_punctuation_a_shared_selection_carries",
         "test_plain_unit_keeps_the_punctuation_that_belongs_to_the_unit",
+        "test_unit_wording_composes_an_accent_before_dropping_the_edge_marks",
         "test_sanitize_context_collapses_whitespace_and_control_chars",
         "test_sanitize_context_is_capped",
     },

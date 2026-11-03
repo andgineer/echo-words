@@ -10,6 +10,7 @@ from echo_words.card import (
     ParsedUnit,
     context_sentence_forms,
     parse_answer_payload,
+    same_wording,
 )
 from echo_words.languages import Language, unit_context
 
@@ -731,6 +732,15 @@ def test_a_headword_transliterated_into_the_other_serbian_script_is_not_a_typo(l
     assert isinstance(parsed, ParsedUnit)
     assert parsed.word_relation == "same"
     assert parsed.suggestion is None
+
+
+def test_a_decomposed_accent_is_part_of_the_wording_not_an_edge_mark(languages):
+    decomposed = "cafe\N{COMBINING ACUTE ACCENT}"
+    composed = "caf\N{LATIN SMALL LETTER E WITH ACUTE}"
+
+    assert same_wording(decomposed, composed, languages["en"])
+    assert same_wording(f"{decomposed}!", composed, languages["en"])
+    assert not same_wording(decomposed, "cafe", languages["en"])
 
 
 def test_morphology_can_change_the_headword_without_a_spelling_suggestion(languages):

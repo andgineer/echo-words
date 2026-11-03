@@ -23,6 +23,7 @@ from echo_words.languages import (
     Language,
     plain_unit,
     split_words,
+    unit_wording,
     validate_text,
     validate_word,
 )
@@ -164,7 +165,7 @@ class Job:
     def asked(self) -> str:
         # A switch or a rebuild queues a stored spelling that may keep its `!`, while the
         # API sends every unit by its words; the model is asked the API's shape.
-        return _unit_wording(self.word) if self.intent == "unit" else self.word
+        return unit_wording(self.word) if self.intent == "unit" else self.word
 
 
 @dataclass(frozen=True)
@@ -1145,7 +1146,7 @@ class WordPipeline:
         try:
             completion = self.cascade.stream_completion(
                 # A unit is judged by its words, and a corrected headword may keep its `!`.
-                build_attestation_prompt(job.language, _unit_wording(word)),
+                build_attestation_prompt(job.language, unit_wording(word)),
                 job.language,
                 trace_id=f"{job.entry_id}-attestation{suffix}",
                 pool_only=True,
@@ -1802,11 +1803,6 @@ def _kept_previous_note(job: Job, stored: StoreResult) -> bool:
 def _voiced_context(job: Job) -> str:
     """The text a unit came from, when the unit's own audio does not already cover it."""
     return job.context if job.context and job.context != job.word else ""
-
-
-def _unit_wording(text: str) -> str:
-    # Composed first, as the API does, so a combining accent is never stripped as an edge mark.
-    return plain_unit(unicodedata.normalize("NFC", text))
 
 
 def _same_text(left: str, right: str) -> bool:

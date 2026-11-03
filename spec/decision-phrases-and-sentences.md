@@ -579,11 +579,18 @@ the formulas closing in `!` the answers kept the mark for every German and Engli
 one but `No way!` and dropped it for every Serbian one. The prompt with no
 punctuation rule, which also has no word about the heading's punctuation, dropped the
 mark from every such headword except `Happy birthday!` and `Thank you very much.`.
-A headword is judged by its words, so a mark at its edges
-costs no card: re-scored without a single new call over every answer recorded by
-every bench run, the only answers that change are four that carded nothing for such a
-mark — `Happy birthday!` twice, `Gute Nacht!` and `Thank you very much.` — and now
-card, while no answer that carded before changes its card.
+A headword is judged by its words, so a mark at its edges costs no card. All 5,816
+answers with a card part that every bench run recorded were re-scored, without a
+single new call, both this way and with the marks read as part of the headword. On
+the earlier prompts' runs four answers card only because the check reads the words:
+`"Happy birthday!"` on both, `Thank you very much.` with no punctuation rule and
+`Gute Nacht!` with the formula sentence. On the current prompt's typed run 13 of the
+46 answers card only because of it — ten formulas typed with their punctuation
+(`Bis gleich!`, `Gute Nacht!`, `Bis bald!`, `Herzlichen Glückwunsch!`,
+`Gern geschehen.`, `„Vielen Dank!“`, `Alles klar?`, `Good night!`, `See you soon!`,
+`"Happy birthday!"`) and three formulas whose mark is their own (`Happy birthday!`,
+`Merry Christmas!`, `Wie bitte?`) — so the current column of the table above depends
+on it. No recorded answer loses its card to it.
 
 The sentence naming formulas is not kept because it is a closed list of kinds of
 chunk, which the operator rejected: every ready-made chunk must card, and no list of

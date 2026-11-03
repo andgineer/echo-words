@@ -17,6 +17,7 @@ from echo_words.languages import (
     fold_for_match,
     plain_unit,
     sentence_is_source_language,
+    unit_wording,
     validate_word,
 )
 from echo_words.sanitizer import normalize_emphasis, sanitize_html
@@ -278,8 +279,8 @@ def _usable_wording(wording: str, language: Language) -> bool:
 def same_wording(first: str, second: str, language: Language) -> bool:
     """Whether two spellings are one wording: letter case, script and the punctuation at
     their edges are no part of how a wording is spelled."""
-    return fold_for_match(plain_unit(first), language) == fold_for_match(
-        plain_unit(second),
+    return fold_for_match(unit_wording(first), language) == fold_for_match(
+        unit_wording(second),
         language,
     )
 

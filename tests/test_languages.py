@@ -23,6 +23,7 @@ from echo_words.languages import (
     sentence_is_source_language,
     unit_context,
     unit_excluded_words,
+    unit_wording,
     unknown_language_hint,
     validate_text,
     validate_word,
@@ -213,6 +214,11 @@ def test_plain_unit_keeps_the_punctuation_that_belongs_to_the_unit():
     assert plain_unit("don’t") == "don’t"
     assert plain_unit("ein- und aussteigen") == "ein- und aussteigen"
     assert plain_unit("word42") == "word42"
+
+
+def test_unit_wording_composes_an_accent_before_dropping_the_edge_marks():
+    composed = "caf\N{LATIN SMALL LETTER E WITH ACUTE}"
+    assert unit_wording("„cafe\N{COMBINING ACUTE ACCENT}!“") == composed
 
 
 def test_sanitize_context_collapses_whitespace_and_control_chars():

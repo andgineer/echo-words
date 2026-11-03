@@ -536,6 +536,12 @@ def plain_unit(text: str) -> str:
     return _WORD_EDGES.sub("", text)
 
 
+def unit_wording(text: str) -> str:
+    """A unit by its words alone, composed first, as the API does, so a combining accent
+    is never stripped as an edge mark."""
+    return plain_unit(unicodedata.normalize("NFC", text))
+
+
 def plain_text(text: str) -> str:
     """Reduce pasted text to single-spaced printable characters, under no length bound."""
     printable = "".join(char if char.isprintable() else " " for char in text)
