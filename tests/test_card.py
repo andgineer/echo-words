@@ -554,10 +554,135 @@ def test_a_headword_keeps_the_punctuation_its_answer_gave_it(languages, recorded
     assert parsed.word_relation == "same"
 
 
-@pytest.mark.parametrize("word", ["Na, und?", "Gute.Nacht", "bis gleich!!bis bald"])
-def test_punctuation_inside_a_headword_is_still_refused(languages, word):
+# Formulas whose own wording has a comma between its words, refused a card while any
+# punctuation inside a headword was.
+INNER_COMMA = json.loads(
+    (Path(__file__).parent / "data" / "inner_comma_recorded.json").read_text(encoding="utf-8"),
+)
+_CARDED_WITH_THEIR_COMMA = {
+    "inner-de-nein-danke": ("nein, danke", "— Möchten Sie Kaffee? — ___."),
+    "inner-de-auf-die-plaetze": ("Auf die Plätze, fertig, los!", "___ rief der Schiedsrichter."),
+    "inner-en-no-thanks": ("no, thanks", "— Would you like some more coffee? — ___."),
+    "inner-en-oh-well": ("oh, well", "___, we will just have to try again tomorrow."),
+    "inner-en-well-well-well": (
+        "Well, well, well",
+        "___, look who decided to show up on time today.",
+    ),
+    # Its first example is the formula alone, which leaves the card no word beside it.
+    "inner-sr-ne-hvala": ("ne, hvala", "— Želite li još kave? — ___"),
+    "whole-chip-de-danke-gleichfalls": ("danke, gleichfalls", "Schönen Feierabend! — ___."),
+    "whole-chip-en-no-thanks": ("no, thanks", "___, I've had enough."),
+    "whole-chip-sr-ne-hvala": ("ne, hvala", "Želite li još malo kafe? — ___, već sam popio."),
+}
+
+
+def _recorded_card(recorded: dict, languages: dict[str, Language], **request):
+    return parse_answer_payload(
+        recorded["answer"].split("===CARD===", 1)[1],
+        request.get("submitted", recorded["submitted"]),
+        languages[recorded["lang"]],
+        unit_intent=recorded["unit_intent"],
+        context=request.get("context", recorded["context"]),
+    )
+
+
+@pytest.mark.parametrize(
+    "recorded",
+    INNER_COMMA["carded_with_their_comma"],
+    ids=[answer["shot_id"] for answer in INNER_COMMA["carded_with_their_comma"]],
+)
+def test_a_formula_s_own_comma_between_its_words_is_carded(languages, recorded):
+    parsed = _recorded_card(recorded, languages)
+
+    word, gapped = _CARDED_WITH_THEIR_COMMA[recorded["shot_id"]]
+    assert isinstance(parsed, ParsedUnit)
+    assert (parsed.note.word, parsed.word_relation) == (word, "same")
+    assert parsed.note.meaning.examples[0].gapped == gapped
+
+
+def test_a_chip_named_without_the_comma_cards_the_formula_its_sentence_marks(languages):
+    """The reader's own sentence is the card's first example, so it is enough that it
+    marks the formula with its comma, and a comma alone is no different spelling."""
+    recorded = next(
+        answer
+        for answer in INNER_COMMA["carded_with_their_comma"]
+        if answer["shot_id"] == "whole-chip-de-danke-gleichfalls"
+    )
+
+    parsed = _recorded_card(
+        recorded,
+        languages,
+        submitted="danke gleichfalls",
+        context="Sie lächelte: Danke, gleichfalls! Dann ging sie.",
+    )
+
+    assert isinstance(parsed, ParsedUnit)
+    assert (parsed.note.word, parsed.word_relation) == ("danke, gleichfalls", "same")
+    assert parsed.note.meaning.examples[0].highlighted == (
+        "Sie lächelte: <b>Danke</b>, <b>gleichfalls</b>! Dann ging sie."
+    )
+
+
+def _marked(highlighted: str) -> dict[str, str]:
+    return {"highlighted": highlighted, "translation": "Перевод."}
+
+
+@pytest.mark.parametrize(
+    ("word", "marked"),
+    [
+        ("Hund, der", "Der <b>Hund</b> schläft."),
+        # A relative clause writes the notation's letters, and still marks only the noun.
+        ("Hund, der", "Das ist der <b>Hund</b>, der immer bellt."),
+        ("laufen, lief, gelaufen", "Ich <b>laufe</b> jeden Morgen."),
+    ],
+)
+def test_dictionary_notation_a_comma_runs_through_is_no_headword(languages, word, marked):
+    with pytest.raises(CardParseError, match="comma between words no example marks"):
+        parse_answer_payload(
+            payload(word=word, meanings=[meaning(examples=[_marked(marked)])]),
+            "Hund",
+            languages["de"],
+        )
+
+
+@pytest.mark.parametrize(
+    "word",
+    [
+        "bank; banks",
+        "give up / give in",
+        "der Hund, -e",
+        "Gute.Nacht",
+        "Gute,Nacht",
+        "Gute ,Nacht",
+        "bis gleich!!bis bald",
+    ],
+)
+def test_any_other_mark_inside_a_headword_is_still_refused(languages, word):
+    """Even where an example marks exactly that wording: a semicolon or slash joins
+    alternatives, and a mark glued to a letter is notation or a slip."""
+    marked = _marked(f"Er sagte <b>{word}</b> und ging.")
     with pytest.raises(CardParseError, match="dictionary headword"):
-        parse_answer_payload(payload(word=word), "Na und?", languages["de"])
+        parse_answer_payload(
+            payload(word=word, meanings=[meaning(examples=[marked])]),
+            "Gute Nacht",
+            languages["de"],
+        )
+
+
+def test_a_typo_claim_about_a_missing_comma_is_no_typo(languages):
+    parsed = parse_answer_payload(
+        payload(
+            word="no, thanks",
+            word_relation="typo",
+            suggestion="no, thanks",
+            meanings=[meaning(examples=[_marked("<b>No, thanks</b>, I'm full.")])],
+        ),
+        "No thanks",
+        languages["en"],
+    )
+
+    assert isinstance(parsed, ParsedUnit)
+    assert (parsed.word_relation, parsed.suggestion) == ("same", None)
 
 
 @pytest.mark.parametrize("word", ["!", "?!", "„“"])
@@ -741,6 +866,13 @@ def test_a_decomposed_accent_is_part_of_the_wording_not_an_edge_mark(languages):
     assert same_wording(decomposed, composed, languages["en"])
     assert same_wording(f"{decomposed}!", composed, languages["en"])
     assert not same_wording(decomposed, "cafe", languages["en"])
+
+
+def test_a_comma_between_two_words_is_no_part_of_a_spelling(languages):
+    assert same_wording("No thanks", "no, thanks.", languages["en"])
+    assert same_wording("Hvala, takođe", "хвала такође", languages["sr"])
+    assert not same_wording("No thanks", "Not hanks", languages["en"])
+    assert not same_wording("Gute Nacht", "Gute.Nacht", languages["de"])
 
 
 def test_morphology_can_change_the_headword_without_a_spelling_suggestion(languages):

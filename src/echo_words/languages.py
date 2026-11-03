@@ -44,6 +44,9 @@ _ALLOWED_SCRIPTS: dict[str, frozenset[str]] = {
 
 # Word-internal punctuation the languages in scope actually use.
 _EXTRA_WORD_CHARS = frozenset(" -'’")
+# The one mark a unit's words may carry between them, as a formula's own wording does
+# (`No, thanks`); a semicolon, slash or glued mark is notation or a slip, not a wording.
+_COMMA_BETWEEN_WORDS = re.compile(r"(?<=[^\W\d_]), (?=[^\W\d_])")
 
 _WORD_EDGES = re.compile(r"^[^\w]+|[^\w]+$", re.UNICODE)
 SOURCE_TOKEN = re.compile(r"[^\W\d_]+(?:[-'’][^\W\d_]+)*", re.UNICODE)
@@ -542,6 +545,11 @@ def unit_wording(text: str) -> str:
     return plain_unit(unicodedata.normalize("NFC", text))
 
 
+def without_word_commas(text: str) -> str:
+    """The wording with each comma between two of its words read as the space after it."""
+    return _COMMA_BETWEEN_WORDS.sub(" ", text)
+
+
 def plain_text(text: str) -> str:
     """Reduce pasted text to single-spaced printable characters, under no length bound."""
     printable = "".join(char if char.isprintable() else " " for char in text)
@@ -567,7 +575,7 @@ def validate_word(word: str, language: Language, locale: str = DEFAULT_LOCALE) -
         return message("word.empty", locale)
     if len(word) > MAX_WORD_LENGTH:
         return message("word.too_long", locale, limit=MAX_WORD_LENGTH)
-    return _validate_script(word, language, locale)
+    return _validate_script(without_word_commas(word), language, locale)
 
 
 def validate_text(text: str, language: Language, locale: str = DEFAULT_LOCALE) -> str | None:

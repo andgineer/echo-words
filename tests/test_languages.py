@@ -28,6 +28,7 @@ from echo_words.languages import (
     validate_text,
     validate_word,
     validated_language,
+    without_word_commas,
 )
 
 
@@ -269,6 +270,34 @@ def test_digits_and_punctuation_are_rejected(languages):
     hint = "Letters, spaces, hyphens and apostrophes only."
     assert validate_word("word42", languages["en"]) == hint
     assert validate_word("word!", languages["en"]) == hint
+
+
+@pytest.mark.parametrize(
+    ("code", "unit"),
+    [
+        ("en", "no, thanks"),
+        ("en", "Well, well, well"),
+        ("de", "Auf die Plätze, fertig, los"),
+        ("sr", "Хвала, такође"),
+        ("sr", "ne, hvala"),
+    ],
+)
+def test_a_comma_between_two_words_of_a_unit_passes(languages, code, unit):
+    assert validate_word(unit, languages[code]) is None
+
+
+@pytest.mark.parametrize(
+    "unit",
+    ["bank; banks", "give up / give in", "der Hund, -e", "Gute.Nacht", "Gute,Nacht", "no,  thanks"],
+)
+def test_any_other_mark_between_words_is_refused(languages, unit):
+    assert validate_word(unit, languages["de"]) == "Letters, spaces, hyphens and apostrophes only."
+
+
+def test_a_comma_is_read_as_the_space_after_it_only_between_two_words():
+    assert without_word_commas("Well, well, well") == "Well well well"
+    assert without_word_commas("Hund, -e") == "Hund, -e"
+    assert without_word_commas("Gute,Nacht") == "Gute,Nacht"
 
 
 def test_a_letter_of_another_script_names_the_script(languages):

@@ -120,6 +120,22 @@ def test_first_overlapping_proposal_wins(languages):
     assert [item.label for item in segments] == ["take care", "take", "care", "of", "it"]
 
 
+def test_a_formula_s_comma_between_its_words_stays_in_the_chip_s_name(languages):
+    segments = fill_text_segments(
+        [
+            {"label": "danke, gleichfalls", "surface": "Danke, gleichfalls", "why": "Ответ."},
+            {"label": "Abend; Abende", "surface": "schönen Abend", "why": "Пожелание."},
+        ],
+        "Danke, gleichfalls! Und einen schönen Abend.",
+        languages["de"],
+    )
+
+    assert [item.label for item in segments[:2]] == ["danke, gleichfalls", "Danke"]
+    assert segments[0].surface == "Danke gleichfalls"
+    # A name that joins alternatives is no lookup, so the chip falls back to its words.
+    assert "schönen Abend" in [item.label for item in segments]
+
+
 def test_an_unusable_internal_label_does_not_delete_a_surface_match(languages):
     segments = fill_text_segments(
         [{"label": "вратити se!", "surface": "се вратио"}],

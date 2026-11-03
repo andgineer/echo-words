@@ -1269,6 +1269,52 @@ def test_a_chip_whose_context_holds_one_more_word_is_still_asked_in_that_context
     assert sorted(voiced) == ["Bis gleich, Anna!", "bis gleich"]
 
 
+RECORDED_INNER_COMMA = {
+    answer["shot_id"]: answer
+    for answer in json.loads(
+        (Path(__file__).parent / "data" / "inner_comma_recorded.json").read_text(encoding="utf-8"),
+    )["carded_with_their_comma"]
+}
+
+
+@pytest.mark.parametrize(
+    ("chip", "lang", "carried", "shot_id"),
+    [
+        ("danke, gleichfalls", "de", "Danke, gleichfalls!", "whole-chip-de-danke-gleichfalls"),
+        ("ne, hvala", "sr", "Ne, hvala.", "whole-chip-sr-ne-hvala"),
+    ],
+)
+def test_a_chip_named_with_a_formula_s_comma_is_asked_and_carded_with_it(
+    monkeypatch: pytest.MonkeyPatch,
+    settings: Settings,
+    chip: str,
+    lang: str,
+    carried: str,
+    shot_id: str,
+):
+    recorded = RECORDED_INNER_COMMA[shot_id]
+    broker, entry, voiced = _chip_tapped(
+        monkeypatch,
+        settings,
+        carried,
+        chip=chip,
+        lang=lang,
+        payload=recorded["answer"].split(CARD_DELIMITER, 1)[1].strip(),
+    )
+
+    language = load_languages(settings.languages_config)[lang]
+    assert _article_prompts(broker) == [build_prompt(language, chip, "Russian", unit_intent=True)]
+    assert (entry["status"], entry["word"], entry["card_status"]) == ("done", chip, "added")
+    assert voiced == [chip]
+
+
+def test_a_chip_whose_words_any_other_mark_joins_is_refused(client: TestClient):
+    response = submit(client, word="bank; banks", lang="en", shape="unit")
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Letters, spaces, hyphens and apostrophes only."
+
+
 RECORDED_COMBINATIONS = json.loads(
     (Path(__file__).parent / "data" / "whole_text_combinations_recorded.json").read_text(
         encoding="utf-8",

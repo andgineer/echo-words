@@ -3,6 +3,7 @@ import json
 import logging
 from collections.abc import AsyncIterator, Iterable
 from dataclasses import replace
+from pathlib import Path
 
 from fakes import FakeDirectClient, FakeHandle, fake_cascade
 from llmbroker import NoLLMAvailableError
@@ -1446,6 +1447,39 @@ async def test_the_references_are_asked_about_a_headword_without_its_mark(langua
         assert [note.word for note, _deck, _audio in anki.calls] == ["Happy birthday!"]
         assert (asked, searched) == (["Happy birthday"], ["Happy birthday"])
         assert entry.card_status == ADDED_STATUS
+    finally:
+        await pipeline.close()
+
+
+_NEIN_DANKE = next(
+    answer
+    for answer in json.loads(
+        (Path(__file__).parent / "data" / "inner_comma_recorded.json").read_text(encoding="utf-8"),
+    )["carded_with_their_comma"]
+    if answer["shot_id"] == "inner-de-nein-danke"
+)
+
+
+async def test_a_typed_formula_is_carded_and_looked_up_with_the_comma_between_its_words(
+    languages,
+):
+    anki = RecordingAnki(Added(1, None, ("Recognition",)))
+    asked = []
+
+    async def dictionary(word, _language):
+        asked.append(word)
+        return True
+
+    cascade = ScriptedCascade([Completion([_NEIN_DANKE["answer"]])])
+    pipeline = WordPipeline(cascade, target_lang="ru", anki=anki, dictionary=dictionary)
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(languages["de"], "Nein, danke.", False)
+        await pipeline.join()
+
+        assert [note.word for note, _deck, _audio in anki.calls] == ["nein, danke"]
+        assert asked == ["nein, danke"]
+        assert (entry.card_status, entry.suggestion) == (ADDED_STATUS, None)
     finally:
         await pipeline.close()
 

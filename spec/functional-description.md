@@ -159,18 +159,28 @@ The four requirements every design decision is weighed against:
    which is the answer's judgement: the backend neither strips nor classifies
    it, and the card shows the headword as the answer wrote it. Whatever the
    backend checks or looks up about a headword reads its words without the
-   punctuation at its edges. A mark there never costs the card, while
-   punctuation inside a headword still does; a headword and a submission that
-   differ only by such marks are one spelling, never a correction; and the
-   dictionary, the encyclopedia and the recordings are asked about the words
-   alone.
+   punctuation at its edges. A mark there never costs the card. Inside a
+   headword the one mark a wording carries is a comma between two of its
+   words — `No, thanks`, `Danke, gleichfalls`, `Well, well, well` — and it
+   stands where one of the card's examples marks that wording comma and all,
+   as a formula's own sentences do and dictionary notation such as
+   `Hund, der` or `laufen, lief, gelaufen` never does. Every other mark inside
+   a headword still costs the card: a semicolon or slash joining alternatives
+   (`bank; banks`, `give up / give in`), a comma that opens an ending
+   (`der Hund, -e`), and a mark glued between letters (`Gute.Nacht`). A
+   headword and a submission that differ only by marks at their edges or by a
+   comma between their words are one spelling, never a correction; and the
+   dictionary, the encyclopedia and the recordings are asked about the wording
+   without the marks at its edges.
 
 2. The backend validates the input against the selected language's
    allowed script (Latin with accented letters — café, naïve, Straße —
    for English and German; Latin or Cyrillic for Serbian) and length
    within a small limit. Punctuation clinging to the edges of a unit is
    dropped before it is judged, because a shared selection carries it:
-   “Straße.” is the word Straße. Running text is held to the same
+   “Straße.” is the word Straße. A unit keeps a comma between two of its
+   words, so a chip named after a formula (`no, thanks`) is asked with it,
+   and any other mark inside a unit is refused. Running text is held to the same
    script rule word by word — so it keeps its commas, digits and
    quotation marks — and to a longer 500-character length bound, the same one
    that caps the context a suggested unit is submitted with. Anything else —

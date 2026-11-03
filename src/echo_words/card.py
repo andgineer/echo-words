@@ -19,6 +19,7 @@ from echo_words.languages import (
     sentence_is_source_language,
     unit_wording,
     validate_word,
+    without_word_commas,
 )
 from echo_words.sanitizer import normalize_emphasis, sanitize_html
 from echo_words.segments import Segment, fill_text_segments, parse_component_segments
@@ -182,6 +183,8 @@ def parse_answer_payload(  # noqa: C901, PLR0912, PLR0913 - the answer discrimin
             card.get("context_surface"),
             request,
         )
+    if not _marked_in_an_example(headword, retained, language):
+        raise CardParseError("answer.word has a comma between words no example marks")
     note = Note(headword, retained, sense)
     try:
         segments = parse_component_segments(
@@ -277,12 +280,32 @@ def _usable_wording(wording: str, language: Language) -> bool:
 
 
 def same_wording(first: str, second: str, language: Language) -> bool:
-    """Whether two spellings are one wording: letter case, script and the punctuation at
-    their edges are no part of how a wording is spelled."""
-    return fold_for_match(unit_wording(first), language) == fold_for_match(
-        unit_wording(second),
+    """Whether two spellings are one wording: letter case, script, the punctuation at
+    their edges and a comma between their words are no part of how a wording is spelled."""
+    return fold_for_match(without_word_commas(unit_wording(first)), language) == fold_for_match(
+        without_word_commas(unit_wording(second)),
         language,
     )
+
+
+def _marked_in_an_example(headword: str, meanings: list[Meaning], language: Language) -> bool:
+    """Whether an example marks a headword a comma runs through, comma and all: a formula's
+    marks do (`<b>Danke, gleichfalls</b>!`), notation's (`Hund, der`) never do."""
+    wording = " ".join(unit_wording(headword).split())
+    if without_word_commas(wording) == wording:
+        return True
+    marked = re.compile(rf"(?<!\w){re.escape(fold_for_match(wording, language))}(?!\w)")
+    return any(
+        marked.search(fold_for_match(_marked_stretch(example.highlighted), language))
+        for meaning in meanings
+        for example in meaning.examples
+    )
+
+
+def _marked_stretch(highlighted: str) -> str:
+    """The sentence from its first mark to its last, as plain single-spaced text."""
+    stretch = highlighted[highlighted.find("<b>") : highlighted.rfind("</b>")]
+    return " ".join(unescape(_BOLD_TAG.sub("", stretch)).split())
 
 
 def _parse_meaning(value: Any, request: "_Request") -> Meaning | None:

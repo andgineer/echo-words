@@ -1,0 +1,133 @@
+{
+  "about": "Free-pool answers whose headword keeps a comma between its words, each refused a card while any punctuation inside a headword was; a free combination with such a comma that came back a unit; and the judgement each chip named with such a comma was given.",
+  "carded_with_their_comma": [
+    {
+      "shot_id": "inner-de-nein-danke",
+      "lang": "de",
+      "submitted": "Nein, danke.",
+      "context": "",
+      "unit_intent": false,
+      "answered_by": "google-gemini-3.5-flash-lite",
+      "recorded_in": "experiments/.bench-inner-comma",
+      "answer": "<b>nein, danke</b>\n\nнет, спасибо; спасибо, не надо (вежливый отказ)\n\nУстойчивая формула вежливого отказа, объединяющая отрицательную частицу и благодарность. Порядок слов фиксированный. Используется при предложении еды, напитков, помощи или услуг.\n\nЧасто сопровождается легким покачиванием головы или жестом открытой ладони. В неформальной обстановке может сокращаться до одного из компонентов, но полная фраза звучит более вежливо.\n\nПримеры:\n— Möchten Sie Kaffee? — <b>Nein, danke</b>. (— Хотите кофе? — Нет, спасибо.)\n— Noch ein Stück Kuchen? — <b>Nein, danke</b>, ich bin satt. (— Еще кусочек пирога? — Нет, спасибо, я сыт.)\n— Kann ich Ihnen helfen? — <b>Nein, danke</b>, ich komme allein zurecht. (— Могу я вам помочь? — Нет, спасибо, я сам справлюсь.)\n\n===CARD===\n{\"submission\": \"Nein, danke.\", \"submission_language\": \"de\", \"kind\": \"unit\", \"word\": \"nein, danke\", \"word_relation\": \"same\", \"suggestion\": \"\", \"meanings\": [{\"label\": \"\", \"translations\": [\"нет, спасибо\", \"спасибо, не надо\"], \"examples\": [{\"highlighted\": \"— Möchten Sie Kaffee? — <b>Nein, danke</b>.\", \"translation\": \"— Хотите кофе? — Нет, спасибо.\"}, {\"highlighted\": \"— Noch ein Stück Kuchen? — <b>Nein, danke</b>, ich bin satt.\", \"translation\": \"— Еще кусочек пирога? — Нет, спасибо, я сыт.\"}]}], \"segments\": [{\"label\": \"nein\", \"surface\": \"Nein\", \"why\": \"отрицательная частица для вежливого отказа\"}, {\"label\": \"danke\", \"surface\": \"danke\", \"why\": \"выражение вежливой благодарности за предложение\"}]}"
+    },
+    {
+      "shot_id": "inner-de-auf-die-plaetze",
+      "lang": "de",
+      "submitted": "Auf die Plätze, fertig, los!",
+      "context": "",
+      "unit_intent": false,
+      "answered_by": "google-gemini-3.5-flash-lite",
+      "recorded_in": "experiments/.bench-inner-comma",
+      "answer": "<b>Auf die Plätze, fertig, los!</b>\n\nНа старт, внимание, марш! (устойчивое выражение, используемое для начала соревнований, забегов или совместных действий).\n\nЭто традиционная формула старта в спортивных состязаниях. Дословно она означает: «На места, готовы, пошли!» (или «начали!»). \n1. <i>Auf die Plätze</i> — «на места» (призыв участникам занять исходные позиции).\n2. <i>Fertig</i> — «готовы» (состояние готовности).\n3. <i>Los</i> — «марш!» / «начали!» (команда к началу действия от глагола <i>losgehen</i>).\n\nПримеры:\n- <b>Auf die Plätze, fertig, los!</b> rief der Schiedsrichter.\n- <b>Auf die Plätze, fertig, los!</b> und die Kinder rannen los.\n\n===CARD===\n{\"submission\": \"Auf die Plätze, fertig, los!\", \"submission_language\": \"de\", \"kind\": \"unit\", \"word\": \"Auf die Plätze, fertig, los!\", \"word_relation\": \"same\", \"suggestion\": \"\", \"meanings\": [{\"label\": \"\", \"translations\": [\"На старт, внимание, марш!\"], \"examples\": [{\"highlighted\": \"<b>Auf die Plätze, fertig, los!</b> rief der Schiedsrichter.\", \"translation\": \"«На старт, внимание, марш!» — крикнул судья.\"}, {\"highlighted\": \"<b>Auf die Plätze, fertig, los!</b> und die Kinder rannen los.\", \"translation\": \"На старт, внимание, марш! — и дети побежали.\"}]}], \"segments\": [{\"label\": \"auf\", \"surface\": \"auf\", \"why\": \"предлог направления\"}, {\"label\": \"der Platz\", \"surface\": \"Plätze\", \"why\": \"множественное число существительного место/площадка\"}, {\"label\": \"fertig\", \"surface\": \"fertig\", \"why\": \"прилагательное в значении готовый\"}, {\"label\": \"los\", \"surface\": \"los\", \"why\": \"междометие или наречие начала действия\"}]}"
+    },
+    {
+      "shot_id": "inner-en-no-thanks",
+      "lang": "en",
+      "submitted": "No, thanks.",
+      "context": "",
+      "unit_intent": false,
+      "answered_by": "google-gemini-3.5-flash-lite",
+      "recorded_in": "experiments/.bench-inner-comma",
+      "answer": "<b>no, thanks</b>\n\nнет, спасибо; спасибо, не надо (вежливый отказ от предложения, еды, напитка или помощи)\n\nУстойчивая вежливая формула, состоящая из отрицательной частицы и существительного в роли междометия. Буквально означает «нет, спасибо [вам]», выражая вежливый отказ без дополнительных объяснений.\n\n— Would you like some more coffee? — <b>No, thanks</b>.\n— Хотите еще кофе? — <b>Спасибо, не надо</b>.\n\n— Can I help you with those bags? — <b>No, thanks</b>, I can manage.\n— Помочь вам с этими сумками? — <b>Нет, спасибо</b>, я справлюсь.\n\n— Do you need a plastic bag? — <b>No, thanks</b>.\n— Вам нужен пластиковый пакет? — <b>Нет, спасибо</b>.\n\n===CARD===\n{\"submission\": \"No, thanks.\", \"submission_language\": \"en\", \"kind\": \"unit\", \"word\": \"no, thanks\", \"word_relation\": \"same\", \"suggestion\": \"\", \"meanings\": [{\"label\": \"offer\", \"translations\": [\"нет, спасибо\", \"спасибо, не надо\"], \"examples\": [{\"highlighted\": \"— Would you like some more coffee? — <b>No, thanks</b>.\", \"translation\": \"— Хотите еще кофе? — Спасибо, не надо.\"}, {\"highlighted\": \"— Can I help you with those bags? — <b>No, thanks</b>, I can manage.\", \"translation\": \"— Помочь вам с этими сумками? — Нет, спасибо, я справлюсь.\"}]}], \"segments\": [{\"label\": \"no\", \"surface\": \"No\", \"why\": \"отрицательная частица для выражения отказа\"}, {\"label\": \"thanks\", \"surface\": \"thanks\", \"why\": \"сокращенная форма благодарности за предложение\"}]}"
+    },
+    {
+      "shot_id": "inner-en-oh-well",
+      "lang": "en",
+      "submitted": "Oh, well",
+      "context": "",
+      "unit_intent": false,
+      "answered_by": "google-gemini-3.5-flash-lite",
+      "recorded_in": "experiments/.bench-inner-comma",
+      "answer": "<b>oh, well</b>\nну что ж, ладно, так уж и быть, ничего не поделаешь (разговорное)\n\nВыражение состоит из двух междометий. Первое (<i>oh</i>) выражает эмоцию — досаду, удивление или смирение. Второе (<i>well</i>) используется для паузы, смены темы или выражения согласия. Вместе они образуют устоявшуюся формулу смирения с неизбежным, разочарования или принятия ситуации, которую нельзя изменить.\n\nИспользуется самостоятельно в начале реплики для выражения легкого разочарования, уступки или примирения с неблагоприятным положением дел. Часто сопровождается вздохом или пожиманием плечами.\n\n— Мы опоздали на поезд. — <b>Oh, well</b>, придется ехать на следующем.\n<b>Oh, well</b>, я попытался, но у меня ничего не вышло.\n— План сорвался. — <b>Oh, well</b>, бывает и хуже.\n\n===CARD===\n{\"submission\": \"Oh, well\", \"submission_language\": \"en\", \"kind\": \"unit\", \"word\": \"oh, well\", \"word_relation\": \"same\", \"suggestion\": \"\", \"meanings\": [{\"label\": \"acceptance\", \"translations\": [\"ну что ж\", \"ладно\", \"ничего не поделаешь\"], \"examples\": [{\"highlighted\": \"<b>Oh, well</b>, we will just have to try again tomorrow.\", \"translation\": \"Ну что ж, нам просто придется попробовать снова завтра.\"}, {\"highlighted\": \"<b>Oh, well</b>, it was worth a shot.\", \"translation\": \"Ничего не поделаешь, это стоило попытки.\"}]}], \"segments\": [{\"label\": \"oh\", \"surface\": \"Oh\", \"why\": \"выражает эмоциональную реакцию или досаду\"}, {\"label\": \"well\", \"surface\": \"well\", \"why\": \"служит для смягчения ситуации или перехода к принятию\"}]}"
+    },
+    {
+      "shot_id": "inner-en-well-well-well",
+      "lang": "en",
+      "submitted": "Well, well, well",
+      "context": "",
+      "unit_intent": false,
+      "answered_by": "google-gemini-3.5-flash-lite",
+      "recorded_in": "experiments/.bench-inner-comma",
+      "answer": "<b>Well, well, well</b>\nого, вот это да, надо же, батюшки\nразговорное, неофициальное\n\nИспользуется для выражения удивления, неожиданности, иронии или удовлетворения при встрече с кем-то или при обнаружении неожиданных обстоятельств. Троекратное повторение слова усиливает эмоциональную окраску, добавляя нотку театральности, сарказма или торжества.\n\nПроисхождение связано с усилением обычного восклицания <i>well</i> (ну же, так), которое в британском и американском английском традиционно повторяется для привлечения внимания или выражения оценки ситуации.\n\n<p><b>Well, well, well</b>, look who decided to show up on time today.</p>\n<translation>Ого, смотрите-ка, кто решил явиться вовремя сегодня.</translation>\n\n<p><b>Well, well, well</b>, what do we have here?</p>\n<translation>Ба, что это тут у нас?</translation>\n\n<p><b>Well, well, well</b>, I never thought I would see you in this place.</p>\n<translation>Надо же, я никак не думал встретить тебя в этом месте.</translation>\n\n===CARD===\n{\"submission\": \"Well, well, well\", \"submission_language\": \"en\", \"kind\": \"unit\", \"word\": \"Well, well, well\", \"word_relation\": \"same\", \"suggestion\": \"\", \"meanings\": [{\"label\": \"\", \"translations\": [\"ого\", \"вот это да\", \"надо же\", \"батюшки\"], \"examples\": [{\"highlighted\": \"<b>Well, well, well</b>, look who decided to show up on time today.\", \"translation\": \"Ого, смотрите-ка, кто решил явиться вовремя сегодня.\"}, {\"highlighted\": \"<b>Well, well, well</b>, what do we have here?\", \"translation\": \"Ба, что это тут у нас?\"}, {\"highlighted\": \"<b>Well, well, well</b>, I never thought I would see you in this place.\", \"translation\": \"Надо же, я никак не думал встретить тебя в этом месте.\"}]}],\"segments\": []}"
+    },
+    {
+      "shot_id": "inner-sr-ne-hvala",
+      "lang": "sr",
+      "submitted": "Ne, hvala.",
+      "context": "",
+      "unit_intent": false,
+      "answered_by": "google-gemini-3.5-flash-lite",
+      "recorded_in": "experiments/.bench-inner-comma",
+      "answer": "Нет, спасибо.\n\nЭто стандартная вежливая формула отказа. Выражение состоит из отрицательной частицы <b>Ne</b> и вежливого обращения <b>hvala</b>.\n\n<b>Ne, hvala.</b>\n1. Нет, спасибо.\n2. Нет, благодарю.\n\nИспользование:\nВыражение используется в повседневной речи при отказе от предложенной еды, напитков, помощи или услуг.\n\nПримеры:\n— Želite li još kave? — <b>Ne, hvala.</b>\n(— Хотите еще кофе? — Нет, спасибо.)\n— Mogu li vam pomoći? — <b>Ne, hvala</b>, snaći ću se.\n(— Могу ли я вам помочь? — Нет, спасибо, я справлюсь.)\n— Hoćete li ovu torbu? — <b>Ne, hvala</b>, imam svoju.\n(— Хотите эту сумку? — Нет, спасибо, у меня своя.)\n\n===CARD===\n{\"submission\": \"Ne, hvala.\", \"submission_language\": \"sr\", \"kind\": \"unit\", \"word\": \"ne, hvala\", \"word_relation\": \"same\", \"suggestion\": \"\", \"meanings\": [{\"label\": \"\", \"translations\": [\"нет, спасибо\", \"нет, благодарю\"], \"examples\": [{\"highlighted\": \"<b>Ne, hvala.</b>\", \"translation\": \"Нет, спасибо.\"}, {\"highlighted\": \"— Želite li još kave? — <b>Ne, hvala.</b>\", \"translation\": \"— Хотите еще кофе? — Нет, спасибо.\"}]}], \"segments\": [{\"label\": \"ne\", \"surface\": \"Ne\", \"why\": \"отрицательная частица\"}, {\"label\": \"hvala\", \"surface\": \"hvala\", \"why\": \"существительное в значении благодарности\"}]}"
+    },
+    {
+      "shot_id": "whole-chip-de-danke-gleichfalls",
+      "lang": "de",
+      "submitted": "danke, gleichfalls",
+      "context": "",
+      "unit_intent": true,
+      "answered_by": "google-gemini-3.5-flash-lite",
+      "recorded_in": "experiments/.bench-inner-comma",
+      "answer": "<b>danke, gleichfalls</b>\nвзаимно, спасибо, и вам того же\n\nЭто устойчивое вежливое выражение используется как ответ на пожелание, комплимент или благодарность. Слово <i>danke</i> выражает благодарность или принятие пожелания, а <i>gleichfalls</i> означает «равным образом» или «также». Вместе они позволяют быстро и вежливо вернуть добрые слова собеседнику, не повторяя его фразу полностью. Выражение уместно как в повседневном общении с друзьями, так и в сфере обслуживания при общении с незнакомыми людьми.\n\n— Schönen Feierabend! — <b>Danke, gleichfalls</b>.\n— Хорошего вечера после работы! — Спасибо, и вам того же.\n— Guten Appetit! — <b>Danke, gleichfalls</b>.\n— Приятного аппетита! — Взаимно.\n— Einen schönen Sonntag noch! — <b>Danke, gleichfalls</b>.\n— Хорошего воскресенья! — И вам того же, взаимно.\n\n===CARD===\n{\"kind\": \"unit\", \"word\": \"danke, gleichfalls\", \"word_relation\": \"same\", \"suggestion\": \"\", \"meanings\": [{\"label\": \"\", \"translations\": [\"взаимно\", \"спасибо, и вам того же\"], \"examples\": [{\"highlighted\": \"Schönen Feierabend! — <b>Danke, gleichfalls</b>.\", \"translation\": \"Хорошего вечера после работы! — Спасибо, и вам того же.\"}, {\"highlighted\": \"Guten Appetit! — <b>Danke, gleichfalls</b>.\", \"translation\": \"Приятного аппетита! — Взаимно.\"}, {\"highlighted\": \"Einen schönen Sonntag noch! — <b>Danke, gleichfalls</b>.\", \"translation\": \"Хорошего воскресенья! — И вам того же, взаимно.\"}]}], \"segments\": [{\"label\": \"danke\", \"surface\": \"danke\", \"why\": \"выражает благодарность и принятие пожелания\"}, {\"label\": \"gleichfalls\", \"surface\": \"gleichfalls\", \"why\": \"означает «равным образом» или «также»\"}]}"
+    },
+    {
+      "shot_id": "whole-chip-en-no-thanks",
+      "lang": "en",
+      "submitted": "no, thanks",
+      "context": "",
+      "unit_intent": true,
+      "answered_by": "google-gemini-3.5-flash-lite",
+      "recorded_in": "experiments/.bench-inner-comma",
+      "answer": "<b>no, thanks</b>\nнет, спасибо; спасибо, не надо\nВежливый и твердый отказ от предложенной еды, напитка, помощи или услуги. Выражение звучит мягко благодаря слову thanks, поэтому оно уместно как в дружеском общении, так и в официальной обстановке. Частица no выражает отрицание или отказ, а существительное thanks выражает признательность за предложение, смягчая прямоту отказа.\n1. — Would you like some more coffee? — <b>No, thanks</b>, I've had enough. (— Хотите еще кофе? — Нет, спасибо, я уже наелся.)\n2. <b>No, thanks</b>, I can manage this bag myself. (Нет, спасибо, я сам справлюсь с этой сумкой.)\n3. Do you need a plastic bag? — <b>No, thanks</b>. (Вам нужен пластиковый пакет? — Нет, спасибо.)\n===CARD===\n{\"kind\": \"unit\", \"word\": \"no, thanks\", \"word_relation\": \"same\", \"suggestion\": \"\", \"meanings\": [{\"label\": \"\", \"translations\": [\"нет, спасибо\", \"спасибо, не надо\"], \"examples\": [{\"highlighted\": \"<b>No, thanks</b>, I've had enough.\", \"translation\": \"Нет, спасибо, я уже наелся.\"}, {\"highlighted\": \"<b>No, thanks</b>, I can manage this bag myself.\", \"translation\": \"Нет, спасибо, я сам справлюсь с этой сумкой.\"}, {\"highlighted\": \"Do you need a plastic bag? — <b>No, thanks</b>.\", \"translation\": \"Вам нужен пластиковый пакет? — Нет, спасибо.\"}]}], \"segments\": [{\"label\": \"no\", \"surface\": \"no\", \"why\": \"выражает прямой отказ\"}, {\"label\": \"thank\", \"surface\": \"thanks\", \"why\": \"выражает признательность за предложение и смягчает отказ\"}]}"
+    },
+    {
+      "shot_id": "whole-chip-sr-ne-hvala",
+      "lang": "sr",
+      "submitted": "ne, hvala",
+      "context": "",
+      "unit_intent": true,
+      "answered_by": "google-gemini-3.5-flash-lite",
+      "recorded_in": "experiments/.bench-inner-comma",
+      "answer": "<b>ne, hvala</b>\n\nнет, спасибо\n\nВыражение состоит из отрицательной частицы <i>ne</i> (нет) и существительного <i>hvala</i> (спасибо, благодарность). Такая комбинация служит вежливым отказом от предложения, угощения или помощи, совмещая категоричность отказа с проявлением хороших манер.\n\nУпотребляется в повседневном общении при покупках, в гостях или в сфере услуг. Часто произносится с чуть восходящей интонацией дружелюбия, чтобы смягчить отказ.\n\nŽelite li još malo kafe? — <b>Ne, hvala</b>, već sam popio.\nMožem li vam pomoći s ovim torbama? — <b>Ne, hvala</b>, snaći ću se.\nDa li vam treba račun? — <b>Ne, hvala</b>, ne treba mi.\n===CARD===\n{\"kind\": \"unit\", \"word\": \"ne, hvala\", \"word_relation\": \"same\", \"suggestion\": \"\", \"meanings\": [{\"label\": \"\", \"translations\": [\"нет, спасибо\"], \"examples\": [{\"highlighted\": \"Želite li još malo kafe? — <b>Ne, hvala</b>, već sam popio.\", \"translation\": \"Хотите еще немного кофе? — Нет, спасибо, я уже выпил.\"}, {\"highlighted\": \"Možem li vam pomoći s ovim torbama? — <b>Ne, hvala</b>, snaći ću se.\", \"translation\": \"Могу ли я помочь вам с этими сумками? — Нет, спасибо, я справлюсь.\"}, {\"highlighted\": \"Da li vam treba račun? — <b>Ne, hvala</b>, ne treba mi.\", \"translation\": \"Вам нужен чек? — Нет, спасибо, мне не нужен.\"}]}], \"segments\": [{\"label\": \"ne\", \"surface\": \"ne\", \"why\": \"отрицательная частица со значением нет\"}, {\"label\": \"hvala\", \"surface\": \"hvala\", \"why\": \"существительное со значением спасибо\"}]}"
+    }
+  ],
+  "free_combination_as_a_unit": [
+    {
+      "shot_id": "comma-en-cold-winter",
+      "lang": "en",
+      "submitted": "a long, cold winter",
+      "context": "",
+      "unit_intent": false,
+      "answered_by": "google-gemini-3.5-flash-lite",
+      "recorded_in": "experiments/.bench-inner-comma",
+      "answer": "<b>long, cold winter</b>\n\nдолгая холодная зима\n\nЭто устойчивое сочетание слов описывает исключительно тяжелый, суровый и затяжной зимний период, часто ассоциирующийся с испытаниями, трудностями или эмоциональным спадом.\n\nКаждое слово вносит свой вклад в образ: прилагательное <i>long</i> подчеркивает утомительную продолжительность, <i>cold</i> указывает на экстремально низкие температуры, а <i>winter</i> обозначает само время года. Вместе они образуют устоявшийся поэтичный и разговорный оборот.\n\nМы пережили <b>a long, cold winter</b> в этом году.\nВпереди нас ждет <b>a long, cold winter</b>.\n\n===CARD===\n{\"submission\": \"a long, cold winter\", \"submission_language\": \"en\", \"kind\": \"unit\", \"word\": \"long, cold winter\", \"word_relation\": \"same\", \"suggestion\": \"\", \"meanings\": [{\"label\": \"weather\", \"translations\": [\"долгая холодная зима\"], \"examples\": [{\"highlighted\": \"We survived <b>a long, cold winter</b> in the mountains.\", \"translation\": \"Мы пережили долгую холодную зиму в горах.\"}]}], \"segments\": [{\"label\": \"long\", \"surface\": \"long\", \"why\": \"указывает на большую продолжительность\"}, {\"label\": \"cold\", \"surface\": \"cold\", \"why\": \"характеризует низкую температуру\"}, {\"label\": \"winter\", \"surface\": \"winter\", \"why\": \"обозначает время года\"}]}"
+    }
+  ],
+  "chip_judgements": [
+    {
+      "shot_id": "attestation-whole-chip-de-danke-gleichfalls",
+      "lang": "de",
+      "submitted": "danke, gleichfalls",
+      "answered_by": "groq-gpt-oss-120b",
+      "recorded_in": "experiments/.bench-inner-comma",
+      "answer": "{\"used\": true, \"where\": \"standard everyday German, informal to semi‑formal spoken and written contexts\"}"
+    },
+    {
+      "shot_id": "attestation-whole-chip-en-no-thanks",
+      "lang": "en",
+      "submitted": "no, thanks",
+      "answered_by": "groq-gpt-oss-120b",
+      "recorded_in": "experiments/.bench-inner-comma",
+      "answer": "{\"used\": true, \"where\": \"general spoken English, polite refusal in everyday conversation\"}"
+    },
+    {
+      "shot_id": "attestation-whole-chip-sr-ne-hvala",
+      "lang": "sr",
+      "submitted": "ne, hvala",
+      "answered_by": "groq-gpt-oss-120b",
+      "recorded_in": "experiments/.bench-inner-comma",
+      "answer": "{\"used\": true, \"where\": \"colloquial everyday speech, polite refusal\"}"
+    }
+  ]
+}
