@@ -3020,11 +3020,19 @@ def typed_review_packet(rows: dict[str, Shot], asked: frozenset[str]) -> dict[st
     return _extra_packet("typed", rows, asked, items)
 
 
-def _print_availability(rows: dict[str, Shot], attempts: list[Shot], total: int) -> None:
+def _print_availability(
+    rows: dict[str, Shot],
+    attempts: list[Shot],
+    ids: frozenset[str],
+    asked: frozenset[str],
+) -> None:
     calls = [row for row in attempts if row.metrics.get("answered")]
     tally = Counter(row.answered_by or "none" for row in calls)
+    total = len(asked)
     print("AVAILABILITY")
     print(f"  recorded fixtures             {len(rows)}/{total}")
+    # A run killed early leaves its remaining fixtures unasked, which the ratio above hides.
+    print(f"  fixtures never asked here     {len(ids - asked)} of {len(ids)}")
     print(
         "  provider answers              "
         f"{sum(bool(row.metrics.get('answered')) for row in rows.values())}/{total}",
@@ -3052,7 +3060,7 @@ def report_whole_text(out: Path, attempts: list[Shot]) -> None:
     }
     print("WHOLE-TEXT CHIPS — AUTOMATED SCREEN, outside every tier")
     print("Fresh-agent semantic review of the concrete review packet is mandatory before acceptance.\n")
-    _print_availability(rows, attempts, len(asked))
+    _print_availability(rows, attempts, WHOLE_TEXT_CHIP_IDS, asked)
     print("WHOLE-TEXT CHIPS — asked as a bare lookup (diagnostic, gates nothing)")
     print(f"  cards built                   {ratio(list(rows.values()), 'four_cards_ready')}")
     if judgements:
@@ -3087,7 +3095,7 @@ def report_typed(out: Path, attempts: list[Shot]) -> None:
     rows = {shot_id: row for shot_id, row in current.items() if shot_id in asked}
     print("TYPED VERDICTS — AUTOMATED SCREEN, outside every tier")
     print("Fresh-agent semantic review of the concrete review packet is mandatory before acceptance.\n")
-    _print_availability(rows, attempts, len(asked))
+    _print_availability(rows, attempts, TYPED_IDS, asked)
     print("VERDICTS — the branch each class should take (diagnostic, gates nothing)")
     for klass, description in TYPED_CLASSES.items():
         cases = [case for case in held if case.klass == klass]

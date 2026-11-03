@@ -1875,6 +1875,8 @@ def test_a_directory_of_whole_text_chips_is_screened_without_the_tier_screen(tmp
     assert "TYPED VERDICTS" not in printed
     assert "pool-model 1" in printed
     assert "recorded fixtures             2/2" in printed
+    unasked = len(bench.WHOLE_TEXT_CHIP_IDS) - 2
+    assert f"fixtures never asked here     {unasked} of {unasked + 2}" in printed
     assert "whole-chip-sr-laku-noc" not in printed
     packet = json.loads((out / "review-packet-whole-text.json").read_text(encoding="utf-8"))
     items = {item["fixture_id"]: item for item in packet["items"]}
@@ -2011,6 +2013,21 @@ def test_a_directory_of_inner_commas_is_screened_for_the_comma_each_headword_kep
     assert items["inner-en-no-thanks"]["expected"]["headword_comma"] == "kept"
     assert items["inner-en-no-thanks"]["actual"]["headword_comma"] == "kept"
     assert items["inner-de-danke-gleichfalls"]["actual"]["headword_comma"] == "dropped"
+
+
+def test_a_typed_run_that_stopped_early_counts_the_fixtures_it_never_asked(tmp_path, capsys):
+    out = tmp_path / "bench"
+    asked = [shot for shot in bench.typed_verdict_shots() if shot.shot_id.startswith("inner-")][:3]
+    for shot in asked:
+        shot.text = _unit_answer(shot.source)
+    _record(out, *asked)
+
+    bench.report(out, "smoke")
+
+    printed = capsys.readouterr().out
+    assert "recorded fixtures             3/3" in printed
+    total = len(bench.TYPED_IDS)
+    assert f"fixtures never asked here     {total - 3} of {total}" in printed
 
 
 def test_the_first_typed_formulas_recorded_without_a_branch_stay_outside_the_tier_screen(
