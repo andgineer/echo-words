@@ -1,4 +1,4 @@
-__version__ = "1.14.0"
+__version__ = "1.15.0"
 
 # Wikimedia refuses every request whose agent gives no way to reach the operator,
 # httpx's default among them.
