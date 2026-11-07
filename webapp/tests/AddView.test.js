@@ -133,6 +133,40 @@ function textEntry() {
 }
 
 describe("AddView", () => {
+  it.each(["\n", "\r", "\r\n"])("pastes %j as a space and submits the Vue value", async (lineBreak) => {
+    accepts("entry-1");
+    const wrapper = mount(AddView);
+    await flushPromises();
+    const input = wrapper.get("#word");
+    await input.setValue("before OLD after");
+    input.element.setSelectionRange(7, 10);
+    const event = new Event("paste", { bubbles: true, cancelable: true });
+    Object.defineProperty(event, "clipboardData", {
+      value: { getData: () => `one${lineBreak}two` },
+    });
+
+    input.element.dispatchEvent(event);
+    await wrapper.get(".submit").trigger("click");
+    await flushPromises();
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(posted().word).toBe("before one two after");
+  });
+
+  it.each(["one two", ""])("leaves single-line paste %j to the browser", async (text) => {
+    const wrapper = mount(AddView);
+    await flushPromises();
+    const input = wrapper.get("#word");
+    await input.setValue("unchanged");
+    const event = new Event("paste", { bubbles: true, cancelable: true });
+    Object.defineProperty(event, "clipboardData", { value: { getData: () => text } });
+
+    input.element.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(false);
+    expect(input.element.value).toBe("unchanged");
+  });
+
   it("renders the language row, one field, and the empty state", async () => {
     const wrapper = mount(AddView);
     await flushPromises();

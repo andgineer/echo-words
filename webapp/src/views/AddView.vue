@@ -71,6 +71,21 @@ function clearHint() {
   hintQueued = false;
 }
 
+function pasteWord(event) {
+  const text = event.clipboardData?.getData("text/plain");
+  if (!text || !/[\r\n]/.test(text)) return;
+  // A single-line input can discard line breaks before v-model ever sees them.
+  event.preventDefault();
+  const input = event.target;
+  input.setRangeText(
+    text.replace(/\r\n|\r|\n/g, " "),
+    input.selectionStart,
+    input.selectionEnd,
+    "end",
+  );
+  word.value = input.value;
+}
+
 watch([word, selected], clearHint);
 
 // A hint that the word is saved for later is stale once no word is left waiting.
@@ -329,6 +344,7 @@ async function requestDetail(entry) {
       autocapitalize="none"
       spellcheck="false"
       :placeholder="placeholder(selected)"
+      @paste="pasteWord"
       @keyup.enter="submit"
     />
 
