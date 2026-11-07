@@ -89,3 +89,46 @@ def test_native_clipboard_paste_replaces_selection_and_keeps_typing_position(
         expect(field).to_have_value("before one two after")
         page.keyboard.type(" next")
         expect(field).to_have_value("before one two next after")
+
+
+@pytest.mark.parametrize("pasted", ["one\ntwo", "one two"])
+def test_native_paste_undo_restores_selection_and_submitted_value(
+    each_engine_page: Page,
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+    pasted: str,
+) -> None:
+    page = each_engine_page
+    with live_app(settings, monkeypatch, handles=[FakeHandle([answer("answer")])]) as app:
+        page.goto(app.url)
+        page.evaluate("document.body.appendChild(document.createElement('textarea'))")
+        source = page.locator("textarea")
+        source.fill(pasted)
+        source.select_text()
+        page.keyboard.press("ControlOrMeta+c")
+        field = page.locator("#word")
+        # Playwright fill and paste share an Undo group in WebKit; seed without one.
+        field.evaluate(
+            """el => {
+                el.value = 'before OLD after';
+                el.dispatchEvent(new Event('input', {bubbles: true}));
+                el.focus();
+                el.setSelectionRange(7, 10);
+            }""",
+        )
+        page.keyboard.press("ControlOrMeta+v")
+        expect(field).to_have_value("before one two after")
+        assert field.evaluate("el => [el.selectionStart, el.selectionEnd]") == [14, 14]
+
+        page.keyboard.press("ControlOrMeta+z")
+
+        expect(field).to_have_value("before OLD after")
+        assert field.evaluate("el => [el.selectionStart, el.selectionEnd]") == [7, 10]
+        with page.expect_response(
+            lambda response: (
+                response.url.endswith("/api/words") and response.request.method == "POST"
+            )
+        ) as submitted:
+            page.get_by_role("button", name="Analyse").click()
+        assert submitted.value.request.post_data_json["word"] == "before OLD after"
+        expect(field).to_have_value("")

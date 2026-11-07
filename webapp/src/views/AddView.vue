@@ -76,14 +76,8 @@ function pasteWord(event) {
   if (!text || !/[\r\n]/.test(text)) return;
   // A single-line input can discard line breaks before v-model ever sees them.
   event.preventDefault();
-  const input = event.target;
-  input.setRangeText(
-    text.replace(/\r\n|\r|\n/g, " "),
-    input.selectionStart,
-    input.selectionEnd,
-    "end",
-  );
-  word.value = input.value;
+  // The editing command preserves native Undo and emits input for v-model.
+  document.execCommand("insertText", false, text.replace(/\r\n|\r|\n/g, " "));
 }
 
 watch([word, selected], clearHint);

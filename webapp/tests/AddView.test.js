@@ -42,6 +42,7 @@ beforeEach(async () => {
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+  delete document.execCommand;
   locale.value = "en";
   localStorage.clear();
 });
@@ -140,6 +141,12 @@ describe("AddView", () => {
     const input = wrapper.get("#word");
     await input.setValue("before OLD after");
     input.element.setSelectionRange(7, 10);
+    const insert = vi.fn((command, showUi, text) => {
+      input.element.setRangeText(text, 7, 10, "end");
+      input.element.dispatchEvent(new Event("input", { bubbles: true }));
+      return true;
+    });
+    Object.defineProperty(document, "execCommand", { configurable: true, value: insert });
     const event = new Event("paste", { bubbles: true, cancelable: true });
     Object.defineProperty(event, "clipboardData", {
       value: { getData: () => `one${lineBreak}two` },
@@ -150,6 +157,7 @@ describe("AddView", () => {
     await flushPromises();
 
     expect(event.defaultPrevented).toBe(true);
+    expect(insert).toHaveBeenCalledWith("insertText", false, "one two");
     expect(posted().word).toBe("before one two after");
   });
 
