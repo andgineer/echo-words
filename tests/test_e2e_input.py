@@ -55,8 +55,9 @@ def test_multiline_paste_keeps_boundaries_selection_and_submitted_value(
         expect(field).to_have_value(expected)
         assert field.evaluate("el => [el.selectionStart, el.selectionEnd]") == [caret, caret]
         with page.expect_response(
-            lambda response: response.url.endswith("/api/words")
-            and response.request.method == "POST"
+            lambda response: (
+                response.url.endswith("/api/words") and response.request.method == "POST"
+            )
         ) as submitted:
             page.get_by_role("button", name="Analyse").click()
         assert submitted.value.request.post_data_json["word"] == expected.strip()
