@@ -53,15 +53,22 @@ briefs fresh agents, verifies and triages what they report, and decides
 when the work has converged. Editing a spec or a plan only to record an
 operator decision is not implementation and is done directly.
 
-A **fresh agent** inherits none of the orchestrator's context: in Claude
-Code, the Agent tool with a general-purpose agent and `model: opus`.
-Never `fork` (it inherits context), never a cheaper model (a blocked Opus
-is a reason to stop and ask), never `isolation: worktree` (the recorded
-bench runs under `experiments/.bench*/` are git-ignored and a worktree
-lacks them). Agents run one at a time in this checkout. The unit of work
-is one plan step, or one request where there is no plan; record its base
-commit before round 1. Tell the operator in one line which agent is
-running and why, each time one starts.
+A **fresh agent** inherits none of the orchestrator's context. Use the
+agents native to the environment running the orchestrator:
+
+- In Codex, use `spawn_agent` with `fork_turns: "none"` and the
+  orchestrator's Codex model.
+- In Claude Code, use the Agent tool with a general-purpose agent and
+  `model: opus`.
+
+Never inherit or fork the orchestrator's conversation, never substitute
+a cheaper model (a blocked required model is a reason to stop and ask),
+and never switch environments to obtain an agent. Never use an isolated
+worktree (the recorded bench runs under `experiments/.bench*/` are
+git-ignored and a worktree lacks them). Agents run one at a time in this
+checkout. The unit of work is one plan step, or one request where there
+is no plan; record its base commit before round 1. Tell the operator in
+one line which agent is running and why, each time one starts.
 
 ### 1. Implement
 
