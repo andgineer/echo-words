@@ -1,0 +1,2 @@
+INFO echo_words.audio: downloading Piper voice file configured.onnx
+WARNING echo_words.audio: could not prepare Piper voice configured: checksum mismatch for configured.onnx

@@ -1,0 +1,7 @@
+WARNING  echo_words.prompt:prompt.py:669 no answer block for sr/'город': the answer never wrote the delimiter
+WARNING  echo_words.prompt:prompt.py:669 no answer block for sr/'город': the answer never wrote the delimiter
+WARNING  echo_words.prompt:prompt.py:669 no answer block for sr/'город': the answer never wrote the delimiter
+WARNING  echo_words.prompt:prompt.py:669 no answer block for sr/'город': the answer never wrote the delimiter
+WARNING  echo_words.prompt:prompt.py:669 no answer block for sr/'град': the answer never wrote the delimiter
+WARNING  echo_words.prompt:prompt.py:669 no answer block for sr/'город': the answer never wrote the delimiter
+WARNING  echo_words.prompt:prompt.py:669 no answer block for sr/'град': the answer never wrote the delimiter

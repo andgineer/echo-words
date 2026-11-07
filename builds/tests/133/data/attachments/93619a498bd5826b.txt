@@ -1,0 +1,1 @@
+INFO echo_words.backend: the pool stream from the-loser was replaced by a complete answer from the-winner

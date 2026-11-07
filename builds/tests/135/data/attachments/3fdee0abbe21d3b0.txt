@@ -1,0 +1,4 @@
+INFO echo_words.backend: the paid model takes over for en: the pool answer from pool-model is a declared misspelling
+INFO echo_words.backend: the paid model gpt-fast: first token after 0.0 s, ended after 0.0 s
+WARNING echo_words.prompt: no answer block for en/'Schlussel': the answer never wrote the delimiter
+INFO echo_words.backend: the paid answer from gpt-fast for en is unusable too; the pool answer stands

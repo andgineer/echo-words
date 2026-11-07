@@ -1,0 +1,2 @@
+INFO     echo_words.backend:backend.py:360 the paid model takes over for en: the pool missed the answer budget (LLMTimeoutError: the answer outlived the budget)
+INFO     echo_words.backend:backend.py:482 the paid model gpt-fast: first token after 0.0 s, ended after 0.0 s
