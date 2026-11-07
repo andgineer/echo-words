@@ -1,5 +1,7 @@
 import importlib.resources
 import importlib.util
+import io
+import os
 import re
 import subprocess
 import sys
@@ -7,6 +9,8 @@ import tomllib
 from pathlib import Path
 
 import pytest
+from invoke import Config, Context
+from invoke.runners import Runner
 
 _SPEC = importlib.util.spec_from_file_location(
     "project_tasks",
@@ -364,6 +368,124 @@ def test_ssh_leaves_this_terminal_stdin_to_the_task_that_asks_for_it(monkeypatch
     command, kwargs = commands[0]
     assert command.startswith("ssh ubuntu@203.0.113.10 ")
     assert kwargs["in_stream"] is False
+
+
+def _fake_ssh(monkeypatch, tmp_path, script: str) -> Path:
+    _write_deploy_env(monkeypatch, tmp_path, "ECHOWORDS_DEPLOY_HOST=ubuntu@203.0.113.10\n")
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    ssh = bin_dir / "ssh"
+    ssh.write_text(f'#!/bin/sh\nhere=$(dirname "$0")\n{script}')
+    ssh.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
+    # pytest's own stdin raises on a read, and a task that leaves stdin attached reads it.
+    monkeypatch.setattr(sys, "stdin", io.StringIO())
+    return bin_dir
+
+
+def _task_context() -> Context:
+    """Built as invoke's executor builds it, so the runner the namespace sets is the one used."""
+    config = Config(lazy=True)
+    config.load_collection(tasks.namespace.configuration())
+    return Context(config=config)
+
+
+# The first read ends on the first byte of "ä", as a journal line can break between two
+# of the runner's reads or two ssh packets.
+_SPLIT_TEXT = (
+    "x" * (Runner.read_chunk_size - 1) + "ärgerlich · ljubav · Ђурђевак · здравствуй — €\n"
+)
+
+
+@pytest.mark.parametrize(
+    ("task", "kwargs"),
+    [
+        (tasks.logs, {}),
+        (tasks.logs, {"follow": True}),
+        (tasks.status, {}),
+        (tasks.healthcheck, {}),
+    ],
+)
+def test_server_text_split_between_two_reads_prints_intact(
+    monkeypatch,
+    tmp_path,
+    capsys,
+    task,
+    kwargs,
+):
+    data = _SPLIT_TEXT.encode()
+    bin_dir = _fake_ssh(
+        monkeypatch,
+        tmp_path,
+        'cat "$here/head"; cat "$here/tail"; cat "$here/head" >&2; cat "$here/tail" >&2\n',
+    )
+    (bin_dir / "head").write_bytes(data[: Runner.read_chunk_size])
+    (bin_dir / "tail").write_bytes(data[Runner.read_chunk_size :])
+
+    task.body(_task_context(), **kwargs)
+
+    out, err = capsys.readouterr()
+    assert out == _SPLIT_TEXT
+    assert err == _SPLIT_TEXT
+
+
+@pytest.mark.parametrize("flags", [[], ["--follow"]])
+def test_inv_logs_prints_split_text_intact_as_the_operator_runs_it(monkeypatch, tmp_path, flags):
+    """The CLI applies the project's invoke.yml, which reads through a pty. It runs from
+    tmp_path, so the .deploy/.env it finds is this test's own."""
+    data = _SPLIT_TEXT.encode()
+    # The pause keeps the split where the head ends, however the pty parts its reads.
+    bin_dir = _fake_ssh(monkeypatch, tmp_path, 'cat "$here/head"; sleep 0.2; cat "$here/tail"\n')
+    (bin_dir / "head").write_bytes(data[: Runner.read_chunk_size])
+    (bin_dir / "tail").write_bytes(data[Runner.read_chunk_size :])
+    (tmp_path / ".deploy").mkdir()
+    (tmp_path / ".deploy" / ".env").write_text("ECHOWORDS_DEPLOY_HOST=ubuntu@203.0.113.10\n")
+    # tasks.py lists the docs languages on import, relative to the working directory.
+    (tmp_path / "docs" / "src" / "en").mkdir(parents=True)
+    repo = Path(__file__).parents[1]
+
+    result = subprocess.run(
+        [sys.executable, "-m", "invoke", "--search-root", str(repo), "logs", *flags],
+        cwd=tmp_path,
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        check=True,
+        timeout=60,
+    )
+
+    out = result.stdout.decode()
+    assert _SPLIT_TEXT.replace("\n", "\r\n") in out
+    assert "\ufffd" not in out
+
+
+def test_logs_follow_prints_a_line_while_ssh_still_runs(monkeypatch, tmp_path):
+    """A followed journal never ends on its own, so nothing may wait for ssh to exit."""
+    first, second = "Wörter: Ђурђевак\n", "здравствуй\n"
+    bin_dir = _fake_ssh(
+        monkeypatch,
+        tmp_path,
+        'cat "$here/first"\n'
+        "i=0\n"
+        'while [ ! -e "$here/printed" ] && [ "$i" -lt 2000 ]; do sleep 0.01; i=$((i + 1)); done\n'
+        'if [ -e "$here/printed" ]; then cat "$here/second"; '
+        "else echo 'the first line was not printed while ssh ran'; fi\n",
+    )
+    (bin_dir / "first").write_text(first)
+    (bin_dir / "second").write_text(second)
+
+    class _Terminal(io.StringIO):
+        def write(self, text):
+            written = super().write(text)
+            if first in self.getvalue():
+                (bin_dir / "printed").touch()
+            return written
+
+    terminal = _Terminal()
+    monkeypatch.setattr(sys, "stdout", terminal)
+
+    tasks.logs.body(_task_context(), follow=True)
+
+    assert terminal.getvalue() == first + second
 
 
 def test_deploy_checks_the_local_secrets_before_touching_the_server(monkeypatch):

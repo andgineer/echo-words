@@ -1,13 +1,16 @@
 import base64
+import codecs
 import os
 import shlex
 import shutil
 import sys
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from pathlib import Path
 
 from dotenv import dotenv_values
 from invoke import Collection, Context, task
+from invoke.runners import Local
 
 from echo_words.config import Settings
 
@@ -742,7 +745,21 @@ def test(c: Context):
         )
 
 
+class _IncrementalDecodingLocal(Local):
+    """Invoke decodes every read alone, so a character split between two reads of a
+    command's output would print as U+FFFD; this decoder carries its bytes over."""
+
+    def read_proc_output(self, reader: Callable) -> Generator[str, None, None]:
+        decoder = codecs.getincrementaldecoder(self.encoding)(errors="replace")
+        while data := reader(self.read_chunk_size):
+            if text := decoder.decode(data):
+                yield text
+        if tail := decoder.decode(b"", final=True):
+            yield tail
+
+
 namespace = Collection.from_module(sys.modules[__name__])
+namespace.configure({"runners": {"local": _IncrementalDecodingLocal}})
 for name in ALLOWED_VERSION_TYPES:
     namespace.add_task(ver_task_factory(name), name=f"ver-{name}")  # type: ignore[bad-argument-type]
 for name in ALLOWED_DOC_LANGUAGES:
