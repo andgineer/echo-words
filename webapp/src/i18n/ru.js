@@ -69,6 +69,13 @@ export default {
   "add.foreign": "Перевод с {language}",
   "add.foreignUnknown": "Перевод с другого языка",
 
+  "ask.label": "Спросить об этой записи",
+  "ask.send": "Отправить",
+  "ask.retry": "Повторить",
+  "ask.cutOff": "Ответ оборвался.",
+  "ask.noReply": "Ответ не пришёл.",
+  "ask.unsent": "Не отправлено — сервер недоступен.",
+
   "languages.none": "Ни одного языка не настроено.",
   "languages.title": "Изучаемые языки",
   "languages.edit": "Изменить языки",

@@ -539,6 +539,47 @@ describe("AddView", () => {
       expect(wrapper.findAll(".chip").map((chip) => chip.text())).toEqual(["window", "house"]);
     });
 
+    it("takes the entry's questions off with it and puts them back on undo", async () => {
+      const thread = [{ id: "t-1", question: "Why a window?", answer: "Light.", state: "done" }];
+      entries.value = [
+        unit("entry-2", "window", "en", { follow_ups: thread, follow_up_draft: "And a door?" }),
+        unit("entry-1", "house"),
+      ];
+      const wrapper = mount(AddView);
+      await flushPromises();
+      expect(wrapper.get(".turn-question").text()).toBe("Why a window?");
+
+      await wrapper.get(".remove-entry").trigger("click");
+      await flushPromises();
+      expect(wrapper.find(".turn").exists()).toBe(false);
+
+      await wrapper.get(".undo-remove").trigger("click");
+      await flushPromises();
+
+      expect(wrapper.get(".turn-question").text()).toBe("Why a window?");
+      expect(wrapper.get(".turn-answer").text()).toBe("Light.");
+      expect(wrapper.get(".ask-field").element.value).toBe("And a door?");
+    });
+
+    it("opens each entry on its own conversation, and an older one on none", async () => {
+      entries.value = [
+        unit("entry-2", "window", "en", {
+          follow_ups: [{ id: "t-1", question: "Why a window?", answer: "Light.", state: "done" }],
+        }),
+        unit("entry-1", "house"),
+      ];
+      const wrapper = mount(AddView);
+      await flushPromises();
+      expect(wrapper.findAll(".turn")).toHaveLength(1);
+
+      await wrapper.get('[data-testid="chip-entry-1"]').trigger("click");
+      await flushPromises();
+
+      expect(wrapper.get(".entry-title").text()).toBe("house");
+      expect(wrapper.findAll(".turn")).toHaveLength(0);
+      expect(wrapper.get(".ask-field").element.value).toBe("");
+    });
+
     it("drops the offer to undo as soon as another word is opened", async () => {
       entries.value = [unit("entry-2", "window"), unit("entry-1", "house")];
       const wrapper = mount(AddView);

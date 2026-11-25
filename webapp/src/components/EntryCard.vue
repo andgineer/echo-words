@@ -2,6 +2,8 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "../i18n/index.js";
 import { reverseOffer, reversing, translatedFrom } from "../i18n/languageWording.js";
+import { chipLabel, chipNote, visibleSegments } from "../composables/entryChips.js";
+import EntryQuestions from "./EntryQuestions.vue";
 
 const { t } = useI18n();
 
@@ -327,24 +329,7 @@ const detailErrorText = computed(() =>
     : props.entry.detail_error,
 );
 
-// Every sense of one word is chipped under that same word, so the label repeats down
-// the row and the meaning underneath is the only thing telling them apart. On a rail
-// of senses the meaning is the chip; the parts of a phrase keep their own wording.
-const chipsAreSenses = computed(() => props.entry.segment_kind === "senses");
-const visibleSegments = computed(() => {
-  const entry = props.entry;
-  const segments = entry.segments ?? [];
-  if (!chipsAreSenses.value || entry.card_status !== "added") return segments;
-  return segments.filter((_, index) => index !== entry.carded_sense);
-});
-
-function chipLabel(segment) {
-  return chipsAreSenses.value && segment.reason ? segment.reason : segment.label;
-}
-
-function chipReason(segment) {
-  return chipsAreSenses.value && segment.reason ? "" : segment.reason;
-}
+const segments = computed(() => visibleSegments(props.entry));
 
 function confirmDelete() {
   confirming.value = false;
@@ -572,16 +557,18 @@ function confirmDelete() {
       @timeupdate="tick('text', $event)"
     ></audio>
 
-    <div v-if="visibleSegments.length" class="segments">
+    <div v-if="segments.length" class="segments">
       <div
-        v-for="(segment, index) in visibleSegments"
+        v-for="(segment, index) in segments"
         :key="`${index}|${segment.label}`"
         class="segment"
       >
         <button class="segment-label" :disabled="busy" @click="emit('segment', segment)">
-          {{ chipLabel(segment) }}
+          {{ chipLabel(entry, segment) }}
         </button>
-        <p v-if="chipReason(segment)" class="segment-reason selectable">{{ chipReason(segment) }}</p>
+        <p v-if="chipNote(entry, segment)" class="segment-reason selectable">
+          {{ chipNote(entry, segment) }}
+        </p>
       </div>
     </div>
 
@@ -604,6 +591,8 @@ function confirmDelete() {
     <p v-if="entry.detail_error" class="entry-error">{{ detailErrorText }}</p>
     <p v-if="entry.control_error" class="entry-error">{{ entry.control_error }}</p>
     <p v-if="expired" class="entry-error controls-expired">{{ t("add.controlsExpired") }}</p>
+
+    <EntryQuestions v-if="showsDetail" :entry="entry" />
   </article>
 </template>
 

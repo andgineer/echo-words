@@ -69,6 +69,13 @@ export default {
   "add.foreign": "Translated from {language}",
   "add.foreignUnknown": "Translated from another language",
 
+  "ask.label": "Ask about this entry",
+  "ask.send": "Send",
+  "ask.retry": "Retry",
+  "ask.cutOff": "The reply was cut off.",
+  "ask.noReply": "No reply came.",
+  "ask.unsent": "Not sent — the server could not be reached.",
+
   "languages.none": "No language is configured.",
   "languages.title": "Languages you study",
   "languages.edit": "Edit the languages",

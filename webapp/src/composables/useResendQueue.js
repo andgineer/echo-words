@@ -42,7 +42,7 @@ function saveRefused() {
   localStorage.setItem(REFUSED_KEY, JSON.stringify(refusedWords.value));
 }
 
-function createRequestId() {
+export function createRequestId() {
   if (typeof globalThis.crypto?.randomUUID === "function") {
     return globalThis.crypto.randomUUID();
   }
