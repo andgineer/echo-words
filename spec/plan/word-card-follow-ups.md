@@ -1,21 +1,21 @@
 # Follow-up questions on a word card
 
-**Status** — Step 1 is built and measured once, not yet reviewed. The question
-endpoint (`POST /api/words/{entry_id}/ask`, a server-sent-event stream of `delta`,
-`reset`, `done` and `error`), the prompt (`build_follow_up_prompt` in
-`src/echo_words/prompt.py`) and the context assembly and bound
+**Status** — Step 1 is built with the operator's minimal prompt and measured, not
+yet reviewed. The question endpoint (`POST /api/words/{entry_id}/ask`, a server-sent-event
+stream of `delta`, `reset`, `done` and `error`), the prompt (`build_follow_up_prompt` in
+`src/echo_words/prompt.py`, sections named as the reader's page names them, through the
+`entry.*` keys of `src/echo_words/i18n.py`) and the context assembly and bound
 (`src/echo_words/follow_up.py`) landed with their tests in `tests/test_follow_up.py`,
-replies pinned from the recorded run. The follow-up tier (`run-follow-up` in
-`experiments/one_note_bench.py`, material in `experiments/follow_up_items.json`) ran
-once on the free pool on 2026-11-25 into `experiments/.bench-follow-up`: 8 of 8
-answered (google-gemini-3.5-flash-lite 6, openrouter-nemotron-3-ultra 1,
-groq-gpt-oss-120b 1). A fresh agent's semantic review of that run found the
-ambiguous-reference rule obeyed in neither of its two fixtures, the prompt's English
-section label ("DEEPER ANALYSIS") quoted to the reader, and Markdown in one reply.
-The operator then cut the prompt to its minimum (below). Still owed for step 1: the
-cut prompt, the corrected fixtures, one re-run of the tier, its fresh semantic
-review and its record in `spec/decision-llm-backend.md`, then the code review loop.
-Step 2 is not started; the PWA has no control for it yet.
+replies pinned from both recorded runs. The follow-up tier (`run-follow-up` in
+`experiments/one_note_bench.py`, material in `experiments/follow_up_items.json`) has six
+fixtures: two base-only, two deeper-only, a new sentence and the second turn after it. A
+first run of the earlier, longer prompt is in `experiments/.bench-follow-up`; the minimal
+prompt ran once on the free pool on 2026-11-25 into `experiments/.bench-follow-up-2`:
+6 of 6 answered, all by google-gemini-3.5-flash-lite, one reply (base-en-reluctant)
+three tokens long. That run is the step's only re-run. Still owed for step 1: the fresh
+semantic review of `experiments/.bench-follow-up-2/review-packet-follow-up.json`, its
+record in `spec/decision-llm-backend.md`, then the code review loop. Step 2 is not
+started; the PWA has no control for it yet.
 
 ## What the reader can do
 

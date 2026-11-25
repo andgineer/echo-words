@@ -100,7 +100,7 @@ def follow_up_prompt(
         raise FollowUpRefusedError(message("question.empty", locale))
     if len(material.question) > MAX_QUESTION_CHARS:
         raise FollowUpRefusedError(message("question.too_long", locale, limit=MAX_QUESTION_CHARS))
-    prompt = build_follow_up_prompt(language, target_lang, material)
+    prompt = build_follow_up_prompt(language, target_lang, material, locale=locale)
     if len(prompt) > MAX_FOLLOW_UP_PROMPT_CHARS:
         raise FollowUpRefusedError(
             message(

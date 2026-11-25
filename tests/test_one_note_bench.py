@@ -2069,10 +2069,8 @@ def test_each_follow_up_fixture_instantiates_its_requirement(case: "bench.Follow
         assert all(passage in analysis and passage not in detail for passage in case.passages)
     elif case.requirement == bench.DEEPER_ONLY:
         assert all(passage in detail and passage not in analysis for passage in case.passages)
-    elif case.requirement == bench.AMBIGUOUS:
-        in_analysis, in_detail = case.passages
-        assert in_analysis in analysis and in_analysis not in detail
-        assert in_detail in detail and in_detail not in analysis
+    elif case.requirement == bench.NEW_SENTENCE:
+        assert all(passage not in analysis + detail for passage in case.passages)
     else:
         earlier = bench.FOLLOW_UP_BY_ID[case.follows]
         assert (earlier.entry, earlier.follows) == (case.entry, "")
@@ -2093,12 +2091,9 @@ def test_a_follow_up_is_asked_with_the_production_prompt_built_from_the_entrys_m
         chips=[Chip(chip["label"], chip["note"]) for chip in entry["chips"]],
         detail_html=entry["detail"],
     )
-    assert bench.prompt_for(shot) == follow_up_prompt(
-        bench.LANGUAGES["de"],
-        "Russian",
-        material,
-        locale="en",
-    )
+    prompt = bench.prompt_for(shot)
+    assert prompt == follow_up_prompt(bench.LANGUAGES["de"], "Russian", material, locale="ru")
+    assert "=== Полная статья ===" in prompt
 
 
 def test_a_second_turn_is_asked_after_the_reply_the_first_one_actually_got():

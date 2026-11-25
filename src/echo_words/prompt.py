@@ -19,6 +19,7 @@ from echo_words.card import (
     context_sentence_forms,
     parse_answer_payload,
 )
+from echo_words.i18n import message
 from echo_words.language_catalog import catalog_language_named
 from echo_words.languages import (
     DEFAULT_TARGET_LANGUAGE,
@@ -426,22 +427,8 @@ Everything the learner can see on the entry is below.
 {question}
 === END OF THE QUESTION ===
 
-Answer this question and only it. A reference such as "the second example", "this
-table", "that word" or "the last sense" means a passage of the material above or of
-your earlier answers; say which passage you are answering about. The analysis and the
-deeper analysis are two separate texts with their own examples and their own
-numbering: when a reference fits a passage in more than one place, do not pick one —
-quote each candidate on a line of its own and ask which one the learner means, and
-answer nothing else. Explain, compare, correct a mistaken premise or a mistake in the
-material itself, or give a new example, as the question needs. Be accurate about
-{source_lang}: where you are unsure of a rule, a form or an origin, say so rather than
-invent one.
-
-WRITE YOUR ENTIRE ANSWER IN {target_lang}. Quote {source_lang} words and sentences
-in {source_lang}, spelled as the material spells them, and follow every new
-{source_lang} sentence with its {target_lang} translation. Keep it short: a few
-sentences, or a short list where the question asks for several things. Plain text
-only: no Markdown, no HTML, no headings."""
+WRITE YOUR ENTIRE ANSWER IN {target_lang}. Plain text only: no Markdown, no HTML, no
+headings."""
 
 
 @dataclass(frozen=True)
@@ -472,51 +459,49 @@ class FollowUpMaterial:
     exchanges: tuple[Exchange, ...] = ()
 
 
-def build_follow_up_prompt(language: Language, target_lang: str, material: FollowUpMaterial) -> str:
+def build_follow_up_prompt(
+    language: Language,
+    target_lang: str,
+    material: FollowUpMaterial,
+    *,
+    locale: str,
+) -> str:
     """Build the question a reader asks about an entry they are reading."""
     return _FOLLOW_UP_PROMPT.format(
         source_lang=language.name,
         target_lang=target_lang,
-        material=_follow_up_sections(material),
+        material=_follow_up_sections(material, locale),
         question=material.question,
     )
 
 
-def _follow_up_sections(material: FollowUpMaterial) -> str:
+def _follow_up_sections(material: FollowUpMaterial, locale: str) -> str:
     lines = [f'The wording the learner submitted: "{material.submitted}"']
     if material.analysed_as and material.analysed_as != material.submitted:
         lines.append(f'The entry is about: "{material.analysed_as}"')
     if material.context:
         lines.append(f'The context the learner supplied with it: "{material.context}"')
-    sections = [
-        "\n".join(lines),
-        _section("ANALYSIS", "the entry's main text", material.analysis),
-    ]
+    # Named as the page names them, so a reply that cites a section cites one the reader sees.
+    sections = ["\n".join(lines), _section(message("entry.analysis", locale), material.analysis)]
     if material.chips:
         chips = "\n".join(
             f"- {chip.label} — {chip.note}" if chip.note else f"- {chip.label}"
             for chip in material.chips
         )
-        sections.append(_section("CHIPS UNDER THE ANALYSIS", "buttons that look a unit up", chips))
+        sections.append(_section(message("entry.chips", locale), chips))
     if material.detail:
-        sections.append(
-            _section(
-                "DEEPER ANALYSIS",
-                "a second, longer article the learner asked for",
-                material.detail,
-            ),
-        )
+        sections.append(_section(message("entry.detail", locale), material.detail))
     if material.exchanges:
         turns = "\n\n".join(
             f"Question {number}: {exchange.question}\nYour answer {number}: {exchange.answer}"
             for number, exchange in enumerate(material.exchanges, start=1)
         )
-        sections.append(_section("EARLIER QUESTIONS", "on this entry, oldest first", turns))
+        sections.append(_section("EARLIER QUESTIONS", turns))
     return "\n\n".join(sections)
 
 
-def _section(name: str, gloss: str, body: str) -> str:
-    return f"=== {name} ({gloss}) ===\n{body}\n=== END OF {name} ==="
+def _section(name: str, body: str) -> str:
+    return f"=== {name} ===\n{body}\n=== END OF {name} ==="
 
 
 @dataclass(frozen=True)

@@ -20,6 +20,7 @@ from echo_words.follow_up import (
     reading_text,
     reply_events,
 )
+from echo_words.i18n import message
 from echo_words.languages import Language
 from echo_words.prompt import MAX_COMPLETE_ANSWER_CHARS, Chip, Exchange
 
@@ -124,12 +125,11 @@ def test_the_prompt_carries_every_part_of_the_entry_in_reading_order():
     order = [
         'The wording the learner submitted: "aufheben"',
         'The context the learner supplied with it: "Hebt die Quittung gut auf, falls ihr sie',
-        "=== ANALYSIS (the entry's main text) ===\naufheben\n",
-        "=== END OF ANALYSIS ===",
-        "=== CHIPS UNDER THE ANALYSIS (buttons that look a unit up) ===\n"
-        "- поднимать, подобрать\n- отменять, аннулировать\n",
-        "=== DEEPER ANALYSIS (a second, longer article the learner asked for) ===\naufheben\n",
-        "=== END OF DEEPER ANALYSIS ===",
+        "=== The analysis ===\naufheben\n",
+        "=== END OF The analysis ===",
+        "=== Buttons under the analysis ===\n- поднимать, подобрать\n- отменять, аннулировать\n",
+        "=== The full entry ===\naufheben\n",
+        "=== END OF The full entry ===",
         "Question 1: Как сказать «он не сдержал слово»?\nYour answer 1: Није одржао реч.",
         "Question 2: А в будущем времени?\nYour answer 2: Неће одржати реч.",
         "=== END OF EARLIER QUESTIONS ===",
@@ -138,8 +138,9 @@ def test_the_prompt_carries_every_part_of_the_entry_in_reading_order():
     positions = [prompt.index(part) for part in order]
     assert positions == sorted(positions)
     assert "A learner of Deutsch" in prompt
-    assert "WRITE YOUR ENTIRE ANSWER IN Russian" in prompt
-    assert "Quote Deutsch words and sentences" in prompt
+    assert prompt.endswith(
+        "WRITE YOUR ENTIRE ANSWER IN Russian. Plain text only: no Markdown, no HTML, no\nheadings.",
+    )
     # The headword is the submission, so the entry is not said to be about another word.
     assert "The entry is about" not in prompt
 
@@ -156,8 +157,29 @@ def test_a_card_without_an_article_chips_or_turns_leaves_those_parts_out():
     prompt = follow_up_prompt(language, "Russian", material, locale="en")
 
     assert 'The entry is about: "reluctant"' in prompt
-    for absent in ("DEEPER ANALYSIS", "CHIPS UNDER", "EARLIER QUESTIONS", "context the learner"):
+    for absent in ("The full entry", "Buttons under", "EARLIER QUESTIONS", "context the learner"):
         assert absent not in prompt
+
+
+def test_the_sections_are_named_as_the_page_in_the_readers_locale_names_them():
+    material = _material(AUFHEBEN)
+    language = Language(code="de", name="Deutsch", deck="d", script="latin")
+
+    prompt = follow_up_prompt(language, "Russian", material, locale="ru")
+
+    for name in ("Разбор", "Кнопки под разбором", "Полная статья"):
+        assert f"=== {name} ===\n" in prompt
+        assert f"=== END OF {name} ===" in prompt
+    assert "DEEPER" not in prompt
+
+
+@pytest.mark.parametrize("locale", ["en", "ru"])
+def test_the_full_article_is_named_with_the_pages_own_heading(locale: str):
+    page = (Path(__file__).parents[1] / "webapp" / "src" / "i18n" / f"{locale}.js").read_text(
+        encoding="utf-8",
+    )
+
+    assert f'"add.detailSection": "{message("entry.detail", locale)}",' in page
 
 
 def test_a_turn_without_its_reply_never_reaches_the_prompt():
@@ -479,7 +501,13 @@ def _deltas(text: str, size: int = 37) -> list[str]:
 
 @pytest.mark.parametrize(
     "fixture",
-    ["follow-up-deeper-de-aufheben", "follow-up-ambiguous-en-reluctant"],
+    [
+        "follow-up-deeper-de-aufheben",
+        "follow-up-ambiguous-en-reluctant",
+        "follow-up-deeper-de-aufheben@run2",
+        # The pool stopped after three tokens; the reader still gets exactly that.
+        "follow-up-base-en-reluctant@run2",
+    ],
 )
 def test_a_recorded_reply_reaches_the_page_exactly_as_the_pool_wrote_it(
     monkeypatch: pytest.MonkeyPatch,
@@ -501,12 +529,14 @@ def test_a_recorded_reply_reaches_the_page_exactly_as_the_pool_wrote_it(
     assert events[-1] == ("done", {"model": "pool-a", "complete": True})
 
 
+@pytest.mark.parametrize("run", ["", "@run2"])
 def test_a_second_turn_is_asked_with_the_recorded_first_reply_verbatim(
     monkeypatch: pytest.MonkeyPatch,
     settings: Settings,
+    run: str,
 ):
-    first = REPLIES["follow-up-turn1-sr-drzati-rec"]
-    second = REPLIES["follow-up-turn2-sr-drzati-rec"]
+    first = REPLIES[f"follow-up-turn1-sr-drzati-rec{run}"]
+    second = REPLIES[f"follow-up-turn2-sr-drzati-rec{run}"]
     assert second["earlier_turns"] == [{"question": first["question"], "answer": first["reply"]}]
     broker = FakeBroker(handles=[FakeHandle(_deltas(second["reply"]))])
     _app_with(monkeypatch, broker)

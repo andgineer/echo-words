@@ -50,7 +50,7 @@ directory holds it, over the fixtures that directory asked.
     uv run python experiments/one_note_bench.py report --out experiments/.bench-typed
 
 Follow-up questions about a recorded entry are measured on their own too, in their own
-`--out`: 8 calls, the second turn asked after the reply its first turn actually got.
+`--out`: 6 calls, the second turn asked after the reply its first turn actually got.
     uv run python experiments/one_note_bench.py run-follow-up --resume --pace 2 \
       --concurrency 1 --out experiments/.bench-follow-up
     uv run python experiments/one_note_bench.py report --out experiments/.bench-follow-up
@@ -2860,13 +2860,13 @@ def report_reverse(out: Path, attempts: list[Shot]) -> list[str]:
 FOLLOW_UP_ITEMS = Path(__file__).parent / "follow_up_items.json"
 BASE_ONLY = "base-only"
 DEEPER_ONLY = "deeper-only"
+NEW_SENTENCE = "new-sentence"
 SECOND_TURN = "second-turn"
-AMBIGUOUS = "ambiguous"
 FOLLOW_UP_REQUIREMENTS = {
     BASE_ONLY: "a question only the original analysis answers",
     DEEPER_ONLY: "a term or numbered passage only the deeper article holds",
+    NEW_SENTENCE: "a sentence to say that neither text holds",
     SECOND_TURN: "a question understandable only from the first reply",
-    AMBIGUOUS: "a reference that fits a passage in both texts",
 }
 
 
@@ -2876,8 +2876,8 @@ class FollowUpCase:
 
     `passages` are quoted from the material a requirement depends on, so a test can
     check each fixture instantiates it: a base-only passage is absent from the deeper
-    article, a deeper-only one from the analysis, and an ambiguous one has a candidate
-    in each. `follows` names the turn whose question and recorded reply precede this one.
+    article, a deeper-only one from the analysis, and a new sentence from both.
+    `follows` names the turn whose question and recorded reply precede this one.
     """
 
     shot_id: str
@@ -2921,7 +2921,7 @@ FOLLOW_UP_CASES = (
         "follow-up-deeper-de-aufheben",
         "de-aufheben",
         DEEPER_ONLY,
-        "Объясни четвёртое значение из подробного разбора и дай ещё пример.",
+        "Объясни четвёртое значение из полной статьи и дай ещё пример.",
         "the deeper article's sense 4: «Компенсировать, сводить на нет … sich gegenseitig "
         "aufheben»",
         "Identifies sense 4 of the deeper article, not anything in the analysis (which has "
@@ -2946,14 +2946,14 @@ FOLLOW_UP_CASES = (
     FollowUpCase(
         "follow-up-turn1-sr-drzati-rec",
         "sr-drzati-rec",
-        DEEPER_ONLY,
+        NEW_SENTENCE,
         "Как сказать по-сербски «он не сдержал слово»?",
-        "the deeper article's «Употребление и грамматика»: perfective «одржати реч» for a "
-        "promise kept once, «не држати реч», and «погазити реч» «нарушить данное слово»",
-        "Gives a natural Serbian sentence such as «Није одржао реч» (perfective, as the deeper "
-        "article recommends for a single promise) and may add «Погазио је реч»; each with a "
-        "Russian translation; correct Serbian.",
-        passages=("одржати реч", "погазити реч"),
+        "none: neither text holds the sentence; the full article's perfective «одржати реч» "
+        "and «погазити реч» «нарушить данное слово» may inform it",
+        "Gives a natural Serbian sentence such as «Није одржао реч» (perfective, for a single "
+        "promise) and may add «Погазио је реч»; each with a Russian translation; correct "
+        "Serbian.",
+        passages=("не сдержал слово",),
     ),
     FollowUpCase(
         "follow-up-turn2-sr-drzati-rec",
@@ -2967,30 +2967,6 @@ FOLLOW_UP_CASES = (
         "case of реч; correct Serbian grammar, in Russian. Analysing a sentence from the "
         "material instead is the failure.",
         follows="follow-up-turn1-sr-drzati-rec",
-    ),
-    FollowUpCase(
-        "follow-up-ambiguous-en-reluctant",
-        "en-reluctant",
-        AMBIGUOUS,
-        "Переведи второй пример по-другому, разговорнее.",
-        "two candidates: the analysis's second example «She is reluctant to talk about her "
-        "past.» and the deeper article's second example «He became the reluctant owner of "
-        "the family business.»",
-        "Quotes both candidates and asks which one the learner means. Silently translating "
-        "only one is the failure; translating both, each named, is a weaker pass.",
-        passages=("She is reluctant to talk about her past.", "He became the reluctant owner"),
-    ),
-    FollowUpCase(
-        "follow-up-ambiguous-de-aufheben",
-        "de-aufheben",
-        AMBIGUOUS,
-        "Разбери грамматику первого примера.",
-        "candidates: the analysis's first example («Hebt die Quittung auf!» in its table, "
-        "«Hebt die Quittung gut auf, falls ihr sie noch braucht.» first in its list) and the "
-        "deeper article's first example «Sie hob die Münze vom Boden auf.»",
-        "Quotes the candidates and asks which one the learner means. Silently analysing only "
-        "one is the failure; analysing each, named, is a weaker pass.",
-        passages=("Hebt die Quittung auf!", "Sie hob die Münze vom Boden auf."),
     ),
 )
 FOLLOW_UP_BY_ID = {case.shot_id: case for case in FOLLOW_UP_CASES}
@@ -3015,7 +2991,8 @@ def follow_up_prompt_for(shot: Shot) -> str:
         detail_html=entry["detail"],
         exchanges=[Exchange(turn["question"], turn["answer"]) for turn in shot.exchanges],
     )
-    return follow_up_prompt(LANGUAGES[shot.lang], TARGET_NAME, material, locale="en")
+    # The fixtures ask in Russian, so the page that sends them is the Russian one.
+    return follow_up_prompt(LANGUAGES[shot.lang], TARGET_NAME, material, locale="ru")
 
 
 def _follow_up_shot(case: FollowUpCase, exchanges: list[dict]) -> Shot:
