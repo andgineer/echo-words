@@ -27,6 +27,14 @@ MESSAGES: dict[str, dict[str, str]] = {
         "language.bad_voice": "Piper needs a voice this app can install: pick one of {allowed}.",
         "language.bad_tts": "Unknown voice engine “{tts}”: pick one of {allowed}.",
         "language.last": "This is the only language left; the app cannot run without one.",
+        "question.empty": "Type a question.",
+        "question.too_long": "This question is too long: no more than {limit} characters.",
+        "question.too_much": (
+            "This entry and its conversation are too long to ask about: {length} characters,"
+            " and a question can carry no more than {limit}."
+        ),
+        "question.no_reply": "No model answered just now. Ask again in a minute.",
+        "question.broken_off": "The reply broke off before it was finished. Ask again.",
     },
     "ru": {
         "word.empty": "Введите слово.",
@@ -54,6 +62,14 @@ MESSAGES: dict[str, dict[str, str]] = {
         ),
         "language.bad_tts": "Неизвестный движок озвучки «{tts}»: выберите из {allowed}.",
         "language.last": "Это единственный язык — без языка приложение не работает.",
+        "question.empty": "Введите вопрос.",
+        "question.too_long": "Вопрос слишком длинный: не больше {limit} символов.",
+        "question.too_much": (
+            "Запись вместе с разговором слишком длинная для вопроса: {length} символов,"
+            " а вопрос может нести не больше {limit}."
+        ),
+        "question.no_reply": "Сейчас ни одна модель не ответила. Спросите ещё раз через минуту.",
+        "question.broken_off": "Ответ оборвался на полуслове. Спросите ещё раз.",
     },
 }
 

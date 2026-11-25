@@ -6,8 +6,9 @@ from pathlib import Path
 import one_note_bench as bench
 import pytest
 
+from echo_words.follow_up import follow_up_material, follow_up_prompt, reading_text
 from echo_words.languages import unit_context
-from echo_words.prompt import build_attestation_prompt, build_prompt
+from echo_words.prompt import Chip, build_attestation_prompt, build_prompt
 
 
 def _shot(shot_id: str, *, expected_kind: str = "text") -> bench.Shot:
@@ -2048,3 +2049,96 @@ def test_the_first_typed_formulas_recorded_without_a_branch_stay_outside_the_tie
     assert "TYPED VERDICTS" in printed
     assert "TIER" not in printed
     assert "recorded fixtures             0/1" in printed
+
+
+def _follow_up_texts(case: "bench.FollowUpCase") -> tuple[str, str]:
+    entry = bench.follow_up_entries()[case.entry]
+    return reading_text(entry["analysis"]), reading_text(entry["detail"])
+
+
+def test_every_follow_up_requirement_has_a_fixture():
+    assert {case.requirement for case in bench.FOLLOW_UP_CASES} == set(
+        bench.FOLLOW_UP_REQUIREMENTS,
+    )
+
+
+@pytest.mark.parametrize("case", bench.FOLLOW_UP_CASES, ids=lambda case: case.shot_id)
+def test_each_follow_up_fixture_instantiates_its_requirement(case: "bench.FollowUpCase"):
+    analysis, detail = _follow_up_texts(case)
+    if case.requirement == bench.BASE_ONLY:
+        assert all(passage in analysis and passage not in detail for passage in case.passages)
+    elif case.requirement == bench.DEEPER_ONLY:
+        assert all(passage in detail and passage not in analysis for passage in case.passages)
+    elif case.requirement == bench.AMBIGUOUS:
+        in_analysis, in_detail = case.passages
+        assert in_analysis in analysis and in_analysis not in detail
+        assert in_detail in detail and in_detail not in analysis
+    else:
+        earlier = bench.FOLLOW_UP_BY_ID[case.follows]
+        assert (earlier.entry, earlier.follows) == (case.entry, "")
+    assert case.passages or case.follows
+
+
+def test_a_follow_up_is_asked_with_the_production_prompt_built_from_the_entrys_markup():
+    case = bench.FOLLOW_UP_BY_ID["follow-up-deeper-de-aufheben"]
+    entry = bench.follow_up_entries()[case.entry]
+    (shot,) = [shot for shot in bench.follow_up_first_turns() if shot.shot_id == case.shot_id]
+
+    material = follow_up_material(
+        submitted=entry["word"],
+        question=case.question,
+        analysis_html=entry["analysis"],
+        analysed_as=entry["analysed_as"],
+        context=entry["context"],
+        chips=[Chip(chip["label"], chip["note"]) for chip in entry["chips"]],
+        detail_html=entry["detail"],
+    )
+    assert bench.prompt_for(shot) == follow_up_prompt(
+        bench.LANGUAGES["de"],
+        "Russian",
+        material,
+        locale="en",
+    )
+
+
+def test_a_second_turn_is_asked_after_the_reply_the_first_one_actually_got():
+    first = next(
+        shot for shot in bench.follow_up_first_turns() if shot.shot_id.startswith("follow-up-turn1")
+    )
+    assert bench.follow_up_next_turns({}) == []
+    first.text = "Није одржао реч. — Он не сдержал слово."
+    bench.score(first)
+
+    (second,) = bench.follow_up_next_turns({first.shot_id: first})
+
+    assert second.exchanges == [{"question": first.source, "answer": first.text}]
+    assert (
+        f"Question 1: {first.source}\nYour answer 1: Није одржао реч. — Он не сдержал слово."
+        in bench.prompt_for(second)
+    )
+
+
+def test_the_follow_up_packet_keeps_both_turns_and_what_a_good_reply_must_do(tmp_path, capsys):
+    out = tmp_path / "bench"
+    first_turns = bench.follow_up_first_turns()
+    for shot in first_turns:
+        shot.text = f"Ответ на «{shot.source}»."
+        shot.answered_by = "pool-model"
+    _record(out, *first_turns)
+    (second,) = bench.follow_up_next_turns(bench.read_follow_up(out))
+    second.text = "Није — отрицание."
+    _record(out, second)
+
+    bench.report(out, "smoke")
+
+    printed = capsys.readouterr().out
+    assert "FOLLOW-UP QUESTIONS" in printed
+    assert "TIER" not in printed
+    packet = json.loads((out / "review-packet-follow-up.json").read_text(encoding="utf-8"))
+    assert packet["prompt_status"] == "pending_semantic_review"
+    assert len(packet["items"]) == len(bench.FOLLOW_UP_CASES)
+    item = next(item for item in packet["items"] if item["fixture_id"] == second.shot_id)
+    assert item["input"]["earlier_turns"] == second.exchanges
+    assert item["actual"]["reply"] == "Није — отрицание."
+    assert item["expected"]["good_answer"]
+    assert "Your answer 1: Ответ на" in item["material"]["prompt"]

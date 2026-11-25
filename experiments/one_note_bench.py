@@ -48,6 +48,12 @@ directory holds it, over the fixtures that directory asked.
     uv run python experiments/one_note_bench.py run-typed --resume --pace 2 \
       --concurrency 1 --out experiments/.bench-typed
     uv run python experiments/one_note_bench.py report --out experiments/.bench-typed
+
+Follow-up questions about a recorded entry are measured on their own too, in their own
+`--out`: 8 calls, the second turn asked after the reply its first turn actually got.
+    uv run python experiments/one_note_bench.py run-follow-up --resume --pace 2 \
+      --concurrency 1 --out experiments/.bench-follow-up
+    uv run python experiments/one_note_bench.py report --out experiments/.bench-follow-up
 """
 
 import argparse
@@ -81,6 +87,7 @@ from backend_bench import (  # noqa: E402
 )
 from bench_items import SENTENCES  # noqa: E402
 from echo_words.card import ParsedAnswer, ParsedText, ParsedUnit  # noqa: E402
+from echo_words.follow_up import follow_up_material, follow_up_prompt  # noqa: E402
 from echo_words.language_catalog import catalog_language  # noqa: E402
 from echo_words.languages import (  # noqa: E402
     Language,
@@ -99,6 +106,8 @@ from echo_words.llm_backend import POOL_FASTEST_OF  # noqa: E402
 from echo_words.prompt import (  # noqa: E402
     CARD_DELIMITER,
     MAX_COMPLETE_ANSWER_CHARS,
+    Chip,
+    Exchange,
     build_attestation_prompt,
     build_prompt,
     build_reverse_prompt,
@@ -221,6 +230,7 @@ OFFER_CORRECTION_KIND = "offer-correction"
 REVERSE_BENCH_KINDS = frozenset({REVERSE_KIND, OFFER_KIND, OFFER_ARTICLE_KIND, OFFER_CORRECTION_KIND})
 # The judgement production asks in parallel with a whole-text chip's article.
 WHOLE_CHIP_JUDGEMENT_KIND = "whole-chip-judgement"
+FOLLOW_UP_KIND = "follow-up"
 JUDGEMENT_KINDS = frozenset(
     {"attestation", "correction", OFFER_KIND, OFFER_CORRECTION_KIND, WHOLE_CHIP_JUDGEMENT_KIND},
 )
@@ -839,6 +849,9 @@ class Shot:
     text: str = ""
     payload: dict = field(default_factory=dict)
     metrics: dict = field(default_factory=dict)
+    # The completed turns a follow-up question is asked after, each with the reply the
+    # pool actually gave it.
+    exchanges: list[dict] = field(default_factory=list)
 
 
 def normalize(value: object, lang: str = "") -> str:
@@ -862,6 +875,8 @@ def _unit_intent(shot: Shot) -> bool:
 
 
 def prompt_for(shot: Shot) -> str:
+    if shot.kind == FOLLOW_UP_KIND:
+        return follow_up_prompt_for(shot)
     if shot.kind in JUDGEMENT_KINDS:
         return build_attestation_prompt(LANGUAGES[shot.lang], shot.source)
     if shot.kind == REVERSE_KIND:
@@ -2041,6 +2056,9 @@ def _wordlist_chips(shot: Shot, parsed: ParsedAnswer | None) -> int:
 
 
 def score(shot: Shot) -> Shot:
+    if shot.kind == FOLLOW_UP_KIND:
+        shot.metrics = {"answered": bool(shot.text.strip()) and not shot.error}
+        return shot
     if shot.kind == REVERSE_KIND:
         return score_reverse(shot)
     if shot.kind == LANGUAGE_KIND:
@@ -2321,6 +2339,8 @@ def complete(shot: Shot) -> bool:
         return parse_attestation(shot.text) is not None
     if shot.kind == REVERSE_KIND:
         return parse_reverse(shot.text, LANGUAGES[shot.lang], TARGET_NAME) is not None
+    if shot.kind == FOLLOW_UP_KIND:
+        return bool(shot.metrics.get("answered"))
     if shot.kind == LANGUAGE_KIND:
         return bool(shot.metrics.get("card_block"))
     return bool(
@@ -2835,6 +2855,264 @@ def report_reverse(out: Path, attempts: list[Shot]) -> list[str]:
     print("AUTOMATED SCREEN ONLY — semantic acceptance is not auto-proven.\n")
     failed = [name for name, passed in gates.items() if not passed]
     return ["reverse lookup: " + ", ".join(failed)] if failed else []
+
+
+FOLLOW_UP_ITEMS = Path(__file__).parent / "follow_up_items.json"
+BASE_ONLY = "base-only"
+DEEPER_ONLY = "deeper-only"
+SECOND_TURN = "second-turn"
+AMBIGUOUS = "ambiguous"
+FOLLOW_UP_REQUIREMENTS = {
+    BASE_ONLY: "a question only the original analysis answers",
+    DEEPER_ONLY: "a term or numbered passage only the deeper article holds",
+    SECOND_TURN: "a question understandable only from the first reply",
+    AMBIGUOUS: "a reference that fits a passage in both texts",
+}
+
+
+@dataclass(frozen=True)
+class FollowUpCase:
+    """One question about a recorded entry, with what a good reply has to do.
+
+    `passages` are quoted from the material a requirement depends on, so a test can
+    check each fixture instantiates it: a base-only passage is absent from the deeper
+    article, a deeper-only one from the analysis, and an ambiguous one has a candidate
+    in each. `follows` names the turn whose question and recorded reply precede this one.
+    """
+
+    shot_id: str
+    entry: str
+    requirement: str
+    question: str
+    expected_passage: str
+    good_answer: str
+    passages: tuple[str, ...] = ()
+    follows: str = ""
+
+
+FOLLOW_UP_CASES = (
+    FollowUpCase(
+        "follow-up-base-en-reluctant",
+        "en-reluctant",
+        BASE_ONLY,
+        "Чем отличаются feel reluctant и grow reluctant из таблицы?",
+        "the analysis's collocation table: rows «feel reluctant | испытывать нежелание» and "
+        "«grow reluctant | начинать сопротивляться»",
+        "Names those two table rows. Explains that feel reluctant is a present state of "
+        "unwillingness and grow reluctant a gradual change into it (becoming less and less "
+        "willing); a short English example of each with its Russian translation. May note "
+        "that the table's «начинать сопротивляться» overstates grow reluctant.",
+        passages=("feel reluctant", "grow reluctant"),
+    ),
+    FollowUpCase(
+        "follow-up-base-en-put-up-with",
+        "en-put-up-with",
+        BASE_ONLY,
+        "Почему в примерах английский глагол стоит прямо посреди русского предложения? Так говорят?",
+        "the analysis's three examples, e.g. «Мы должны put up with этой ситуацией, пока не "
+        "найдем лучшее решение»",
+        "Corrects the premise: nobody speaks like that, the examples mix English into Russian "
+        "and are a fault of the entry, not a usage pattern. Gives the examples as real English "
+        "sentences (e.g. We have to put up with this situation until we find a better "
+        "solution.) with Russian translations.",
+        passages=("Мы должны put up with",),
+    ),
+    FollowUpCase(
+        "follow-up-deeper-de-aufheben",
+        "de-aufheben",
+        DEEPER_ONLY,
+        "Объясни четвёртое значение из подробного разбора и дай ещё пример.",
+        "the deeper article's sense 4: «Компенсировать, сводить на нет … sich gegenseitig "
+        "aufheben»",
+        "Identifies sense 4 of the deeper article, not anything in the analysis (which has "
+        "three senses). Explains aufheben as cancelling out or neutralising, usually reflexive "
+        "and often reciprocal (sich gegenseitig aufheben, things heben sich auf); a new, "
+        "correct German example with its Russian translation.",
+        passages=("sich gegenseitig aufheben",),
+    ),
+    FollowUpCase(
+        "follow-up-deeper-en-put-up-with",
+        "en-put-up-with",
+        DEEPER_ONLY,
+        "Чем put up with отличается от tolerate?",
+        "the deeper article's «Близкие слова»: «tolerate — более формальное и отстранённое "
+        "«терпеть, допускать»; часто встречается в правилах и официальных заявлениях»",
+        "Grounded in the deeper article: tolerate is more formal and detached, also «допускать» "
+        "(allow), common in rules and official statements; put up with is neutral-to-colloquial "
+        "and implies the thing is unpleasant and endured without approval. Ideally an example "
+        "of each with translation.",
+        passages=("tolerate",),
+    ),
+    FollowUpCase(
+        "follow-up-turn1-sr-drzati-rec",
+        "sr-drzati-rec",
+        DEEPER_ONLY,
+        "Как сказать по-сербски «он не сдержал слово»?",
+        "the deeper article's «Употребление и грамматика»: perfective «одржати реч» for a "
+        "promise kept once, «не држати реч», and «погазити реч» «нарушить данное слово»",
+        "Gives a natural Serbian sentence such as «Није одржао реч» (perfective, as the deeper "
+        "article recommends for a single promise) and may add «Погазио је реч»; each with a "
+        "Russian translation; correct Serbian.",
+        passages=("одржати реч", "погазити реч"),
+    ),
+    FollowUpCase(
+        "follow-up-turn2-sr-drzati-rec",
+        "sr-drzati-rec",
+        SECOND_TURN,
+        "Разбери по словам первое сербское предложение из твоего ответа.",
+        "the first Serbian sentence of the recorded first reply, which the prompt carries as "
+        "the earlier answer",
+        "Breaks down exactly that sentence from the first reply, word by word: negation and "
+        "the auxiliary (није = не + је), the past participle and its aspect and gender, the "
+        "case of реч; correct Serbian grammar, in Russian. Analysing a sentence from the "
+        "material instead is the failure.",
+        follows="follow-up-turn1-sr-drzati-rec",
+    ),
+    FollowUpCase(
+        "follow-up-ambiguous-en-reluctant",
+        "en-reluctant",
+        AMBIGUOUS,
+        "Переведи второй пример по-другому, разговорнее.",
+        "two candidates: the analysis's second example «She is reluctant to talk about her "
+        "past.» and the deeper article's second example «He became the reluctant owner of "
+        "the family business.»",
+        "Quotes both candidates and asks which one the learner means. Silently translating "
+        "only one is the failure; translating both, each named, is a weaker pass.",
+        passages=("She is reluctant to talk about her past.", "He became the reluctant owner"),
+    ),
+    FollowUpCase(
+        "follow-up-ambiguous-de-aufheben",
+        "de-aufheben",
+        AMBIGUOUS,
+        "Разбери грамматику первого примера.",
+        "candidates: the analysis's first example («Hebt die Quittung auf!» in its table, "
+        "«Hebt die Quittung gut auf, falls ihr sie noch braucht.» first in its list) and the "
+        "deeper article's first example «Sie hob die Münze vom Boden auf.»",
+        "Quotes the candidates and asks which one the learner means. Silently analysing only "
+        "one is the failure; analysing each, named, is a weaker pass.",
+        passages=("Hebt die Quittung auf!", "Sie hob die Münze vom Boden auf."),
+    ),
+)
+FOLLOW_UP_BY_ID = {case.shot_id: case for case in FOLLOW_UP_CASES}
+FOLLOW_UP_IDS = frozenset(FOLLOW_UP_BY_ID)
+
+
+def follow_up_entries() -> dict[str, dict]:
+    items = json.loads(FOLLOW_UP_ITEMS.read_text(encoding="utf-8"))
+    return {entry["id"]: entry for entry in items["entries"]}
+
+
+def follow_up_prompt_for(shot: Shot) -> str:
+    """The prompt production builds for this question, from the entry's own markup."""
+    entry = follow_up_entries()[FOLLOW_UP_BY_ID[shot.shot_id].entry]
+    material = follow_up_material(
+        submitted=entry["word"],
+        question=shot.source,
+        analysis_html=entry["analysis"],
+        analysed_as=entry["analysed_as"],
+        context=entry["context"],
+        chips=[Chip(chip["label"], chip["note"]) for chip in entry["chips"]],
+        detail_html=entry["detail"],
+        exchanges=[Exchange(turn["question"], turn["answer"]) for turn in shot.exchanges],
+    )
+    return follow_up_prompt(LANGUAGES[shot.lang], TARGET_NAME, material, locale="en")
+
+
+def _follow_up_shot(case: FollowUpCase, exchanges: list[dict]) -> Shot:
+    lang = follow_up_entries()[case.entry]["lang"]
+    return Shot(case.shot_id, FOLLOW_UP_KIND, lang, case.question, exchanges=exchanges)
+
+
+def follow_up_first_turns() -> list[Shot]:
+    return [_follow_up_shot(case, []) for case in FOLLOW_UP_CASES if not case.follows]
+
+
+def follow_up_next_turns(recorded: dict[str, Shot]) -> list[Shot]:
+    """Each later turn, asked after the reply its earlier turn actually got."""
+    rows = []
+    for case in FOLLOW_UP_CASES:
+        earlier = recorded.get(case.follows) if case.follows else None
+        if earlier is None or not complete(earlier):
+            continue
+        turns = [*earlier.exchanges, {"question": earlier.source, "answer": earlier.text}]
+        rows.append(_follow_up_shot(case, turns))
+    return rows
+
+
+def read_follow_up(out: Path, attempts: list[Shot] | None = None) -> dict[str, Shot]:
+    recorded = attempts if attempts is not None else read_attempts(out)
+    rows = _select_canonical(recorded, {shot.shot_id: shot for shot in follow_up_first_turns()})
+    later = {shot.shot_id: shot for shot in follow_up_next_turns(rows)}
+    rows.update(_select_canonical(recorded, later))
+    return rows
+
+
+async def run_follow_up(args, out: Path) -> None:
+    os.environ.update(load_keys())
+    broker = AsyncBroker(home=out / "llmbroker")
+    try:
+        first = pending(follow_up_first_turns(), read_follow_up(out), args.resume)
+        log(f"follow-up first turns: {len(first)} calls")
+        await run_batch(args, out, broker, first)
+        recorded = read_follow_up(out)
+        later = pending(follow_up_next_turns(recorded), recorded, args.resume)
+        log(f"follow-up later turns: {len(later)} calls")
+        await run_batch(args, out, broker, later)
+    finally:
+        await broker.aclose()
+
+
+def follow_up_review_packet(rows: dict[str, Shot]) -> dict[str, object]:
+    entries = follow_up_entries()
+    items = []
+    for case in FOLLOW_UP_CASES:
+        entry = entries[case.entry]
+        row = rows.get(case.shot_id)
+        expected = {
+            "requirement": FOLLOW_UP_REQUIREMENTS[case.requirement],
+            "expected_passage": case.expected_passage,
+            "good_answer": case.good_answer,
+            "target_language": TARGET_NAME,
+        }
+        item: dict[str, object] = {
+            "fixture_id": case.shot_id,
+            "input": {
+                "language": entry["lang"],
+                "entry": case.entry,
+                "submitted": entry["word"],
+                "context": entry["context"],
+                "question": case.question,
+                "earlier_turns": row.exchanges if row is not None else "not asked yet",
+            },
+            "material": {
+                "analysis_source": entry["analysis_source"],
+                "detail_source": entry["detail_source"],
+                "prompt": prompt_for(row) if row is not None else None,
+            },
+            "expected": expected,
+        }
+        if row is None:
+            item["categories"] = ["provider_miss"]
+            item["actual"] = {"attempt": "missing"}
+        else:
+            item["categories"] = ["follow_up"] if row.metrics.get("answered") else ["provider_miss"]
+            item["actual"] = {"answered_by": row.answered_by, "error": row.error, "reply": row.text}
+        items.append(item)
+    return _extra_packet("follow-up", rows, FOLLOW_UP_IDS, items)
+
+
+def report_follow_up(out: Path, attempts: list[Shot]) -> None:
+    """Screen the follow-up replies; only reading them says whether they are any good."""
+    rows = read_follow_up(out, attempts)
+    asked = asked_here(FOLLOW_UP_IDS, attempts)
+    print("FOLLOW-UP QUESTIONS — AUTOMATED SCREEN")
+    print("Fresh-agent semantic review of the concrete review packet is mandatory before acceptance.\n")
+    _print_availability(rows, attempts, FOLLOW_UP_IDS, asked)
+    for case in FOLLOW_UP_CASES:
+        row = rows.get(case.shot_id)
+        state = "missing" if row is None else f"{row.answered_by or '?'}, {len(row.text)} chars"
+        print(f"  {case.shot_id:<36} {case.requirement:<12} {state}")
+    _write_extra_packet(out, "follow-up", follow_up_review_packet(rows))
 
 
 def _whole_text_chips(shot: Shot) -> list[dict[str, object]]:
@@ -3767,12 +4045,17 @@ def report(out: Path, tier: str) -> None:
     reverse = [row for row in attempts if row.kind in REVERSE_BENCH_KINDS]
     chips = [row for row in attempts if row.kind in {WHOLE_CHIP_KIND, WHOLE_CHIP_JUDGEMENT_KIND}]
     typed = [row for row in attempts if row.kind == TYPED_KIND]
+    follow_ups = [row for row in attempts if row.kind == FOLLOW_UP_KIND]
     tiered = [
         row
         for row in attempts
-        if row.kind not in REVERSE_BENCH_KINDS and row.kind not in WHOLE_TEXT_BENCH_KINDS
+        if row.kind not in REVERSE_BENCH_KINDS
+        and row.kind not in WHOLE_TEXT_BENCH_KINDS
+        and row.kind != FOLLOW_UP_KIND
     ]
     failures = report_reverse(out, reverse) if reverse else []
+    if follow_ups:
+        report_follow_up(out, follow_ups)
     if chips:
         report_whole_text(out, chips)
     if typed:
@@ -4160,6 +4443,7 @@ def main() -> None:
             "run-typed",
             "run-corrections",
             "run-reverse",
+            "run-follow-up",
             "report",
             "show",
         ],
@@ -4188,6 +4472,8 @@ def main() -> None:
         asyncio.run(run_corrections(args, out))
     elif args.action == "run-reverse":
         asyncio.run(run_reverse(args, out))
+    elif args.action == "run-follow-up":
+        asyncio.run(run_follow_up(args, out))
     elif args.action == "report":
         report(out, args.tier)
     else:

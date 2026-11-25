@@ -13,7 +13,7 @@ from functools import partial
 from typing import Literal
 from uuid import UUID
 
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, HTTPException, Path, Query, Request
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
@@ -30,6 +30,14 @@ from echo_words.broker import BackendError, create_broker
 from echo_words.config import Settings
 from echo_words.config import settings as default_settings
 from echo_words.events import EventHub
+from echo_words.follow_up import (
+    FollowUpRefusedError,
+    ReplyEvent,
+    ReplyPump,
+    follow_up_material,
+    follow_up_prompt,
+    reply_events,
+)
 from echo_words.history import Entry
 from echo_words.i18n import message, pick_locale
 from echo_words.language_catalog import CATALOG, catalog_language_named
@@ -55,6 +63,7 @@ from echo_words.languages import (
 from echo_words.lexicon import Wikipedia, Wiktionary
 from echo_words.logs import configure_logging
 from echo_words.pipeline import DetailSubject, WordPipeline
+from echo_words.prompt import MAX_COMPLETE_ANSWER_CHARS, Chip, Exchange
 from echo_words.voices import installable_piper_voices
 
 # Transport guards only, kept far above the real limits so that the short
@@ -63,6 +72,9 @@ _MAX_WORD_INPUT = MAX_TEXT_LENGTH * 4
 _MAX_CONTEXT_INPUT = MAX_CONTEXT_LENGTH * 4
 _MAX_LANG_INPUT = 32
 _MAX_FIELD_INPUT = 200
+_MAX_ANSWER_INPUT = MAX_COMPLETE_ANSWER_CHARS * 4
+_MAX_CHIPS_INPUT = 200
+_MAX_EXCHANGES_INPUT = 200
 
 logger = logging.getLogger(__name__)
 SSE_KEEP_ALIVE_SECONDS = 15
@@ -162,6 +174,17 @@ async def _event_messages(events: EventHub) -> AsyncIterator[str]:
             yield f"event: {event.name}\ndata: {data}\n\n"
 
 
+async def _reply_messages(first: ReplyEvent, reply: ReplyPump) -> AsyncIterator[str]:
+    try:
+        event: ReplyEvent | None = first
+        while event is not None:
+            data = json.dumps(event.data, ensure_ascii=False, separators=(",", ":"))
+            yield f"event: {event.name}\ndata: {data}\n\n"
+            event = await reply.next()
+    finally:
+        await reply.aclose()
+
+
 def _audio_response(settings: Settings, name: str) -> FileResponse:
     if not is_audio_filename(name):
         raise HTTPException(status_code=404, detail="audio not found")
@@ -229,6 +252,34 @@ class DetailRequest(BaseModel):
     lang: str = Field(max_length=_MAX_LANG_INPUT)
     word: str = Field(max_length=_MAX_WORD_INPUT)
     context: str = Field(default="", max_length=_MAX_CONTEXT_INPUT)
+
+
+class FollowUpChip(BaseModel):
+    label: str = Field(max_length=_MAX_WORD_INPUT)
+    note: str = Field(default="", max_length=_MAX_WORD_INPUT)
+
+
+class FollowUpExchange(BaseModel):
+    question: str = Field(max_length=_MAX_WORD_INPUT)
+    answer: str = Field(max_length=_MAX_ANSWER_INPUT)
+
+
+class FollowUpQuestion(BaseModel):
+    """A question about an entry, carrying everything the reader sees on it: the page
+    keeps the entry, so a restart that emptied this process changes nothing."""
+
+    lang: str = Field(max_length=_MAX_LANG_INPUT)
+    word: str = Field(max_length=_MAX_WORD_INPUT)
+    analysed_as: str = Field(default="", max_length=_MAX_WORD_INPUT)
+    context: str = Field(default="", max_length=_MAX_CONTEXT_INPUT)
+    analysis: str = Field(max_length=_MAX_ANSWER_INPUT)
+    chips: list[FollowUpChip] = Field(default_factory=list, max_length=_MAX_CHIPS_INPUT)
+    detail: str = Field(default="", max_length=_MAX_ANSWER_INPUT)
+    exchanges: list[FollowUpExchange] = Field(
+        default_factory=list,
+        max_length=_MAX_EXCHANGES_INPUT,
+    )
+    question: str = Field(max_length=_MAX_WORD_INPUT)
 
 
 class SubmissionAccepted(BaseModel):
@@ -462,6 +513,51 @@ def create_app(settings: Settings | None = None) -> FastAPI:  # noqa: C901, PLR0
             raise HTTPException(status_code=410, detail="request expired") from exc
         except BackendError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.post("/api/words/{entry_id}/ask")
+    async def ask_about_word(
+        request: Request,
+        asked: FollowUpQuestion,
+        entry_id: str = Path(max_length=64),
+    ) -> StreamingResponse:
+        locale = pick_locale(request.headers.get("accept-language"))
+        language = _resolve_language(request.app.state.languages, asked.lang, locale)
+        material = follow_up_material(
+            submitted=asked.word,
+            question=asked.question,
+            analysis_html=asked.analysis,
+            analysed_as=asked.analysed_as,
+            context=asked.context,
+            chips=[Chip(chip.label, chip.note) for chip in asked.chips],
+            detail_html=asked.detail,
+            exchanges=[Exchange(turn.question, turn.answer) for turn in asked.exchanges],
+        )
+        try:
+            prompt = follow_up_prompt(language, settings.target_lang, material, locale=locale)
+        except FollowUpRefusedError as exc:
+            raise HTTPException(status_code=413 if exc.too_large else 400, detail=str(exc)) from exc
+        cascade = request.app.state.cascade
+        if cascade is None:
+            raise HTTPException(status_code=503, detail=message("question.no_reply", locale))
+        reply = ReplyPump(
+            reply_events(cascade, prompt, language, trace_id=f"{entry_id}-ask", locale=locale),
+        )
+        try:
+            first = await reply.next()
+        except BaseException:
+            await reply.aclose()
+            raise
+        if first is None or first.name == "error":
+            await reply.aclose()
+            detail = (
+                first.data["detail"] if first is not None else message("question.no_reply", locale)
+            )
+            raise HTTPException(status_code=503, detail=detail)
+        return StreamingResponse(
+            _reply_messages(first, reply),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
 
     @app.post("/api/words/{entry_id}/delete-card")
     async def delete_word_card(request: Request, entry_id: str) -> dict[str, object]:

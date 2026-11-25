@@ -814,6 +814,18 @@ Kept minimal — everything beyond typing a word:
   section opened under the analysis with a line saying roughly how long it
   takes. The page scrolls that section into view, so the reader watches the
   article being written rather than a spinner at the top of a long card.
+- **Follow-up questions** — on a finished word entry, a question about anything
+  on it, answered in the target language from what the reader is looking at: the
+  analysis, the chips under it, the deeper article when there is one, and the
+  questions already answered on that entry, in order. The page sends all of it with
+  each question, so an entry kept in the browser can still be asked about after a
+  restart has emptied the server. The reply streams to the browser that asked, and
+  only the free pool answers it: explaining what is already on the card is not worth
+  a paid call, and quoting a deeper article already bought buys nothing new. A pool
+  that cannot answer is a failure the reader can retry. Asking never touches the
+  card, its audio, the deeper article or the history. A question too long, or an
+  entry and conversation too long for a model to be given, is refused with its limit
+  before any model is asked. The endpoint stands, but no control offers it.
 - **Rebuild the card** — rewriting an existing note with the paid model. The
   pipeline path and its endpoint stand, but **no control offers it**: the
   reader never sees the note, and the plain translation a card needs is what
