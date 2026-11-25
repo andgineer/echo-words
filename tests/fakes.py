@@ -19,11 +19,14 @@ class FakeHandle:
         error: Exception | None = None,
         llm_name: str | None = "pool-model",
         hold: "Callable[[], Awaitable[None]] | None" = None,
+        hold_before: int | None = None,
         others: "Iterable[FakeResult | Exception]" = (),
     ) -> None:
         self.deltas = list(deltas)
         self.error = error
         self.hold = hold
+        # Which delta the hold sits in front of; by default it follows the last one.
+        self.hold_before = len(self.deltas) if hold_before is None else hold_before
         self.llm_name = llm_name
         self.closed = False
         self.scores: list[float] = []
@@ -39,13 +42,15 @@ class FakeHandle:
         return self._iterator
 
     async def _stream(self) -> AsyncIterator[str]:
-        for delta in self.deltas:
+        for index, delta in enumerate([*self.deltas, None]):
+            if self.hold is not None and index == self.hold_before:
+                # Answers the test drives from outside the app stop here, so an assertion
+                # about what the page is showing is not a race against the provider.
+                await self.hold()
+            if delta is None:
+                break
             self.delivered.append(delta)
             yield delta
-        if self.hold is not None:
-            # Answers the test drives from outside the app stop here, so an assertion
-            # about what the page is showing is not a race against the provider.
-            await self.hold()
         if self.error is not None:
             raise self.error
         if not self.delivered:

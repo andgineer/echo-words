@@ -822,22 +822,25 @@ Kept minimal — everything beyond typing a word:
   questions already answered on that entry, in order. The page sends all of it with
   each question, so an entry kept in the browser can still be asked about after a
   restart has emptied the server. A question sent while the deeper article is still
-  being written waits for the article to finish. The question shows under the entry
+  being written, or while the analysis is being run again, waits for the entry to
+  finish and is sent with it as it then stands; if the entry fails instead, nothing is
+  sent and the question is marked as having no reply. The question shows under the entry
   at once and the reply streams in beneath it, both as plain text; the exchanges stack
   above the field. Each entry keeps its own conversation and its unsent draft in the
   browser's history: they survive a reload, stay readable offline, leave with the
   entry when it is removed or evicted and come back with it on undo; an entry from
   before the field existed opens with none. One question is answered at a time per
   entry, and a reply keeps to the entry that asked it while the reader is on another
-  card. A reply cut off by a lost connection or a reload, a question sent with no
-  connection, and a pool that could not answer all leave the question in place,
+  card. A reply cut off by a lost connection, a reload or the reply's size bound, a
+  question sent with no connection, and a pool that could not answer all leave the question in place,
   marked as such, with a Retry beside it that fills that same place; only finished
   replies are given to the next question. Only the free pool answers: explaining what
   is already on the card is not worth a paid call, and quoting a deeper article already
   bought buys nothing new. Asking never touches the card, its audio, the deeper article
   or the analysis. A question too long, or an entry and conversation too long for a
   model to be given, is refused with its limit before any model is asked; the refusal
-  shows under the field and the question goes back into it.
+  shows under the field and the question goes back into it, ahead of anything typed
+  there since.
 - **Rebuild the card** — rewriting an existing note with the paid model. The
   pipeline path and its endpoint stand, but **no control offers it**: the
   reader never sees the note, and the plain translation a card needs is what

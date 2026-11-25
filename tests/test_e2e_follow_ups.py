@@ -24,6 +24,8 @@ SECOND = "Schloss"
 DEEPER = "<b>Nur im Artikel</b>: der Generalschlüssel öffnet jedes Schloss."
 TUTOR = "=== THE LEARNER'S QUESTION NOW ==="
 RAIL = '[role="tablist"][aria-label="Analysed words"] [role="tab"]'
+ANSWER_FINISHED = "(entry) => entry.status === 'done'"
+REPLY_FINISHED = "(entry) => (entry.follow_ups ?? []).some((turn) => turn.state === 'done')"
 
 
 def _questions(app) -> list[str]:
@@ -67,14 +69,19 @@ def test_a_conversation_keeps_to_its_entry_through_a_card_change_a_reload_and_a_
     article_gate = Gate()
     first_gate = Gate()
     second_gate = Gate()
-    first_reply = "Der Generalschlüssel ist ein Schlüssel für alle Schlösser."
+    first_start = "Der Generalschlüssel ist "
+    first_reply = f"{first_start}ein Schlüssel für alle Schlösser."
     with live_app(
         settings,
         monkeypatch,
         handles=[
             FakeHandle([answer(ARTICLE)]),
             FakeHandle([answer("<b>Schloss</b> — замок", SECOND)]),
-            FakeHandle([first_reply], hold=first_gate.wait),
+            FakeHandle(
+                [first_start, "ein Schlüssel für alle Schlösser."],
+                hold=first_gate.wait,
+                hold_before=1,
+            ),
             FakeHandle(["Teil"], hold=second_gate.wait),
             FakeHandle(["Zum Beispiel: Ich habe den Generalschlüssel verloren."]),
             FakeHandle(["Ja."]),
@@ -98,7 +105,7 @@ def test_a_conversation_keeps_to_its_entry_through_a_card_change_a_reload_and_a_
         assert _questions(app) == []
         article_gate.open()
 
-        expect(page.locator(".turn-answer")).to_have_text(first_reply)
+        expect(page.locator(".turn-answer")).to_have_text(first_start.strip())
         expect(page.locator(".turn")).to_have_attribute("data-state", "asking")
         [prompt] = _asked(app, 1)
         assert "ключ" in _section(prompt, "The analysis")
@@ -108,12 +115,14 @@ def test_a_conversation_keeps_to_its_entry_through_a_card_change_a_reload_and_a_
         assert _section(prompt, "EARLIER QUESTIONS") is None
         assert "=== THE LEARNER'S QUESTION NOW ===\nWas ist ein Generalschlüssel?\n" in prompt
 
-        # The reader moves on while the reply is still coming; it lands where it was asked.
+        # The reader moves on while the reply is still coming; the rest of its text lands
+        # where it was asked, not on the card on screen.
         _open(page, SECOND)
         expect(page.locator(".turn")).to_have_count(0)
         first_gate.open()
-        page.wait_for_timeout(200)
+        _stored_once(page, REPLY_FINISHED)
         expect(page.locator(".turn")).to_have_count(0)
+        expect(page.locator(".entry-title")).to_have_text(SECOND)
         _open(page, WORD)
         expect(page.locator(".turn-answer")).to_have_text(first_reply)
         expect(page.locator(".turn-cut")).to_have_count(0)
@@ -169,21 +178,21 @@ def test_a_conversation_keeps_to_its_entry_through_a_card_change_a_reload_and_a_
         expect(page.locator(".turn")).to_have_count(0)
 
 
-def _stored_once_finished(page: Page) -> None:
+def _stored_once(page: Page, test: str) -> None:
     deadline = time.monotonic() + 10
     while not page.evaluate(
-        """async () => {
+        f"""async () => {{
           const open = indexedDB.open("echo-words", 1);
-          const db = await new Promise((resolve) => { open.onsuccess = () => resolve(open.result); });
-          const saved = await new Promise((resolve) => {
+          const db = await new Promise((resolve) => {{ open.onsuccess = () => resolve(open.result); }});
+          const saved = await new Promise((resolve) => {{
             const read = db.transaction("cache", "readonly").objectStore("cache").get("history");
             read.onsuccess = () => resolve(read.result);
-          });
-          return (saved?.data ?? []).some((entry) => entry.status === "done");
-        }""",
+          }});
+          return (saved?.data ?? []).some({test});
+        }}""",
     ):
         if time.monotonic() > deadline:
-            raise TimeoutError("the finished answer never reached the browser's database")
+            raise TimeoutError("what was awaited never reached the browser's database")
         page.wait_for_timeout(50)
 
 
@@ -197,7 +206,7 @@ def test_a_word_with_no_deeper_article_is_asked_about_after_the_server_forgot_it
     with live_app(settings, monkeypatch, handles=[FakeHandle([answer(ARTICLE)])]) as first:
         submit(page, first.url)
         expect(page.locator(".delete-card")).to_be_visible()
-        _stored_once_finished(page)
+        _stored_once(page, ANSWER_FINISHED)
     port = urlsplit(first.url).port
 
     with live_app(

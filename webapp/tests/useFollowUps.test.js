@@ -165,6 +165,87 @@ describe("follow-up questions", () => {
     await asking;
   });
 
+  it("waits for an analysis run again meanwhile and sends it as it then stands", async () => {
+    upsertEntry(entry({ detail_pending: true, detail_html: "<p>Half</p>" }));
+    const answer = reply();
+    fetchMock.mockResolvedValueOnce(answer.response);
+    setDraft("e-1", "And now?");
+
+    const asking = ask("e-1");
+    await flushPromises();
+    // A spelling correction starts the entry over: nothing of the answer before it.
+    upsertEntry({
+      entry_id: "e-1",
+      text: "",
+      status: "pending",
+      segments: [],
+      segment_kind: null,
+      carded_sense: null,
+      shape: null,
+      detail_pending: false,
+      detail_html: "",
+    });
+    await flushPromises();
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    upsertEntry({ entry_id: "e-1", text: "<b>Schlüsselbund</b> — связка ключей" });
+    upsertEntry({
+      entry_id: "e-1",
+      status: "done",
+      shape: "unit",
+      segment_kind: "senses",
+      segments: [{ label: "Schlüsselbund", reason: "связка" }],
+    });
+    await flushPromises();
+
+    expect(sent(0)).toMatchObject({
+      analysis: "<b>Schlüsselbund</b> — связка ключей",
+      chips: [{ label: "связка", note: "" }],
+      question: "And now?",
+    });
+    answer.send("done");
+    answer.close();
+    await asking;
+  });
+
+  it("sends nothing for a question whose entry failed while it waited", async () => {
+    upsertEntry(entry({ detail_pending: true }));
+    setDraft("e-1", "And now?");
+
+    const asking = ask("e-1");
+    upsertEntry({ entry_id: "e-1", text: "", status: "pending", detail_pending: false });
+    await flushPromises();
+    upsertEntry({ entry_id: "e-1", status: "error", error: "analysis_failed" });
+    await asking;
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(entries.value[0].follow_ups[0]).toMatchObject({ question: "And now?", state: "cut" });
+  });
+
+  it("marks a reply stopped at the size bound cut off and keeps it out of the next context", async () => {
+    upsertEntry(entry());
+    const long = reply();
+    const next = reply();
+    fetchMock.mockResolvedValueOnce(long.response).mockResolvedValueOnce(next.response);
+    setDraft("e-1", "Tell me everything?");
+
+    const asking = ask("e-1");
+    long.send("delta", { text: "Everything up to" });
+    long.send("done", { model: "pool", complete: false });
+    long.close();
+    await asking;
+
+    expect(stored().follow_ups[0]).toMatchObject({ answer: "Everything up to", state: "cut" });
+
+    setDraft("e-1", "And then?");
+    const asked = ask("e-1");
+    next.send("done", { model: "pool", complete: true });
+    next.close();
+    await asked;
+
+    expect(sent(1).exchanges).toEqual([]);
+  });
+
   it("puts only completed replies into the next question's context", async () => {
     upsertEntry(
       entry({
@@ -351,6 +432,36 @@ describe("follow-up questions", () => {
     expect(refusals["e-1"]).toBe("Too much to send: 40000 of 32000.");
     // The refusal answers one request and is never stored with the entry.
     expect(JSON.stringify(stored())).not.toContain("Too much to send");
+  });
+
+  it("keeps a refused question when the reader typed another while it waited", async () => {
+    upsertEntry(entry({ detail_pending: true }));
+    fetchMock.mockResolvedValueOnce(refused(413, "Too much to send."));
+    setDraft("e-1", "A long one?");
+
+    const asking = ask("e-1");
+    setDraft("e-1", "And another?");
+    upsertEntry({ entry_id: "e-1", detail_pending: false, detail_html: "<p>Art.</p>" });
+    await asking;
+
+    expect(entries.value[0].follow_ups).toEqual([]);
+    expect(entries.value[0].follow_up_draft).toBe("A long one? And another?");
+    expect(refusals["e-1"]).toBe("Too much to send.");
+  });
+
+  it("keeps a retried question the server refuses when the field holds a draft", async () => {
+    upsertEntry(
+      entry({
+        follow_up_draft: "Half typed",
+        follow_ups: [{ id: "t-1", question: "Cut one?", answer: "", state: "cut" }],
+      }),
+    );
+    fetchMock.mockResolvedValueOnce(refused(413, "Too much to send."));
+
+    await retry("e-1", "t-1");
+
+    expect(entries.value[0].follow_ups).toEqual([]);
+    expect(entries.value[0].follow_up_draft).toBe("Cut one? Half typed");
   });
 
   it("marks a pool that cannot answer as no reply, with the question kept", async () => {

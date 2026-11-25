@@ -49,18 +49,27 @@ function refuse(entryId, turnId, reason) {
   const turns = entry.follow_ups ?? [];
   const turn = turns.find((item) => item.id === turnId);
   refusals[entryId] = reason;
+  const typed = entry.follow_up_draft ?? "";
   upsertEntry({
     entry_id: entryId,
     follow_ups: turns.filter((item) => item.id !== turnId),
-    // The question goes back into the field so it can be shortened and sent again.
-    ...(turn && !entry.follow_up_draft ? { follow_up_draft: turn.question } : {}),
+    // The question goes back into the field so it can be shortened and sent again,
+    // ahead of anything typed since rather than in place of it.
+    ...(turn ? { follow_up_draft: typed ? `${turn.question} ${typed}` : turn.question } : {}),
   });
 }
 
+function finished(entry) {
+  return entry.status === "done" && entry.shape === "unit";
+}
+
 // The question is asked about what the reader is looking at, so an article still being
-// written is waited for rather than sent half-done.
-function articleSettled(entryId) {
-  const settled = () => !find(entryId)?.detail_pending;
+// written, or an analysis run again meanwhile, is waited for rather than sent half-done.
+function entrySettled(entryId) {
+  const settled = () => {
+    const entry = find(entryId);
+    return !entry || (entry.status !== "pending" && !entry.detail_pending);
+  };
   if (settled()) return Promise.resolve();
   return new Promise((resolve) => {
     const stop = watch(settled, (done) => {
@@ -96,21 +105,26 @@ export function material(entry, turnId) {
 
 async function run(entryId, turnId) {
   try {
-    await articleSettled(entryId);
+    await entrySettled(entryId);
     const entry = find(entryId);
     if (!entry?.follow_ups?.some((turn) => turn.id === turnId)) return;
-    let finished = false;
+    if (!finished(entry)) {
+      update(entryId, turnId, { state: "cut" });
+      return;
+    }
+    let ended = false;
     await streamQuestion(entryId, material(entry, turnId), (name, data) => {
       if (name === "delta") {
         update(entryId, turnId, (turn) => ({ answer: turn.answer + (data.text ?? "") }));
       } else if (name === "reset") {
         update(entryId, turnId, { answer: "" });
       } else if (name === "done") {
-        finished = true;
-        update(entryId, turnId, { state: "done" });
+        ended = true;
+        // A reply stopped at the size bound is not the whole answer.
+        update(entryId, turnId, { state: data.complete === false ? "cut" : "done" });
       }
     });
-    if (!finished) update(entryId, turnId, { state: "cut" });
+    if (!ended) update(entryId, turnId, { state: "cut" });
   } catch (error) {
     if (REFUSED.has(error.status)) refuse(entryId, turnId, error.message);
     else update(entryId, turnId, { state: "cut", unsent: error instanceof ServerUnreachable });
