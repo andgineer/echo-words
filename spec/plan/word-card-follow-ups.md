@@ -1,8 +1,8 @@
 # Follow-up questions on a word card
 
-**Status** — Step 1 is built with the operator's minimal prompt, measured, and its
-re-run semantically reviewed and recorded in `spec/decision-llm-backend.md`; it is in
-the code review loop. The question endpoint (`POST /api/words/{entry_id}/ask`, a server-sent-event
+**Status** — Step 1 has landed: built with the operator's minimal prompt, measured,
+its re-run semantically reviewed and recorded in `spec/decision-llm-backend.md`, and
+converged through three review rounds. The question endpoint (`POST /api/words/{entry_id}/ask`, a server-sent-event
 stream of `delta`, `reset`, `done` and `error`), the prompt (`build_follow_up_prompt` in
 `src/echo_words/prompt.py`, sections named as the reader's page names them, through the
 `entry.*` keys of `src/echo_words/i18n.py`) and the context assembly and bound
