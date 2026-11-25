@@ -1064,6 +1064,44 @@ correction named, and devuška on девојка, where as typed город, д�
 refused and offered the reverse lookup, and книга is accepted as Old Church Slavonic and
 carded књига without a word. Whether the app converts is open with the operator.
 
+## Follow-up questions: the free pool, with a minimal prompt — 2026-11-25
+
+A question the reader asks about an entry goes to the free pool only, never the paid
+tier. The model gets one line saying it is a language tutor and the learner is reading
+the entry below, the entry's material with each part named as the page names it, the
+earlier questions and answers on that entry, the question, and two instructions: answer
+in the target language, in plain text. Nothing else — no rule about which passage an
+ambiguous reference means, about scope, accuracy or length. That is the operator's
+choice: a reference that fits two passages is answered about one of them.
+
+Measured on six questions about four recorded entries (English, German, Serbian) whose
+referent can be checked — a detail found only in the analysis, one found only in the
+full article, a new sentence, and a second turn understandable only from the first
+reply — all answered by Gemini 3.5 Flash Lite from the pool, and every exchange read by
+an agent that did not run it. Every answered reply addressed the intended passage, in
+Russian, as plain text, with no internal label shown. Sense 4 of aufheben and the
+put up with / tolerate contrast were taken from the full article and explained
+correctly; the Serbian turn 2 resolved "the first sentence of your answer" from turn 1.
+
+What the reader can still meet:
+
+- A wrong grammatical claim now and then: the Serbian turn 2 named a non-existent
+  auxiliary "јети" while splitting није correctly into не and је.
+- An invented explanation where the card is at fault: asked whether Russian sentences
+  with an untranslated English verb are how people speak, the reply said no and then
+  made up a reason the app did it.
+- A greeting and a sign-off on most replies, and ты and вы mixed between replies.
+- **A reply the provider stops after a few words, shown as if finished.** Two of the
+  thirteen Flash Lite follow-up replies across both runs stopped early ("Привет! От", 3
+  completion tokens, the call recorded as succeeded). The pool does not read the
+  provider's stop reason, so such a stub is neither retried on another model nor marked
+  as cut off. This is a defect, not an accepted limitation; it is with the operator.
+
+Rules on ambiguous references, scope and accuracy were measured too and are left out
+for what they bought: on eight questions the model asked back on an ambiguous reference
+in neither of two fixtures built for it, quoted an internal section label to the reader,
+and wrote Markdown once.
+
 ## What would re-open this
 
 - The pool's primary model degrading or disappearing from the curated
