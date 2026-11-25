@@ -1,7 +1,8 @@
 # Follow-up questions on a word card
 
-**Status** — Step 1 is built with the operator's minimal prompt and measured, not
-yet reviewed. The question endpoint (`POST /api/words/{entry_id}/ask`, a server-sent-event
+**Status** — Step 1 is built with the operator's minimal prompt, measured, and its
+re-run semantically reviewed and recorded in `spec/decision-llm-backend.md`; it is in
+the code review loop. The question endpoint (`POST /api/words/{entry_id}/ask`, a server-sent-event
 stream of `delta`, `reset`, `done` and `error`), the prompt (`build_follow_up_prompt` in
 `src/echo_words/prompt.py`, sections named as the reader's page names them, through the
 `entry.*` keys of `src/echo_words/i18n.py`) and the context assembly and bound
@@ -12,10 +13,8 @@ fixtures: two base-only, two deeper-only, a new sentence and the second turn aft
 first run of the earlier, longer prompt is in `experiments/.bench-follow-up`; the minimal
 prompt ran once on the free pool on 2026-11-25 into `experiments/.bench-follow-up-2`:
 6 of 6 answered, all by google-gemini-3.5-flash-lite, one reply (base-en-reluctant)
-three tokens long. That run is the step's only re-run. Still owed for step 1: the fresh
-semantic review of `experiments/.bench-follow-up-2/review-packet-follow-up.json`, its
-record in `spec/decision-llm-backend.md`, then the code review loop. Step 2 is not
-started; the PWA has no control for it yet.
+three tokens long (a provider stop, with the operator). That run is the step's only
+re-run. Step 2 is not started; the PWA has no control for it yet.
 
 ## What the reader can do
 
