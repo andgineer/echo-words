@@ -1078,8 +1078,8 @@ Measured on six questions about four recorded entries (English, German, Serbian)
 referent can be checked — a detail found only in the analysis, one found only in the
 full article, a new sentence, and a second turn understandable only from the first
 reply — all answered by Gemini 3.5 Flash Lite from the pool, and every exchange read by
-an agent that did not run it. Every answered reply addressed the intended passage, in
-Russian, as plain text, with no internal label shown. Sense 4 of aufheben and the
+an agent that did not run it. Five of the six replies addressed the intended passage, in
+Russian, as plain text, with no internal label shown; the sixth stopped after two words. Sense 4 of aufheben and the
 put up with / tolerate contrast were taken from the full article and explained
 correctly; the Serbian turn 2 resolved "the first sentence of your answer" from turn 1.
 
@@ -1092,8 +1092,9 @@ What the reader can still meet:
   made up a reason the app did it.
 - A greeting and a sign-off on most replies, and ты and вы mixed between replies.
 - **A reply the provider stops after a few words, shown as if finished.** Two of the
-  thirteen Flash Lite follow-up replies across both runs stopped early ("Привет! От", 3
-  completion tokens, the call recorded as succeeded). The pool does not read the
+  twelve Flash Lite follow-up replies across both runs stopped early, each call recorded
+  as succeeded: one after "Привет! От" (3 completion tokens), one mid-reply at a colon
+  before the sentences it announced. The pool does not read the
   provider's stop reason, so such a stub is neither retried on another model nor marked
   as cut off. This is a defect, not an accepted limitation; it is with the operator.
 
