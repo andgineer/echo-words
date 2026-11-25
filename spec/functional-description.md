@@ -822,8 +822,8 @@ Kept minimal — everything beyond typing a word:
   questions already answered on that entry, in order. The page sends all of it with
   each question, so an entry kept in the browser can still be asked about after a
   restart has emptied the server. A question sent while the deeper article is still
-  being written, or while the analysis is being run again, waits for the entry to
-  finish and is sent with it as it then stands; if the entry fails instead, nothing is
+  being written waits for the entry to finish, and so does one already waiting when
+  the analysis is run again; it is sent with the entry as it then stands; if the entry fails instead, nothing is
   sent and the question is marked as having no reply. The question shows under the entry
   at once and the reply streams in beneath it, both as plain text; the exchanges stack
   above the field. Each entry keeps its own conversation and its unsent draft in the
