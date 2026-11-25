@@ -9,14 +9,19 @@ replies pinned from the recorded run. The follow-up tier (`run-follow-up` in
 `experiments/one_note_bench.py`, material in `experiments/follow_up_items.json`) ran
 once on the free pool on 2026-11-25 into `experiments/.bench-follow-up`: 8 of 8
 answered (google-gemini-3.5-flash-lite 6, openrouter-nemotron-3-ultra 1,
-groq-gpt-oss-120b 1). Still owed for step 1: the fresh agent's semantic review of
-`review-packet-follow-up.json` and its record in `spec/decision-llm-backend.md`.
+groq-gpt-oss-120b 1). A fresh agent's semantic review of that run found the
+ambiguous-reference rule obeyed in neither of its two fixtures, the prompt's English
+section label ("DEEPER ANALYSIS") quoted to the reader, and Markdown in one reply.
+The operator then cut the prompt to its minimum (below). Still owed for step 1: the
+cut prompt, the corrected fixtures, one re-run of the tier, its fresh semantic
+review and its record in `spec/decision-llm-backend.md`, then the code review loop.
 Step 2 is not started; the PWA has no control for it yet.
 
 ## What the reader can do
 
-On a finished word or expression entry, the reader can open **Ask a question**
-and ask freely about anything mentioned on that card. For example, after
+Under every finished word or expression entry stands a question field with a
+Send button, as in any chat, and the reader asks freely about anything
+mentioned on that card. For example, after
 reading two examples in Deeper analysis, they can ask “Why is the second one
 more formal?” and then “How would I say that to a friend?” The first reply
 should identify the example and explain the register. The second should use
@@ -43,11 +48,14 @@ Running-text entries are outside this word-card plan.
   Preserve headings, example order, and table rows when extracting text.
   Include the ordered completed exchanges on this entry and the new question.
   A locally restored card supplies the same context after a server restart.
-- Distinguish the original analysis, deeper article, prior turns and current
-  question in the prompt. Answer in the configured target language and quote
-  the source language as needed. Explain, compare, correct a premise or give
-  a new example as the question warrants. When a reference is ambiguous, ask
-  which passage the reader means. Bound the request on the server. If it
+- The prompt is minimal (operator decision, 2026-11-25): one line saying the
+  model is a language tutor and the learner is reading the entry below; the
+  material with each part marked and named as the page names it (the full
+  article is «Полная статья» / "Full article", never an internal label); the
+  prior turns; the current question; then only "answer in the target
+  language" and "plain text, no Markdown". No rules about ambiguous
+  references, scope, accuracy or length: a reference that fits two passages
+  is answered about one of them. Bound the request on the server. If it
   exceeds the supported context, explain the limit before calling the model
   so the reader can still see which material the question refers to.
 - Stream reply text to the requesting browser. Keep the question path
@@ -60,8 +68,8 @@ Running-text entries are outside this word-card plan.
   Select passages where the referent can be checked and write down the
   expected passage and what a good answer must explain. Cover a base-only
   question, a term or numbered example unique to the deeper article, a
-  second turn understandable only from the first reply, and an ambiguous
-  reference. Exercise the production context builder and prompt. For the
+  and a second turn understandable only from the first reply. Fixture
+  questions name the article as the page does («полная статья»). Exercise the production context builder and prompt. For the
   second turn feed back the actual first reply and retain both in the packet.
 - Run the tier on the free pool and check provider availability before scoring.
   A fresh agent reviews every exchange for the intended referent, linguistic
@@ -72,10 +80,11 @@ Running-text entries are outside this word-card plan.
 
 ## 2. Put the conversation in the card and keep it with the entry
 
-- In `webapp/src/components/EntryCard.vue`, add a compact action to the
-  existing controls row. It opens the conversation beneath the reading
-  material and brings its labeled question field into view. Show the reader's
-  question immediately and stream the reply beneath it. Render both as text.
+- In `webapp/src/components/EntryCard.vue`, put a plain chat input under every
+  finished entry: one always-visible labeled text field and a Send button, no
+  toggle, no separate view (operator decision, 2026-11-25). The exchanges
+  stack beneath the card above the field. Show the reader's question
+  immediately and stream the reply beneath it. Render both as text.
   Localize controls and errors in English and Russian. Keep text selection,
   keyboard submission and card swiping usable on a phone.
 - Store drafts and turns by entry ID with the browser's existing history.
@@ -88,7 +97,7 @@ Running-text entries are outside this word-card plan.
   interrupted reply as incomplete, retain the question, and let the reader
   explicitly retry in the same place. Only completed replies enter the next
   turn's model context. An offline submission keeps the question available
-  for retry through the conversation control.
+  for retry next to it.
 - Test persistence, legacy entries and retry in the frontend suite. In a
   real-browser test, gate the fake model's stream, ask about a detail unique
   to the deeper article, change cards mid-reply, return and ask a second
