@@ -34,7 +34,8 @@ the code and does not apply to those.
 - `spec/plan/` — work that is started and not finished, one file each.
   **Read these first when picking work up**: each says where its work
   stands, what is already built, what its experiments established and
-  what is left. No plan is open.
+  what is left. The open plan covers
+  [follow-up questions on a word card](spec/plan/word-card-follow-ups.md).
   Writing a defect into a decision spec documents it; it does not accept
   it, and only the operator accepts a limitation of the product. Write
   a new plan only for work that needs one, and delete it once that work
