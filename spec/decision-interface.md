@@ -270,6 +270,20 @@ paid for is what pushed itself off the screen. Rewriting an existing note with t
 translation a card needs is what the free model gets right the first time. The
 endpoint and its pipeline path stand; only the button went.
 
+**A question about the entry is a chat line at its foot.** Under every finished word
+entry stands one text field and a Send button, always there, with no toggle, no
+separate view and no mode — the operator's choice of 2026-11-25: just an input field
+below with a send button, like any chat. The exchanges stack between the entry and
+the field, the reader's question at once and the reply streaming under it, both shown
+as plain text whatever they contain. The field and the replies belong to typing and
+selection, like the reading text, so the card is still swiped from its margins and
+its row of controls; Enter sends. While one reply is still coming in, Send waits, and
+each conversation stays with its entry rather than with the screen: a reader who
+swipes away mid-reply finds it finished on return. A reply that never finished is not
+dropped and not silently repeated: it is marked as cut off, or as not sent, with a
+Retry in its own place. The conversation lives in the browser's history beside the
+entry it is about, so it lasts as long as that entry does and no longer.
+
 ## The theme follows the system
 
 Status: **decided 2026-09-03.** Pinning dark was never a decision, only a

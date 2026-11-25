@@ -14,7 +14,16 @@ first run of the earlier, longer prompt is in `experiments/.bench-follow-up`; th
 prompt ran once on the free pool on 2026-11-25 into `experiments/.bench-follow-up-2`:
 6 of 6 answered, all by google-gemini-3.5-flash-lite, one reply (base-en-reluctant)
 three tokens long (a provider stop, with the operator). That run is the step's only
-re-run. Step 2 is not started; the PWA has no control for it yet.
+re-run. Step 2 is built and awaiting review: `EntryQuestions.vue` (field, Send, the
+stacked turns, cut-off notes with Retry) under every finished unit entry in
+`EntryCard.vue`; `useFollowUps.js` (turns and the draft stored on the entry in the
+history, one live question per entry, waiting for a streaming article, retry in place,
+completed turns only as context, refusals shown and not stored); `api/ask.js` reading
+the endpoint's event stream; the chip wording shared through `entryChips.js`. Tests:
+`webapp/tests/useFollowUps.test.js`, `webapp/tests/EntryQuestions.test.js`, two
+`AddView` tests, and `tests/test_e2e_follow_ups.py`. The functional description and
+`spec/decision-interface.md` describe the shipped field; the add-word, card-added and
+cyrillic-card screenshots were recaptured. Nothing the model is asked changed.
 
 ## What the reader can do
 

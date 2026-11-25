@@ -814,18 +814,30 @@ Kept minimal — everything beyond typing a word:
   section opened under the analysis with a line saying roughly how long it
   takes. The page scrolls that section into view, so the reader watches the
   article being written rather than a spinner at the top of a long card.
-- **Follow-up questions** — on a finished word entry, a question about anything
-  on it, answered in the target language from what the reader is looking at: the
+- **Follow-up questions** — under every finished word or expression entry, lookups
+  and entries whose Anki save failed included, stands a question field with a Send
+  button, as in any chat; running text has none. A question is about anything on that
+  entry, answered in the target language from what the reader is looking at: the
   analysis, the chips under it, the deeper article when there is one, and the
   questions already answered on that entry, in order. The page sends all of it with
   each question, so an entry kept in the browser can still be asked about after a
-  restart has emptied the server. The reply streams to the browser that asked, and
-  only the free pool answers it: explaining what is already on the card is not worth
-  a paid call, and quoting a deeper article already bought buys nothing new. A pool
-  that cannot answer is a failure the reader can retry. Asking never touches the
-  card, its audio, the deeper article or the history. A question too long, or an
-  entry and conversation too long for a model to be given, is refused with its limit
-  before any model is asked. The endpoint stands, but no control offers it.
+  restart has emptied the server. A question sent while the deeper article is still
+  being written waits for the article to finish. The question shows under the entry
+  at once and the reply streams in beneath it, both as plain text; the exchanges stack
+  above the field. Each entry keeps its own conversation and its unsent draft in the
+  browser's history: they survive a reload, stay readable offline, leave with the
+  entry when it is removed or evicted and come back with it on undo; an entry from
+  before the field existed opens with none. One question is answered at a time per
+  entry, and a reply keeps to the entry that asked it while the reader is on another
+  card. A reply cut off by a lost connection or a reload, a question sent with no
+  connection, and a pool that could not answer all leave the question in place,
+  marked as such, with a Retry beside it that fills that same place; only finished
+  replies are given to the next question. Only the free pool answers: explaining what
+  is already on the card is not worth a paid call, and quoting a deeper article already
+  bought buys nothing new. Asking never touches the card, its audio, the deeper article
+  or the analysis. A question too long, or an entry and conversation too long for a
+  model to be given, is refused with its limit before any model is asked; the refusal
+  shows under the field and the question goes back into it.
 - **Rebuild the card** — rewriting an existing note with the paid model. The
   pipeline path and its endpoint stand, but **no control offers it**: the
   reader never sees the note, and the plain translation a card needs is what
