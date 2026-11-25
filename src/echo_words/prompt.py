@@ -433,8 +433,6 @@ headings."""
 
 @dataclass(frozen=True)
 class Chip:
-    """A chip under the analysis, as the reader sees it: its label and any note beside it."""
-
     label: str
     note: str = ""
 
@@ -466,7 +464,6 @@ def build_follow_up_prompt(
     *,
     locale: str,
 ) -> str:
-    """Build the question a reader asks about an entry they are reading."""
     return _FOLLOW_UP_PROMPT.format(
         source_lang=language.name,
         target_lang=target_lang,

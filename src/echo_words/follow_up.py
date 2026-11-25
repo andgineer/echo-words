@@ -17,9 +17,8 @@ from echo_words.languages import Language, sanitize_context
 from echo_words.prompt import Chip, Exchange, FollowUpMaterial, build_follow_up_prompt
 
 MAX_QUESTION_CHARS = 1_000
-# A card, its deeper article and a long conversation come to under 10 000 characters;
-# the bound leaves room for that several times over and stays inside the context and
-# per-minute token allowance of the pool's smaller models.
+# Several times a card, its deeper article and a long conversation (under 10 000), yet
+# inside the context and per-minute token allowance of the pool's smaller models.
 MAX_FOLLOW_UP_PROMPT_CHARS = 32_000
 
 _CELL_BREAK = re.compile(r"\s*</td>\s*<td>\s*", re.IGNORECASE)
@@ -48,8 +47,6 @@ class ReplyEvent:
 
 
 def reading_text(html: str) -> str:
-    """The text a reader sees in an answer's markup: one line per table row, its cells
-    side by side, and the answer's own lines, headings and numbering as they stand."""
     text = _CELL_BREAK.sub(" | ", html)
     text = _ROW_EDGE.sub("\n", text)
     text = _LINE_BREAK.sub("\n", text)
@@ -95,7 +92,6 @@ def follow_up_prompt(
     *,
     locale: str,
 ) -> str:
-    """The prompt for this question, or `FollowUpRefusedError` before any model is asked."""
     if not material.question:
         raise FollowUpRefusedError(message("question.empty", locale))
     if len(material.question) > MAX_QUESTION_CHARS:
@@ -122,11 +118,6 @@ async def reply_events(
     trace_id: str,
     locale: str,
 ) -> AsyncIterator[ReplyEvent]:
-    """The reply as it is written, ending in `done` or in a retryable `error`.
-
-    Only the free pool answers: an explanation of what is already on the card is not
-    worth a paid call, and a pool that cannot answer is a failure to ask again later.
-    """
     replaced = False
 
     async def reset() -> None:

@@ -31,6 +31,7 @@ from echo_words.config import Settings
 from echo_words.config import settings as default_settings
 from echo_words.events import EventHub
 from echo_words.follow_up import (
+    MAX_QUESTION_CHARS,
     FollowUpRefusedError,
     ReplyEvent,
     ReplyPump,
@@ -73,6 +74,7 @@ _MAX_CONTEXT_INPUT = MAX_CONTEXT_LENGTH * 4
 _MAX_LANG_INPUT = 32
 _MAX_FIELD_INPUT = 200
 _MAX_ANSWER_INPUT = MAX_COMPLETE_ANSWER_CHARS * 4
+_MAX_QUESTION_INPUT = MAX_QUESTION_CHARS * 20
 _MAX_CHIPS_INPUT = 200
 _MAX_EXCHANGES_INPUT = 200
 
@@ -265,9 +267,6 @@ class FollowUpExchange(BaseModel):
 
 
 class FollowUpQuestion(BaseModel):
-    """A question about an entry, carrying everything the reader sees on it: the page
-    keeps the entry, so a restart that emptied this process changes nothing."""
-
     lang: str = Field(max_length=_MAX_LANG_INPUT)
     word: str = Field(max_length=_MAX_WORD_INPUT)
     analysed_as: str = Field(default="", max_length=_MAX_WORD_INPUT)
@@ -279,7 +278,7 @@ class FollowUpQuestion(BaseModel):
         default_factory=list,
         max_length=_MAX_EXCHANGES_INPUT,
     )
-    question: str = Field(max_length=_MAX_WORD_INPUT)
+    question: str = Field(max_length=_MAX_QUESTION_INPUT)
 
 
 class SubmissionAccepted(BaseModel):

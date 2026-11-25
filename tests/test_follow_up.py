@@ -351,6 +351,30 @@ def test_a_question_that_cannot_be_asked_is_refused_before_any_model_is(
     assert broker.stream_calls == []
 
 
+@pytest.mark.parametrize("locale", ["en", "ru"])
+def test_a_question_of_any_length_over_the_limit_gets_the_localized_refusal(
+    monkeypatch: pytest.MonkeyPatch,
+    settings: Settings,
+    locale: str,
+):
+    broker = FakeBroker()
+    _app_with(monkeypatch, broker)
+    with TestClient(create_app(settings)) as client:
+        response = client.post(
+            "/api/words/e1/ask",
+            json=_body(RELUCTANT, "?" * (MAX_QUESTION_CHARS * 5)),
+            headers={"Accept-Language": locale},
+        )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == message(
+        "question.too_long",
+        locale,
+        limit=MAX_QUESTION_CHARS,
+    )
+    assert broker.stream_calls == []
+
+
 def test_an_entry_too_long_to_ask_about_is_explained_before_any_model_is_asked(
     monkeypatch: pytest.MonkeyPatch,
     settings: Settings,
