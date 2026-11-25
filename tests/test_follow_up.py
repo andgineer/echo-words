@@ -468,3 +468,55 @@ async def test_a_reader_who_leaves_mid_reply_frees_the_pool_stream(
     assert first is not None
     assert first.data == {"text": "Начало"}
     assert handle.closed
+
+
+REPLIES = RECORDED["replies"]
+
+
+def _deltas(text: str, size: int = 37) -> list[str]:
+    return [text[start : start + size] for start in range(0, len(text), size)]
+
+
+@pytest.mark.parametrize(
+    "fixture",
+    ["follow-up-deeper-de-aufheben", "follow-up-ambiguous-en-reluctant"],
+)
+def test_a_recorded_reply_reaches_the_page_exactly_as_the_pool_wrote_it(
+    monkeypatch: pytest.MonkeyPatch,
+    settings: Settings,
+    fixture: str,
+):
+    recorded = REPLIES[fixture]
+    broker = FakeBroker(handles=[FakeHandle(_deltas(recorded["reply"]), llm_name="pool-a")])
+    _app_with(monkeypatch, broker)
+    entry = RECORDED["entries"][recorded["entry"]]
+    with TestClient(create_app(settings)) as client:
+        response = client.post("/api/words/e1/ask", json=_body(entry, recorded["question"]))
+
+    events = _events(response.text)
+    assert (
+        "".join(str(data["text"]) for name, data in events if name == "delta")
+        == (recorded["reply"])
+    )
+    assert events[-1] == ("done", {"model": "pool-a", "complete": True})
+
+
+def test_a_second_turn_is_asked_with_the_recorded_first_reply_verbatim(
+    monkeypatch: pytest.MonkeyPatch,
+    settings: Settings,
+):
+    first = REPLIES["follow-up-turn1-sr-drzati-rec"]
+    second = REPLIES["follow-up-turn2-sr-drzati-rec"]
+    assert second["earlier_turns"] == [{"question": first["question"], "answer": first["reply"]}]
+    broker = FakeBroker(handles=[FakeHandle(_deltas(second["reply"]))])
+    _app_with(monkeypatch, broker)
+    with TestClient(create_app(settings)) as client:
+        response = client.post(
+            "/api/words/e1/ask",
+            json=_body(DRZATI_REC, second["question"], exchanges=second["earlier_turns"]),
+        )
+
+    assert _events(response.text)[-1][0] == "done"
+    (call,) = broker.stream_calls
+    assert f"Question 1: {first['question']}\nYour answer 1: {first['reply']}\n" in call["prompt"]
+    assert call["prompt"].index("Your answer 1:") < call["prompt"].index(second["question"])

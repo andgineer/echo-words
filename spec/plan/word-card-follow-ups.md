@@ -1,8 +1,17 @@
 # Follow-up questions on a word card
 
-**Status** — Planned. The PWA already displays and saves the initial analysis and
-the optional Deeper analysis article. Follow-up questions are unimplemented and
-unmeasured. Start with step 1.
+**Status** — Step 1 is built and measured once, not yet reviewed. The question
+endpoint (`POST /api/words/{entry_id}/ask`, a server-sent-event stream of `delta`,
+`reset`, `done` and `error`), the prompt (`build_follow_up_prompt` in
+`src/echo_words/prompt.py`) and the context assembly and bound
+(`src/echo_words/follow_up.py`) landed with their tests in `tests/test_follow_up.py`,
+replies pinned from the recorded run. The follow-up tier (`run-follow-up` in
+`experiments/one_note_bench.py`, material in `experiments/follow_up_items.json`) ran
+once on the free pool on 2026-11-25 into `experiments/.bench-follow-up`: 8 of 8
+answered (google-gemini-3.5-flash-lite 6, openrouter-nemotron-3-ultra 1,
+groq-gpt-oss-120b 1). Still owed for step 1: the fresh agent's semantic review of
+`review-packet-follow-up.json` and its record in `spec/decision-llm-backend.md`.
+Step 2 is not started; the PWA has no control for it yet.
 
 ## What the reader can do
 
