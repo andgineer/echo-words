@@ -51,7 +51,7 @@ Running-text entries are outside this word-card plan.
 - The prompt is minimal (operator decision, 2026-11-25): one line saying the
   model is a language tutor and the learner is reading the entry below; the
   material with each part marked and named as the page names it (the full
-  article is «Полная статья» / "Full article", never an internal label); the
+  article is «Полная статья» / "The full entry", never an internal label); the
   prior turns; the current question; then only "answer in the target
   language" and "plain text, no Markdown". No rules about ambiguous
   references, scope, accuracy or length: a reference that fits two passages
@@ -68,8 +68,9 @@ Running-text entries are outside this word-card plan.
   Select passages where the referent can be checked and write down the
   expected passage and what a good answer must explain. Cover a base-only
   question, a term or numbered example unique to the deeper article, a
-  and a second turn understandable only from the first reply. Fixture
-  questions name the article as the page does («полная статья»). Exercise the production context builder and prompt. For the
+  turn-1 request for a new sentence, and a second turn understandable only
+  from the first reply. Fixture questions name the article as the page does
+  («полная статья»). Exercise the production context builder and prompt. For the
   second turn feed back the actual first reply and retain both in the packet.
 - Run the tier on the free pool and check provider availability before scoring.
   A fresh agent reviews every exchange for the intended referent, linguistic
