@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock
 from uuid import UUID
 
 import pytest
-from fakes import FakeBroker, FakeDirectClient, FakeHandle
+from fakes import FakeBroker, FakeDirectClient, FakeHandle, as_not_a_noun
 from fastapi.testclient import TestClient
 
 from echo_words import __version__
@@ -1196,6 +1196,7 @@ def _chip_tapped(
     payload: str = RECORDED_WHOLE_TEXT_CHIP["answers"][0]["payload"],
 ) -> tuple[FakeBroker, dict, list[str]]:
     """Tap `chip` under `context`, answered by a recorded pool answer."""
+    payload = as_not_a_noun(payload) if lang == "de" else payload
     broker = FakeBroker(handles=[FakeHandle([f"<b>{chip}</b>\n{CARD_DELIMITER}\n{payload}"])])
     voiced = _answered_by(monkeypatch, broker)
     with TestClient(create_app(settings)) as live_client:
@@ -1326,6 +1327,10 @@ def _recorded(group: str, submitted: str) -> dict:
     return next(item for item in RECORDED_COMBINATIONS[group] if item["submitted"] == submitted)
 
 
+def _completed(recorded: dict) -> str:
+    return as_not_a_noun(recorded["answer"]) if recorded["lang"] == "de" else recorded["answer"]
+
+
 @pytest.mark.parametrize(
     ("typed", "tapped"),
     [
@@ -1345,7 +1350,7 @@ def test_a_combination_spanning_a_typed_text_is_tapped_as_a_bare_lookup_of_its_n
     broker = FakeBroker(
         handles=[
             FakeHandle([text["answer"]]),
-            FakeHandle([_recorded("bare_lookups", tapped)["answer"]]),
+            FakeHandle([_completed(_recorded("bare_lookups", tapped))]),
         ],
     )
     _answered_by(monkeypatch, broker)

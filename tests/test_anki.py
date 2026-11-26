@@ -2,6 +2,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import re
 import threading
 import time
 from collections import deque
@@ -255,6 +256,117 @@ def test_the_selected_sense_alone_populates_every_card_field():
         "Gapped": "We sat on the ___.",
     }
     assert "банк" not in "".join(fields.values())
+
+
+_GERMAN = Language(code="de", name="Deutsch", deck="EchoWords: German", script="latin")
+
+
+def german_noun(word: str, articles: list[str], form: str, highlighted: str) -> Note:
+    parsed = parse_answer_payload(
+        json.dumps(
+            {
+                "kind": "unit",
+                "word": word,
+                "word_relation": "same",
+                "suggestion": "",
+                "meanings": [
+                    {
+                        "noun": True,
+                        "articles": articles,
+                        "noun_form": form,
+                        "label": "",
+                        "translations": ["перевод"],
+                        "examples": [{"highlighted": highlighted, "translation": "Перевод."}],
+                    },
+                ],
+                "segments": [],
+            },
+        ),
+        word,
+        _GERMAN,
+        unit_intent=True,
+    )
+    assert isinstance(parsed, ParsedUnit)
+    return parsed.note
+
+
+@pytest.mark.parametrize(
+    ("note", "word", "sentence", "gapped"),
+    [
+        (
+            german_noun("Hund", ["der"], "", "Ich gehe mit dem <b>Hund</b> spazieren."),
+            "der Hund",
+            "Ich gehe mit dem <b>Hund</b> spazieren.",
+            "Ich gehe mit dem ___ spazieren.",
+        ),
+        (
+            german_noun("Katze", ["die"], "", "Wir füttern die <b>Katze</b>."),
+            "die Katze",
+            "Wir füttern die <b>Katze</b>.",
+            "Wir füttern die ___.",
+        ),
+        (
+            german_noun("Haus", ["das"], "", "Sie wohnen im <b>Haus</b> am See."),
+            "das Haus",
+            "Sie wohnen im <b>Haus</b> am See.",
+            "Sie wohnen im ___ am See.",
+        ),
+        (
+            german_noun("Ferien", ["die"], "", "In den <b>Ferien</b> fahren wir weg."),
+            "die Ferien",
+            "In den <b>Ferien</b> fahren wir weg.",
+            "In den ___ fahren wir weg.",
+        ),
+        (
+            german_noun(
+                "schwarzes Brett",
+                ["das"],
+                "schwarze Brett",
+                "Der Zettel hängt am <b>schwarzen Brett</b>.",
+            ),
+            "das schwarze Brett",
+            "Der Zettel hängt am <b>schwarzen Brett</b>.",
+            "Der Zettel hängt am ___.",
+        ),
+        (
+            german_noun("Joghurt", ["der", "das"], "", "Ich esse gern <b>Joghurt</b>."),
+            "der/das Joghurt",
+            "Ich esse gern <b>Joghurt</b>.",
+            "Ich esse gern ___.",
+        ),
+    ],
+)
+async def test_a_german_noun_s_article_is_on_every_side_that_shows_the_word(
+    tmp_path,
+    note,
+    word,
+    sentence,
+    gapped,
+):
+    """Rendered by Anki itself: the word sides carry the article, and the sentences keep
+    the article, case and ending they were written with."""
+    store = AnkiStore(local_settings(tmp_path))
+    await store.open()
+    try:
+        result = await store.add_note(note, "EchoWords: German")
+        assert isinstance(result, Added)
+        cards = {
+            TEMPLATE_NAMES[card.ord]: (_shown(card.question()), _shown(card.answer()))
+            for card in store.collection.get_note(result.note_id).cards()
+        }
+    finally:
+        await store.close()
+
+    assert cards == {
+        "Recognition": (word, "перевод"),
+        "Recall": ("перевод", word),
+        "ContextRecognition": (sentence, f"перевод<br>{word}"),
+        "ContextProduction": (f"перевод<br>{gapped}", word),
+    }
+
+
+def _shown(side: str) -> str:
+    return re.sub(r"<style>.*?</style>", "", side, flags=re.DOTALL).strip()
 
 
 def test_rendered_translations_use_only_the_selected_sense_and_escape_them():

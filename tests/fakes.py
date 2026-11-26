@@ -1,5 +1,6 @@
 """Fakes for the LLM boundary: no pool, no provider, no network."""
 
+import json
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterable, Mapping
 from types import SimpleNamespace
 
@@ -283,3 +284,20 @@ class FakeBroker:
 def fake_cascade(settings: Settings, **broker: object) -> Cascade:
     """A cascade over a ``FakeBroker``, which the test reaches as ``cascade.broker``."""
     return Cascade(FakeBroker(**broker), settings)
+
+
+def as_not_a_noun(answer: str) -> str:
+    """A German unit answer completed with the claim the noun field now asks of every
+    meaning: that its unit is no noun. Recorded answers predate the field, and each one
+    this is applied to is about a formula, an expression or a verb."""
+    delimiter = "===CARD==="
+    analysis, found, payload = answer.rpartition(delimiter)
+    if not found:
+        analysis, payload = "", answer
+    stripped = payload.lstrip()
+    card, end = json.JSONDecoder().raw_decode(stripped)
+    for meaning in card.get("meanings") or []:
+        if isinstance(meaning, dict):
+            meaning.setdefault("noun", False)
+    completed = json.dumps(card, ensure_ascii=False) + stripped[end:]
+    return f"{analysis}{found}{payload[: len(payload) - len(stripped)]}{completed}"

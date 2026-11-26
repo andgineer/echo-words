@@ -153,6 +153,68 @@ under `Good night!` and `laku noć` under `Laku noć!` were asked as bare lookup
 and all three carded. A fresh semantic review accepted all three cards; the faults
 it found were in the article prose only.
 
+## A German noun carries its article
+
+A German noun is learned with its gender, and the gender is not in the word: `der See`
+is a lake and `die See` the sea, `das Band` a ribbon and `der Band` a volume. So the
+word on a German noun's card is the headword with its nominative definite article —
+`der Hund`, `die Ferien`, `der/das Joghurt` where one sense is genuinely used with
+either gender — and an adjective in a noun phrase takes the ending it has after that
+article, `das schwarze Brett` for `schwarzes Brett`. It is printed wherever the card
+prints the word: the recognition front and the three backs that show it. The two
+sentences are left exactly as written, with their own articles, case and endings, since
+they are what teaches the noun in use.
+
+The article belongs to the carded sense, not to the spelling. Every meaning of the
+answer carries its own, and the note's selected sense decides which the card shows: a
+bare `See` cards its commonest sense, and `See` tapped in a sentence about a storm at sea
+cards `die See`.
+
+Only the card's wording changes. The headword the note is about stays the bare lemma:
+the spelling relation, the judgement of whether the wording is used, the reference
+lookups, the sense chips, a rebuild and the recording all go on being about `Hund`.
+Tying any of those to `der Hund` would change what they were measured on for nothing the
+reader gains, and a recording of the noun alone is what the reader hears on every side.
+
+The answer says which article, and the backend never guesses it. Endings predict German
+gender only loosely, and a guessed article on a card is memorised as surely as a right
+one, so a carded German meaning that does not say whether it is a noun, names no
+article for a noun, names one for anything else, or follows the article with anything
+but its own headword makes the answer unusable. That costs the card where the answer is
+at fault, through the ordinary recovery and failure, rather than teaching a gender
+nobody vouched for. A noun typed with its article is carded with it once, and is not a
+misspelling of the bare headword. A verb, an adjective, a pronoun or article looked up
+in its own right, and a fixed expression that opens with `das` are carded as headed; so
+is every other language.
+
+Measured on the free pool, on the smoke tier and fourteen article fixtures read through
+the live parser and the Anki renderer (`experiments/.bench-noun-articles`), one answer
+each, so a hint rather than a rate. Seven of the nine noun fixtures carded the expected
+word: `der Hund`, `die Katze`, `das Haus`, `die Ferien`, `der Hund` typed with its
+article (carded once, called no misspelling), and `See` tapped in a sentence about a
+lake as `der See` and about the sea as `die See`, neither sentence naming the article.
+All five controls — `laufen`, `das`, `das heißt`, English `house`, Serbian `kuća` — were
+carded as typed. Every German noun among the tier's answers was carded with the right
+article (`die Bank`, `die Verantwortung`, `die Straße` after its correction), and no
+non-noun gained one. The tier passed every contract, the German clicks among them.
+
+Two of the nine missed, and both stand as limitations:
+
+- **The adjective's ending is the answer's, and it can leave it as headed.**
+  `schwarzes Brett` came back with no agreement, and the card reads
+  `das schwarzes Brett`. The backend checks that the form after the article is the
+  headword changed at most in an adjective's ending; it does not decide which ending
+  German grammar asks for there.
+- **A noun whose claim contradicts its headword is no card.** `Kindern` was headed
+  `Kind` and claimed as `die Kinder`; the card was refused, and in production that
+  answer takes the ordinary recovery and, if no better one arrives, ends as a failed
+  card.
+
+What the run does not reach: a sense used with either gender was never asked on the
+pool, and the pool's other models never answered a German unit, so their compliance
+with the claim is unknown. A fresh agent's semantic review of every item in the review
+packets is the condition of acceptance.
+
 ## Which sense the note selects
 
 A bare word selects the first retained meaning, ordered most common first. An

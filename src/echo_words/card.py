@@ -6,7 +6,7 @@ import re
 import unicodedata
 from collections import Counter
 from contextlib import suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from html import escape, unescape
 from typing import Any, Literal
 
@@ -25,6 +25,12 @@ from echo_words.sanitizer import normalize_emphasis, sanitize_html
 from echo_words.segments import Segment, fill_text_segments, parse_component_segments
 
 MAX_EXAMPLES_PER_MEANING = 2
+# The source language whose unit answers say, per meaning, whether the unit is a noun and
+# which article it takes, so that its card can carry `der Hund` rather than `Hund`.
+GERMAN = "de"
+GERMAN_ARTICLES = ("der", "die", "das")
+_ARTICLE_SEPARATOR = re.compile(r"\s*(?:/|,|\boder\b)\s*")
+_ADJECTIVE_ENDINGS = ("en", "em", "er", "es", "e")
 type AnswerKind = Literal["unit", "text"]
 type WordRelation = Literal["same", "morphology", "typo"]
 
@@ -54,10 +60,24 @@ class Example:
 
 
 @dataclass(frozen=True)
+class Nominal:
+    """A German noun's nominative definite article or articles, and the headword as it
+    reads after them."""
+
+    articles: tuple[str, ...]
+    form: str
+
+    @property
+    def display(self) -> str:
+        return f"{'/'.join(self.articles)} {self.form}"
+
+
+@dataclass(frozen=True)
 class Meaning:
     label: str
     translations: list[str]
     examples: list[Example]
+    nominal: Nominal | None = None
 
 
 def joined_translations(translations: list[str]) -> str:
@@ -76,6 +96,16 @@ class Note:
     @property
     def meaning(self) -> Meaning:
         return self.meanings[self.sense]
+
+    @property
+    def card_word(self) -> str:
+        """The headword as the card prints it: a German noun's with its article.
+
+        Only the card shows that form; the lemma stays what spelling, attestation, chips
+        and audio are about.
+        """
+        nominal = self.meaning.nominal
+        return self.word if nominal is None else nominal.display
 
 
 @dataclass(frozen=True)
@@ -150,7 +180,7 @@ def parse_answer_payload(  # noqa: C901, PLR0912, PLR0913 - the answer discrimin
 
     headword = _headword(card.get("word"), language)
     word_relation, headword, suggestion = _word_relation(
-        card.get("word_relation"),
+        _relation_claim(card.get("word_relation"), headword, submitted, language),
         card.get("suggestion"),
         headword,
         submitted,
@@ -160,21 +190,7 @@ def parse_answer_payload(  # noqa: C901, PLR0912, PLR0913 - the answer discrimin
     if not isinstance(raw_meanings, list) or not raw_meanings:
         raise CardParseError("answer.meanings must be a non-empty list")
     request = _Request(language, target, context, submitted, headword)
-    candidates: list[tuple[int, Meaning]] = []
-    for raw_index, item in enumerate(raw_meanings):
-        meaning = _parse_meaning(item, request)
-        if meaning is None:
-            continue
-        candidates.append((raw_index, meaning))
-    # A missing label never drops a sense. Labels tell retained senses apart on a bare
-    # front, and an unlabelled front is merely less informative; dropping the sense
-    # instead cards whichever sibling happened to carry a label, and the answer orders
-    # the commonest sense first, so that is the one a label rule would delete.
-    retained: list[Meaning] = []
-    remap: dict[int, int] = {}
-    for raw_index, meaning in candidates:
-        remap[raw_index] = len(retained)
-        retained.append(meaning)
+    retained, remap, ungrammatical = _parsed_meanings(raw_meanings, request)
     if not retained:
         raise CardParseError("answer.meanings contains no usable meaning")
     raw_sense = _context_sense(card.get("context_sense"), len(raw_meanings))
@@ -184,6 +200,11 @@ def parse_answer_payload(  # noqa: C901, PLR0912, PLR0913 - the answer discrimin
         # that went missing. Two different faults must not share one message.
         raise CardParseError("the sense the answer chose for the context was dropped")
     sense = remap.get(raw_sense, 0)
+    for raw_index, reason in ungrammatical.items():
+        # A bare German noun would be carded without the gender a learner must memorise
+        # with it, and guessing that from the word's ending would teach a wrong one.
+        if remap[raw_index] == sense:
+            raise CardParseError(f"the carded meaning: {reason}")
     if context:
         retained[sense] = _with_context_example(
             retained[sense],
@@ -209,6 +230,33 @@ def parse_answer_payload(  # noqa: C901, PLR0912, PLR0913 - the answer discrimin
         suggestion,
         segments,
     )
+
+
+def _parsed_meanings(
+    raw_meanings: list[Any],
+    request: "_Request",
+) -> tuple[list[Meaning], dict[int, int], dict[int, str]]:
+    """The retained meanings, where each raw index landed, and why a German meaning's
+    noun claim is unsound, kept until it is known whether that meaning is the carded one."""
+    # A missing label never drops a sense. Labels tell retained senses apart on a bare
+    # front, and an unlabelled front is merely less informative; dropping the sense
+    # instead cards whichever sibling happened to carry a label, and the answer orders
+    # the commonest sense first, so that is the one a label rule would delete.
+    retained: list[Meaning] = []
+    remap: dict[int, int] = {}
+    ungrammatical: dict[int, str] = {}
+    for raw_index, item in enumerate(raw_meanings):
+        meaning = _parse_meaning(item, request)
+        if meaning is None:
+            continue
+        if request.language.code == GERMAN:
+            try:
+                meaning = replace(meaning, nominal=_nominal(item, request.target_lexeme))
+            except CardParseError as exc:
+                ungrammatical[raw_index] = str(exc)
+        remap[raw_index] = len(retained)
+        retained.append(meaning)
+    return retained, remap, ungrammatical
 
 
 def _decoded(payload: str) -> Any:
@@ -465,7 +513,7 @@ def _with_context_example(
     # the shape of the rejection this whole change removed.
     example = Example(request.context, _plain(translation), *forms)
     kept = [item for item in meaning.examples if item.text != request.context]
-    return Meaning(meaning.label, meaning.translations, [example, *kept][:MAX_EXAMPLES_PER_MEANING])
+    return replace(meaning, examples=[example, *kept][:MAX_EXAMPLES_PER_MEANING])
 
 
 def _normalized_sentence_forms(
@@ -568,6 +616,99 @@ def _generated_target_covers_submitted_tokens(
         for token, count in submitted.items()
         if in_text[token]
     )
+
+
+def _nominal(value: dict[str, Any], headword: str) -> Nominal | None:
+    """The noun's article and the headword as it reads after it, or None for a unit that
+    is no noun; a meaning that does not say which, or contradicts itself, raises."""
+    noun = value.get("noun")
+    if not isinstance(noun, bool):
+        raise CardParseError("a German meaning does not say whether it is a noun")
+    articles = _articles(value.get("articles"))
+    if not noun:
+        if articles:
+            raise CardParseError("a German meaning that is no noun names an article")
+        return None
+    if not articles:
+        raise CardParseError("a German noun names no article")
+    base = _after_article(headword, articles)
+    form = _after_article(_plain(value.get("noun_form")) or headword, articles)
+    if base is None or form is None or not _same_lexical_unit(form, base):
+        raise CardParseError("a German noun's form after its article is not its headword")
+    return Nominal(articles, form)
+
+
+def _articles(value: Any) -> tuple[str, ...]:
+    items = _ARTICLE_SEPARATOR.split(value) if isinstance(value, str) else value
+    if items is None:
+        return ()
+    if not isinstance(items, list) or not all(isinstance(item, str) for item in items):
+        raise CardParseError("a German meaning's articles are not a list of articles")
+    articles: list[str] = []
+    for item in items:
+        article = item.strip().casefold()
+        if not article:
+            continue
+        if article not in GERMAN_ARTICLES:
+            raise CardParseError(f"{item!r} is not a German definite article")
+        if article not in articles:
+            articles.append(article)
+    return tuple(articles)
+
+
+def _after_article(wording: str, articles: tuple[str, ...]) -> str | None:
+    """The wording without an article it already opens with, so the card never doubles
+    one; None where it opens with another article or is nothing but one."""
+    words = unicodedata.normalize("NFC", wording).split()
+    if words and words[0].casefold() in GERMAN_ARTICLES:
+        if words[0].casefold() not in articles:
+            return None
+        words = words[1:]
+    return " ".join(words) or None
+
+
+def _same_lexical_unit(form: str, headword: str) -> bool:
+    """Whether the form is the headword with nothing changed but an adjective's ending:
+    `heißer Draht` reads `heiße Draht` after `der`, `Bekannter` reads `Bekannte`."""
+    shown, headed = form.casefold().split(), headword.casefold().split()
+    if len(shown) != len(headed):
+        return False
+    last = len(headed) - 1
+    for index, (word, lemma) in enumerate(zip(shown, headed, strict=True)):
+        if word == lemma:
+            continue
+        if index < last and _adjective_stem(word) == _adjective_stem(lemma):
+            continue
+        # A noun's own ending never changes after its article; only a noun made of an
+        # adjective loses the strong ending it is headed with.
+        if index == last and lemma.endswith(("er", "es")) and word == lemma[:-1]:
+            continue
+        return False
+    return True
+
+
+def _adjective_stem(word: str) -> str:
+    for ending in _ADJECTIVE_ENDINGS:
+        if word.endswith(ending) and len(word) > len(ending) + 1:
+            return word[: -len(ending)]
+    return word
+
+
+def _relation_claim(value: Any, headword: str, submitted: str, language: Language) -> Any:
+    """The declared relation, except that a German noun typed with its article is no
+    misspelling of the headword without it."""
+    if value != "typo" or language.code != GERMAN:
+        return value
+    if not (_opens_with_article(submitted) or _opens_with_article(headword)):
+        return value
+    typed = _after_article(submitted, GERMAN_ARTICLES) or ""
+    headed = _after_article(headword, GERMAN_ARTICLES) or ""
+    return None if same_wording(typed, headed, language) else value
+
+
+def _opens_with_article(wording: str) -> bool:
+    words = wording.split()
+    return len(words) > 1 and words[0].casefold() in GERMAN_ARTICLES
 
 
 def _context_sense(value: Any, meanings: int) -> int | None:

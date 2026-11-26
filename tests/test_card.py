@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 import pytest
+from fakes import as_not_a_noun
 
 from echo_words.card import (
     CardParseError,
@@ -14,6 +15,7 @@ from echo_words.card import (
     same_wording,
 )
 from echo_words.languages import Language, unit_context
+from echo_words.prompt import extract_answer
 
 # Every distinct answer the pool gave in production to the chip `bis gleich` tapped under
 # the text `Bis gleich!`, each of which the card refused while that text was its context.
@@ -32,7 +34,9 @@ def example(word="bank"):
 
 
 def meaning(label="", **changes):
-    value = {"label": label, "translations": ["банк"], "examples": [example()]}
+    # A German answer says of each meaning whether its unit is a noun; these fixtures
+    # are about other units unless they say otherwise.
+    value = {"noun": False, "label": label, "translations": ["банк"], "examples": [example()]}
     value.update(changes)
     return value
 
@@ -426,7 +430,7 @@ def test_every_recorded_answer_to_a_chip_that_is_its_whole_text_cards_as_a_bare_
     submitted = WHOLE_TEXT_CHIP["submitted"]
 
     parsed = parse_answer_payload(
-        answer["payload"],
+        as_not_a_noun(answer["payload"]),
         submitted,
         languages[WHOLE_TEXT_CHIP["lang"]],
         unit_intent=True,
@@ -544,7 +548,7 @@ def test_a_headword_keeps_the_punctuation_its_answer_gave_it(languages, recorded
     """Which mark belongs to a chunk is the answer's judgement, so the card carries the
     headword as written and judges it by its words."""
     parsed = parse_answer_payload(
-        recorded["answer"].split("===CARD===", 1)[1],
+        _recorded_payload(recorded),
         recorded["submitted"],
         languages[recorded["lang"]],
     )
@@ -577,9 +581,14 @@ _CARDED_WITH_THEIR_COMMA = {
 }
 
 
+def _recorded_payload(recorded: dict) -> str:
+    payload = recorded["answer"].split("===CARD===", 1)[1]
+    return as_not_a_noun(payload) if recorded["lang"] == "de" else payload
+
+
 def _recorded_card(recorded: dict, languages: dict[str, Language], **request):
     return parse_answer_payload(
-        recorded["answer"].split("===CARD===", 1)[1],
+        _recorded_payload(recorded),
         request.get("submitted", recorded["submitted"]),
         languages[recorded["lang"]],
         unit_intent=recorded["unit_intent"],
@@ -1508,3 +1517,312 @@ def test_a_sentence_is_not_marked_inside_a_longer_word_or_in_the_target_language
     assert context_sentence_forms("Ово место је слободно.", "сто", serbian) is None
     assert context_sentence_forms("Он liest книгу.", "liest", german) is None
     assert context_sentence_forms("Stühle", "Stühle", german) is None
+
+
+def noun(*articles, form="", **changes):
+    return meaning(noun=True, articles=list(articles), noun_form=form, **changes)
+
+
+def german(word, *meanings, submitted=None, context="", **fields):
+    return parse_answer_payload(
+        payload(word=word, meanings=list(meanings) or [noun("der")], **fields),
+        word if submitted is None else submitted,
+        _GERMAN,
+        unit_intent=True,
+        context=context,
+    )
+
+
+_GERMAN = Language(code="de", name="Deutsch", deck="EchoWords: German", script="latin")
+
+
+@pytest.mark.parametrize(
+    ("word", "article"),
+    [("Hund", "der"), ("Katze", "die"), ("Haus", "das")],
+)
+def test_a_german_noun_is_carded_with_its_article_and_stays_its_lemma(word, article):
+    parsed = german(
+        word,
+        noun(article, examples=[_marked(f"Das ist mein <b>{word}</b>.")]),
+    )
+
+    assert isinstance(parsed, ParsedUnit)
+    assert parsed.note.word == word
+    assert parsed.note.card_word == f"{article} {word}"
+    assert parsed.word_relation == "same"
+
+
+def test_a_plural_headword_is_carded_with_plural_die():
+    parsed = german("Ferien", noun("die", examples=[_marked("Die <b>Ferien</b> beginnen.")]))
+
+    assert isinstance(parsed, ParsedUnit)
+    assert parsed.note.card_word == "die Ferien"
+
+
+@pytest.mark.parametrize(
+    ("word", "article", "form", "carded"),
+    [
+        ("schwarzes Brett", "das", "schwarze Brett", "das schwarze Brett"),
+        ("Gelbe Seiten", "die", "Gelben Seiten", "die Gelben Seiten"),
+        ("Bekannter", "der", "Bekannte", "der Bekannte"),
+        ("erste Hilfe", "die", "", "die erste Hilfe"),
+    ],
+)
+def test_an_adjective_agrees_with_the_article_and_the_lemma_keeps_its_own_ending(
+    word,
+    article,
+    form,
+    carded,
+):
+    parsed = german(word, noun(article, form=form, examples=[_marked(f"Hier ist <b>{word}</b>.")]))
+
+    assert isinstance(parsed, ParsedUnit)
+    assert parsed.note.word == word
+    assert parsed.note.card_word == carded
+
+
+def test_a_noun_typed_with_its_article_is_no_misspelling_and_never_doubles_it():
+    parsed = german(
+        "Hund",
+        noun("der", form="der Hund", examples=[_marked("Der <b>Hund</b> bellt.")]),
+        submitted="der Hund",
+        word_relation="typo",
+        suggestion="Hund",
+    )
+
+    assert isinstance(parsed, ParsedUnit)
+    assert (parsed.word_relation, parsed.suggestion) == ("morphology", None)
+    assert parsed.note.card_word == "der Hund"
+
+
+def test_a_headword_that_already_carries_its_article_is_carded_with_it_once():
+    parsed = german(
+        "der Hund",
+        noun("der", examples=[_marked("Der <b>Hund</b> bellt.")]),
+        submitted="der Hund",
+    )
+
+    assert isinstance(parsed, ParsedUnit)
+    assert parsed.note.word == "der Hund"
+    assert parsed.note.card_word == "der Hund"
+
+
+def test_a_misspelled_noun_typed_with_its_article_is_still_a_misspelling():
+    parsed = german(
+        "Hund",
+        noun("der", examples=[_marked("Der <b>Hund</b> bellt.")]),
+        submitted="der Hnud",
+        word_relation="typo",
+        suggestion="Hund",
+    )
+
+    assert isinstance(parsed, ParsedUnit)
+    assert parsed.word_relation == "typo"
+
+
+_LAKE = noun(
+    "der",
+    label="schwimmen",
+    translations=["озеро"],
+    examples=[_marked("Wir schwimmen im <b>See</b>.")],
+)
+_SEA = noun(
+    "die",
+    label="Schiff",
+    translations=["море"],
+    examples=[_marked("Das Schiff fährt auf die <b>See</b> hinaus.")],
+)
+
+
+def test_a_spelling_whose_genders_mean_different_things_is_carded_by_the_selected_sense():
+    bare = german("See", _LAKE, _SEA)
+    in_context = german(
+        "See",
+        _LAKE,
+        _SEA,
+        context="Der Sturm überraschte die Fischer auf hoher See.",
+        context_sense=1,
+        context_translation="Шторм застал рыбаков в открытом море.",
+    )
+
+    assert isinstance(bare, ParsedUnit)
+    assert isinstance(in_context, ParsedUnit)
+    assert bare.note.card_word == "der See"
+    assert in_context.note.card_word == "die See"
+    assert in_context.note.word == "See"
+    assert in_context.note.meaning.examples[0].highlighted == (
+        "Der Sturm überraschte die Fischer auf hoher <b>See</b>."
+    )
+
+
+@pytest.mark.parametrize("articles", [["der", "das"], "der/das", ["der", "das", "der"]])
+def test_a_meaning_used_with_either_gender_is_carded_with_both(articles):
+    parsed = german(
+        "Joghurt",
+        meaning(noun=True, articles=articles, examples=[_marked("Ich esse <b>Joghurt</b>.")]),
+    )
+
+    assert isinstance(parsed, ParsedUnit)
+    assert parsed.note.card_word == "der/das Joghurt"
+
+
+@pytest.mark.parametrize(
+    ("word", "marked"),
+    [
+        ("laufen", "Wir <b>laufen</b> jeden Morgen."),
+        ("das", "Ich weiß, <b>das</b> ist gut."),
+        ("das heißt", "Morgen, <b>das heißt</b> am Freitag."),
+        ("der", "Ist es <b>der</b> da?"),
+    ],
+)
+def test_a_unit_that_is_no_noun_is_carded_as_it_is_headed(word, marked):
+    parsed = german(word, meaning(examples=[_marked(marked)]))
+
+    assert isinstance(parsed, ParsedUnit)
+    assert parsed.note.card_word == word
+
+
+@pytest.mark.parametrize(
+    "grammar",
+    [
+        {},
+        {"noun": "yes", "articles": ["der"]},
+        {"noun": True, "articles": []},
+        {"noun": True},
+        {"noun": True, "articles": ["ein"]},
+        {"noun": True, "articles": "der Hund"},
+        {"noun": True, "articles": [1]},
+        {"noun": False, "articles": ["der"]},
+        {"noun": True, "articles": ["der"], "noun_form": "Hunde"},
+        {"noun": True, "articles": ["der"], "noun_form": "die Hund"},
+        {"noun": True, "articles": ["der"], "noun_form": "Katze"},
+        {"noun": True, "articles": ["der"], "noun_form": "der"},
+    ],
+)
+def test_a_carded_german_meaning_without_sound_noun_grammar_makes_no_card(grammar):
+    raw = {"label": "", "translations": ["собака"], "examples": [_marked("Der <b>Hund</b> bellt.")]}
+
+    with pytest.raises(CardParseError, match="carded meaning"):
+        parse_answer_payload(
+            json.dumps(
+                {
+                    "kind": "unit",
+                    "word": "Hund",
+                    "word_relation": "same",
+                    "suggestion": "",
+                    "meanings": [{**raw, **grammar}],
+                    "segments": [],
+                },
+            ),
+            "Hund",
+            _GERMAN,
+        )
+
+
+def test_a_headword_that_is_nothing_but_an_article_is_no_noun():
+    with pytest.raises(CardParseError, match="carded meaning"):
+        german("das", noun("das", examples=[_marked("Ich nehme <b>das</b>.")]))
+
+
+def test_unsound_grammar_on_a_sense_the_note_does_not_card_costs_nothing():
+    parsed = german("See", _LAKE, {**_SEA, "noun": "maybe"})
+
+    assert isinstance(parsed, ParsedUnit)
+    assert len(parsed.note.meanings) == 2
+    assert parsed.note.card_word == "der See"
+
+
+def test_the_noun_claim_is_asked_of_german_alone(languages):
+    parsed = parse_answer_payload(
+        payload(
+            word="dog",
+            meanings=[{"noun": True, "articles": ["der"], **meaning(examples=[example("dog")])}],
+        ),
+        "dog",
+        languages["en"],
+    )
+    unclaimed = parse_answer_payload(
+        payload(word="dog", meanings=[{"translations": ["собака"], "examples": [example("dog")]}]),
+        "dog",
+        languages["en"],
+    )
+
+    assert isinstance(parsed, ParsedUnit)
+    assert isinstance(unclaimed, ParsedUnit)
+    assert parsed.note.card_word == unclaimed.note.card_word == "dog"
+
+
+def test_the_card_sentences_keep_their_own_articles_and_endings():
+    parsed = german(
+        "Hund",
+        noun("der", examples=[_marked("Ich gehe mit dem <b>Hund</b> spazieren.")]),
+    )
+
+    assert isinstance(parsed, ParsedUnit)
+    example_ = parsed.note.meaning.examples[0]
+    assert example_.highlighted == "Ich gehe mit dem <b>Hund</b> spazieren."
+    assert example_.gapped == "Ich gehe mit dem ___ spazieren."
+
+
+# Free-pool answers to the German noun prompt, each with the word its card printed.
+NOUN_ARTICLES = json.loads(
+    (Path(__file__).parent / "data" / "noun_articles_recorded.json").read_text(encoding="utf-8"),
+)
+
+
+def _carded(recorded: dict, languages: dict[str, Language]) -> ParsedUnit | None:
+    parsed = extract_answer(
+        recorded["answer"],
+        recorded["submitted"],
+        languages[recorded["lang"]],
+        unit_intent=recorded["unit_intent"],
+        context=recorded["context"],
+        target="Russian",
+    )
+    assert parsed is None or isinstance(parsed, ParsedUnit)
+    return parsed
+
+
+@pytest.mark.parametrize(
+    "recorded",
+    NOUN_ARTICLES["answers"],
+    ids=[answer["shot_id"] for answer in NOUN_ARTICLES["answers"]],
+)
+def test_a_recorded_answer_is_carded_with_the_word_and_article_it_claims(languages, recorded):
+    parsed = _carded(recorded, languages)
+
+    if recorded["carded"] is None:
+        assert parsed is None
+        return
+    assert parsed is not None
+    assert parsed.note.card_word == recorded["carded"]
+    if recorded["context"]:
+        assert parsed.note.meaning.examples[0].text == recorded["context"]
+
+
+def test_the_recorded_answers_card_what_a_reader_should_see_where_the_answer_says_it(languages):
+    parsed = {answer["shot_id"]: _carded(answer, languages) for answer in NOUN_ARTICLES["answers"]}
+    carded = {
+        shot_id: unit.note.card_word if unit is not None else None
+        for shot_id, unit in parsed.items()
+    }
+
+    assert carded["article-de-hund"] == "der Hund"
+    assert carded["article-de-katze"] == "die Katze"
+    assert carded["article-de-haus"] == "das Haus"
+    assert carded["article-de-ferien"] == "die Ferien"
+    assert carded["article-de-der-hund"] == "der Hund"
+    assert (carded["article-de-see-lake"], carded["article-de-see-sea"]) == ("der See", "die See")
+    assert carded["article-de-laufen"] == "laufen"
+    assert carded["article-de-das"] == "das"
+    assert carded["article-de-das-heisst"] == "das heißt"
+    assert (carded["article-en-house"], carded["article-sr-kuca"]) == ("house", "kuća")
+    assert (carded["bare-de-bank"], carded["typo-de-strase"]) == ("die Bank", "die Straße")
+    # Headed `Kind` and claimed as `die Kinder`: a contradiction, so no card is made of it.
+    assert carded["article-de-kindern"] is None
+    # The answer left the adjective's ending as headed; nothing but the answer can agree it.
+    assert carded["article-de-schwarzes-brett"] == "das schwarzes Brett"
+    # A noun typed with its article is no misspelling, and the lemma stays unarticled.
+    der_hund = parsed["article-de-der-hund"]
+    assert der_hund is not None
+    assert (der_hund.note.word, der_hund.word_relation) == ("Hund", "morphology")

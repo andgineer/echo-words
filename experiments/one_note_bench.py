@@ -49,6 +49,12 @@ directory holds it, over the fixtures that directory asked.
       --concurrency 1 --out experiments/.bench-typed
     uv run python experiments/one_note_bench.py report --out experiments/.bench-typed
 
+German nouns carded with their article, beside controls that must come back with none, are
+measured on their own as well: 14 calls by `run-articles`, or any of them by id.
+    uv run python experiments/one_note_bench.py run-articles --resume --pace 2 \
+      --concurrency 1 --out experiments/.bench-noun-articles
+    uv run python experiments/one_note_bench.py report --out experiments/.bench-noun-articles
+
 Follow-up questions about a recorded entry are measured on their own too, in their own
 `--out`: 6 calls, the second turn asked after the reply its first turn actually got.
     uv run python experiments/one_note_bench.py run-follow-up --resume --pace 2 \
@@ -86,7 +92,15 @@ from backend_bench import (  # noqa: E402
     split_answer,
 )
 from bench_items import SENTENCES  # noqa: E402
-from echo_words.card import ParsedAnswer, ParsedText, ParsedUnit  # noqa: E402
+from echo_words.anki import card_fields  # noqa: E402
+from echo_words.card import (  # noqa: E402
+    GERMAN_ARTICLES,
+    CardParseError,
+    ParsedAnswer,
+    ParsedText,
+    ParsedUnit,
+    parse_answer_payload,
+)
 from echo_words.follow_up import follow_up_material, follow_up_prompt  # noqa: E402
 from echo_words.language_catalog import catalog_language  # noqa: E402
 from echo_words.languages import (  # noqa: E402
@@ -450,6 +464,108 @@ TYPED_VERDICT_CASES = (
 )
 TYPED_BY_ID = {case.shot_id: case for case in TYPED_VERDICT_CASES}
 TYPED_IDS = frozenset(TYPED_BY_ID)
+
+# A German noun carded with its article. Asked on demand and screened on its own: no tier
+# counts these, and the controls beside them must come back with no article added.
+ARTICLE_KIND = "noun-article"
+
+
+@dataclass(frozen=True)
+class ArticleCase:
+    shot_id: str
+    lang: str
+    submitted: str
+    # The card's word as the reader must see it, article and all.
+    carded: str
+    requirement: str
+    context: str = ""
+    noun: bool = True
+
+
+ARTICLE_CASES = (
+    ArticleCase("article-de-hund", "de", "Hund", "der Hund", "a masculine noun"),
+    ArticleCase("article-de-katze", "de", "Katze", "die Katze", "a feminine noun"),
+    ArticleCase("article-de-haus", "de", "Haus", "das Haus", "a neuter noun"),
+    ArticleCase("article-de-ferien", "de", "Ferien", "die Ferien", "a noun used only in the plural"),
+    ArticleCase(
+        "article-de-der-hund",
+        "de",
+        "der Hund",
+        "der Hund",
+        "a noun typed with its article: carded once, and called no misspelling",
+    ),
+    ArticleCase(
+        "article-de-see-lake",
+        "de",
+        "See",
+        "der See",
+        "the lake sense of a spelling whose genders mean different things, tapped in a sentence",
+        context="Im Sommer baden wir oft in einem kleinen See.",
+    ),
+    ArticleCase(
+        "article-de-see-sea",
+        "de",
+        "See",
+        "die See",
+        "the sea sense of a spelling whose genders mean different things, tapped in a sentence",
+        context="Der Sturm überraschte die Fischer auf hoher See.",
+    ),
+    ArticleCase(
+        "article-de-kindern",
+        "de",
+        "Kindern",
+        "das Kind",
+        "an inflected noun: carded as its singular dictionary form",
+    ),
+    ArticleCase(
+        "article-de-schwarzes-brett",
+        "de",
+        "schwarzes Brett",
+        "das schwarze Brett",
+        "an adjective-plus-noun phrase: its adjective agrees with the article",
+    ),
+    ArticleCase("article-de-laufen", "de", "laufen", "laufen", "a verb: no article added", noun=False),
+    ArticleCase(
+        "article-de-das",
+        "de",
+        "das",
+        "das",
+        "an article-like word that is no noun: no article added",
+        noun=False,
+    ),
+    ArticleCase(
+        "article-de-das-heisst",
+        "de",
+        "das heißt",
+        "das heißt",
+        "a fixed expression opening with an article-like word: no article added",
+        noun=False,
+    ),
+    ArticleCase(
+        "article-en-house",
+        "en",
+        "house",
+        "house",
+        "a non-German noun: no article added",
+        noun=False,
+    ),
+    ArticleCase(
+        "article-sr-kuca",
+        "sr",
+        "kuća",
+        "kuća",
+        "a non-German noun: no article added",
+        noun=False,
+    ),
+)
+ARTICLE_BY_ID = {case.shot_id: case for case in ARTICLE_CASES}
+ARTICLE_IDS = frozenset(ARTICLE_BY_ID)
+_ARTICLE_BEFORE = re.compile(r"(?<!\w)(?:der|die|das|dem|den|des)\s+(\w+)", re.IGNORECASE)
+
+
+def opens_with_article(word: str) -> bool:
+    words = word.split()
+    return len(words) > 1 and words[0].casefold() in GERMAN_ARTICLES
 
 TYPO_CASES = (
     TypoCase("typo-en-recieve", "en", "recieve", "receive"),
@@ -871,6 +987,8 @@ def _unit_intent(shot: Shot) -> bool:
     # same instruction. Measuring it on the open-branch prompt would measure a prompt
     # the app never sends for that input, and the selected-unit prompt has no text
     # branch at all, which is the very thing the split has to be scored on.
+    if shot.kind == ARTICLE_KIND and shot.context:
+        return True
     return shot.kind in {"context", "typo", WHOLE_CHIP_KIND} or len(split_words(shot.source)) == 1
 
 
@@ -896,7 +1014,8 @@ def prompt_for(shot: Shot) -> str:
         context=shot.context,
         unit_intent=_unit_intent(shot),
         # A chip comes from the app's own answer; everything else the reader typed.
-        typed=shot.kind not in {"context", WHOLE_CHIP_KIND},
+        typed=shot.kind not in {"context", WHOLE_CHIP_KIND}
+        and not (shot.kind == ARTICLE_KIND and shot.context),
     )
 
 
@@ -1080,6 +1199,43 @@ def typed_verdict_shots() -> list[Shot]:
     return [
         Shot(case.shot_id, TYPED_KIND, case.lang, case.typed, expected_kind=case.expected_kind)
         for case in TYPED_VERDICT_CASES
+    ]
+
+
+def article_shots() -> list[Shot]:
+    """Each fixture as production asks it: a word typed into the box, or a chip tapped in a
+    sentence whose own words give no article away before the unit."""
+    for case in ARTICLE_CASES:
+        language = LANGUAGES[case.lang]
+        if validate_word(case.submitted, language) is not None:
+            raise RuntimeError(f"{case.shot_id} is not a wording the box accepts")
+        expected = (
+            case.lang == "de" and opens_with_article(case.carded)
+            if case.noun
+            else case.carded == case.submitted
+        )
+        if not expected:
+            raise RuntimeError(f"{case.shot_id} expects a card its requirement does not name")
+        if case.context:
+            if not unit_context(case.context, case.submitted, language):
+                raise RuntimeError(f"{case.shot_id} carries no context the app would keep")
+            told = [match.group(1) for match in _ARTICLE_BEFORE.finditer(case.context)]
+            if case.submitted in told:
+                raise RuntimeError(f"{case.shot_id} hands the article over in its sentence")
+    return [
+        Shot(
+            case.shot_id,
+            ARTICLE_KIND,
+            case.lang,
+            case.submitted,
+            context=(
+                unit_context(case.context, case.submitted, LANGUAGES[case.lang])
+                if case.context
+                else ""
+            ),
+            expected_kind="unit",
+        )
+        for case in ARTICLE_CASES
     ]
 
 
@@ -1343,6 +1499,7 @@ def read(out: Path, attempts: list[Shot] | None = None) -> dict[str, Shot]:
             *whole_text_chip_shots(),
             *whole_text_judgement_shots(),
             *typed_verdict_shots(),
+            *article_shots(),
         )
     }
     rows = _select_canonical(recorded, initial)
@@ -1963,7 +2120,7 @@ def vocab_metrics(shot: Shot, parsed: ParsedUnit, analysis: str) -> dict:
             neighbour_case is not None and not neighbour_case.neighbour and neighbour_offered
         ),
         "card_fronts": [
-            note.word,
+            note.card_word,
             ", ".join(note.meaning.translations),
             example.highlighted,
             example.gapped,
@@ -2170,7 +2327,63 @@ def score(shot: Shot) -> Shot:
         }
     else:
         shot.metrics = common
+    if shot.kind == ARTICLE_KIND:
+        shot.metrics.update(article_metrics(shot, parsed))
     return shot
+
+
+def article_metrics(shot: Shot, parsed: ParsedAnswer | None) -> dict[str, object]:
+    """What the card prints for the word, rendered as the live app renders it, against
+    what the fixture says the reader must see."""
+    case = ARTICLE_BY_ID[shot.shot_id]
+    if not isinstance(parsed, ParsedUnit):
+        return {
+            "card_word": None,
+            "carded_as_expected": False,
+            "article_added": False,
+            "rejection": _rejection(shot),
+            "noun_claims": _noun_claims(shot),
+        }
+    rendered = card_fields(parsed.note)
+    word = unescape(rendered["Word"])
+    return {
+        "card_word": word,
+        "card_fields": rendered,
+        "carded_as_expected": word == case.carded,
+        # An article the card shows that its own headword does not open with.
+        "article_added": opens_with_article(word) and not opens_with_article(parsed.note.word),
+        "rejection": None,
+        "noun_claims": _noun_claims(shot),
+    }
+
+
+def _noun_claims(shot: Shot) -> list[dict[str, object]]:
+    meanings = shot.payload.get("meanings") if shot.payload.get("kind") == "unit" else None
+    return [
+        {key: item.get(key) for key in ("noun", "articles", "noun_form")}
+        for item in meanings or []
+        if isinstance(item, dict)
+    ]
+
+
+def _rejection(shot: Shot) -> str | None:
+    """Why the parser refused the card, in its own words: the screen counts a refusal, the
+    reviewer needs to know whether it was the noun claim that caused it."""
+    at = shot.text.find(CARD_DELIMITER)
+    if at < 0:
+        return "no answer block" if shot.text else None
+    try:
+        parse_answer_payload(
+            shot.text[at + len(CARD_DELIMITER) :],
+            shot.source,
+            LANGUAGES[shot.lang],
+            unit_intent=_unit_intent(shot),
+            context=shot.context,
+            target=TARGET_NAME,
+        )
+    except CardParseError as exc:
+        return str(exc)
+    return None
 
 
 def find_segment(shot: Shot, case: ClickCase):
@@ -2452,6 +2665,26 @@ async def run_typed(args, out: Path) -> None:
     try:
         todo = pending(typed_jobs(args.shot), read(out), args.resume)
         log(f"typed verdicts: {len(todo)} calls")
+        await run_batch(args, out, broker, todo)
+    finally:
+        await broker.aclose()
+
+
+def article_jobs(requested_ids: list[str]) -> list[Shot]:
+    jobs = article_shots()
+    unknown = set(requested_ids) - ARTICLE_IDS
+    if unknown:
+        raise SystemExit("unknown article ids: " + ", ".join(sorted(unknown)))
+    return [shot for shot in jobs if not requested_ids or shot.shot_id in requested_ids]
+
+
+async def run_articles(args, out: Path) -> None:
+    assert_no_prompt_drift()
+    os.environ.update(load_keys())
+    broker = AsyncBroker(home=out / "llmbroker")
+    try:
+        todo = pending(article_jobs(args.shot), read(out), args.resume)
+        log(f"noun articles: {len(todo)} calls")
         await run_batch(args, out, broker, todo)
     finally:
         await broker.aclose()
@@ -3413,6 +3646,102 @@ def report_typed(out: Path, attempts: list[Shot]) -> None:
     _write_extra_packet(out, "typed", typed_review_packet(rows, asked))
 
 
+def article_review_packet(rows: dict[str, Shot], asked: frozenset[str]) -> dict[str, object]:
+    items = []
+    for expected_shot in article_shots():
+        if expected_shot.shot_id not in asked:
+            continue
+        case = ARTICLE_BY_ID[expected_shot.shot_id]
+        expected: dict[str, object] = {
+            "card_word": case.carded,
+            "requirement": case.requirement,
+            "asked_as": (
+                "a chip tapped in the sentence shown, asked as the selected-unit prompt"
+                if case.context
+                else "typed into the submit box exactly as shown"
+            ),
+            "read_the_card": (
+                "judge the article and the headword on the word sides, the translations of "
+                "the carded sense, and each example sentence as a card front: its own "
+                "articles, case and endings stay as written"
+            ),
+        }
+        shot = rows.get(expected_shot.shot_id)
+        if shot is None:
+            items.append(
+                _review_item(
+                    expected_shot,
+                    {"provider_miss"},
+                    expected=expected,
+                    actual={"attempt": "missing"},
+                ),
+            )
+            continue
+        categories = _availability_categories(shot, "noun_article")
+        if shot.metrics.get("payload_valid") and not shot.metrics.get("carded_as_expected"):
+            categories.add("card_word_differs")
+        actual = {
+            **_branch_actual(shot),
+            "word_relation": shot.metrics.get("word_relation"),
+            "card_word": shot.metrics.get("card_word"),
+            "card_fields": shot.metrics.get("card_fields"),
+            "noun_claims": shot.metrics.get("noun_claims"),
+            "rejection": shot.metrics.get("rejection"),
+            "context_sense": shot.payload.get("context_sense"),
+        }
+        items.append(_review_item(shot, categories, expected=expected, actual=actual))
+    return _extra_packet("articles", rows, asked, items)
+
+
+def report_articles(out: Path, attempts: list[Shot]) -> None:
+    """Screen what the card prints for each fixture's word; gates nothing."""
+    current = read(out, attempts)
+    asked = asked_here(ARTICLE_IDS, attempts)
+    rows = {shot_id: row for shot_id, row in current.items() if shot_id in asked}
+    held = [case for case in ARTICLE_CASES if case.shot_id in asked]
+    print("NOUN ARTICLES — AUTOMATED SCREEN, outside every tier")
+    print("Fresh-agent semantic review of the concrete review packet is mandatory before acceptance.\n")
+    _print_availability(rows, attempts, ARTICLE_IDS, asked)
+    nouns = [rows[case.shot_id] for case in held if case.noun and case.shot_id in rows]
+    controls = [rows[case.shot_id] for case in held if not case.noun and case.shot_id in rows]
+    contexts = [rows[case.shot_id] for case in held if case.context and case.shot_id in rows]
+    print("CARDS — the word sides as the live app renders them (diagnostic, gates nothing)")
+    print(f"  nouns carded with the expected article       {ratio(nouns, 'carded_as_expected')}")
+    print(f"  controls carded as typed                     {ratio(controls, 'carded_as_expected')}")
+    print(
+        "  any article added to a control               "
+        f"{sum(bool(row.metrics.get('article_added')) for row in controls)}",
+    )
+    refused = sum(not row.metrics.get("payload_valid") for row in rows.values())
+    print(f"  refused by the parser                        {refused}")
+    print(
+        "  called a misspelling                         "
+        f"{sum(row.metrics.get('word_relation') == 'typo' for row in rows.values())}",
+    )
+    print(f"  tapped sentence kept as the first example    {ratio(contexts, 'context_example_exact')}")
+    print(f"  tapped unit marked exactly                   {ratio(contexts, 'context_surface_exact')}")
+    print()
+    for case in held:
+        row = rows.get(case.shot_id)
+        if row is None:
+            print(f"  {case.shot_id:<28} missing")
+            continue
+        mark = "ok   " if row.metrics.get("carded_as_expected") else "WRONG"
+        if not row.metrics.get("payload_valid"):
+            mark = "REFUSED"
+        detail = (
+            f"card {row.metrics.get('card_word')!r}"
+            if row.metrics.get("payload_valid")
+            else f"rejection {row.metrics.get('rejection')!r}"
+        )
+        print(
+            f"  {mark} {case.shot_id:<28} expected {case.carded!r}, "
+            f"{row.answered_by or '?'}: {detail}, relation {row.metrics.get('word_relation')!r}",
+        )
+        print(f"        claims {row.metrics.get('noun_claims')}")
+    _write_extra_packet(out, "articles", article_review_packet(rows, asked))
+
+
 def ratio(rows: list[Shot], key: str) -> str:
     passed = sum(bool(row.metrics.get(key)) for row in rows)
     return f"{passed}/{len(rows)} ({passed / len(rows):.0%})" if rows else "-"
@@ -4023,12 +4352,13 @@ def report(out: Path, tier: str) -> None:
     chips = [row for row in attempts if row.kind in {WHOLE_CHIP_KIND, WHOLE_CHIP_JUDGEMENT_KIND}]
     typed = [row for row in attempts if row.kind == TYPED_KIND]
     follow_ups = [row for row in attempts if row.kind == FOLLOW_UP_KIND]
+    articles = [row for row in attempts if row.kind == ARTICLE_KIND]
     tiered = [
         row
         for row in attempts
         if row.kind not in REVERSE_BENCH_KINDS
         and row.kind not in WHOLE_TEXT_BENCH_KINDS
-        and row.kind != FOLLOW_UP_KIND
+        and row.kind not in {FOLLOW_UP_KIND, ARTICLE_KIND}
     ]
     failures = report_reverse(out, reverse) if reverse else []
     if follow_ups:
@@ -4037,6 +4367,8 @@ def report(out: Path, tier: str) -> None:
         report_whole_text(out, chips)
     if typed:
         report_typed(out, typed)
+    if articles:
+        report_articles(out, articles)
     if tiered:
         failures += report_tier(out, tier, tiered)
     if failures:
@@ -4418,6 +4750,7 @@ def main() -> None:
             "run",
             "run-clicks",
             "run-typed",
+            "run-articles",
             "run-corrections",
             "run-reverse",
             "run-follow-up",
@@ -4445,6 +4778,8 @@ def main() -> None:
         asyncio.run(run_clicks(args, out))
     elif args.action == "run-typed":
         asyncio.run(run_typed(args, out))
+    elif args.action == "run-articles":
+        asyncio.run(run_articles(args, out))
     elif args.action == "run-corrections":
         asyncio.run(run_corrections(args, out))
     elif args.action == "run-reverse":

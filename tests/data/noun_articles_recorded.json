@@ -1,0 +1,226 @@
+{
+  "about": "Free-pool answers to the prompt that asks a German unit answer whether each meaning is a noun and which article it takes, with the word each card prints",
+  "recorded_in": "experiments/.bench-noun-articles",
+  "answers": [
+    {
+      "shot_id": "article-de-hund",
+      "lang": "de",
+      "submitted": "Hund",
+      "context": "",
+      "unit_intent": true,
+      "answered_by": "google-gemini-3.5-flash-lite",
+      "answer": "<b>Hund</b>\nсобака, пес\n<table>\n<tr><td>der Hund</td><td>собака</td></tr>\n<tr><td>des Hundes</td><td>собаки</td></tr>\n<tr><td>dem Hund</td><td>собаке</td></tr>\n<tr><td>den Hund</td><td>собаку</td></tr>\n<tr><td>die Hunde</td><td>собаки</td></tr>\n<tr><td>den Hunden</td><td>собакам</td></tr>\n</table>\nИспользуется как исчисляемое существительное мужского рода. Часто употребляется в устойчивых выражениях и сравнениях. Слово обозначает домашнее животное, а также может употребляться в переносном значении по отношению к человеку.\nПроисходит от средневерхненмецкого <i>hunt</i>, восходит к прагерманскому и далее к праиндоевропейскому языку.\nМой сосед купил нового <b>Hund</b>.\nНа улице лает большой <b>Hund</b>.\nЭтот <b>Hund</b> очень дружелюбен с детьми.\n===CARD===\n{\"submission\": \"Hund\", \"submission_language\": \"de\", \"kind\": \"unit\", \"word\": \"Hund\", \"word_relation\": \"same\", \"suggestion\": \"\", \"meanings\": [{\"noun\": true, \"articles\": [\"der\"], \"noun_form\": \"Hund\", \"label\": \"\", \"translations\": [\"собака\", \"пес\"], \"examples\": [{\"highlighted\": \"Mein Nachbar hat einen neuen <b>Hund</b> gekauft.\", \"translation\": \"Мой сосед купил новую собаку.\"}, {\"highlighted\": \"Draußen bellt ein großer <b>Hund</b>.\", \"translation\": \"На улице лает большая собака.\"}]}], \"segments\": []}",
+      "carded": "der Hund",
+      "rejection": null
+    },
+    {
+      "shot_id": "article-de-katze",
+      "lang": "de",
+      "submitted": "Katze",
+      "context": "",
+      "unit_intent": true,
+      "answered_by": "google-gemini-3.5-flash-lite",
+      "answer": "<b>Katze</b>\n\nкошка, кот, киска\n\n<table>\n<tr><td>eine Katze</td><td>одна кошка</td></tr>\n<tr><td>der Katze</td><td>кошки</td></tr>\n<tr><td>die Katzen</td><td>кошки</td></tr>\n<tr><td>den Katzen</td><td>кошкам</td></tr>\n</table>\n\nИспользуется для обозначения домашних и диких кошачьих. Является исчисляемым существительным. Часто употребляется в устойчивых выражениях и идиомах.\n\nПроисходит от древневерхнегерманского слова chazza.\n\nUnsere <b>Katze</b> schläft den ganzen Tag auf dem Sofa.\nMeine Nachbarin hat zwei schwarze <b>Katzen</b>.\nEr füttert jeden Abend die <b>Katze</b> im Garten.\n\n===CARD===\n{\"submission\": \"Katze\", \"submission_language\": \"de\", \"kind\": \"unit\", \"word\": \"Katze\", \"word_relation\": \"same\", \"suggestion\": \"\", \"meanings\": [{\"noun\": true, \"articles\": [\"die\"], \"noun_form\": \"Katze\", \"label\": \"\", \"translations\": [\"кошка\", \"кот\", \"киска\"], \"examples\": [{\"highlighted\": \"Unsere <b>Katze</b> schläft den ganzen Tag auf dem Sofa.\", \"translation\": \"Наша кошка спит весь день на диване.\"}, {\"highlighted\": \"Meine Nachbarin hat zwei schwarze <b>Katzen</b>.\", \"translation\": \"У моей соседки две черные кошки.\"}, {\"highlighted\": \"Er füttert jeden Abend die <b>Katze</b> im Garten.\", \"translation\": \"Он кормит кошку в саду каждый вечер.\"}]}], \"segments\": []}",
+      "carded": "die Katze",
+      "rejection": null
+    },
+    {
+      "shot_id": "article-de-haus",
+      "lang": "de",
+      "submitted": "Haus",
+      "context": "",
+      "unit_intent": true,
+      "answered_by": "google-gemini-3.5-flash-lite",
+      "answer": "<b>Haus</b>\nдом, здание, домашний очаг\n<table>\n<tr><td>zu Hause</td><td>дома</td></tr>\n<tr><td>nach Hause</td><td>домой</td></tr>\n<tr><td>von zu Hause</td><td>из дома</td></tr>\n<tr><td>ein eigenes Haus</td><td>собственный дом</td></tr>\n<tr><td>ein altes Haus</td><td>старый дом</td></tr>\n<tr><td>große Häuser</td><td>большие дома</td></tr>\n</table>\nИспользуется для обозначения отдельно стоящего здания или жилого помещения. В сочетании с предлогами образует устойчивые выражения движения и положения в пространстве (nach Hause, zu Hause). Исчисляемое существительное, во множественном числе принимает форму Häuser.\nПроисходит от древневерхнемецкого слова hūs со значением укрытия или жилища.\nWir wohnen in einem großen <b>Haus</b>.\nEr geht heute früh nach <b>Haus</b>.\nDas <b>Haus</b> hat einen schönen Garten.\n===CARD===\n{\"submission\": \"Haus\", \"submission_language\": \"de\", \"kind\": \"unit\", \"word\": \"Haus\", \"word_relation\": \"same\", \"suggestion\": \"\", \"meanings\": [{\"noun\": true, \"articles\": [\"das\"], \"noun_form\": \"Haus\", \"label\": \"\", \"translations\": [\"дом\", \"здание\", \"домашний очаг\"], \"examples\": [{\"highlighted\": \"Wir wohnen in einem großen <b>Haus</b>.\", \"translation\": \"Мы живем в большом доме.\"}, {\"highlighted\": \"Das <b>Haus</b> hat einen schönen Garten.\", \"translation\": \"У дома есть красивый сад.\"}]}], \"segments\": []}",
+      "carded": "das Haus",
+      "rejection": null
+    },
+    {
+      "shot_id": "article-de-ferien",
+      "lang": "de",
+      "submitted": "Ferien",
+      "context": "",
+      "unit_intent": true,
+      "answered_by": "google-gemini-3.5-flash-lite",
+      "answer": "<b>die Ferien</b> (множественное число)\n\nканикулы, отпуск\n\n<table>\n<tr><td>in den Ferien</td><td>на каникулах</td></tr>\n<tr><td>nach den Ferien</td><td>после каникул</td></tr>\n<tr><td>die Sommerferien</td><td>летние каникулы</td></tr>\n<tr><td>die Weihnachtsferien</td><td>рождественские каникулы</td></tr>\n<tr><td>Urlaub machen</td><td>брать отпуск</td></tr>\n<tr><td>frei haben</td><td>быть свободным от работы</td></tr>\n</table>\n\nИспользуется преимущественно во множественном числе. Обозначает школьные или студенческие каникулы, а также период регулярного отпуска у взрослых (часто в южных регионах Германии и в Австрии). Сочетается с предлогами *in* (где? когда?) и *während* (во время). Не имеет единственного числа в данном значении.\n\nПроисходит от латинского слова *feriae* (праздничные дни, дни отдыха).\n\nIch freue mich schon auf die <b>Ferien</b>.\nЯ уже жду не дождусь каникул.\n\nWas machst du in den <b>Ferien</b>?\nЧто ты делаешь на каникулах?\n\nNach den <b>Ferien</b> beginnt das neue Semester.\nПосле каникул начинается новый семестр.\n\n===CARD===\n{\"submission\": \"Ferien\", \"submission_language\": \"de\", \"kind\": \"unit\", \"word\": \"Ferien\", \"word_relation\": \"same\", \"suggestion\": \"\", \"meanings\": [{\"noun\": true, \"articles\": [\"die\"], \"noun_form\": \"Ferien\", \"label\": \"\", \"translations\": [\"каникулы\", \"отпуск\"], \"examples\": [{\"highlighted\": \"Ich freue mich schon auf die <b>Ferien</b>.\", \"translation\": \"Я уже жду не дождусь каникул.\"}, {\"highlighted\": \"Was machst du in den <b>Ferien</b>?\", \"translation\": \"Что ты делаешь на каникулах?\"}, {\"highlighted\": \"Nach den <b>Ferien</b> beginnt das neue Semester.\", \"translation\": \"После каникул начинается новый семестр.\"}]}], \"segments\": []}",
+      "carded": "die Ferien",
+      "rejection": null
+    },
+    {
+      "shot_id": "article-de-der-hund",
+      "lang": "de",
+      "submitted": "der Hund",
+      "context": "",
+      "unit_intent": false,
+      "answered_by": "google-gemini-3.5-flash-lite",
+      "answer": "<b>Hund</b>, der\nсобака, пёс\n\n<table>\n<tr><td>der Hund, des Hundes</td><td>собака, пёса</td></tr>\n<tr><td>dem Hund</td><td>собаке</td></tr>\n<tr><td>den Hund</td><td>собаку</td></tr>\n<tr><td>die Hunde, der Hunde</td><td>собаки, собак</td></tr>\n</table>\n\nИспользуется для обозначения домашнего животного, а также в ругательствах и устойчивых выражениях. Род мужской, склоняется по сильному типу. Множественное число образуется с добавлением суффикса -e и умлаута.\n\nПроисходит от средневерхненмецкого *hunt*, восходит к прагерманскому **hundaz* (собака).\n\nGuten Abend, mein treuer <b>Hund</b>!\nДобрый вечер, мой верный пёс!\n\nDer <b>Hund</b> bellt laut in der Nacht.\nСобака громко лает ночью.\n\nIch gehe mit meinem <b>Hund</b> spazieren.\nЯ гуляю со своей собакой.\n\n===CARD===\n{\"submission\": \"der Hund\", \"submission_language\": \"de\", \"kind\": \"unit\", \"word\": \"Hund\", \"word_relation\": \"same\", \"suggestion\": \"\", \"meanings\": [{\"noun\": true, \"articles\": [\"der\"], \"noun_form\": \"Hund\", \"label\": \"\", \"translations\": [\"собака\", \"пёс\"], \"examples\": [{\"highlighted\": \"Guten Abend, mein treuer <b>Hund</b>!\", \"translation\": \"Добрый вечер, мой верный пёс!\"}, {\"highlighted\": \"Der <b>Hund</b> bellt laut in der Nacht.\", \"translation\": \"Собака громко лает ночью.\"}, {\"highlighted\": \"Ich gehe mit meinem <b>Hund</b> spazieren.\", \"translation\": \"Я гуляю со своей собакой.\"}]}], \"segments\": []}",
+      "carded": "der Hund",
+      "rejection": null
+    },
+    {
+      "shot_id": "article-de-see-lake",
+      "lang": "de",
+      "submitted": "See",
+      "context": "Im Sommer baden wir oft in einem kleinen See.",
+      "unit_intent": true,
+      "answered_by": "google-gemini-3.5-flash-lite",
+      "answer": "<b>der See</b>, <i>der See</i> (Plural: die Seen)\n\nозеро; море (устаревшее или в поэтических названиях)\n\n<table>\n<tr><td>ein kleiner See</td><td>небольшое озеро</td></tr>\n<tr><td>des Sees</td><td>озера</td></tr>\n<tr><td>dem See</td><td>озеру</td></tr>\n<tr><td>die Seen</td><td>озёра</td></tr>\n<tr><td>der Plattensee</td><td>озеро Балатон</td></tr>\n<tr><td>an den See</td><td>на озеро</td></tr>\n</table>\n\nУпотребление: Мужской род (der See — озеро) нельзя путать с женским родом (die See — море). Слово активно используется с предлогами <i>an</i> (в значении «на берегу озера») и <i>in</i> («в озере», когда речь идет о купании). Часто сочетается с глаголами <i>baden</i>, <i>schwimmen</i>, <i>liegen</i>.\n\nПроисхождение: Общегерманское слово со значением «море, большая вода», восходящее к индоевропейскому корню.\n\nПримеры:\nIm Sommer baden wir oft in einem kleinen <b>See</b>.\nAm Wochenende fahren wir an den <b>See</b>.\nDas Wasser in diesem <b>See</b> ist sehr klar.\n\n===CARD===\n{\"kind\": \"unit\", \"word\": \"der See\", \"word_relation\": \"same\", \"suggestion\": \"\", \"meanings\": [{\"noun\": true, \"articles\": [\"der\"], \"noun_form\": \"See\", \"label\": \"\", \"translations\": [\"озеро\", \"море\"], \"examples\": [{\"highlighted\": \"Am Wochenende fahren wir an den <b>See</b>.\", \"translation\": \"На выходных мы едем на озеро.\"}, {\"highlighted\": \"Das Wasser in diesem <b>See</b> ist sehr klar.\", \"translation\": \"Вода в этом озере очень чистая.\"}]}], \"segments\": [], \"context_sense\": 0, \"context_translation\": \"Летом мы часто купаемся в небольшом озере.\", \"context_surface\": \"See\"}",
+      "carded": "der See",
+      "rejection": null
+    },
+    {
+      "shot_id": "article-de-see-sea",
+      "lang": "de",
+      "submitted": "See",
+      "context": "Der Sturm überraschte die Fischer auf hoher See.",
+      "unit_intent": true,
+      "answered_by": "google-gemini-3.5-flash-lite",
+      "answer": "<b>See</b><br>море; океан<br>озеро<br><table><tr><td>auf hoher See</td><td>в открытом море</td></tr><tr><td>die offene See</td><td>открытое море</td></tr><tr><td>an den See fahren</td><td>ехать на озеро</td></tr><tr><td>am See spazieren</td><td>гулять у озера</td></tr></table>Используется для обозначения больших открытых водоемов с соленой водой, а также крупных внутренних водоемов. В устойчивых выражениях часто сохраняет старинные падежные формы (например, *auf hoher See*). Происходит от общегерманского слова со значением «море», восходящего к древнегерманским языкам.<br>Der Sturm überraschte die Fischer auf hoher See.<br>Wir haben ein schönes Haus am See gemietet.<br>Die Möwen fliegen über die blaue See.<br>Im Sommer schwimmen wir oft im See.\n===CARD===\n{\"kind\": \"unit\", \"word\": \"See\", \"word_relation\": \"same\", \"suggestion\": \"\", \"meanings\": [{\"noun\": true, \"articles\": [\"die\"], \"noun_form\": \"See\", \"label\": \"hohe\", \"translations\": [\"море\", \"океан\"], \"examples\": [{\"highlighted\": \"Der Sturm überraschte die Fischer auf hoher <b>See</b>.\", \"translation\": \"Шторм застал рыбаков в открытом море.\"}, {\"highlighted\": \"Die Möwen fliegen über die blaue <b>See</b>.\", \"translation\": \"Чайки летают над синим морем.\"}]}, {\"noun\": true, \"articles\": [\"der\"], \"noun_form\": \"See\", \"label\": \"\", \"translations\": [\"озеро\"], \"examples\": [{\"highlighted\": \"Wir haben ein schönes Haus am <b>See</b> gemietet.\", \"translation\": \"Мы сняли красивый дом у озера.\"}, {\"highlighted\": \"Im Sommer schwimmen wir oft im <b>See</b>.\", \"translation\": \"Летом мы часто плаваем в озере.\"}]}], \"segments\": [], \"context_sense\": 0, \"context_translation\": \"Шторм застал рыбаков в открытом море.\", \"context_surface\": \"See\"}",
+      "carded": "die See",
+      "rejection": null
+    },
+    {
+      "shot_id": "article-de-kindern",
+      "lang": "de",
+      "submitted": "Kindern",
+      "context": "",
+      "unit_intent": true,
+      "answered_by": "google-gemini-3.5-flash-lite",
+      "answer": "<b>Kind</b>\n\nдети, ребята, детвора\n\n<table>\n<tr><td>viele Kinder</td><td>много детей</td></tr>\n<tr><td>kleine Kinder</td><td>маленькие дети</td></tr>\n<tr><td>mit Kindern</td><td>с детьми</td></tr>\n<tr><td>von Kindern</td><td>от детей</td></tr>\n</table>\n\nИспользуется для обозначения потомства человека в возрасте от рождения до наступления половой зрелости. В данном конкретном случае слово стоит в дательном падеже множественного числа (с окончанием <i>-ern</i>), что характерно для существительных среднего рода во множественном числе при склонении. Часто употребляется с предлогами, требующими дательного падежа, такими как <i>mit</i>, <i>bei</i>, <i>zu</i>, <i>von</i>. Исчисляемое существительное, во множественном числе меняет корневую гласную (умлаут) и получает суффикс.\n\nПроисходит от средневерхненемецкого <i>kind</i>, восходящего к древневерхненемецкому <i>kint</i> (ребенок, дитя), далее от прагерманского <i>*kinþam</i> (порожденный).\n\nIm Park spielen viele <b>Kindern</b> – Im Park spielen viele <b>Kinder</b>.\nDie Eltern sprechen über die Zukunft ihrer <b>Kindern</b> – Die Eltern sprechen über die Zukunft ihrer <b>Kinder</b>.\nMit kleinen <b>Kindern</b> muss man oft spazieren gehen.\n===CARD===\n{\"submission\": \"Kindern\", \"submission_language\": \"de\", \"kind\": \"unit\", \"word\": \"Kind\", \"word_relation\": \"morphology\", \"suggestion\": \"\", \"meanings\": [{\"noun\": true, \"articles\": [\"die\"], \"noun_form\": \"Kinder\", \"label\": \"\", \"translations\": [\"дети\", \"ребята\", \"детвора\"], \"examples\": [{\"highlighted\": \"Mit kleinen <b>Kindern</b> muss man oft spazieren gehen.\", \"translation\": \"С маленькими детьми нужно часто гулять.\"}]}], \"segments\": []}",
+      "carded": null,
+      "rejection": "the carded meaning: a German noun's form after its article is not its headword"
+    },
+    {
+      "shot_id": "article-de-schwarzes-brett",
+      "lang": "de",
+      "submitted": "schwarzes Brett",
+      "context": "",
+      "unit_intent": false,
+      "answered_by": "google-gemini-3.5-flash-lite",
+      "answer": "<b>schwarzes Brett</b>\n\nдоска объявлений, доска объявлений (в учреждении, учебном заведении)\n\n<table>\n<tr><td>am schwarzen Brett</td><td>на доске объявлений</td></tr>\n<tr><td>das schwarze Brett</td><td>доска объявлений</td></tr>\n</table>\n\nУстойчивое сочетание существительного с прилагательным. Означает информационный стенд, обычно настенный, где вывешиваются объявления для сотрудников, студентов или жильцов дома.\n\nВыражение возникло из-за того, что первые подобные доски часто изготавливались из дерева и красились в черный цвет для контраста с белыми мелками или листками бумаги.\n\nПрилагательное <i>schwarz</i> меняет окончание по правилам слабого склонения после определенного артикля или сильного склонения без артикля, как в данном случае.\n\nИнформацию часто размещают на самой доске, поэтому используется предлог <i>an</i> с дательным падежом: <i>am schwarzen Brett</i>.\n\n<p>Die aktuellen Termine hängen an dem <b>schwarzen Brett</b>.</p>\n<translation>Актуальные сроки висят на доске объявлений.</translation>\n\n<p>Ich habe deine Anzeige am <b>schwarzen Brett</b> gesehen.</p>\n<translation>Я видел твое объявление на доске объявлений.</translation>\n\n<p>Bitte informieren Sie sich regelmäßig am <b>schwarzen Brett</b>.</p>\n<translation>Пожалуйста, регулярно получайте информацию на доске объявлений.</translation>\n\n===CARD===\n{\"submission\": \"schwarzes Brett\", \"submission_language\": \"de\", \"kind\": \"unit\", \"word\": \"schwarzes Brett\", \"word_relation\": \"same\", \"suggestion\": \"\", \"meanings\": [{\"noun\": true, \"articles\": [\"das\"], \"noun_form\": \"schwarzes Brett\", \"label\": \"\", \"translations\": [\"доска объявлений\"], \"examples\": [{\"highlighted\": \"Die aktuellen Termine hängen an dem <b>schwarzen Brett</b>.\", \"translation\": \"Актуальные сроки висят на доске объявлений.\"}, {\"highlighted\": \"Ich habe deine Anzeige am <b>schwarzen Brett</b> gesehen.\", \"translation\": \"Я видел твое объявление на доске объявлений.\"}]}], \"segments\": [{\"label\": \"schwarz\", \"surface\": \"schwarzes\", \"why\": \"прилагательное в форме среднего рода именительного падежа без артикля\"}, {\"label\": \"Brett\", \"surface\": \"Brett\", \"why\": \"существительное среднего рода в начальной форме\"}]}",
+      "carded": "das schwarzes Brett",
+      "rejection": null
+    },
+    {
+      "shot_id": "article-de-laufen",
+      "lang": "de",
+      "submitted": "laufen",
+      "context": "",
+      "unit_intent": true,
+      "answered_by": "google-gemini-3.5-flash-lite",
+      "answer": "<b>laufen</b>\nбежать, ходить, бегать, работать\n\n<table>\n<tr><td>ich laufe</td><td>я бегу</td></tr>\n<tr><td>du läufst</td><td>ты бежишь</td></tr>\n<tr><td>er läuft</td><td>он бежит</td></tr>\n<tr><td>wir laufen</td><td>мы бежим</td></tr>\n<tr><td>sie lief</td><td>она бежала</td></tr>\n<tr><td>ist gelaufen</td><td>пробежал</td></tr>\n</table>\n\nИспользуется для обозначения быстрого передвижения бегом, а также ходьбы пешком в разговорной речи. Часто применяется в значении функционирования механизмов, работы приборов или демонстрации фильмов в кинотеатрах. В прошедшем времени образует форму с вспомогательным глаголом sein. Не путать с <i>gehen</i> (просто идти пешком).\n\nДревневерхненемецкий глагол louffan происходит от германской основы со значением стремительного движения.\n\nEr muss schnell zum Bahnhof <b>laufen</b>.\nIm Fernsehen <b>läut</b> ein guter Film.\nDie Zeit <b>läuft</b> sehr schnell.\n\n===CARD===\n{\"submission\": \"laufen\", \"submission_language\": \"de\", \"kind\": \"unit\", \"word\": \"laufen\", \"word_relation\": \"same\", \"suggestion\": \"\", \"meanings\": [{\"noun\": false, \"articles\": [], \"noun_form\": \"\", \"label\": \"\", \"translations\": [\"бежать\", \"ходить\", \"работать\", \"бегать\"], \"examples\": [{\"highlighted\": \"Er muss schnell zum Bahnhof <b>laufen</b>.\", \"translation\": \"Он должен быстро бежать на вокзал.\"}, {\"highlighted\": \"Im Fernsehen <b>läuft</b> ein guter Film.\", \"translation\": \"По телевизору идет хороший фильм.\"}, {\"highlighted\": \"Die Zeit <b>läuft</b> sehr schnell.\", \"translation\": \"Время бежит очень быстро.\"}]}], \"segments\": []}",
+      "carded": "laufen",
+      "rejection": null
+    },
+    {
+      "shot_id": "article-de-das",
+      "lang": "de",
+      "submitted": "das",
+      "context": "",
+      "unit_intent": true,
+      "answered_by": "google-gemini-3.5-flash-lite",
+      "answer": "<b>das</b>\nэто, то, который\n<table>\n<tr><td>das Buch</td><td>эта книга</td></tr>\n<tr><td>das Haus</td><td>этот дом</td></tr>\n<tr><td>Was ist das?</td><td>Что это?</td></tr>\n<tr><td>Ich weiß, <b>das</b> ist schwer.</td><td>Я знаю, что это трудно.</td></tr>\n<tr><td>Gefällt dir <b>das</b> Auto?</td><td>Тебе нравится эта машина?</td></tr>\n</table>\nИспользуется как определенный артикль среднего рода в именительном и винительном падежах, как указательное местоимение для указания на предмет, а также как союз, вводящий придаточные предложения. Артикль всегда стоит перед существительным среднего рода. Местоимение часто употребляется самостоятельно в вопросах и ответах.\nПроисходит от древневерхненемецкого языка, восходит к общегерманским указательным местоимениям.\nGestern habe ich <b>das</b> neue Buch gelesen.\nIch glaube, <b>das</b> ist eine gute Idee.\n<b>Das</b> Wetter ist heute sehr schön.\n===CARD===\n{\"submission\": \"das\", \"submission_language\": \"de\", \"kind\": \"unit\", \"word\": \"das\", \"word_relation\": \"same\", \"suggestion\": \"\", \"meanings\": [{\"noun\": false, \"articles\": [], \"noun_form\": \"\", \"label\": \"\", \"translations\": [\"это\", \"то\", \"который\"], \"examples\": [{\"highlighted\": \"Ich weiß, <b>das</b> ist schwer.\", \"translation\": \"Я знаю, что это трудно.\"}, {\"highlighted\": \"Gefällt dir <b>das</b> Auto?\", \"translation\": \"Тебе нравится эта машина?\"}]}], \"segments\": []}",
+      "carded": "das",
+      "rejection": null
+    },
+    {
+      "shot_id": "article-de-das-heisst",
+      "lang": "de",
+      "submitted": "das heißt",
+      "context": "",
+      "unit_intent": false,
+      "answered_by": "google-gemini-3.5-flash-lite",
+      "answer": "<b>das heißt</b>\nто есть, точнее говоря, а именно\nУстойчивая фраза, которая используется для уточнения, разъяснения или перефразирования только что сказанного. Частично происходит от глагола <i>heißen</i> (называться, означать), где местоимение <i>das</i> выступает в роли подлежащего, а <i>heißt</i> — сказуемого в форме третьего лица единственного числа. Дословно переводится как «это означает».\nМы едем в Германию в июле, то есть в разгар лета. <b>Das heißt</b>, wir reisen in der Hauptsaison.\nОн много работает, то есть у него почти нет свободного времени. Er arbeitet viel, <b>das heißt</b>, er hat kaum Freizeit.\n===CARD===\n{\"submission\": \"das heißt\", \"submission_language\": \"de\", \"kind\": \"unit\", \"word\": \"das heißt\", \"word_relation\": \"same\", \"suggestion\": \"\", \"meanings\": [{\"noun\": false, \"articles\": [], \"noun_form\": \"\", \"label\": \"\", \"translations\": [\"то есть\", \"а именно\"], \"examples\": [{\"highlighted\": \"Wir fahren im Juli nach Deutschland, <b>das heißt</b>, mitten im Sommer.\", \"translation\": \"Мы едем в Германию в июле, то есть в разгар лета.\"}, {\"highlighted\": \"Er arbeitet viel, <b>das heißt</b>, er hat kaum Freizeit.\", \"translation\": \"Он много работает, то есть у него почти нет свободного времени.\"}]}], \"segments\": [{\"label\": \"das\", \"surface\": \"das\", \"why\": \"указательное местоимение в роли подлежащего\"}, {\"label\": \"heißen\", \"surface\": \"heißt\", \"why\": \"глагол в форме третьего лица единственного числа\"}]}",
+      "carded": "das heißt",
+      "rejection": null
+    },
+    {
+      "shot_id": "article-en-house",
+      "lang": "en",
+      "submitted": "house",
+      "context": "",
+      "unit_intent": true,
+      "answered_by": "groq-gpt-oss-120b",
+      "answer": "<b>house</b>\nдом (н), жилище (разг), здание (форм)\n\n<table>\n<tr><td>house</td><td>дом</td></tr>\n<tr><td>houses</td><td>дома</td></tr>\n<tr><td>housing</td><td>жильё</td></tr>\n<tr><td>housed</td><td>размещённый</td></tr>\n</table>\n\nУстойчивые сочетания: house price – цена на дом; house hold – домашнее хранение; to house someone – разместить кого‑то. Управление: house + preposition of («дом of …» — устар.) и in («в домe», обычно для домашних дел). Не путать с home (дом в смысле «место проживания»). Счётность: дом может быть как исчисляемым (один дом, два дома), так и неисчисляемым в значении «жильё».  \n\nЭтимология: из древнеангл. *hūs* «дом», прагерманского *khusą*; родственник нем. *Haus*.\n\n<b>House</b> prices have risen dramatically this year. – Цены на жильё резко возросли в этом году.  \nThe family moved into a new <b>house</b>. – Семья переехала в новый дом.  \nThe <b>House</b> will vote on the bill tomorrow. – Палата проголосует по законопроекту завтра.  \nThe museum <b>houses</b> a rare collection of paintings. – Музей хранит редкую коллекцию картин.  \n\n===CARD===\n{\"submission\":\"house\",\"submission_language\":\"en\",\"kind\":\"unit\",\"word\":\"house\",\"word_relation\":\"same\",\"suggestion\":\"\",\"meanings\":[{\"label\":\"\",\"translations\":[\"дом\",\"жилище\",\"здание\"],\"examples\":[{\"highlighted\":\"<b>House</b> prices have risen dramatically this year.\",\"translation\":\"Цены на жильё резко возросли в этом году.\"},{\"highlighted\":\"The family moved into a new <b>house</b>.\",\"translation\":\"Семья переехала в новый дом.\"}]},{\"label\":\"legislature\",\"translations\":[\"палата\",\"нижняя палата\",\"законодательный орган\"],\"examples\":[{\"highlighted\":\"The <b>House</b> will vote on the bill tomorrow.\",\"translation\":\"Палата проголосует по законопроекту завтра.\"}]},{\"label\":\"accommodate\",\"translations\":[\"размещать\",\"приютить\",\"вмещать\"],\"examples\":[{\"highlighted\":\"The museum <b>houses</b> a rare collection of paintings.\",\"translation\":\"Музей хранит редкую коллекцию картин.\"}]}],\"segments\":[]}",
+      "carded": "house",
+      "rejection": null
+    },
+    {
+      "shot_id": "article-sr-kuca",
+      "lang": "sr",
+      "submitted": "kuća",
+      "context": "",
+      "unit_intent": true,
+      "answered_by": "groq-gpt-oss-120b",
+      "answer": "<b>kuća</b>\nдом (разг.)\n\n<table>\n<tr><td>kuća</td><td>дом (единственное)</td></tr>\n<tr><td>kuće</td><td>домов (родительный)</td></tr>\n<tr><td>kućama</td><td>домам (дательный)</td></tr>\n<tr><td>u kući</td><td>в доме</td></tr>\n<tr><td>na kući</td><td>на доме (разговорное)</td></tr>\n<tr><td>kuće</td><td>дома (множественное)</td></tr>\n</table>\n\nУпотребление: часто с прилагательными «велика», «мала», «породна»; сочетания «кућа за одмор», «стара кућа». Управляет предлогом «у» (внутри) и «на» (на крыше). Считается исчисляемым, образует множественное число.\n\nПроисхождение: исконное славянское слово, восходит к праславянскому *kъťa.\n\nПримеры:\nMoja <b>kuća</b> je blizu škole. – Мой дом рядом со школой.  \nKupili smo novu <b>kuću</b> u selu. – Мы купили новый дом в деревне.  \nU <b>kući</b> smo proslavili rođendan. – Мы отпраздновали день рождения в доме.  \n\n===CARD===\n{\"submission\":\"kuća\",\"submission_language\":\"sr\",\"kind\":\"unit\",\"word\":\"kuća\",\"word_relation\":\"same\",\"suggestion\":\"\",\"meanings\":[{\"label\":\"\",\"translations\":[\"дом\",\"жильё\"],\"examples\":[{\"highlighted\":\"Moja <b>kuća</b> je blizu škole.\",\"translation\":\"Мой дом рядом со школой.\"},{\"highlighted\":\"Kupili smo novu <b>kuću</b> u selu.\",\"translation\":\"Мы купили новый дом в деревне.\"},{\"highlighted\":\"U <b>kući</b> smo proslavili rođendan.\",\"translation\":\"Мы отпраздновали день рождения в доме.\"}]}],\"segments\":[]}",
+      "carded": "kuća",
+      "rejection": null
+    },
+    {
+      "shot_id": "bare-de-bank",
+      "lang": "de",
+      "submitted": "Bank",
+      "context": "",
+      "unit_intent": true,
+      "answered_by": "google-gemini-3.5-flash-lite",
+      "answer": "<b>die Bank</b>, <i>die Bank</i>\n\nбанк (финансовое учреждение)\nскамья (для сидения)\nлавка (мебель)\n\n<table>\n<tr><td>zur Bank gehen</td><td>идти в банк</td></tr>\n<tr><td>auf der Bank sitzen</td><td>сидеть на скамье</td></tr>\n<tr><td>auf die Bank legen</td><td>класть на скамью</td></tr>\n<tr><td>bei der Bank arbeiten</td><td>работать в банке</td></tr>\n</table>\n\nВ значении финансового учреждения слово является исчисляемым существительным среднего рода по форме множественного числа (die Banken). В значении предмета мебели также исчисляемое существительное. Употребляется с различными предлогами места (auf, in, zu). Часто используется в устойчивых сочетаниях, например, <i>Geld auf die Bank bringen</i>.\n\nПроисходит от средневерхненемецкого *banc*, что означало «скамья», «возвышение», откуда в эпоху Возрождения через итальянское *banca* развилось значение финансового стола и банка.\n\nIch muss heute unbedingt zur <b>Bank</b> gehen.\nWir haben eine neue <b>Bank</b> für den Garten gekauft.\nEr saß müde auf einer <b>Bank</b> im Park.\nDas Geld ist sicher auf der <b>Bank</b> angelegt.\n\n===CARD===\n{\"submission\": \"Bank\", \"submission_language\": \"de\", \"kind\": \"unit\", \"word\": \"Bank\", \"word_relation\": \"same\", \"suggestion\": \"\", \"meanings\": [{\"noun\": true, \"articles\": [\"die\"], \"noun_form\": \"Bank\", \"label\": \"Geld\", \"translations\": [\"банк\"], \"examples\": [{\"highlighted\": \"Ich muss heute unbedingt zur <b>Bank</b> gehen.\", \"translation\": \"Мне сегодня обязательно нужно пойти в банк.\"}, {\"highlighted\": \"Das Geld ist sicher auf der <b>Bank</b> angelegt.\", \"translation\": \"Деньги надежно положены в банк.\"}]}, {\"noun\": true, \"articles\": [\"die\"], \"noun_form\": \"Bank\", \"label\": \"sitzen\", \"translations\": [\"скамья\", \"лавка\"], \"examples\": [{\"highlighted\": \"Wir haben eine neue <b>Bank</b> für den Garten gekauft.\", \"translation\": \"Мы купили новую скамейку для сада.\"}, {\"highlighted\": \"Er saß müde auf einer <b>Bank</b> im Park.\", \"translation\": \"Он устало сидел на скамейке в парке.\"}]}], \"segments\": []}",
+      "carded": "die Bank",
+      "rejection": null
+    },
+    {
+      "shot_id": "bare-de-verantwortung",
+      "lang": "de",
+      "submitted": "Verantwortung",
+      "context": "",
+      "unit_intent": true,
+      "answered_by": "google-gemini-3.5-flash-lite",
+      "answer": "<b>Verantwortung</b>\n\nответственность, обязанность, подотчетность\n\n<table>\n<tr><td>die Verantwortung übernehmen</td><td>брать на себя ответственность</td></tr>\n<tr><td>die Verantwortung tragen</td><td>нести ответственность</td></tr>\n<tr><td>die Verantwortung abgeben</td><td>перекладывать ответственность</td></tr>\n<tr><td>jemandem die Verantwortung übertragen</td><td>возложить ответственность на кого-либо</td></tr>\n</table>\n\nИспользуется преимущественно в сочетании с глаголами, обозначающими принятие, несение или передачу ответственности. Существительное является женского рода, во множественном числе употребляется редко. Часто сочетается с предлогом <i>für</i>, за которым следует объект ответственности.\n\nПроисходит от средневерхненемецкого языка, связано с глаголом <i>antworten</i> (отвечать) и восходит к древневерхненемецкому <i>andswarten</i>.\n\nWir müssen für unsere T-Shirts die <b>Verantwortung</b> übernehmen.\nDer Chef trägt die volle <b>Verantwortung</b> für diesen Fehler.\nJeder Bürger trägt <b>Verantwortung</b> in unserer Gesellschaft.\n\n===CARD===\n{\"submission\": \"Verantwortung\", \"submission_language\": \"de\", \"kind\": \"unit\", \"word\": \"Verantwortung\", \"word_relation\": \"same\", \"suggestion\": \"\", \"meanings\": [{\"noun\": true, \"articles\": [\"die\"], \"noun_form\": \"Verantwortung\", \"label\": \"\", \"translations\": [\"ответственность\", \"обязанность\", \"подотчетность\"], \"examples\": [{\"highlighted\": \"Wir müssen für unsere T-Shirts die <b>Verantwortung</b> übernehmen.\", \"translation\": \"Мы должны взять на себя ответственность за наши футболки.\"}, {\"highlighted\": \"Der Chef trägt die volle <b>Verantwortung</b> für diesen Fehler.\", \"translation\": \"Начальник несет полную ответственность за эту ошибку.\"}, {\"highlighted\": \"Jeder Bürger trägt <b>Verantwortung</b> in unserer Gesellschaft.\", \"translation\": \"Каждый гражданин несет ответственность в нашем обществе.\"}]}], \"segments\": []}",
+      "carded": "die Verantwortung",
+      "rejection": null
+    },
+    {
+      "shot_id": "bare-de-rad",
+      "lang": "de",
+      "submitted": "Rad fahren",
+      "context": "",
+      "unit_intent": false,
+      "answered_by": "google-gemini-3.5-flash-lite",
+      "answer": "<b>Rad fahren</b>, <b>Radfahren</b> ездить на велосипеде, кататься на велосипеде\n\n<table>\n  <tr>\n    <td>ich fahre Rad</td>\n    <td>я езжу на велосипеде</td>\n  </tr>\n  <tr>\n    <td>du fährst Rad</td>\n    <td>ты ездишь на велосипеде</td>\n  </tr>\n  <tr>\n    <td>er fährt Rad</td>\n    <td>он ездит на велосипеде</td>\n  </tr>\n  <tr>\n    <td>wir sind Rad gefahren</td>\n    <td>мы ездили на велосипеде</td>\n  </tr>\n</table>\n\nИспользуется без артикля в значении «передвигаться на велосипеде». В качестве вспомогательного глагола в прошедшем времени (Perfekt) используется <i>sein</i>. Часто пишется слитно как существительное среднего рода <i>das Radfahren</i>.\n\nСостоит из существительного <i>das Rad</i> (колесо, здесь в значении велосипеда) и глагола <i>fahren</i> (ехать). Буквально означает «ехать на колесе».\n\nИспользование велосипеда в качестве транспорта или для отдыха.\n\nМиллионы людей каждый день <b>ездят на велосипеде</b> на работу.\nПри хорошей погоде мы охотно <b>катаемся на велосипеде</b>.\nТы умеешь <b>ездить на велосипеде</b>?\n\n===CARD===\n{\"submission\": \"Rad fahren\", \"submission_language\": \"de\", \"kind\": \"unit\", \"word\": \"Rad fahren\", \"word_relation\": \"same\", \"suggestion\": \"\", \"meanings\": [{\"noun\": false, \"articles\": [], \"noun_form\": \"\", \"label\": \"\", \"translations\": [\"ездить на велосипеде\", \"кататься на велосипеде\"], \"examples\": [{\"highlighted\": \"Millionen Menschen <b>fahren</b> jeden Tag <b>Rad</b> zur Arbeit.\", \"translation\": \"Миллионы людей каждый день ездят на велосипеде на работу.\"}, {\"highlighted\": \"Bei gutem Wetter <b>fahren</b> wir gerne <b>Rad</b>.\", \"translation\": \"При хорошей погоде мы охотно катаемся на велосипеде.\"}, {\"highlighted\": \"Kannst du <b>Rad fahren</b>?\", \"translation\": \"Ты умеешь ездить на велосипеде?\"}]}], \"segments\": [{\"label\": \"Rad\", \"surface\": \"Rad\", \"why\": \"существительное в роли объекта\"}, {\"label\": \"fahren\", \"surface\": \"fahren\", \"why\": \"основной глагол движения\"}]}",
+      "carded": "Rad fahren",
+      "rejection": null
+    },
+    {
+      "shot_id": "typo-de-strase",
+      "lang": "de",
+      "submitted": "Strase",
+      "context": "",
+      "unit_intent": true,
+      "answered_by": "google-gemini-3.5-flash-lite",
+      "answer": "<b>Straße</b>\nулица, дорога, проезжая часть\n\n<table>\n<tr><td>auf der Straße</td><td>на улице</td></tr>\n<tr><td>auf die Straße</td><td>на улицу</td></tr>\n<tr><td>die Straße überqueren</td><td>переходить улицу</td></tr>\n<tr><td>die Straße entlang</td><td>вдоль улицы</td></tr>\n<tr><td>auf offener Straße</td><td>среди бела дня на улице</td></tr>\n</table>\n\nИспользуется для обозначения городских улиц, дорог и автомагистралей. Часто употребляется с предпогами <i>auf</i> (на) и <i>in</i> (в). В составе сложных слов обозначает тип дороги, например: <i>Hauptstraße</i> (главная улица), <i>Autobahn</i> (автобан, реже называется <i>Autostraße</i>). Слово является женского рода, во множественном числе принимает окончание <i>-n</i> (die Straßen).\n\nПроисходит от средневерхненмецкого <i>strāze</i>, восходит к латинскому <i>via strata</i> (мощеная дорога).\n\nIch wohne in einer ruhigen <b>Straße</b>.\nWir müssen diese <b>Straße</b> überqueren, um zum Park zu kommen.\nAuf der <b>Straße</b> liegt viel Schnee.\n\n===CARD===\n{\"submission\": \"Strase\", \"submission_language\": \"de\", \"kind\": \"unit\", \"word\": \"Straße\", \"word_relation\": \"typo\", \"suggestion\": \"Straße\", \"meanings\": [{\"noun\": true, \"articles\": [\"die\"], \"noun_form\": \"Straße\", \"label\": \"\", \"translations\": [\"улица\", \"дорога\", \"проезжая часть\"], \"examples\": [{\"highlighted\": \"Ich wohne in einer ruhigen <b>Straße</b>.\", \"translation\": \"Я живу на тихой улице.\"}, {\"highlighted\": \"Wir müssen diese <b>Straße</b> überqueren, um zum Park zu kommen.\", \"translation\": \"Мы должны перейти эту улицу, чтобы попасть в парк.\"}, {\"highlighted\": \"Auf der <b>Straße</b> liegt viel Schnee.\", \"translation\": \"На дороге лежит много снега.\"}]}], \"segments\": []}",
+      "carded": "die Straße",
+      "rejection": null
+    },
+    {
+      "shot_id": "click-de-combination",
+      "lang": "de",
+      "submitted": "aufstehen",
+      "context": "Er steht jeden Morgen um sechs auf.",
+      "unit_intent": true,
+      "answered_by": "google-gemini-3.5-flash-lite",
+      "answer": "<b>aufstehen</b>\n\nвставать, подниматься (с постели); вставать (при появлении кого-либо, в знак уважения); подниматься (о волнах, ветре, буре)\n\n<table>\n<tr><td>ich stehe auf</td><td>я встаю</td></tr>\n<tr><td>du stehst auf</td><td>ты встаешь</td></tr>\n<tr><td>er steht auf</td><td>он встает</td></tr>\n<tr><td>wir stehen auf</td><td>мы встаем</td></tr>\n<tr><td>sie sind aufgestanden</td><td>они встали</td></tr>\n<tr><td>stand auf!</td><td>встань!</td></tr>\n</table>\n\nГлагол с отделяемой приставкой <i>auf-</i>. В предложениях в простых прошедших временах и перфекте вспомогательным глаголом выступает <i>sein</i>. Употребляется как при пробуждении и подъеме с кровати, так и в значении подняться на ноги из сидячего или лежачего положения, а также для описания природных явлений (подняться о ветре).\n\nИсконное слово, состоящее из приставки <i>auf-</i> (наверх) и глагола <i>stehen</i> (стоять).\n\nEr <b>steht</b> jeden Morgen um sechs <b>auf</b>.\nОн встает каждое утро в шесть.\n\nWann bist du heute <b>aufgestanden</b>?\nВо сколько ты сегодня встал?\n\nDie ganzen Schüler <b>standen auf</b>, als der Lehrer das Klassenzimmer betrat.\nВсе ученики встали, когда учитель вошел в класс.\n\nPlötzlich <b>stand</b> ein starker Wind <b>auf</b>.\nВнезапно поднялся сильный ветер.\n\n===CARD===\n{\"kind\": \"unit\", \"word\": \"aufstehen\", \"word_relation\": \"same\", \"suggestion\": \"\", \"meanings\": [{\"noun\": false, \"articles\": [], \"noun_form\": \"\", \"label\": \"früh\", \"translations\": [\"вставать\", \"подниматься\"], \"examples\": [{\"highlighted\": \"Wann bist du heute <b>aufgestanden</b>?\", \"translation\": \"Во сколько ты сегодня встал?\"}, {\"highlighted\": \"Die ganzen Schüler <b>standen auf</b>, als der Lehrer das Klassenzimmer betrat.\", \"translation\": \"Все ученики встали, когда учитель вошел в класс.\"}]}, {\"noun\": false, \"articles\": [], \"noun_form\": \"\", \"label\": \"Wind\", \"translations\": [\"подниматься\"], \"examples\": [{\"highlighted\": \"Plötzlich <b>stand</b> ein starker Wind <b>auf</b>.\", \"translation\": \"Внезапно поднялся сильный ветер.\"}]}], \"segments\": [{\"label\": \"auf\", \"surface\": \"auf\", \"why\": \"отделяемая приставка, выражающая движение вверх\"}, {\"label\": \"stehen\", \"surface\": \"steht\", \"why\": \"основной глагол со значением стоять\"}], \"context_sense\": 0, \"context_translation\": \"Он встает каждое утро в шесть.\", \"context_surface\": \"steht auf\"}",
+      "carded": "aufstehen",
+      "rejection": null
+    },
+    {
+      "shot_id": "click-de-function",
+      "lang": "de",
+      "submitted": "Er",
+      "context": "Er steht jeden Morgen um sechs auf.",
+      "unit_intent": true,
+      "answered_by": "google-gemini-3.5-flash-lite",
+      "answer": "<b>er</b>\nон\n\n<table>\n<tr><td>wer?</td><td>кто?</td></tr>\n<tr><td>mit ihm</td><td>с ним</td></tr>\n<tr><td>für ihn</td><td>для него</td></tr>\n<tr><td>ohne ihn</td><td>без него</td></tr>\n<tr><td>ich und er</td><td>я и он</td></tr>\n</table>\n\nЛичное местоимение третьего лица единственного числа мужского рода. Указывает на ранее упомянутого мужчину, мальчика или предмет мужского рода. В предложении обычно выступает в роли подлежащего. Часто используется в устойчивых ежедневных конструкциях для описания привычек или действий.\n\nПроисходит от древневерхненемецкого языка, восходит к общегерманским указательным корням.\n\n<b>Er</b> ist ein guter Freund.\n<b>Er</b> wohnt in Berlin.\n<b>Er</b> liest gerne Bücher.\n\n===CARD===\n{\"kind\": \"unit\", \"word\": \"er\", \"word_relation\": \"same\", \"suggestion\": \"\", \"meanings\": [{\"noun\": false, \"articles\": [], \"noun_form\": \"\", \"label\": \"\", \"translations\": [\"он\"], \"examples\": [{\"highlighted\": \"<b>Er</b> ist ein guter Freund.\", \"translation\": \"Он хороший друг.\"}, {\"highlighted\": \"<b>Er</b> wohnt in Berlin.\", \"translation\": \"Он живет в Берлине.\"}, {\"highlighted\": \"<b>Er</b> liest gerne Bücher.\", \"translation\": \"Он любит читать книги.\"}]}], \"segments\": [], \"context_sense\": 0, \"context_translation\": \"Он встает каждый день в шесть часов.\", \"context_surface\": \"Er\"}",
+      "carded": "er",
+      "rejection": null
+    }
+  ]
+}

@@ -89,8 +89,9 @@ def test_the_open_branch_decision_stays_where_the_branch_is_unknown(languages):
 
 def test_the_selected_unit_prompt_is_the_shorter_one(languages):
     """Half of what the merged prompt spends on a chip tap cannot apply to it."""
-    open_prompt = build_prompt(languages["de"], "Rad fahren", "Russian")
-    unit_prompt = build_prompt(languages["de"], "Rad fahren", "Russian", unit_intent=True)
+    # English, whose prompts carry no rule of the language's own beside the branches.
+    open_prompt = build_prompt(languages["en"], "give up", "Russian")
+    unit_prompt = build_prompt(languages["en"], "give up", "Russian", unit_intent=True)
 
     assert len(unit_prompt) < len(open_prompt) * 0.7
 
@@ -703,3 +704,14 @@ def test_the_language_an_answer_names_is_read_relative_to_its_tab(languages, nam
 
 def test_an_answer_without_a_card_block_leaves_the_input_in_its_tab(languages):
     assert parse_submission_language("<b>article only</b>", languages["de"], "Russian") == "source"
+
+
+@pytest.mark.parametrize("unit_intent", [True, False])
+def test_a_german_unit_answer_is_asked_whether_each_meaning_is_a_noun(languages, unit_intent):
+    german = build_prompt(languages["de"], "See", "Russian", unit_intent=unit_intent)
+    english = build_prompt(languages["en"], "lake", "Russian", unit_intent=unit_intent)
+
+    assert '"noun": <true or false>, "articles": ["<der, die or das>"]' in german
+    assert "Every meaning says whether the unit is a noun in it." in german
+    assert "noun_form" not in english
+    assert '"articles"' not in english

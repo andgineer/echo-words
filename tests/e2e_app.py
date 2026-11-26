@@ -132,8 +132,17 @@ def live_app(
 WORD = "Schlüssel"
 
 
-def answer(article: str, word: str = WORD, relation: str = "same") -> str:
-    """One pool answer in the shape the prompt asks for: an article, then its card."""
+def answer(
+    article: str,
+    word: str = WORD,
+    relation: str = "same",
+    articles: tuple[str, ...] = (),
+) -> str:
+    """One pool answer in the shape the prompt asks for: an article, then its card.
+
+    A German answer says whether its unit is a noun; it is one here only where the
+    test gives it its articles.
+    """
     card = {
         "kind": "unit",
         "word": word,
@@ -141,6 +150,8 @@ def answer(article: str, word: str = WORD, relation: str = "same") -> str:
         "suggestion": word if relation == "typo" else "",
         "meanings": [
             {
+                "noun": bool(articles),
+                "articles": list(articles),
                 "label": "",
                 "translations": ["ключ"],
                 "examples": [

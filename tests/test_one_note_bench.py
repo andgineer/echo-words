@@ -5,6 +5,7 @@ from pathlib import Path
 
 import one_note_bench as bench
 import pytest
+from fakes import as_not_a_noun
 
 from echo_words.follow_up import follow_up_material, follow_up_prompt, reading_text
 from echo_words.languages import unit_context
@@ -67,6 +68,8 @@ def _unit_answer(source: str) -> str:
         "suggestion": "",
         "meanings": [
             {
+                # A German answer says of each meaning whether its unit is a noun.
+                "noun": False,
                 "label": "",
                 "translations": ["перевод"],
                 "examples": [
@@ -270,7 +273,7 @@ def test_a_word_list_carded_as_a_unit_is_the_failure_and_the_text_branch_is_not(
     carded.text = (
         "translation===CARD==="
         '{"kind":"unit","word":"Ampel links","word_relation":"same","suggestion":"",'
-        '"meanings":[{"label":"","translations":["светофор слева"],"examples":['
+        '"meanings":[{"noun":false,"label":"","translations":["светофор слева"],"examples":['
         '{"text":"Die Ampel links.","translation":"x","highlighted":"Die <b>Ampel links</b>.",'
         '"gapped":"Die ___."}]}],"segments":[]}'
     )
@@ -304,7 +307,7 @@ def test_an_entry_headed_by_the_mistyped_spelling_is_flagged():
     shot.text = (
         "translation===CARD==="
         '{"kind":"unit","word":"vieleicht","word_relation":"same","suggestion":"",'
-        '"meanings":[{"label":"","translations":["может быть"],"examples":['
+        '"meanings":[{"noun":false,"label":"","translations":["может быть"],"examples":['
         '{"text":"Vieleicht kommt er.","translation":"x",'
         '"highlighted":"<b>Vieleicht</b> kommt er.","gapped":"___ kommt er."}]}],'
         '"segments":[]}'
@@ -323,7 +326,7 @@ def test_a_silently_corrected_spelling_is_a_safe_outcome():
     shot.text = (
         "translation===CARD==="
         '{"kind":"unit","word":"podrška","word_relation":"same","suggestion":"",'
-        '"meanings":[{"label":"","translations":["поддержка"],"examples":['
+        '"meanings":[{"noun":false,"label":"","translations":["поддержка"],"examples":['
         '{"text":"Hvala na podršci.","translation":"x",'
         '"highlighted":"Hvala na <b>podršci</b>.","gapped":"Hvala na ___."}]}],'
         '"segments":[]}'
@@ -867,7 +870,7 @@ def test_markup_leaking_into_the_plain_example_is_not_reported_as_a_defect():
     shot.text = (
         "<b>bank</b> article===CARD==="
         '{"kind":"unit","word":"bank","word_relation":"same","suggestion":"",'
-        '"meanings":[{"label":"","translations":["банк"],'
+        '"meanings":[{"noun":false,"label":"","translations":["банк"],'
         '"examples":[{"text":"The <b>bank</b> opens.","translation":"Банк открывается.",'
         '"highlighted":"The <b>bank</b> opens."}]}],"segments":[]}'
     )
@@ -1048,7 +1051,7 @@ def test_expression_gate_rejects_an_answer_missing_one_expected_component():
         "analysis===CARD==="
         '{"kind":"unit","word":"give up","word_relation":"same",'
         '"suggestion":"","meanings":['
-        '{"label":"","translations":["сдаться"],"examples":['
+        '{"noun":false,"label":"","translations":["сдаться"],"examples":['
         '{"text":"Do not give up.","translation":"Не сдавайся.",'
         '"highlighted":"Do not <b>give up</b>.","gapped":"Do not ___."}]}],'
         '"segments":[{"surface":"give","why":"verb"}]}'
@@ -1073,7 +1076,7 @@ def test_expression_gate_preserves_case_in_the_exact_source_parts():
         "analysis===CARD==="
         '{"kind":"unit","word":"Rad fahren","word_relation":"same",'
         '"suggestion":"","meanings":['
-        '{"label":"","translations":["ехать на велосипеде"],"examples":['
+        '{"noun":false,"label":"","translations":["ехать на велосипеде"],"examples":['
         '{"text":"Ich fahre gern Rad.","translation":"Я люблю ездить на велосипеде.",'
         '"highlighted":"Ich <b>fahre</b> gern <b>Rad</b>.",'
         '"gapped":"Ich ___ gern ___."}]}],'
@@ -1600,6 +1603,11 @@ _HAPPY_BIRTHDAY = next(
 )
 
 
+def _completed(recorded: dict) -> str:
+    answer = recorded["answer"]
+    return as_not_a_noun(answer) if recorded["lang"] == "de" and "===CARD===" in answer else answer
+
+
 def _typed(shot_id: str) -> bench.Shot:
     return next(shot for shot in bench.typed_verdict_shots() if shot.shot_id == shot_id)
 
@@ -1610,7 +1618,7 @@ def _typed(shot_id: str) -> bench.Shot:
     ids=[answer["shot_id"] for answer in RECORDED_TYPED["answers"]],
 )
 def test_a_recorded_answer_to_a_typed_formula_is_scored_against_the_unit_it_should_be(recorded):
-    shot = replace(_typed(recorded["shot_id"]), text=recorded["answer"])
+    shot = replace(_typed(recorded["shot_id"]), text=_completed(recorded))
 
     metrics = bench.score(shot).metrics
 
@@ -1719,7 +1727,7 @@ def test_a_closing_mark_is_read_past_the_quotation_marks_around_it(typed, mark):
 
 
 def test_a_recorded_headword_is_scored_by_the_mark_it_kept():
-    recorded = {answer["shot_id"]: answer["answer"] for answer in RECORDED_TYPED["answers"]}
+    recorded = {answer["shot_id"]: _completed(answer) for answer in RECORDED_TYPED["answers"]}
     kept = bench.score(
         replace(_typed("kept-en-happy-birthday"), text=_HAPPY_BIRTHDAY["answer"]),
     )
@@ -1846,7 +1854,7 @@ def _recorded_whole_text_answer() -> str:
     recorded = json.loads(
         (Path(__file__).parent / "data" / "bis_gleich_recorded.json").read_text(encoding="utf-8"),
     )
-    return f"<b>bis gleich</b>\n===CARD===\n{recorded['answers'][0]['payload']}"
+    return f"<b>bis gleich</b>\n===CARD===\n{as_not_a_noun(recorded['answers'][0]['payload'])}"
 
 
 def _record(out: Path, *shots: bench.Shot) -> None:
@@ -1928,7 +1936,7 @@ def test_a_whole_text_chip_s_judgement_is_asked_by_id_and_screened_beside_its_ca
 
 def test_a_directory_of_typed_verdicts_is_screened_against_each_class_s_branch(tmp_path, capsys):
     out = tmp_path / "bench"
-    recorded = {answer["shot_id"]: answer["answer"] for answer in RECORDED_TYPED["answers"]}
+    recorded = {answer["shot_id"]: _completed(answer) for answer in RECORDED_TYPED["answers"]}
     as_text = replace(_typed("formula-de-bis-gleich"), text=recorded["formula-de-bis-gleich"])
     as_unit = replace(_typed("formula-de-gute-nacht"), text=recorded["formula-de-gute-nacht"])
     guard = replace(_typed("guard-en-keys"), text=_text_answer())
@@ -1936,7 +1944,7 @@ def test_a_directory_of_typed_verdicts_is_screened_against_each_class_s_branch(t
     # beside its blank.
     unusable = replace(
         _typed("formula-de-glueckwunsch"),
-        text=RECORDED_TYPED["unusable"][0]["answer"],
+        text=_completed(RECORDED_TYPED["unusable"][0]),
     )
     kept = replace(_typed("kept-en-happy-birthday"), text=_HAPPY_BIRTHDAY["answer"])
     _record(out, as_text, as_unit, guard, unusable, kept)
@@ -2137,3 +2145,150 @@ def test_the_follow_up_packet_keeps_both_turns_and_what_a_good_reply_must_do(tmp
     assert item["actual"]["reply"] == "Није — отрицание."
     assert item["expected"]["good_answer"]
     assert "Your answer 1: Ответ на" in item["material"]["prompt"]
+
+
+def _article_shot(shot_id: str) -> bench.Shot:
+    return next(shot for shot in bench.article_shots() if shot.shot_id == shot_id)
+
+
+def _noun_answer(word: str, claims: dict, highlighted: str, **fields) -> str:
+    payload = {
+        "kind": "unit",
+        "word": word,
+        "word_relation": "same",
+        "suggestion": "",
+        "meanings": [
+            {
+                **claims,
+                "label": "",
+                "translations": ["перевод"],
+                "examples": [{"highlighted": highlighted, "translation": "Перевод."}],
+            },
+        ],
+        "segments": [],
+        **fields,
+    }
+    return f"<b>{word}</b>\n===CARD===\n{json.dumps(payload, ensure_ascii=False)}"
+
+
+def test_the_article_fixtures_are_asked_as_the_app_asks_them_and_outside_every_tier():
+    shots = {shot.shot_id: shot for shot in bench.article_shots()}
+
+    assert set(shots) == bench.ARTICLE_IDS
+    for tier in bench.TIER_NAMES:
+        assert not bench.ARTICLE_IDS & {shot.shot_id for shot in bench.initial_jobs_for_tier(tier)}
+    sea = shots["article-de-see-sea"]
+    assert bench.prompt_for(sea) == build_prompt(
+        bench.LANGUAGES["de"],
+        "See",
+        "Russian",
+        context=sea.context,
+        unit_intent=True,
+    )
+    assert bench.prompt_for(shots["article-de-der-hund"]) == build_prompt(
+        bench.LANGUAGES["de"],
+        "der Hund",
+        "Russian",
+        typed=True,
+    )
+    assert bench.prompt_for(shots["article-de-hund"]) == build_prompt(
+        bench.LANGUAGES["de"],
+        "Hund",
+        "Russian",
+        unit_intent=True,
+        typed=True,
+    )
+    assert [shot.shot_id for shot in bench.article_jobs(["article-de-hund"])] == ["article-de-hund"]
+    with pytest.raises(SystemExit, match="unknown article ids: guard-en-keys"):
+        bench.article_jobs(["guard-en-keys"])
+
+
+def test_an_article_fixture_whose_sentence_names_the_gender_is_refused(monkeypatch):
+    told = bench.ArticleCase(
+        "article-de-told",
+        "de",
+        "See",
+        "die See",
+        "a sentence that gives the article away",
+        context="Wir fahren auf die See hinaus.",
+    )
+    monkeypatch.setattr(bench, "ARTICLE_CASES", (told,))
+
+    with pytest.raises(RuntimeError, match="hands the article over"):
+        bench.article_shots()
+
+
+def test_a_noun_is_scored_by_the_word_the_rendered_card_prints():
+    shot = replace(
+        _article_shot("article-de-see-sea"),
+        text=_noun_answer(
+            "See",
+            {"noun": True, "articles": ["die"], "noun_form": "See"},
+            "Das Schiff fährt auf die <b>See</b> hinaus.",
+            context_sense=0,
+            context_translation="Шторм застал рыбаков в открытом море.",
+            context_surface="See",
+        ),
+    )
+
+    metrics = bench.score(shot).metrics
+
+    assert metrics["card_word"] == "die See"
+    assert metrics["carded_as_expected"] is True
+    assert metrics["card_fields"]["Highlighted"] == (
+        "Der Sturm überraschte die Fischer auf hoher <b>See</b>."
+    )
+    assert metrics["card_fronts"][0] == "die See"
+    assert metrics["noun_claims"] == [{"noun": True, "articles": ["die"], "noun_form": "See"}]
+
+
+def test_a_control_given_an_article_is_flagged_and_a_refusal_says_why():
+    flagged = replace(
+        _article_shot("article-de-laufen"),
+        text=_noun_answer(
+            "laufen",
+            {"noun": True, "articles": ["das"]},
+            "Wir <b>laufen</b> gern.",
+        ),
+    )
+    refused = replace(
+        _article_shot("article-de-hund"),
+        text=_noun_answer("Hund", {}, "Der <b>Hund</b> bellt."),
+    )
+
+    flagged_metrics = bench.score(flagged).metrics
+    refused_metrics = bench.score(refused).metrics
+
+    assert (flagged_metrics["card_word"], flagged_metrics["article_added"]) == ("das laufen", True)
+    assert flagged_metrics["carded_as_expected"] is False
+    assert refused_metrics["payload_valid"] is False
+    assert "does not say whether it is a noun" in refused_metrics["rejection"]
+
+
+def test_a_directory_of_noun_articles_is_screened_on_its_own(tmp_path, capsys):
+    out = tmp_path / "bench"
+    hund = replace(
+        _article_shot("article-de-hund"),
+        text=_noun_answer("Hund", {"noun": True, "articles": ["der"]}, "Der <b>Hund</b> bellt."),
+    )
+    house = replace(
+        _article_shot("article-en-house"),
+        text=_noun_answer("house", {}, "The <b>house</b> is big."),
+    )
+    silent = replace(_article_shot("article-de-katze"), error="TimeoutError: no provider answered")
+    _record(out, hund, house, silent)
+
+    bench.report(out, "smoke")
+
+    printed = capsys.readouterr().out
+    assert "NOUN ARTICLES" in printed
+    assert "TIER" not in printed
+    assert "nouns carded with the expected article       1/2 (50%)" in printed
+    assert "controls carded as typed                     1/1 (100%)" in printed
+    assert "ok    article-de-hund" in printed
+    packet = json.loads((out / "review-packet-articles.json").read_text(encoding="utf-8"))
+    items = {item["fixture_id"]: item for item in packet["items"]}
+    assert set(items) == {"article-de-hund", "article-en-house", "article-de-katze"}
+    assert items["article-de-hund"]["actual"]["card_word"] == "der Hund"
+    assert items["article-de-hund"]["expected"]["card_word"] == "der Hund"
+    assert items["article-de-katze"]["categories"] == ["noun_article", "provider_miss"]

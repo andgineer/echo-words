@@ -1231,7 +1231,7 @@ def card_fields(note: Note, media_filename: str | None = None) -> dict[str, str]
     example = meaning.examples[0]
     return {
         # The apostrophe of `don't` stays unescaped, as every earlier note stores it.
-        "Word": html.escape(note.word, quote=False),
+        "Word": html.escape(note.card_word, quote=False),
         "Audio": f"[sound:{media_filename}]" if media_filename else "",
         "Label": html.escape(meaning.label) if len(note.meanings) > 1 else "",
         "Translations": render_translations(note),

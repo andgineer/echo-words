@@ -41,10 +41,16 @@ def reverse_words(*equivalents: tuple[str, str], read_as: str) -> str:
     )
 
 
-def article(text: str, word: str, sentence: str = "", **fields: str) -> str:
+def article(
+    text: str,
+    word: str,
+    sentence: str = "",
+    articles: tuple[str, ...] = (),
+    **fields: str,
+) -> str:
     """The tab's answer about a word: for one met in a sentence, with what the prompt
     asks about that sentence; for typed input, with the language it names."""
-    payload = json.loads(answer("", word).split("===CARD===", 1)[1])
+    payload = json.loads(answer("", word, articles=articles).split("===CARD===", 1)[1])
     if sentence:
         payload.update(context_sense=0, context_translation="Перевод.", context_surface=word)
     payload.update(fields)
@@ -183,7 +189,7 @@ def test_input_typed_on_the_wrong_tab_takes_the_reader_to_its_own_tab(
     )
     handles = [
         FakeHandle([typed_on_english], hold=gate.wait),
-        FakeHandle([article("<b>Haus</b> — дом", "Haus")]),
+        FakeHandle([article("<b>Haus</b> — дом", "Haus", articles=("das",))]),
     ]
     with live_app(settings, monkeypatch, handles=handles) as app:
         page.goto(app.url)
@@ -221,7 +227,7 @@ def test_a_move_made_while_the_reader_was_on_another_screen_takes_them_along(
     )
     handles = [
         FakeHandle([typed_on_english], hold=gate.wait),
-        FakeHandle([article("<b>Haus</b> — дом", "Haus")]),
+        FakeHandle([article("<b>Haus</b> — дом", "Haus", articles=("das",))]),
     ]
     with live_app(settings, monkeypatch, handles=handles) as app:
         page.goto(app.url)

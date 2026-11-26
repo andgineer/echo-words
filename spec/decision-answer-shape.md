@@ -71,6 +71,12 @@ or `text`. The contract is one; which of its branches the prompt states is not.
   suggestion, all retained meanings, finished highlighted examples, optional
   contextual-sense index and expression components. Text JSON carries
   none of those card fields. Mixed branches are unusable.
+- A German unit answer also says, for every meaning, whether the unit is a noun
+  in it, and for a noun its nominative definite article in that meaning and the
+  headword as it reads after the article. Only the German prompt asks for it, so
+  every other language's prompt is unchanged. The visible article is untouched:
+  it still opens on meaning and names no part of speech; the claim lives in the
+  hidden payload and reaches the reader only as the article on the card.
 
 The visible article may use `<b>`, `<i>`, `<table>`, `<tr>` and `<td>`. No tag
 has attributes. JSON sentence strings use only the allowed emphasis and blank
@@ -392,6 +398,20 @@ would accuse the learner on a large share of everything they submit. The card is
 the same either way; only what the entry says about it differs. A suggestion that
 merely repeats the headword is dropped, because it would offer the reader the word
 already carded.
+
+The noun claim of the carded German meaning is enforced rather than reconciled,
+because nothing else knows a noun's gender and a card without it teaches the noun
+incompletely. It must say whether the unit is a noun; a noun names one, two or three
+of `der`, `die` and `das` and nothing else; a unit that is not a noun names none; and
+the headword after the article is the headword itself, changed at most in an
+adjective's ending — `schwarzes Brett` may read `schwarze Brett`, `Bekannter` may
+read `Bekannte`, while `Hund` may not read `Hunde`. An article the headword already
+opens with is not printed twice, and one that contradicts the claim is a
+contradiction. Failing any of these, the answer is unusable, exactly as a meaning
+with no usable example is. The other meanings are not held to it: they are not
+carded, and refusing an answer over a sibling the note never shows would cost the
+card for nothing. A declared misspelling that is nothing but an article typed before
+the headword is not a misspelling.
 
 The reader has room for one piece of advice about their spelling, and only the
 correction field carries one. It is a consistency boundary, not an independent

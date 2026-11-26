@@ -286,6 +286,35 @@ def test_a_card_made_for_another_headword_says_so_above_the_analysis(
         expect(page.locator(".entry-notice")).to_contain_text(corrected)
 
 
+def test_a_corrected_german_noun_is_named_as_its_card_prints_it_with_its_article(
+    page: Page,
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The notice names the word the card is for, and the card carries a German noun
+    with its article: the two must name it alike, while the sentences stay as written."""
+    corrected = "Schlüssel"
+    handle = FakeHandle([answer(FIRST, word=corrected, relation="typo", articles=("der",))])
+    with live_app(settings, monkeypatch, handles=[handle]) as app:
+        page.goto(app.url)
+        page.get_by_test_id("lang-de").click()
+        page.locator("#word").fill("Schlussel")
+        page.get_by_role("button", name="Analyse").click()
+        expect(page.locator(".delete-card")).to_be_visible()
+        expect(page.locator(".entry-notice")).to_contain_text(f"der {corrected}")
+        written = collection_path(app.settings)
+
+    collection = Collection(str(written))
+    try:
+        (note_id,) = collection.find_notes(f"note:{NOTE_TYPE_NAME}")
+        fields = dict(collection.get_note(note_id).items())
+        assert fields["Word"] == f"der {corrected}"
+        assert fields["Highlighted"] == f"Use <b>{corrected}</b> now."
+        assert fields["Gapped"] == "Use ___ now."
+    finally:
+        collection.close()
+
+
 def test_the_submitted_word_reaches_the_configured_deck_as_one_note(
     page: Page,
     settings: Settings,

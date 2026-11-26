@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 from echo_words.card import (
+    GERMAN,
     CardParseError,
     ParsedAnswer,
     context_sentence_forms,
@@ -126,7 +127,7 @@ Angle-bracketed values are placeholders, not strings to copy:"""
 _UNIT_JSON = """{{{language_field}"kind": "unit", "word": "<dictionary lemma of the unit>",
  "word_relation": "<same, morphology or typo>",
  "suggestion": "<corrected spelling, or empty>",
- "meanings": [{{"label": "<short {source_lang} word this sense occurs with, or empty>",
+ "meanings": [{{{noun_field}"label": "<short {source_lang} word this sense occurs with, or empty>",
  "translations": ["<target-language translation>"],
  "examples": [{{"highlighted": "<short source-language sentence, unit in b tags>",
  "translation": "<target-language translation>"}}]}}],
@@ -166,7 +167,7 @@ the {source_lang} unit dropped into it is not an example and teaches nothing.
 Mark a contiguous unit with one span and separated or reflexive pieces with
 one span each, in their original positions. Never mark a subject, object,
 auxiliary or argument merely because it occurs with the unit, and always leave
-at least one unmarked source-language word in the sentence. {context_rule}"""
+at least one unmarked source-language word in the sentence. {context_rule}{noun_rule}"""
 
 _SEGMENT_RULES = """For a multi-word set expression, segments contains every word-shaped component,
 including particles and prepositions, with no count cap. Preserve the forms seen
@@ -328,6 +329,26 @@ _CONTEXT_RULE = (
 )
 _NO_CONTEXT_RULE = "Do not add a field selecting a contextual sense."
 
+# German only: a noun's card carries its article, which only the answer can say.
+_NOUN_FIELD = (
+    '"noun": <true or false>, "articles": ["<der, die or das>"], '
+    '"noun_form": "<the headword as it reads after its article>",\n '
+)
+_NOUN_RULE = """
+
+Every meaning says whether the unit is a noun in it. noun is true for a noun or a
+noun phrase, and false for every other unit — a verb, adjective, adverb, pronoun,
+article, preposition, formula or fixed expression — even one that begins with der,
+die or das. For a noun, articles holds its nominative definite article in this
+meaning: der, die or das, and die where the headword is plural, as it is for a noun
+used only in the plural. Give a second article only where this same meaning is
+genuinely used with either gender, as der or das Joghurt is; a spelling whose
+genders mean different things, as der Leiter and die Leiter do, gives each meaning
+its own article alone. noun_form is the headword as it reads right after that
+article, without the article itself: an adjective in it takes the ending it has
+there, as heißer Draht reads heiße Draht after der, and nothing else changes. For
+any other unit articles and noun_form are empty."""
+
 _EXTENDED_PROMPT = """You are a lexicographer. The word below is in {source_lang}.
 Analyse it in depth: {word}
 
@@ -380,6 +401,8 @@ def build_prompt(  # noqa: PLR0913 - the whole request a prompt is built for.
             else ""
         ),
         context_rule=_CONTEXT_RULE if context else _NO_CONTEXT_RULE,
+        noun_field=_NOUN_FIELD if language.code == GERMAN else "",
+        noun_rule=_NOUN_RULE if language.code == GERMAN else "",
         language_field=_LANGUAGE_FIELD if typed else "",
         language_rule=(
             _LANGUAGE_RULE.format(

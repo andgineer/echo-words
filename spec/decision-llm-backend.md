@@ -1103,11 +1103,39 @@ for what they bought: on eight questions the model asked back on an ambiguous re
 in neither of two fixtures built for it, quoted an internal section label to the reader,
 and wrote Markdown once.
 
+## German nouns carry their article: the free pool, on the smoke tier — 2026-11-26
+
+A German unit answer says of every meaning whether the unit is a noun and, for a noun,
+its nominative article and the headword as it reads after it; an answer that does not
+say it for the carded meaning is unusable. Every other language's prompt is unchanged,
+so only German answers were bought again.
+
+Measured on the free pool in `experiments/.bench-noun-articles`: the smoke tier's
+German fixtures and clicks (19 calls) and fourteen article fixtures (twelve German, an
+English and a Serbian control), every call answered, the workhorse answering 27 of 33
+(`google-gemini-3.5-flash-lite`; `groq-gpt-oss-120b` 5, `openrouter-nemotron-3-ultra`
+1), so the pool was not exhausted. The tier's other answers were carried over from
+`experiments/.bench-typed-v2`, a run of the same prompts. Every deterministic contract and quality threshold of the tier
+passed.
+
+**Which models this covers.** All 21 German unit answers came from
+`google-gemini-3.5-flash-lite`; the other two models answered only German text, which
+asks for no noun claim, and the two non-German controls. Every one of the 21 carried
+the claim; 20 were sound and one contradicted itself. Whether the pool's other models
+make the claim is unmeasured: a German unit answer from one of them that leaves it out
+is refused and takes the ordinary recovery, so what it can cost is a card, never a
+bare noun on one.
+
+What the run does not establish is recorded with the card rule in
+`decision-card-shapes.md`. A fresh agent's reading of every item in the two review
+packets is the condition of acceptance.
+
 ## What would re-open this
 
 - The pool's primary model degrading or disappearing from the curated
   list: the measured fallbacks are not equivalent, and Serbian would
-  then need re-testing against the paid tier.
+  then need re-testing against the paid tier. German cards would also
+  need the noun claim measured on whichever model takes its place.
 - A prompt revision aimed at morphology: it changes the numbers this
   decision rests on, for the pool and the paid tier alike. This is the
   first thing to try before any language moves to a metered backend.

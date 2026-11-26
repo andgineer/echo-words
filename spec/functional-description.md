@@ -152,7 +152,11 @@ The four requirements every design decision is weighed against:
    used by the note and its Anki audio. This is what lets an inflected or
    separated chip such as `gave up` become a note for `give up` without
    rewriting what the user submitted. Spelling correction remains a separate,
-   advisory control.
+   advisory control. A German noun's card prints that headword with its
+   article (see "Anki cards"), and the identity stays the headword without
+   it: the spelling relation, the judgement, the reference lookups, the
+   chips, a rebuild and the audio are all about `Hund`, while the card
+   reads `der Hund`.
    A headword keeps punctuation that is part of its chunk — the `!` of
    `Happy birthday!`, the `?` of `Na und?` — and drops a mark that merely came
    with the copied words, such as the full stop of `im Angebot sein.`. Which is
@@ -353,7 +357,10 @@ The four requirements every design decision is weighed against:
    claimed relation to the submitted spelling (`same`, `morphology` or
    `typo`), the advisory spelling suggestion, every target-language-distinct
    sense, a marked-up form for every example, the contextual sense when
-   applicable, and expression components. The plain sentence and the blanked
+   applicable, and expression components. A German unit payload also says
+   of every sense whether the unit is a noun in it and, for a noun, its
+   nominative definite article in that sense and the headword as it reads
+   after the article. The plain sentence and the blanked
    form are both derived from the marked-up one, so an example carries its
    sentence once and the three forms cannot disagree. A text payload contains
    only proposed multi-word lexical combinations. Each proposal keeps a distinct
@@ -506,7 +513,9 @@ entry is about wording other than what was submitted, it says so above the analy
 for a lookup and a failed card as much as for a stored one, and the card's own
 deletion removes what was stored. Only a misspelling the answer declares is *named* as one — a dictionary lemma
 for an inflected form is the ordinary case, and calling it a typo would accuse the
-learner on a large share of everything they submit. The parser keeps the analysed
+learner on a large share of everything they submit. A German noun typed with its
+article and headed without it (`der Hund`, `Hund`) is the same word, whatever the
+answer calls it. The parser keeps the analysed
 headword and drops a suggestion that merely repeats it.
 
 **An answer that calls the submission misspelled and still heads itself with that
@@ -710,6 +719,28 @@ both in the answer entry and on the flashcard.
   headword and literally occurs in the example must occur in the highlighted
   target. This catches an unmarked unchanged component without assuming that a
   differing token is an inflection of the unit.
+- **A German noun is carded with its nominative definite article.** The
+  word on the recognition front and on every back that shows the word is
+  `der Hund`, `die Katze`, `das Haus`; a headword that is plural takes `die`
+  (`die Ferien`); a sense genuinely used with either gender shows both
+  (`der/das Joghurt`); an adjective in a noun phrase takes the ending it has
+  after the article (`schwarzes Brett` is carded `das schwarze Brett`). The
+  article is the carded sense's own, so a spelling whose genders mean
+  different things is carded by the sense selected: `See` tapped in a
+  sentence about the sea is `die See`, and bare it is `der See`, its
+  commonest sense. A noun typed with its article is carded with it once and
+  is not a misspelling of the headword without it. The sentences on the two
+  context cards keep their own articles, case and endings. Every other unit
+  — a verb, an adjective, a pronoun or article in its own right, a fixed
+  expression that opens with `das` — and every other language is carded as
+  headed. The article is the answer's to say and is never guessed from the
+  word: a German answer that does not say whether the carded sense is a
+  noun, names no article for a noun, names one for a unit that is not, or
+  heads the noun with another word after the article, cannot be carded and
+  takes the ordinary recovery, ending in the ordinary card failure when no
+  usable answer arrives. A sense the note does not card is not held to it.
+  An entry that names the word its card is for names it as the card prints
+  it.
 - The visible article remains the full dictionary explanation with all retained
   senses, forms where useful, usage, origin and examples. The six Anki fields
   contain only the selected sense's word, audio, optional label, translations,

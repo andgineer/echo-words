@@ -5,7 +5,7 @@ from collections.abc import AsyncIterator, Iterable
 from dataclasses import replace
 from pathlib import Path
 
-from fakes import FakeDirectClient, FakeHandle, fake_cascade
+from fakes import FakeDirectClient, FakeHandle, as_not_a_noun, fake_cascade
 from llmbroker import NoLLMAvailableError
 
 from echo_words import pipeline as pipeline_module
@@ -510,6 +510,9 @@ def card_with(word, meanings=None, **fields):
         "segments": [],
         **fields,
     }
+    # A German answer says of each meaning whether its unit is a noun; these fixtures
+    # are about other units unless they say otherwise.
+    answer["meanings"] = [{"noun": False, **meaning} for meaning in answer["meanings"]]
     # An answer that names a contextual sense also translates that sentence: the backend
     # builds the context example out of the two, and carries neither on its own.
     if "context_sense" in answer:
@@ -1470,7 +1473,7 @@ async def test_a_typed_formula_is_carded_and_looked_up_with_the_comma_between_it
         asked.append(word)
         return True
 
-    cascade = ScriptedCascade([Completion([_NEIN_DANKE["answer"]])])
+    cascade = ScriptedCascade([Completion([as_not_a_noun(_NEIN_DANKE["answer"])])])
     pipeline = WordPipeline(cascade, target_lang="ru", anki=anki, dictionary=dictionary)
     pipeline.start()
     try:
@@ -5575,3 +5578,125 @@ def test_a_new_run_of_an_entry_withdraws_the_offer_and_keeps_what_was_typed(lang
         assert (entry.reverse_offered, entry.foreign_language) == (False, None)
         assert (entry.typed_word, entry.read_as) == ("город", "город")
         entry.reverse_offered = True
+
+
+def german_noun_card(word, *articles, **fields):
+    return card_with(
+        word,
+        meanings=[
+            {
+                "noun": True,
+                "articles": list(articles),
+                "label": "",
+                "translations": ["собака"],
+                "examples": [example(word)],
+            },
+        ],
+        **fields,
+    )
+
+
+async def test_a_german_noun_is_carded_with_its_article_and_rebuilt_by_its_lemma(languages):
+    kinds = ("Recognition", "Recall", "ContextRecognition", "ContextProduction")
+    anki = MutableAnki([Added(1, None, kinds), Added(2, None, kinds)])
+    cascade = ScriptedCascade(
+        [
+            Completion([german_noun_card("Hund", "der")]),
+            Completion([german_noun_card("Hund", "der")]),
+        ],
+    )
+    pipeline = WordPipeline(cascade, target_lang="Russian", anki=anki)
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(languages["de"], "Hund", False)
+        await pipeline.join()
+        await pipeline.request_rebuild(entry.entry_id)
+        await pipeline.join()
+    finally:
+        await pipeline.close()
+
+    assert [(note.word, note.card_word) for note, *_ in anki.calls] == [
+        ("Hund", "der Hund"),
+        ("Hund", "der Hund"),
+    ]
+    assert cascade.prompts[1] == build_prompt(languages["de"], "Hund", "Russian", unit_intent=True)
+    assert entry.analysed_as is None
+
+
+async def test_a_german_answer_that_does_not_say_whether_it_is_a_noun_cards_nothing(languages):
+    anki = RecordingAnki(Added(1, None))
+    answer = {
+        "kind": "unit",
+        "word": "Hund",
+        "word_relation": "same",
+        "suggestion": "",
+        "meanings": [{"label": "", "translations": ["собака"], "examples": [example("Hund")]}],
+        "segments": [],
+    }
+    pipeline = WordPipeline(
+        ScriptedCascade([Completion([f"analysis===CARD==={json.dumps(answer)}"])]),
+        target_lang="ru",
+        anki=anki,
+    )
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(languages["de"], "Hund", False)
+        await pipeline.join()
+    finally:
+        await pipeline.close()
+
+    assert entry.card_status == CARD_FAILED_STATUS
+    assert "analysis" in entry.text
+    assert anki.calls == []
+
+
+async def test_a_tapped_german_noun_is_carded_with_the_gender_of_the_sense_in_its_sentence(
+    languages,
+):
+    context = "Der Sturm überraschte die Fischer auf hoher See."
+    meanings = [
+        {
+            "noun": True,
+            "articles": [article],
+            "label": label,
+            "translations": [translation],
+            "examples": [example("See")],
+        }
+        for article, label, translation in (("der", "baden", "озеро"), ("die", "Schiff", "море"))
+    ]
+    anki = RecordingAnki(Added(1, None))
+    answer = card_with(
+        "See",
+        meanings=meanings,
+        context_sense=1,
+        context_surface="See",
+    )
+    pipeline = WordPipeline(ScriptedCascade([Completion([answer])]), target_lang="ru", anki=anki)
+    pipeline.start()
+    try:
+        await pipeline.enqueue(languages["de"], "See", False, intent="unit", context=context)
+        await pipeline.join()
+    finally:
+        await pipeline.close()
+
+    ((note, _deck, _audio),) = anki.calls
+    assert (note.word, note.card_word) == ("See", "die See")
+    assert note.meaning.examples[0].highlighted == (
+        "Der Sturm überraschte die Fischer auf hoher <b>See</b>."
+    )
+
+
+async def test_a_corrected_german_noun_is_named_as_its_card_prints_it(languages):
+    anki = RecordingAnki(Added(1, None, ("Recognition",)))
+    answer = german_noun_card("Hund", "der", word_relation="typo", suggestion="Hund")
+    pipeline = WordPipeline(ScriptedCascade([Completion([answer])]), target_lang="ru", anki=anki)
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(languages["de"], "Hnud", False)
+        await pipeline.join()
+    finally:
+        await pipeline.close()
+
+    assert entry.card_status == ADDED_STATUS
+    assert entry.analysed_as == "der Hund"
+    assert [note.card_word for note, _deck, _audio in anki.calls] == ["der Hund"]

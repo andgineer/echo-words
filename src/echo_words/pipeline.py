@@ -1707,7 +1707,7 @@ def _analysed_as(job: Job, parsed: ParsedAnswer | None) -> str | None:
     # itself with that same wording has announced nothing.
     if same_wording(parsed.note.word, job.word, job.language):
         return None
-    return parsed.note.word
+    return parsed.note.card_word
 
 
 def _reads_another_word(read_as: str, typed: str) -> bool:
