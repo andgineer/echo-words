@@ -283,12 +283,13 @@ const spellingNotice = computed(() => {
   if (entry.analysed_as) {
     // Always said, whatever the difference is called: the reader typed one wording and
     // is reading about another. Only a suspected misspelling is named as one.
+    const named = entry.analysed_as_card || entry.analysed_as;
     if (entry.card_status !== "added") {
-      return t("add.analysedInstead", { word: entry.word, shown: entry.analysed_as });
+      return t("add.analysedInstead", { word: entry.word, shown: named });
     }
     return entry.typo_suspected
-      ? t("add.cardedInstead", { word: entry.word, carded: entry.analysed_as })
-      : t("add.otherWordCard", { word: entry.word, carded: entry.analysed_as });
+      ? t("add.cardedInstead", { word: entry.word, carded: named })
+      : t("add.otherWordCard", { word: entry.word, carded: named });
   }
   if (entry.suggestion) {
     if (entry.showing_other_spelling) {

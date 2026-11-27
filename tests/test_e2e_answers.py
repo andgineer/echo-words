@@ -292,16 +292,24 @@ def test_a_corrected_german_noun_is_named_as_its_card_prints_it_with_its_article
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The notice names the word the card is for, and the card carries a German noun
-    with its article: the two must name it alike, while the sentences stay as written."""
+    with its article: the two must name it alike, while the sentences stay as written.
+    A question about the entry is still asked about the lemma."""
     corrected = "Schlüssel"
     handle = FakeHandle([answer(FIRST, word=corrected, relation="typo", articles=("der",))])
-    with live_app(settings, monkeypatch, handles=[handle]) as app:
+    with live_app(settings, monkeypatch, handles=[handle, FakeHandle(["Ja."])]) as app:
         page.goto(app.url)
         page.get_by_test_id("lang-de").click()
         page.locator("#word").fill("Schlussel")
         page.get_by_role("button", name="Analyse").click()
         expect(page.locator(".delete-card")).to_be_visible()
         expect(page.locator(".entry-notice")).to_contain_text(f"der {corrected}")
+        page.locator(".ask-field").fill("Warum?")
+        page.locator(".ask-field").press("Enter")
+        expect(page.locator(".turn-answer")).to_have_text("Ja.")
+        (asked,) = [
+            call["prompt"] for call in app.broker.stream_calls if "Warum?" in call["prompt"]
+        ]
+        assert f'The entry is about: "{corrected}"\n' in asked
         written = collection_path(app.settings)
 
     collection = Collection(str(written))

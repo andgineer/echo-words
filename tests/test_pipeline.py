@@ -230,6 +230,7 @@ async def test_deltas_are_throttled_cut_sanitized_and_finished(languages):
                 "no_card_audio": False,
                 "card_kept": False,
                 "analysed_as": None,
+                "analysed_as_card": None,
                 "typo_suspected": False,
                 "showing_other_spelling": False,
                 "segments": [],
@@ -305,6 +306,7 @@ async def test_card_parse_quality_and_suggestion_are_published_after_completion(
                 "no_card_audio": False,
                 "card_kept": False,
                 "analysed_as": None,
+                "analysed_as_card": None,
                 "typo_suspected": True,
                 "showing_other_spelling": False,
                 "segments": [
@@ -366,6 +368,7 @@ async def test_card_without_examples_is_rated_as_a_failure_without_losing_analys
                 "no_card_audio": False,
                 "card_kept": False,
                 "analysed_as": None,
+                "analysed_as_card": None,
                 "typo_suspected": False,
                 "showing_other_spelling": False,
                 "segments": [],
@@ -5623,6 +5626,35 @@ async def test_a_german_noun_is_carded_with_its_article_and_rebuilt_by_its_lemma
     assert entry.analysed_as is None
 
 
+async def test_a_recorded_answer_headed_with_its_article_is_about_its_bare_lemma(languages):
+    recorded = json.loads(
+        (Path(__file__).parent / "data" / "noun_articles_recorded.json").read_text(
+            encoding="utf-8",
+        ),
+    )
+    (see,) = [a for a in recorded["answers"] if a["shot_id"] == "article-de-see-lake"]
+    anki = RecordingAnki(Added(1, None))
+    cascade = ScriptedCascade([Completion([see["answer"]])])
+    pipeline = WordPipeline(cascade, target_lang="Russian", anki=anki)
+    pipeline.start()
+    try:
+        entry = await pipeline.enqueue(
+            languages["de"],
+            see["submitted"],
+            False,
+            intent="unit",
+            context=see["context"],
+        )
+        await pipeline.join()
+    finally:
+        await pipeline.close()
+
+    ((note, _deck, _audio),) = anki.calls
+    assert (note.word, note.card_word) == ("See", "der See")
+    assert [chip["label"] for chip in entry.segments] == ["See"]
+    assert entry.analysed_as is None
+
+
 async def test_a_german_answer_that_does_not_say_whether_it_is_a_noun_cards_nothing(languages):
     anki = RecordingAnki(Added(1, None))
     answer = {
@@ -5698,5 +5730,5 @@ async def test_a_corrected_german_noun_is_named_as_its_card_prints_it(languages)
         await pipeline.close()
 
     assert entry.card_status == ADDED_STATUS
-    assert entry.analysed_as == "der Hund"
+    assert (entry.analysed_as, entry.analysed_as_card) == ("Hund", "der Hund")
     assert [note.card_word for note, _deck, _audio in anki.calls] == ["der Hund"]

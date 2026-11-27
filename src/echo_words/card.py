@@ -179,13 +179,6 @@ def parse_answer_payload(  # noqa: C901, PLR0912, PLR0913 - the answer discrimin
         raise CardParseError("a unit answer contains text combinations")
 
     headword = _headword(card.get("word"), language)
-    word_relation, headword, suggestion = _word_relation(
-        _relation_claim(card.get("word_relation"), headword, submitted, language),
-        card.get("suggestion"),
-        headword,
-        submitted,
-        language,
-    )
     raw_meanings = card.get("meanings")
     if not isinstance(raw_meanings, list) or not raw_meanings:
         raise CardParseError("answer.meanings must be a non-empty list")
@@ -205,6 +198,14 @@ def parse_answer_payload(  # noqa: C901, PLR0912, PLR0913 - the answer discrimin
         # with it, and guessing that from the word's ending would teach a wrong one.
         if remap[raw_index] == sense:
             raise CardParseError(f"the carded meaning: {reason}")
+    lemma, typed = _without_own_article(headword, submitted, retained[sense].nominal)
+    word_relation, lemma, suggestion = _word_relation(
+        _relation_claim(card.get("word_relation"), lemma, typed, language),
+        card.get("suggestion"),
+        lemma,
+        typed,
+        language,
+    )
     if context:
         retained[sense] = _with_context_example(
             retained[sense],
@@ -212,9 +213,9 @@ def parse_answer_payload(  # noqa: C901, PLR0912, PLR0913 - the answer discrimin
             card.get("context_surface"),
             request,
         )
-    if not _marked_in_an_example(headword, retained, language):
+    if not _marked_in_an_example(lemma, retained, language):
         raise CardParseError("answer.word has a comma between words no example marks")
-    note = Note(headword, retained, sense)
+    note = Note(lemma, retained, sense)
     try:
         segments = parse_component_segments(
             card.get("segments"),
@@ -704,6 +705,21 @@ def _relation_claim(value: Any, headword: str, submitted: str, language: Languag
     typed = _after_article(submitted, GERMAN_ARTICLES) or ""
     headed = _after_article(headword, GERMAN_ARTICLES) or ""
     return None if same_wording(typed, headed, language) else value
+
+
+def _without_own_article(
+    headword: str,
+    submitted: str,
+    nominal: Nominal | None,
+) -> tuple[str, str]:
+    """The headword and the typed wording without the carded noun's own article, so the
+    lemma stays bare and an article alone never reads as another form of the word."""
+    if nominal is None:
+        return headword, submitted
+    return (
+        _after_article(headword, nominal.articles) or headword,
+        _after_article(submitted, nominal.articles) or submitted,
+    )
 
 
 def _opens_with_article(wording: str) -> bool:

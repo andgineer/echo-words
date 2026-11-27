@@ -471,6 +471,26 @@ describe("EntryCard", () => {
     expect(html.indexOf("entry-notice")).toBeLessThan(html.indexOf("entry-text"));
   });
 
+  it("names a corrected German noun as its card prints it, with its article", () => {
+    const wrapper = card({
+      entry_id: "entry-1",
+      word: "Schlussel",
+      lang: "de",
+      status: "done",
+      shape: "unit",
+      text: "<b>Schlüssel</b> — ключ",
+      card_status: "added",
+      card_kinds: ["Recognition"],
+      analysed_as: "Schlüssel",
+      analysed_as_card: "der Schlüssel",
+      typo_suspected: true,
+    });
+
+    expect(wrapper.get(".entry-notice").text()).toBe(
+      "“Schlussel” looks like a typo, so the card is for “der Schlüssel” instead.",
+    );
+  });
+
   it("says nothing about the spelling when the card is for the word as typed", () => {
     const wrapper = card({
       entry_id: "entry-1",

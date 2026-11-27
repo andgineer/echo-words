@@ -1,21 +1,27 @@
 # German noun articles and duplicate cards from one save
 
-Status: step 1 built and measured; its fresh semantic review of the bench
-packets is pending. Steps 2 and 3 have not started. Nothing is pushed or
-deployed.
+Status: step 1 built, measured and reviewed; its review loop is in progress.
+Steps 2 and 3 have not started. Nothing is pushed or deployed.
 
 Step 1 as built: the German unit prompt asks each meaning whether the unit
 is a noun, its article or articles, and the headword after the article; the
 parser enforces the claim on the carded meaning only and keeps the lemma as
-the note's identity; the card's word field and the entry's correction notice
-print the article form. Measured once on the free pool in
-`experiments/.bench-noun-articles` (smoke tier German re-asks plus the
-fourteen `run-articles` fixtures, 33 calls, all answered): 7 of 9 noun
-fixtures carded as expected, 5 of 5 controls carded as typed, the tier
-green. The two misses (`das schwarzes Brett`, a refused `Kindern`) are
-recorded as limitations in `spec/decision-card-shapes.md`. The packets to
-review are `review-packet-articles.json` and, for the German items,
-`review-packet-smoke.json`, both in that directory.
+the note's identity, dropping an article the headword or the typed wording
+opens with; the card's word field and the entry's correction notice print
+the article form, while a follow-up question is asked about the lemma.
+Measured once on the free pool in `experiments/.bench-noun-articles`
+(smoke tier German re-asks plus the fourteen `run-articles` fixtures, 33
+calls, all answered): 7 of 9 noun fixtures carded as expected, 5 of 5
+controls carded as typed, the tier green. A fresh agent reviewed every item
+of `review-packet-articles.json` and the German items of
+`review-packet-smoke.json`; its decision is recorded in
+`spec/decision-card-shapes.md` and `spec/decision-llm-backend.md`.
+
+Open operator items from step 1, recorded as open defects in
+`spec/decision-card-shapes.md`: `das schwarzes Brett` (unagreed adjective,
+a wrong card) and the refused `Kindern` (a failed card); also the content
+faults the review found (`der See` translated with the sea sense, the
+`Bank` analysis calling it neuter, one loose context translation).
 
 ## What the reader should see
 

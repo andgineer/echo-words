@@ -1591,20 +1591,32 @@ def test_a_noun_typed_with_its_article_is_no_misspelling_and_never_doubles_it():
     )
 
     assert isinstance(parsed, ParsedUnit)
-    assert (parsed.word_relation, parsed.suggestion) == ("morphology", None)
+    assert (parsed.word_relation, parsed.suggestion) == ("same", None)
     assert parsed.note.card_word == "der Hund"
 
 
-def test_a_headword_that_already_carries_its_article_is_carded_with_it_once():
+@pytest.mark.parametrize("submitted", ["der Hund", "Hund"])
+def test_a_headword_that_already_carries_its_article_is_carded_with_it_once(submitted):
     parsed = german(
         "der Hund",
         noun("der", examples=[_marked("Der <b>Hund</b> bellt.")]),
-        submitted="der Hund",
+        submitted=submitted,
     )
 
     assert isinstance(parsed, ParsedUnit)
-    assert parsed.note.word == "der Hund"
+    assert (parsed.note.word, parsed.word_relation) == ("Hund", "same")
     assert parsed.note.card_word == "der Hund"
+
+
+def test_a_headword_opening_with_an_article_that_is_no_noun_keeps_it():
+    parsed = german(
+        "die Wahrheit sagen",
+        meaning(examples=[_marked("Du musst <b>die Wahrheit sagen</b>.")]),
+    )
+
+    assert isinstance(parsed, ParsedUnit)
+    assert (parsed.note.word, parsed.note.card_word) == ("die Wahrheit sagen",) * 2
+    assert parsed.word_relation == "same"
 
 
 def test_a_misspelled_noun_typed_with_its_article_is_still_a_misspelling():
@@ -1820,9 +1832,20 @@ def test_the_recorded_answers_card_what_a_reader_should_see_where_the_answer_say
     assert (carded["bare-de-bank"], carded["typo-de-strase"]) == ("die Bank", "die Straße")
     # Headed `Kind` and claimed as `die Kinder`: a contradiction, so no card is made of it.
     assert carded["article-de-kindern"] is None
-    # The answer left the adjective's ending as headed; nothing but the answer can agree it.
+    # Pins this recorded answer's current outcome, a known defect: the answer left the
+    # adjective's ending unagreed, and the card prints it so.
     assert carded["article-de-schwarzes-brett"] == "das schwarzes Brett"
-    # A noun typed with its article is no misspelling, and the lemma stays unarticled.
+    # A noun typed with its article is no other form of it, and the lemma stays unarticled.
     der_hund = parsed["article-de-der-hund"]
     assert der_hund is not None
-    assert (der_hund.note.word, der_hund.word_relation) == ("Hund", "morphology")
+    assert (der_hund.note.word, der_hund.word_relation) == ("Hund", "same")
+
+
+def test_a_recorded_answer_headed_with_its_own_article_keeps_a_bare_lemma(languages):
+    (recorded,) = [a for a in NOUN_ARTICLES["answers"] if a["shot_id"] == "article-de-see-lake"]
+
+    parsed = _carded(recorded, languages)
+
+    assert parsed is not None
+    assert (parsed.note.word, parsed.word_relation, parsed.suggestion) == ("See", "same", None)
+    assert parsed.note.card_word == "der See"

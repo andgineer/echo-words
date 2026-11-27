@@ -1126,9 +1126,13 @@ make the claim is unmeasured: a German unit answer from one of them that leaves 
 is refused and takes the ordinary recovery, so what it can cost is a card, never a
 bare noun on one.
 
-What the run does not establish is recorded with the card rule in
-`decision-card-shapes.md`. A fresh agent's reading of every item in the two review
-packets is the condition of acceptance.
+The run was valid. A fresh agent read every item of the two review packets: every
+German noun that reached a card carried the right article, ten of ten; no control
+gained one; no context sentence was rewritten; and a self-contradicting answer was
+refused rather than guessed at. The open defects it found — an unagreed adjective, a
+refused inflected noun, a lake card translated with the sea, an analysis contradicting
+its card's gender — are recorded with the card rule in `decision-card-shapes.md` and
+await the operator's decision.
 
 ## What would re-open this
 

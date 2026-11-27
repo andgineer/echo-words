@@ -47,6 +47,9 @@ class Entry:
     # reader is told which word they are reading about. Named apart from the
     # pipeline's own carded_word, which is the headword a rebuild reuses audio for.
     analysed_as: str | None = None
+    # That wording as its card prints it, a German noun with its article; the notice
+    # names this, while a question about the entry is asked about the lemma.
+    analysed_as_card: str | None = None
     # Whether the answer called that difference a misspelling, which decides whether
     # the entry says "looks like a typo" or merely names the word it is about.
     typo_suspected: bool = False

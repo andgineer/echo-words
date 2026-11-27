@@ -1045,6 +1045,11 @@ class WordPipeline:
             # A status that says nothing was carded must not stand over a surviving note.
             entry.card_kept = _kept_previous_note(job, stored)
             entry.analysed_as = _analysed_as(job, parsed)
+            entry.analysed_as_card = (
+                parsed.note.card_word
+                if entry.analysed_as is not None and isinstance(parsed, ParsedUnit)
+                else None
+            )
             entry.typo_suspected = _declares_a_typo(parsed)
             entry.not_in_references, entry.usage_search_url = await self._absent_from_references(
                 job,
@@ -1057,7 +1062,7 @@ class WordPipeline:
                 entry.text = raw = ""
                 last_published = ""
                 parsed = None
-                entry.analysed_as, entry.typo_suspected = None, False
+                entry.analysed_as, entry.analysed_as_card, entry.typo_suspected = None, None, False
             entry.context_audio_file = context_audio_path.name if context_audio_path else None
             suggestion = self._correction_target(job, parsed)
             chips, segment_kind = _segments_for(parsed, job)
@@ -1387,6 +1392,7 @@ class WordPipeline:
                 "no_card_audio": entry.no_card_audio,
                 "card_kept": entry.card_kept,
                 "analysed_as": entry.analysed_as,
+                "analysed_as_card": entry.analysed_as_card,
                 "typo_suspected": entry.typo_suspected,
                 "showing_other_spelling": entry.showing_other_spelling,
                 "segments": entry.segments,
@@ -1596,6 +1602,7 @@ class WordPipeline:
         entry.no_card_audio = False
         entry.card_kept = False
         entry.analysed_as = None
+        entry.analysed_as_card = None
         entry.typo_suspected = False
         entry.showing_other_spelling = False
         entry.reverse_offered = False
@@ -1707,7 +1714,7 @@ def _analysed_as(job: Job, parsed: ParsedAnswer | None) -> str | None:
     # itself with that same wording has announced nothing.
     if same_wording(parsed.note.word, job.word, job.language):
         return None
-    return parsed.note.card_word
+    return parsed.note.word
 
 
 def _reads_another_word(read_as: str, typed: str) -> bool:

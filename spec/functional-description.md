@@ -155,7 +155,8 @@ The four requirements every design decision is weighed against:
    advisory control. A German noun's card prints that headword with its
    article (see "Anki cards"), and the identity stays the headword without
    it: the spelling relation, the judgement, the reference lookups, the
-   chips, a rebuild and the audio are all about `Hund`, while the card
+   chips, a rebuild, the audio and a question asked about the entry are
+   all about `Hund`, while the card
    reads `der Hund`.
    A headword keeps punctuation that is part of its chunk — the `!` of
    `Happy birthday!`, the `?` of `Na und?` — and drops a mark that merely came
@@ -513,9 +514,9 @@ entry is about wording other than what was submitted, it says so above the analy
 for a lookup and a failed card as much as for a stored one, and the card's own
 deletion removes what was stored. Only a misspelling the answer declares is *named* as one — a dictionary lemma
 for an inflected form is the ordinary case, and calling it a typo would accuse the
-learner on a large share of everything they submit. A German noun typed with its
-article and headed without it (`der Hund`, `Hund`) is the same word, whatever the
-answer calls it. The parser keeps the analysed
+learner on a large share of everything they submit. A German noun typed or headed
+with its own article (`der Hund`, `Hund`) is the same word, whatever the answer calls
+it, and the headword it is about is the noun without the article. The parser keeps the analysed
 headword and drops a suggestion that merely repeats it.
 
 **An answer that calls the submission misspelled and still heads itself with that

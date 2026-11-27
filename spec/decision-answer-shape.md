@@ -406,8 +406,8 @@ of `der`, `die` and `das` and nothing else; a unit that is not a noun names none
 the headword after the article is the headword itself, changed at most in an
 adjective's ending — `schwarzes Brett` may read `schwarze Brett`, `Bekannter` may
 read `Bekannte`, while `Hund` may not read `Hunde`. An article the headword already
-opens with is not printed twice, and one that contradicts the claim is a
-contradiction. Failing any of these, the answer is unusable, exactly as a meaning
+opens with is not printed twice and is no part of the lemma, and one that contradicts
+the claim is a contradiction. Failing any of these, the answer is unusable, exactly as a meaning
 with no usable example is. The other meanings are not held to it: they are not
 carded, and refusing an answer over a sibling the note never shows would cost the
 card for nothing. A declared misspelling that is nothing but an article typed before
