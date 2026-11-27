@@ -1,0 +1,6 @@
+WARNING  llmbroker.broker:presets.py:154 preset freetier: nothing cached and nothing is fetched automatically — falling back to the bundled copy, frozen at this llmbroker release
+WARNING  llmbroker.broker:presets.py:154 preset paid-catalog: nothing cached and nothing is fetched automatically — falling back to the bundled copy, frozen at this llmbroker release
+WARNING  llmbroker.broker:presets.py:154 preset paid-catalog: nothing cached and nothing is fetched automatically — falling back to the bundled copy, frozen at this llmbroker release
+ERROR    llmbroker.broker:catalog.py:390 pool degraded, no failover left: 1 of 4 providers usable — no key for OPENROUTER_API_KEY, GEMINI_API_KEY, ZAI_API_KEY
+WARNING  llmbroker.broker:pool.py:448 LLM groq-gpt-oss-120b cooling for 60s
+WARNING  echo_words.backend:backend.py:128 no answer for sr after 0.0 s from the pool model unnamed (trace none): the pool missed the answer budget (NoLLMAvailableError: the wait budget ran out before any LLM produced a delta); paid step unavailable: the paid model is missing OPENAI_API_KEY: Create a key at https://platform.openai.com/api-keys (paid).

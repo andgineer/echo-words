@@ -1,0 +1,3 @@
+INFO     echo_words.backend:backend.py:482 the paid model gpt-fast: first token after never, ended after 0.0 s
+WARNING  echo_words.backend:backend.py:128 no answer for en after 0.0 s from the paid model gpt-fast (trace c15cabb83fdc49208f565e9623ee96d5-reverse-paid): the paid model 'gpt-fast' failed (InvalidProviderResponseError: the provider returned no text)
+INFO     echo_words.pipeline:pipeline.py:640 the pool answer from groq-gpt-oss-120b stands for the reverse lookup for en: the paid model gave none

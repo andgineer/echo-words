@@ -1,0 +1,2 @@
+WARNING  echo_words.lexicon:lexicon.py:104 wikipedia lookup failed for sr/'klupa': Client error '429 Too Many Requests' for url 'https://sr.wikipedia.org/w/api.php?action=query&list=search&srsearch=%22klupa%22&srwhat=text&srlimit=3&format=json'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/429

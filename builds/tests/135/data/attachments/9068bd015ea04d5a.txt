@@ -1,0 +1,2 @@
+INFO     echo_words.backend:backend.py:482 the paid model gpt-fast: first token after 0.0 s, ended after 0.0 s
+WARNING  echo_words.backend:backend.py:128 no answer for en after 0.0 s from the pool model unnamed (trace none): the pool missed the answer budget (NoLLMAvailableError: pool exhausted); paid step unavailable: the daily paid-call cap (1) is spent

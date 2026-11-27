@@ -1,0 +1,1 @@
+INFO     echo_words.pipeline:pipeline.py:623 the last-resort reverse lookup for sr is dropped: the pool answer came from groq-gpt-oss-120b

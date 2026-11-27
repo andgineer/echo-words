@@ -1,0 +1,1097 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+        <meta name="author" content="Andrey Sorokin">
+      
+      
+        <link rel="canonical" href="https://andgineer.github.io/echo-words/agent-install/">
+      
+      
+      
+      
+        
+          <link rel="alternate" href="/echo-words/" hreflang="en">
+        
+          <link rel="alternate" href="/echo-words/ru/" hreflang="ru">
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="zensical-0.0.51">
+    
+    
+      
+        <title>Install with an AI agent - echo_words</title>
+      
+    
+    
+      
+        
+      
+      <link rel="stylesheet" href="../assets/stylesheets/modern/main.62c9b9cc.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,500,500i,700,700i%7CJetBrains+Mono:400,400i,700,700i&amp;display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_scope.pathname.endsWith("/")||(__md_scope=new URL(__md_scope.pathname+"/",location)),__md_hash=e=>[...e].reduce(((e,t)=>(e<<5)-e+t.charCodeAt(0)),0),__md_get=(e,t=localStorage,_=__md_scope)=>JSON.parse(t.getItem(_.pathname+"."+e)),__md_set=(e,t,_=localStorage,a=__md_scope)=>{try{_.setItem(a.pathname+"."+e,JSON.stringify(t))}catch(e){}},document.documentElement.setAttribute("data-platform",navigator.platform)</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer" aria-label="Navigation"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#install-with-an-ai-agent" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="./.." title="echo_words" class="md-header__button md-logo" aria-label="echo_words" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-book-open" viewBox="0 0 24 24"><path d="M12 7v14M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer" aria-label="Navigation">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-menu" viewBox="0 0 24 24"><path d="M4 5h16M4 12h16M4 19h16"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            echo_words
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Install with an AI agent
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+      <div class="md-header__option">
+  <div class="md-select">
+    
+    <button class="md-header__button md-icon" aria-label="Select language">
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-languages" viewBox="0 0 24 24"><path d="m5 8 6 6M4 14l6-6 2-3M2 5h12M7 2h1M22 22l-5-10-5 10M14 18h6"/></svg>
+    </button>
+    <div class="md-select__inner">
+      <ul class="md-select__list">
+        
+          <li class="md-select__item">
+            <a href="/echo-words/" hreflang="en" class="md-select__link">
+              English
+            </a>
+          </li>
+        
+          <li class="md-select__item">
+            <a href="/echo-words/ru/" hreflang="ru" class="md-select__link">
+              Русский
+            </a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+</div>
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search" aria-label="Search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-search" viewBox="0 0 24 24"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog" aria-label="Search">
+  <button type="button" class="md-search__button">
+    Search
+  </button>
+</div>
+      
+    
+    <div class="md-header__source">
+      
+        <a href="https://github.com/andgineer/echo-words" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc.--><path fill="currentColor" d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    echo_words
+  </div>
+</a>
+      
+    </div>
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="./.." title="echo_words" class="md-nav__button md-logo" aria-label="echo_words" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-book-open" viewBox="0 0 24 24"><path d="M12 7v14M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></svg>
+
+    </a>
+    echo_words
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/andgineer/echo-words" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc.--><path fill="currentColor" d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    echo_words
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="./.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  echo-words
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../keys/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Your keys
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../deploy-oracle/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Install on Oracle Cloud
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Configuration
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pwa-install/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Install on your phone
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../operations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  State and maintenance
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../try-locally/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Try it on your computer
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Development
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  
+                    
+                    
+                    
+                      
+                    
+                    
+                      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+                      <div class="md-sidebar-button__wrapper">
+                        <label class="md-sidebar-button" for="__toc"></label>
+                      </div>
+                    
+                  
+                  <div class="md-sidebar__inner">
+                    
+
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#how-to-work-with-the-user" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        How to work with the user
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-the-user-already-has" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        What the user already has
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#this-is-not-a-development-task" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        This is not a development task
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#0-check-where-you-are-running" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        0. Check where you are running
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-tools-and-the-checkout" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        1. Tools and the checkout
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-the-ssh-key" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2. The ssh key
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-the-oracle-cloud-account-the-users-step" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        3. The Oracle Cloud account — the user's step
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-the-vm" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        4. The VM
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-tailscale" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        5. Tailscale
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-the-keys-file" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        6. The keys file
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-set-up-and-deploy" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        7. Set up and deploy
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-check-that-it-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        8. Check that it works
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-the-phone-the-users-steps" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        9. The phone — the user's steps
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-finish" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        10. Finish
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+  
+  
+
+
+<h1 id="install-with-an-ai-agent">Install with an AI agent</h1>
+<div class="admonition note">
+<p class="admonition-title">This page is for your AI agent, not for you</p>
+<p>Paste the prompt from the <a href="../#quick-start">Quick start</a> into your agent: it
+reads this page and tells you each step that needs you. No need to read on —
+unless you are the kind of person who checks what an agent is about to run on
+their computer. A good habit; everything below is plain text.</p>
+</div>
+<p>You are installing echo-words, a self-hosted vocabulary app, for the person you are
+talking to. When you are done, an Oracle Cloud Always Free VM runs the app, it is
+reachable only inside the user's private Tailscale network at
+<code>https://echo-words.&lt;tailnet&gt;.ts.net/</code>, the user's phone opens it as a home-screen
+app, and the cards it makes reach the user's AnkiWeb account. The server side is
+free; one paid key is optional.</p>
+<p>If you are reading this as a web page, get the exact text first — a page fetched
+through a summarising tool loses details these steps depend on:</p>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-fsSL<span class="w"> </span>https://raw.githubusercontent.com/andgineer/echo-words/main/docs/includes/agent-install.md
+</code></pre></div>
+<h2 id="how-to-work-with-the-user">How to work with the user</h2>
+<ul>
+<li>The user has read nothing but the one-line prompt they gave you. Everything they
+  need to know comes from you, in the language of that prompt.</li>
+<li>Begin with a short overview: what you will set up, which steps only they can do,
+  that you will ask their approval for commands as you go, and what they need at
+  hand — a credit or debit card for Oracle's identity check (Always Free is never
+  charged), their phone, a Google account, and an AnkiWeb account (free at
+  <a href="https://ankiweb.net">https://ankiweb.net</a>, if they have none yet). Reviewing the cards on an iPhone
+  takes AnkiMobile, a one-time purchase; AnkiDroid on Android and AnkiWeb in a
+  browser are free.</li>
+<li>Hand them one step at a time: exactly which page to open, what to click or type,
+  and what to tell you back. Wait until they say it is done before going on.</li>
+<li>Between their steps, say in a sentence what you are about to do, then report what
+  happened.</li>
+<li>Never ask for a password or an API key in the chat, and never print the keys file:
+  either would stay in the conversation's record. Secrets go into a file on their
+  computer (step 6), and you check that it is filled without printing it.</li>
+<li>When something fails in a way these instructions do not cover, tell the user what
+  happened and what you propose before you do it.</li>
+</ul>
+<h2 id="what-the-user-already-has">What the user already has</h2>
+<p>Before step 1, ask what they already have, and skip what is done:</p>
+<ul>
+<li><strong>An Oracle Cloud account</strong>: skip step 3.</li>
+<li><strong>A Tailscale account</strong>: skip creating it in step 5, but still have them check that
+  HTTPS Certificates are on. Their phone may already have the Tailscale app.</li>
+<li><strong>An AnkiWeb account</strong>: nothing to create.</li>
+<li><strong>An earlier echo-words install</strong>: a checkout whose <code>.deploy/.env</code> names a host.
+  It is at <code>~/echo-words</code> unless they put it elsewhere, so ask. Work from that
+  checkout instead of cloning another: its keys are already filled in. If
+  <code>git status</code> there shows changes, or it is not on <code>main</code>, ask before you pull.
+  Read the host it names with <code>grep '^ECHOWORDS_DEPLOY_HOST=' .deploy/.env</code>, check
+  with <code>ssh &lt;host&gt; true</code> whether that VM answers — if it does not, have the user
+  look at it in the Oracle Cloud console → Compute → Instances: a <strong>Stopped</strong> VM
+  only needs <strong>Start</strong>, and keeps its address and data — and ask which of four
+  cases this is:<ul>
+<li><strong>a session that stopped partway</strong> — a usage limit, a closed app: continue
+  from the first step not done. If <code>.deploy/old-vm/</code> exists, it was a move;
+  <code>.deploy/old-vm/host</code> holds the old VM's address.</li>
+<li><strong>an update of the same VM</strong>: in the checkout, <code>git pull --ff-only</code>,
+  <code>uv sync</code>, <code>uv run inv deploy --ref=main</code>, then step 8; nothing else</li>
+<li><strong>a move to a new VM</strong>, because the old one is gone or being replaced: go
+  through the steps, following their <strong>Moving from an old VM</strong> notes, with
+  <code>&lt;old-host&gt;</code> the host the keys file names now</li>
+<li><strong>the app stopped answering</strong>: if ssh is still silent with the VM
+  <strong>Running</strong>, have the user press <strong>Reboot</strong> in the console — it keeps the
+  data — and check again. Once ssh answers, run <code>uv run inv status</code> and
+  <code>uv run inv logs</code> in the checkout and read them. If
+  <code>ssh &lt;host&gt; tailscale status</code> says the VM is logged out, run step 5's
+  <code>tailscale up</code> with the name it had, have the user approve it and disable
+  its key expiry as step 5 describes; if the service is not active,
+  <code>uv run inv deploy --ref=main</code> starts it and waits for its health check.
+  Then step 8.</li>
+</ul>
+</li>
+</ul>
+<p>Below, <code>&lt;checkout&gt;</code> is that checkout, or <code>~/echo-words</code> for a first install.</p>
+<h2 id="this-is-not-a-development-task">This is not a development task</h2>
+<p>The checkout contains <code>AGENTS.md</code> and <code>CLAUDE.md</code> for developers changing the code.
+Their rules do not apply to an install, an update or a move: do not run the lint,
+test or benchmark commands they require, and do not change any tracked file. The
+user asking you for one of these is their approval to set up and deploy to their own
+VM.</p>
+<h2 id="0-check-where-you-are-running">0. Check where you are running</h2>
+<ul>
+<li>You need a shell on the user's own computer, because the checkout and its keys
+  stay there: every later update runs from it. If you run in a remote sandbox or a
+  cloud session, stop and tell the user to start you on their computer instead.</li>
+<li>Run <code>uname -s</code>. <code>Darwin</code> or <code>Linux</code> (WSL included) — go on. Anything else, such as
+  Git Bash, MSYS or PowerShell on Windows, cannot run the deploy commands. Tell the
+  user to install WSL: run <code>wsl --install</code> in PowerShell opened as administrator,
+  restart, and finish the Ubuntu setup it opens. Then they start a new session of you
+  inside WSL — in the Claude desktop app's Code tab, by choosing the WSL environment;
+  in Codex in the ChatGPT desktop app, with Settings → Agent environment → Windows
+  Subsystem for Linux and a restart of the app — and paste the same prompt again.
+  Stop there.</li>
+<li>You need network access, including outbound ssh, and you will write to
+  <code>&lt;checkout&gt;</code> and <code>~/.ssh</code>. If your sandbox asks the user to approve those, tell
+  them to expect it.</li>
+</ul>
+<h2 id="1-tools-and-the-checkout">1. Tools and the checkout</h2>
+<ul>
+<li>You need <code>git</code>, <code>ssh</code>, <code>ssh-keygen</code>, <code>curl</code> and <code>uv</code>. Check each by running it
+  (<code>git --version</code>, not <code>which git</code>: macOS ships a stub that only offers to install
+  git). Install what is missing:<ul>
+<li>uv: <code>curl -LsSf https://astral.sh/uv/install.sh | sh</code>. It is not on the PATH
+  of the shell you have; your later commands may each start a new shell, so call
+  it as <code>~/.local/bin/uv</code> or prefix them with <code>source ~/.local/bin/env &amp;&amp;</code></li>
+<li>git on macOS: <code>xcode-select --install</code>, which opens a dialog the user must
+  confirm</li>
+<li>on Linux or WSL: <code>sudo apt-get install -y git openssh-client curl</code> — when sudo
+  needs a password your shell cannot type, have the user run that command
+  themselves</li>
+</ul>
+</li>
+<li>
+<p>The checkout:</p>
+<ul>
+<li>an earlier install's: <code>git -C &lt;checkout&gt; pull --ff-only</code></li>
+<li>none yet, and <code>~/echo-words</code> does not exist:
+  <code>git clone https://github.com/andgineer/echo-words.git ~/echo-words</code></li>
+<li><code>~/echo-words</code> exists but is not a checkout of
+  <code>github.com/andgineer/echo-words</code>: stop and ask the user where to put it</li>
+</ul>
+<p>Run every later command from the checkout, starting with <code>uv sync</code>.
+- If <code>uv sync</code> fails with <code>doesn't have a source distribution or wheel for the
+  current platform</code> — an Intel Mac, or a Mac older than macOS 14 — the app's own
+  dependencies cannot install here, but the deploy commands do not need them. Write
+  every later <code>uv run inv …</code> as
+  <code>PYTHONPATH=src uv run --no-project --with invoke --with python-dotenv --with pydantic-settings --with tomli-w inv …</code>.</p>
+</li>
+</ul>
+<h2 id="2-the-ssh-key">2. The ssh key</h2>
+<p>Create a key used only for this VM, without a passphrase — the deploy commands run
+without a terminal and cannot type one:</p>
+<div class="highlight"><pre><span></span><code>mkdir<span class="w"> </span>-p<span class="w"> </span>~/.ssh<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>chmod<span class="w"> </span><span class="m">700</span><span class="w"> </span>~/.ssh
+<span class="nb">test</span><span class="w"> </span>-f<span class="w"> </span>~/.ssh/echo-words<span class="w"> </span><span class="o">||</span><span class="w"> </span>ssh-keygen<span class="w"> </span>-t<span class="w"> </span>ed25519<span class="w"> </span>-N<span class="w"> </span><span class="s2">&quot;&quot;</span><span class="w"> </span>-C<span class="w"> </span>echo-words<span class="w"> </span>-f<span class="w"> </span>~/.ssh/echo-words
+</code></pre></div>
+<p>Tell the user it is their key to the VM. Only <code>~/.ssh/echo-words.pub</code> — the public
+key — is ever shown or pasted.</p>
+<h2 id="3-the-oracle-cloud-account-the-users-step">3. The Oracle Cloud account — the user's step</h2>
+<p>Oracle allows one account per person and checks it against a card, so only the user
+can create it. Send them to <a href="https://signup.oraclecloud.com/">https://signup.oraclecloud.com/</a> and tell them:</p>
+<ul>
+<li>their name and address must match the card's billing address exactly; a mismatch
+  is the most common reason a signup is refused</li>
+<li>the card verifies identity, and may show a small temporary hold; the Always Free
+  resources used here are never charged</li>
+<li>the <strong>home region</strong> they pick is permanent, and the VM has to be created in it, so
+  they should pick one near them</li>
+</ul>
+<p>Wait until they are signed in to the Oracle Cloud console.</p>
+<p>The first sign-in enrols their phone as the second sign-in factor. Have them generate
+a bypass code right away: Profile menu → <strong>User settings</strong> → <strong>Security</strong> →
+<strong>Bypass codes</strong> → <strong>Generate</strong>, and keep it off the phone — on paper or in a
+password manager, never in the chat. On their own account they are its only
+administrator, so if that phone is lost, the code is the way back in short of
+Oracle support. Each code works once and never expires.</p>
+<h2 id="4-the-vm">4. The VM</h2>
+<p><strong>Moving from an old VM.</strong> Do everything that needs the old VM now, before the new
+one exists:</p>
+<ol>
+<li>Ask whether anything besides echo-words runs on the old VM and is reached through
+   Tailscale by its name. If so, the new VM cannot take that name without cutting
+   the other thing off: it gets a name of its own in step 5, and the app on the
+   phone is installed afresh in step 9 — the cards are all in Anki, only the app's
+   list of past lookups starts empty.</li>
+<li>
+<p>Record the old VM, so a session that stops partway can resume:</p>
+<div class="highlight"><pre><span></span><code>mkdir<span class="w"> </span>-p<span class="w"> </span>.deploy/old-vm
+<span class="nb">echo</span><span class="w"> </span><span class="s1">&#39;&lt;old-host&gt;&#39;</span><span class="w"> </span>&gt;<span class="w"> </span>.deploy/old-vm/host
+</code></pre></div>
+</li>
+<li>
+<p>If <code>&lt;old-host&gt;</code> answers, save what lives only on it — the languages the user set
+   up in the app and the recordings behind the play buttons of past lookups — and
+   its Tailscale name, the first label of <code>Self.DNSName</code>:</p>
+<div class="highlight"><pre><span></span><code>scp<span class="w"> </span>&lt;old-host&gt;:/home/ubuntu/echo-words/data/languages.toml<span class="w"> </span>.deploy/old-vm/
+scp<span class="w"> </span>-r<span class="w"> </span>&lt;old-host&gt;:/home/ubuntu/echo-words/data/audio<span class="w"> </span>.deploy/old-vm/
+ssh<span class="w"> </span>&lt;old-host&gt;<span class="w"> </span>tailscale<span class="w"> </span>status<span class="w"> </span>--json
+</code></pre></div>
+</li>
+<li>
+<p>If <code>&lt;old-host&gt;</code> answers, stop the app there for good, so two servers never sync
+   the same collection, and check that it sent every card to AnkiWeb. Ask the user
+   to send no new words to it, wait until ten minutes have passed since their last
+   one — the app sends cards to AnkiWeb up to five minutes after adding them — then:</p>
+<div class="highlight"><pre><span></span><code>ssh<span class="w"> </span>&lt;old-host&gt;<span class="w"> </span><span class="s1">&#39;sudo systemctl disable --now echo-words&#39;</span>
+<span class="nb">echo</span><span class="w"> </span><span class="s1">&#39;import sqlite3; db = sqlite3.connect(&quot;/home/ubuntu/echo-words/data/anki/collection.anki2&quot;); sent = db.execute(&quot;select mod &lt;= ls and scm &lt;= ls from col&quot;).fetchone()[0]; print(&quot;all sent&quot; if sent else &quot;NOT SENT&quot;)&#39;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>ssh<span class="w"> </span>&lt;old-host&gt;<span class="w"> </span>python3
+</code></pre></div>
+<p>On <code>NOT SENT</code>, start it again with
+<code>ssh &lt;old-host&gt; 'sudo systemctl enable --now echo-words'</code>, have the user send one
+word, and repeat ten minutes later.</p>
+</li>
+<li>
+<p>A free account holds at most two VM.Standard.E2.1.Micro instances. Have the user
+   check Compute → Instances: if two already exist, the new one cannot be created
+   beside them — on Pay As You Go it would be billed. Then the old VM has to go
+   first: only if nothing else runs on it (item 1), the user terminates it in the
+   console. Otherwise stop and agree with the user which VM to give up.</p>
+</li>
+</ol>
+<p><strong>The network.</strong> A new account has none, and the VM needs one that reaches the
+internet. Have the user open Networking → Virtual cloud networks → <strong>Start VCN
+Wizard</strong> → <strong>Create VCN with Internet Connectivity</strong>, and accept the defaults. An
+account that already has such a network uses it.</p>
+<p>The VM must be:</p>
+<ul>
+<li>a compute instance in the home region</li>
+<li>image <strong>Canonical Ubuntu 22.04 Minimal</strong> — the image the deploy runs on</li>
+<li>shape <strong>VM.Standard.E2.1.Micro</strong>, which is Always Free-eligible; the shape picker
+  lists it under <strong>Specialty and previous generation</strong></li>
+<li>in that network's public subnet, with <strong>Automatically assign public IPv4 address</strong>
+  on</li>
+<li>given the contents of <code>~/.ssh/echo-words.pub</code> under <strong>Paste public keys</strong></li>
+<li>otherwise left at the defaults</li>
+</ul>
+<p>Oracle's console changes its layout, so go by these requirements rather than
+remembered clicks. If you can operate the user's browser, you may fill in the form
+yourself once they are signed in; show them what you chose before you press
+<strong>Create</strong>. Otherwise guide them through it, field by field. This shape exists in a
+single availability domain of the region, so if it is out of capacity there is
+nothing else to pick: it has to be retried later. Never choose a shape that is not
+Always Free.</p>
+<p>When the instance shows <strong>Running</strong>, have the user tell you its public IP address —
+it is not a secret. Make ssh use the key for it, and accept the VM's host key once,
+because the deploy commands cannot answer that question:</p>
+<div class="highlight"><pre><span></span><code><span class="nb">printf</span><span class="w"> </span><span class="s1">&#39;\nHost &lt;IP&gt;\n  User ubuntu\n  IdentityFile ~/.ssh/echo-words\n  IdentitiesOnly yes\n&#39;</span><span class="w"> </span>&gt;&gt;<span class="w"> </span>~/.ssh/config
+chmod<span class="w"> </span><span class="m">600</span><span class="w"> </span>~/.ssh/config
+ssh<span class="w"> </span>-o<span class="w"> </span><span class="nv">StrictHostKeyChecking</span><span class="o">=</span>accept-new<span class="w"> </span>ubuntu@&lt;IP&gt;<span class="w"> </span><span class="nb">true</span>
+</code></pre></div>
+<p>A new VM can take a minute or two before ssh answers: retry on a timeout or a
+refused connection. <code>Permission denied (publickey)</code> is not a boot delay — the VM was
+given a different key; check what was pasted in the form. If ssh still times out
+five minutes after <strong>Running</strong>, the subnet has no route to the internet: on the
+instance's page, follow its subnet to the virtual cloud network and add one — the
+console offers <strong>Connect public subnet to internet</strong> for this.</p>
+<h2 id="5-tailscale">5. Tailscale</h2>
+<p>The user's steps, one at a time:</p>
+<ol>
+<li>Create a Tailscale account at <a href="https://login.tailscale.com/start">https://login.tailscale.com/start</a>. The Personal
+   plan is free; signing in with Google is enough.</li>
+<li>In the admin console's DNS page, <a href="https://login.tailscale.com/admin/dns">https://login.tailscale.com/admin/dns</a>, turn on
+   <strong>HTTPS Certificates</strong>; MagicDNS has to be on too, and is on by default. The app
+   is published with <code>tailscale serve</code>, which needs both.</li>
+<li>Install the Tailscale app on their phone and sign in with the same account.</li>
+</ol>
+<p><strong>Moving from an old VM</strong> whose name the new one takes (step 4, item 1): two
+machines cannot share a name, so the user first removes the old machine on
+<a href="https://login.tailscale.com/admin/machines">https://login.tailscale.com/admin/machines</a> — the menu at the right of its row,
+<strong>Remove</strong> — and you use the old name instead of <code>echo-words</code> in <code>--hostname=</code>
+below. If the old VM keeps its name, the new one needs another: keep <code>echo-words</code>
+unless that is the one taken, then pick a free one.</p>
+<p>Your steps, on the VM:</p>
+<div class="highlight"><pre><span></span><code>ssh<span class="w"> </span>ubuntu@&lt;IP&gt;<span class="w"> </span><span class="s1">&#39;command -v curl &gt;/dev/null || { sudo apt-get update &amp;&amp; sudo apt-get install -y curl; }; curl -fsSL https://tailscale.com/install.sh | sh&#39;</span>
+ssh<span class="w"> </span>ubuntu@&lt;IP&gt;<span class="w"> </span><span class="s1">&#39;sudo tailscale up --hostname=echo-words&#39;</span>
+</code></pre></div>
+<p><code>tailscale up</code> prints a login link (<code>To authenticate, visit: …</code>) and then waits until
+it is used. Run it in the background and read its output while it waits — a
+foreground call shows you nothing until it ends. Give the user the link to open and
+approve, and wait for the command to finish. Confirm with
+<code>ssh ubuntu@&lt;IP&gt; tailscale status --json</code>: the first label of <code>Self.DNSName</code> is the
+name the VM got. If it is not the one you asked for — Tailscale appends <code>-1</code> when the
+name is taken — have the user remove any old machine still listed under that name,
+then rename the new one on the machines page: the menu at the right of its row,
+<strong>Edit machine name</strong>.</p>
+<p>Then one more step for the user: on the same page, open the menu at the right of the
+new VM's row and choose <strong>Disable key expiry</strong>. Otherwise the VM leaves their
+network after 180 days and the app stops answering.</p>
+<p>If an <code>apt</code> command on the VM reports <code>Could not get lock</code>, the new VM is installing
+its own updates: wait five minutes and repeat the command.</p>
+<h2 id="6-the-keys-file">6. The keys file</h2>
+<p>In <code>&lt;checkout&gt;</code>, create <code>.deploy/.env</code> from the template, unless it already
+exists — never overwrite an existing one:</p>
+<div class="highlight"><pre><span></span><code>mkdir<span class="w"> </span>-p<span class="w"> </span>.deploy
+<span class="o">[</span><span class="w"> </span>-e<span class="w"> </span>.deploy/.env<span class="w"> </span><span class="o">]</span><span class="w"> </span><span class="o">||</span><span class="w"> </span>cp<span class="w"> </span>.deploy.example/.env<span class="w"> </span>.deploy/.env
+chmod<span class="w"> </span><span class="m">600</span><span class="w"> </span>.deploy/.env
+</code></pre></div>
+<p>Point it at the new VM — this replaces the template's placeholder, or an earlier
+install's old address — without opening the file:</p>
+<div class="highlight"><pre><span></span><code>sed<span class="w"> </span>-i.bak<span class="w"> </span><span class="s1">&#39;s|^ECHOWORDS_DEPLOY_HOST=.*|ECHOWORDS_DEPLOY_HOST=ubuntu@&lt;IP&gt;|&#39;</span><span class="w"> </span>.deploy/.env<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>rm<span class="w"> </span>.deploy/.env.bak
+</code></pre></div>
+<p>An earlier install's file already holds the user's secrets and settings: change
+nothing else in it, and go to the check at the end of this step.</p>
+<p>Ask the user which language the explanations and translations should be written in:
+the language they think in, not the one they learn. Russian is the default; for any
+other, set <code>ECHOWORDS_TARGET_LANG</code> to that language's English name, such as
+<code>English</code> or <code>German</code>.</p>
+<p>Then the user fills in their secrets. Open the file for them in an editor they can
+use, in the background — on macOS <code>open -e &lt;checkout&gt;/.deploy/.env</code>, in WSL
+<code>notepad.exe "$(wslpath -w &lt;checkout&gt;/.deploy/.env)"</code> — or tell them its full
+path. Tell them what goes where:</p>
+<ul>
+<li><code>GEMINI_API_KEY</code> — required. A free key from
+  <a href="https://aistudio.google.com/apikey">https://aistudio.google.com/apikey</a>, <strong>Create API key</strong>.</li>
+<li><code>ECHOWORDS_ANKIWEB_USER</code> and <code>ECHOWORDS_ANKIWEB_PASSWORD</code> — their AnkiWeb login,
+  so that cards reach their decks. The first start downloads their AnkiWeb
+  collection before adding anything, so existing decks are safe.</li>
+</ul>
+<p>Ask whether they already review in an Anki app without an AnkiWeb account. If so,
+  they sign that app in to AnkiWeb and sync it <strong>before</strong> step 7. Otherwise their
+  phone and the server each hold a collection AnkiWeb has never seen, Anki asks
+  them to choose Upload or Download, and either choice discards one side.
+- <code>OPENAI_API_KEY</code> — optional and paid. It adds a deeper article about a word on
+  request; on the author's own use it costs about half a dollar a month. Leave it
+  empty to stay at $0.
+- <code>GROQ_API_KEY</code>, <code>OPENROUTER_API_KEY</code>, <code>ZAI_API_KEY</code> — optional and free. Each adds
+  models that take over when Gemini is busy. They can be added later.</p>
+<p>When they say it is saved, check that the required values are filled, without
+printing them:</p>
+<div class="highlight"><pre><span></span><code>grep<span class="w"> </span>-cE<span class="w"> </span><span class="s1">&#39;^(GEMINI_API_KEY|ECHOWORDS_ANKIWEB_USER|ECHOWORDS_ANKIWEB_PASSWORD)=.+&#39;</span><span class="w"> </span>.deploy/.env
+</code></pre></div>
+<p>The count must be 3. Tell the user the keys stay in this file on their computer and
+are copied to the VM by every deploy.</p>
+<h2 id="7-set-up-and-deploy">7. Set up and deploy</h2>
+<div class="highlight"><pre><span></span><code>uv<span class="w"> </span>run<span class="w"> </span>inv<span class="w"> </span>setup-app<span class="w"> </span>--with-host-prep
+uv<span class="w"> </span>run<span class="w"> </span>inv<span class="w"> </span>deploy<span class="w"> </span>--ref<span class="o">=</span>main
+</code></pre></div>
+<p><code>setup-app</code> runs once: it installs Node, uv and Tailscale, creates swap and hardens
+the VM. <code>deploy</code> builds the app on the VM, starts it, and fails unless it answers its
+health check within 30 seconds. Both take a long time on this small VM: run them in
+the background, read their output as they go, and tell the user what is happening.
+Both are safe to repeat.</p>
+<ul>
+<li>
+<p><strong>Moving from an old VM</strong> with saved files in <code>.deploy/old-vm/</code>: put them in place
+  between the two commands, so the app's first start already has the user's
+  languages and recordings:</p>
+<div class="highlight"><pre><span></span><code>scp<span class="w"> </span>.deploy/old-vm/languages.toml<span class="w"> </span>ubuntu@&lt;IP&gt;:/home/ubuntu/echo-words/data/
+scp<span class="w"> </span>-r<span class="w"> </span>.deploy/old-vm/audio<span class="w"> </span>ubuntu@&lt;IP&gt;:/home/ubuntu/echo-words/data/
+</code></pre></div>
+<p>Without them, the app starts with its default languages; tell the user to set
+theirs up again in the app.
+- If <code>setup-app</code> prints a Tailscale link about enabling Serve or HTTPS, the
+  certificates from step 5 are off. Give the user that link; if <code>setup-app</code> has
+  already ended, run it again once they have approved.
+- If <code>apt</code> reports <code>Could not get lock</code>, wait five minutes and repeat the command.
+- The first start downloads the user's AnkiWeb collection, and a large one can
+  outlast the health check. If <code>deploy</code> fails only there, wait a minute and run
+  <code>uv run inv healthcheck</code>.
+- Otherwise, if <code>deploy</code> fails, read its output and <code>uv run inv logs</code>, and explain
+  to the user what went wrong. Never edit files on the VM; <code>deploy</code> refuses to run
+  over changes there.</p>
+</li>
+</ul>
+<h2 id="8-check-that-it-works">8. Check that it works</h2>
+<ol>
+<li><code>uv run inv status</code> shows the service active, and <code>tailscale serve status</code> in its
+   output shows the HTTPS address proxying to <code>http://127.0.0.1:8080</code>. Its lines
+   about dinary replica files concern the author's own server; ignore them.</li>
+<li>Read the app's address: <code>ssh ubuntu@&lt;IP&gt; tailscale status --json</code> gives it as
+   <code>Self.DNSName</code>, without the trailing dot.</li>
+<li><code>ssh ubuntu@&lt;IP&gt; curl -fsS https://&lt;address&gt;/api/health</code> answers
+   <code>{"status":"ok",...}</code>. That proves the private address and its certificate work.
+   The first request can take several seconds while the certificate is issued.</li>
+<li><code>ssh ubuntu@&lt;IP&gt; curl -fsS http://127.0.0.1:8080/api/status</code> shows
+   <code>pool.available</code> true, no entry of <code>pool.missing_keys</code> with <code>api_key_ref</code>
+   <code>GEMINI_API_KEY</code>, and <code>anki.error</code> empty. On a first install <code>anki.last_result</code> is
+   <code>ok</code>; after a later restart it stays empty until the next card is added. Expected
+   and fine: the optional free keys left empty are listed in <code>pool.missing_keys</code>, an
+   empty <code>OPENAI_API_KEY</code> in <code>pool.direct_missing_keys</code>, and with Gemini alone
+   <code>pool.degraded</code> is true. Report anything else to the user.</li>
+</ol>
+<h2 id="9-the-phone-the-users-steps">9. The phone — the user's steps</h2>
+<p>Moving from an old VM under the same name, the app already on their phone keeps
+working, past lookups included: they open it and send a word, then go on with item
+5. If it opens blank, they close it fully and open it again — it still holds the old
+server's pages for one load. Under a new name it is a new address: the old icon no
+longer works, so walk them through the steps below.</p>
+<p>Otherwise walk them through it one step at a time:</p>
+<ol>
+<li>The Tailscale app is switched on, signed in with the same account, and lists the
+   VM among its machines.</li>
+<li>Open <code>https://&lt;address&gt;/</code> in Safari on an iPhone, or in Chrome on Android. Give
+   them the exact address, and suggest sending it to the phone the way they usually
+   do — a message to themselves, a note — so it can be tapped rather than typed.</li>
+<li>Put it on the home screen. iPhone: <strong>Share</strong> (in recent iOS, under the <strong>⋯</strong>
+   button), then <strong>Add to Home Screen</strong>. Android: the <strong>⋮</strong> menu, then <strong>Add to
+   Home screen</strong> or <strong>Install app</strong>.</li>
+<li>Open it from the home screen, choose the languages they learn in the app (it
+   starts with English, German and Serbian), and send a word. A card is created.</li>
+<li>To review the cards: Anki on the phone, signed in to the same AnkiWeb account —
+   AnkiMobile on an iPhone, AnkiDroid on Android. New cards reach AnkiWeb within five
+   minutes; if the first sync shows no <code>EchoWords</code> decks, wait and sync again.</li>
+</ol>
+<p>If the phone cannot open the address, check in this order: Tailscale is on in the
+phone's app, the phone and the VM are in the same account, and step 8 passed.</p>
+<h2 id="10-finish">10. Finish</h2>
+<p>Tell the user, briefly:</p>
+<ul>
+<li>what now runs where, and the app's address</li>
+<li>that their keys live in <code>&lt;checkout&gt;/.deploy/.env</code></li>
+<li>how to update later: paste the same prompt into an agent again and ask it to
+  update; these instructions cover it</li>
+<li>moving from an old VM that still exists: it can be terminated in Oracle's console
+  once they are satisfied — unless something else runs on it. <code>.deploy/old-vm/</code> can
+  then be deleted.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://zensical.org/" target="_blank" rel="noopener">
+      Zensical
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate":null,"base":"..","features":["content.code.copy"],"search":"../assets/javascripts/workers/search.b6b7e04f.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7f30b55.min.js"></script>
+      
+    
+  </body>
+</html>
